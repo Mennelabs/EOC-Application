@@ -6,6 +6,11 @@
 import { z } from 'zod';
 
 const url = z.url();
+/** Compose passes unset variables as empty strings; treat those as absent. */
+const optionalString = z.preprocess(
+  (v) => (v === '' ? undefined : v),
+  z.string().min(1).optional(),
+);
 
 /** Settings shared by every service. */
 export const baseSchema = z.object({
@@ -38,6 +43,11 @@ export const platformSchema = baseSchema.extend({
   SMTP_URL: url,
   /** Signs resident tokens issued after reference code + one-time code (SEC-09); never in code. */
   RESIDENT_TOKEN_SECRET: z.string().min(32),
+  /** Twilio account for real numbers (docs/06); empty or absent means the simulator (SCL-11 stand-in). */
+  TWILIO_ACCOUNT_SID: optionalString,
+  TWILIO_AUTH_TOKEN: optionalString,
+  /** The URL Twilio was given for webhooks, when it differs from what the gateway reports (signature check). */
+  WEBHOOK_PUBLIC_BASE: z.preprocess((v) => (v === '' ? undefined : v), url.optional()),
   /** Largest photo a resident may upload after client-side compression (PHO-05). */
   PUBLIC_UPLOAD_MAX_BYTES: z.coerce
     .number()

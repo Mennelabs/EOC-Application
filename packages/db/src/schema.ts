@@ -685,6 +685,16 @@ export interface AiUseRegisterTable extends Stamped {
   enabled: Generated<boolean>;
 }
 
+/** One verified toll-free number per county (docs/06); inbound webhooks resolve the tenant by it. */
+export interface ChannelNumberTable extends Stamped {
+  tenant_id: Uuid;
+  number: string;
+  capabilities: Generated<string[]>;
+  provider: Generated<'twilio' | 'simulator'>;
+  label: string | null;
+  verified_at: TsNullable;
+}
+
 export interface ExtractionTable {
   id: Generated<Uuid>;
   tenant_id: Uuid;
@@ -747,4 +757,5 @@ export interface Database {
   'cg.abuse_signal': AbuseSignalTable;
   'cg.ai_use_register': AiUseRegisterTable;
   'cg.extraction': ExtractionTable;
+  'cg.channel_number': ChannelNumberTable;
 }

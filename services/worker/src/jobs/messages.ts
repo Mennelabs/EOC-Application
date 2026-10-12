@@ -53,6 +53,16 @@ export const messageSend: TopicHandler = async (ctx, msg) => {
       .select('value')
       .where('key', '=', 'intake.help_phone')
       .executeTakeFirst();
+    const number =
+      p.channel === 'sms'
+        ? await trx
+            .selectFrom('cg.channel_number')
+            .select('number')
+            .where('tenant_id', '=', tenantId)
+            .where(sql<boolean>`'sms' = any(capabilities)`)
+            .orderBy('created_at')
+            .executeTakeFirst()
+        : undefined;
     const party = p.partyId
       ? await trx
           .selectFrom('cg.party')
@@ -105,7 +115,7 @@ export const messageSend: TopicHandler = async (ctx, msg) => {
       });
       return null;
     }
-    return { id, rendered };
+    return { id, rendered, from: number?.number ?? null };
   });
   if (!prepared) return;
 
@@ -123,7 +133,11 @@ export const messageSend: TopicHandler = async (ctx, msg) => {
       });
       provider = 'smtp';
     } else {
-      const receipt = await ctx.sms.send({ to, body: prepared.rendered.body });
+      const receipt = await ctx.sms.send({
+        to,
+        body: prepared.rendered.body,
+        ...(prepared.from ? { from: prepared.from } : {}),
+      });
       provider = receipt.provider;
       providerMessageId = receipt.providerMessageId;
       evidence = { ...evidence, segments: receipt.segments, status: receipt.status };

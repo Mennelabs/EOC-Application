@@ -28,6 +28,10 @@ x-node-env: &node-env
   IDP_HEALTH_URL: http://idp:9000/auth/health/ready
   SMTP_URL: smtp://mail:1025
   RESIDENT_TOKEN_SECRET: ${RESIDENT_TOKEN_SECRET:?}
+  # Optional real texting (docs/06); empty keeps the simulator.
+  TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+  TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+  WEBHOOK_PUBLIC_BASE: ${WEBHOOK_PUBLIC_BASE:-}
 
 x-node-health: &node-health
   test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/health/ready']

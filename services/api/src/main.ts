@@ -21,7 +21,12 @@ import { createSubjectLoader } from './auth/subject.ts';
 import { routes } from './routes/index.ts';
 import { fakeProvider, providerByName } from '@cg/ai';
 import { westwindGraph } from '@cg/intake';
+import { dataUrlFetcher, twilioMediaFetcher } from './channels/media.ts';
+import { webhookRoutes } from './channels/routes.ts';
+import { ChannelSessions } from './channels/session.ts';
+import { RiskScorer } from './public/abuse.ts';
 import { ReferenceCodeLeaser } from './public/reference-codes.ts';
+import { submitIntake } from './public/submit.ts';
 import { publicRoutes } from './public/routes.ts';
 import { TenantResolver } from './public/tenant-resolver.ts';
 
@@ -47,6 +52,38 @@ const s3 = createS3({
 });
 let queue: QueueConnection | undefined;
 
+// One submission path for every channel (CHN-01): the web route and the text and voice sessions share it.
+const resolver = new TenantResolver(db);
+const codes = new ReferenceCodeLeaser(db, `${process.env['HOSTNAME'] ?? 'api'}:${process.pid}`);
+const risk = new RiskScorer();
+const objects = { client: s3, bucket: config.S3_BUCKET, maxBytes: config.PUBLIC_UPLOAD_MAX_BYTES };
+const twilio =
+  config.TWILIO_ACCOUNT_SID && config.TWILIO_AUTH_TOKEN
+    ? { accountSid: config.TWILIO_ACCOUNT_SID, authToken: config.TWILIO_AUTH_TOKEN }
+    : undefined;
+const sessions = new ChannelSessions({
+  crypto: fieldCrypto,
+  defaultGraph: westwindGraph,
+  submit: (req, input) =>
+    submitIntake(
+      {
+        codes,
+        risk,
+        getQueue: () => queue,
+        defaultGraph: westwindGraph,
+        crypto: fieldCrypto,
+        now: () => new Date(),
+      },
+      req,
+      input,
+    ),
+  objects,
+  media: twilio
+    ? twilioMediaFetcher(twilio.accountSid, twilio.authToken, config.PUBLIC_UPLOAD_MAX_BYTES)
+    : dataUrlFetcher(),
+  publicBase: config.WEBHOOK_PUBLIC_BASE ?? config.IDP_PUBLIC_BASE.replace(/\/auth$/, ''),
+});
+
 const app = await buildApp({
   productName: config.PRODUCT_NAME,
   version: pkg.version,
@@ -61,10 +98,11 @@ const app = await buildApp({
   routes,
   publicRoutes: [
     publicRoutes({
-      resolver: new TenantResolver(db),
-      codes: new ReferenceCodeLeaser(db, `${process.env['HOSTNAME'] ?? 'api'}:${process.pid}`),
+      resolver,
+      codes,
+      risk,
       getQueue: () => queue,
-      objects: { client: s3, bucket: config.S3_BUCKET, maxBytes: config.PUBLIC_UPLOAD_MAX_BYTES },
+      objects,
       residentTokenSecret: config.RESIDENT_TOKEN_SECRET,
       defaultGraph: westwindGraph,
       ai: {
@@ -79,6 +117,15 @@ const app = await buildApp({
           return providerByName(name) ?? fakeProvider;
         },
       },
+    }),
+  ],
+  webhookRoutes: [
+    webhookRoutes({
+      resolver,
+      sessions,
+      twilio: twilio ? { authToken: twilio.authToken } : undefined,
+      publicBase: config.WEBHOOK_PUBLIC_BASE,
+      simulator: config.DATA_CLASSIFICATION_MODE === 'synthetic',
     }),
   ],
   probes: [

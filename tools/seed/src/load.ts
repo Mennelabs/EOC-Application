@@ -208,6 +208,36 @@ async function ensureExerciseEvent(trx: Transaction<Database>, tenantId: string)
     .execute();
 }
 
+/** The county's text and voice number: a fictional 555 number on the simulator (docs/06, CHN-03). */
+export const SEED_COUNTY_NUMBER = '+13145550100';
+
+async function ensureChannelNumber(trx: Transaction<Database>, tenantId: string): Promise<void> {
+  await trx
+    .insertInto('cg.channel_number')
+    .values({
+      tenant_id: tenantId,
+      number: SEED_COUNTY_NUMBER,
+      provider: 'simulator',
+      label: 'Exercise toll-free number (simulator)',
+      verified_at: new Date(),
+      created_by: SEED_ACTOR_A,
+      updated_by: SEED_ACTOR_A,
+    })
+    .onConflict((oc) => oc.doNothing())
+    .execute();
+  await trx
+    .insertInto('cg.tenant_config')
+    .values({
+      tenant_id: tenantId,
+      key: 'intake.help_phone',
+      value: JSON.stringify('(314) 555-0142'),
+      created_by: SEED_ACTOR_A,
+      updated_by: SEED_ACTOR_A,
+    })
+    .onConflict((oc) => oc.doNothing())
+    .execute();
+}
+
 export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
   const tenantIds: Record<string, string> = {};
   const evaluation = await evaluateProvider(fakeProvider);
@@ -223,7 +253,10 @@ export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
       await ensureTemplateRoles(trx, id);
       await ensureIntakeGraph(trx, id, westwindGraph);
       await ensureAiRegister(trx, id, fakeProvider, evaluation);
-      if (spec.key === 'county') await ensureExerciseEvent(trx, id);
+      if (spec.key === 'county') {
+        await ensureExerciseEvent(trx, id);
+        await ensureChannelNumber(trx, id);
+      }
       if (created) {
         await trx
           .insertInto('cg.outbox')

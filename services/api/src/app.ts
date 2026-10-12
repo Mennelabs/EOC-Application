@@ -32,6 +32,8 @@ export interface AppOptions {
   routes?: FastifyPluginAsync[];
   /** Route plugins mounted under /api/public (no staff session; layer 2 intake). */
   publicRoutes?: FastifyPluginAsync[];
+  /** Route plugins mounted under /api/webhooks (carrier callbacks and the simulator). */
+  webhookRoutes?: FastifyPluginAsync[];
 }
 
 export type App = Awaited<ReturnType<typeof buildApp>>;
@@ -104,6 +106,9 @@ export async function buildApp(opts: AppOptions) {
   }
   for (const routes of opts.publicRoutes ?? []) {
     await app.register(routes, { prefix: '/api/public' });
+  }
+  for (const routes of opts.webhookRoutes ?? []) {
+    await app.register(routes, { prefix: '/api/webhooks' });
   }
 
   return app;

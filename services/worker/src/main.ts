@@ -16,6 +16,7 @@ import {
   queueProbe,
   runProbes,
   SimulatorSms,
+  TwilioSms,
   type QueueConnection,
 } from '@cg/adapters';
 import { fakeProvider, providerByName } from '@cg/ai';
@@ -58,7 +59,15 @@ const ctx: JobContext = {
     adminPassword: config.KC_ADMIN_PASSWORD,
   }),
   mail: config.SMTP_URL ? smtpMailer(config.SMTP_URL, config.MAIL_FROM) : nullMailer,
-  sms: new SimulatorSms(), // the Twilio sender arrives with the channel work (F) and is configuration
+  // docs/06, SCL-11: the real provider is configuration; without it the simulator stands in.
+  sms:
+    config.TWILIO_ACCOUNT_SID && config.TWILIO_AUTH_TOKEN
+      ? new TwilioSms({
+          accountSid: config.TWILIO_ACCOUNT_SID,
+          authToken: config.TWILIO_AUTH_TOKEN,
+          statusCallback: `${config.WEBHOOK_PUBLIC_BASE ?? config.GATEWAY_PUBLIC_URL}/api/webhooks/twilio/status`,
+        })
+      : new SimulatorSms(),
   crypto: fieldCrypto,
   urls: {
     gatewayPublic: config.GATEWAY_PUBLIC_URL,

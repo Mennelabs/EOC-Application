@@ -667,6 +667,19 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     evaluation: { c: 'internal', d: 'AIG-08 results' },
     enabled: { c: 'internal' },
   }),
+  channel_number: table(
+    {
+      number: {
+        c: 'internal',
+        d: 'The county toll-free number in E.164 (docs/06); public lookup by exact match',
+      },
+      capabilities: { c: 'internal' },
+      provider: { c: 'internal' },
+      label: { c: 'internal' },
+      verified_at: { c: 'internal', d: 'Toll-free verification completed (CHN-04)' },
+    },
+    { omit: ['id'] },
+  ),
   extraction: table(
     {
       id: { c: 'internal' },

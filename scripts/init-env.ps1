@@ -56,6 +56,10 @@ $lines = @(
   "CJIS_POSTGRES_PASSWORD=$(New-Secret)",
   "CJIS_APP_PASSWORD=$(New-Secret)",
   "RESIDENT_TOKEN_SECRET=$(New-Secret)"
+# Optional real texting (docs/06); empty keeps the simulator.
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+WEBHOOK_PUBLIC_BASE=
 )
 
 # UTF-8 without a byte-order mark and LF endings: Docker Compose reads the

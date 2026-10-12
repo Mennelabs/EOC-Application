@@ -50,7 +50,19 @@ Then open:
 | http://localhost:15672     | RabbitMQ management (`cg`, password in `.env`)                                                                                                               |
 | http://localhost:9001      | MinIO console (`cg-local`, password in `.env`)                                                                                                               |
 
-### Sign in to the console
+### Text and call the county (simulator)
+
+Without Twilio, the API plays the phone on synthetic data. Text the exercise county's number (`+13145550100`) from any number:
+
+```sh
+curl -sk https://localhost/api/webhooks/simulator/sms -H 'content-type: application/json' \
+  -d '{"from":"+13145550199","to":"+13145550100","body":"DAMAGE"}'
+# → {"replies":["Westwind County Emergency Mgmt: You're signed up …","… Is anyone in danger right now?\n1 Yes …"]}
+```
+
+Reply with the numbers (`2`, `1`, …), `BACK`, `SKIP`, `HELP`, `STOP`, or `DAÑOS` for Spanish; `SEND` at the end returns the reference code. A call starts with `{"from":"+13145550199","to":"+13145550100","step":"start"}` on `/api/webhooks/simulator/voice` and continues with `step` from the answer plus `digits` or `speech`. Texts the worker sends (confirmations, one-time codes) go to the in-process simulator and are recorded in `cg.message`. To use real numbers set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `WEBHOOK_PUBLIC_BASE` in `.env`, add the county's verified number to `cg.channel_number`, and point Twilio's webhooks at `/api/webhooks/twilio/sms`, `/voice` and `/status` through a secured tunnel (`docs/06`).
+
+## Sign in to the console
 
 The sign-in screen asks for the **organization** first: that is the tenant key, which is also the Keycloak realm. The synthetic WESTWIND county is `county`; the other organizations are `state`, `region`, `city`, `coad`, `canteen`, `shelter-ngo`, `cleanup` and `legal`. Every seeded account uses the synthetic password `Westwind-Exercise-2026!`.
 

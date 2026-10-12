@@ -66,6 +66,8 @@ export const submissionPayloadSchema = z.object({
     .loose()
     .optional(),
   receivedAt: z.string().optional(),
+  /** A text or voice session already told the resident their code in the same conversation (CHN-03). */
+  confirmationSent: z.boolean().default(false),
 });
 export type SubmissionPayload = z.infer<typeof submissionPayloadSchema>;
 
@@ -522,7 +524,9 @@ export async function fileSubmission(ctx: JobContext, input: FilingInput): Promi
 
       // Confirmation (docs/06): texts only with opt-in; otherwise email; the screen showed the code anyway.
       const outgoing: { template: string; channel: 'sms' | 'email'; to: string }[] = [];
-      if (phone && payload.smsOptIn)
+      if (payload.confirmationSent) {
+        // The channel replied with the code already; a second text would cost the resident a segment.
+      } else if (phone && payload.smsOptIn)
         outgoing.push(
           { template: 'opt_in_confirmation', channel: 'sms', to: phone },
           { template: 'confirmation', channel: 'sms', to: phone },

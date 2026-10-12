@@ -60,6 +60,45 @@ export class TenantResolver {
     return tenant;
   }
 
+  /** Inbound webhooks name the county's number (0019 admits the number row and its tenant). */
+  async byNumber(number: string): Promise<PublicTenant> {
+    const key = `number:${number}`;
+    const hit = this.cache.get(key);
+    if (hit && Date.now() - hit.at < this.ttlMs) {
+      if (!hit.tenant) throw errors.notFound();
+      return hit.tenant;
+    }
+    const row = await this.db.transaction().execute(async (trx) => {
+      await sql`select set_config('app.public_number', ${number}, true)`.execute(trx);
+      return trx
+        .selectFrom('cg.channel_number')
+        .innerJoin('cg.tenant', 'cg.tenant.id', 'cg.channel_number.tenant_id')
+        .select([
+          'cg.tenant.id as id',
+          'cg.tenant.slug as slug',
+          'cg.tenant.name as name',
+          'cg.tenant.locales as locales',
+          'cg.tenant.branding as branding',
+          'cg.tenant.status as status',
+        ])
+        .where('cg.channel_number.number', '=', number)
+        .executeTakeFirst();
+    });
+    const tenant = row
+      ? {
+          id: row.id,
+          slug: row.slug,
+          name: row.name,
+          locales: row.locales,
+          branding: (row.branding ?? {}) as Record<string, unknown>,
+          status: row.status,
+        }
+      : null;
+    this.cache.set(key, { at: Date.now(), tenant });
+    if (!tenant) throw errors.notFound();
+    return tenant;
+  }
+
   /** Runs fn under the tenant's RLS without any account (public path). */
   asTenant<T>(tenantId: string, fn: Parameters<typeof withTenant<T>>[2]): Promise<T> {
     return withTenant(this.db, { tenantId }, fn);

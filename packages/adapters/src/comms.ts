@@ -11,6 +11,8 @@ export interface OutboundSms {
   /** E.164 number. */
   to: string;
   body: string;
+  /** The county's own number (cg.channel_number); required by real providers. */
+  from?: string;
 }
 
 export interface SmsReceipt {
@@ -60,5 +62,62 @@ export class SimulatorSms implements SmsSender {
     this.sent.push({ ...msg, ...receipt, at: new Date() });
     while (this.sent.length > this.keep) this.sent.shift();
     return receipt;
+  }
+}
+
+export interface TwilioSettings {
+  accountSid: string;
+  authToken: string;
+  /** Where Twilio reports delivery (the API's status webhook); optional. */
+  statusCallback?: string;
+  /** For tests; defaults to the Twilio REST API. */
+  baseUrl?: string;
+  fetch?: typeof fetch;
+}
+
+/** Twilio Programmable Messaging over its REST API; the account is platform configuration, the number is the tenant's. */
+export class TwilioSms implements SmsSender {
+  readonly name = 'twilio';
+  private readonly s: TwilioSettings;
+
+  constructor(settings: TwilioSettings) {
+    this.s = settings;
+  }
+
+  async send(msg: OutboundSms): Promise<SmsReceipt> {
+    if (!msg.from) throw new Error('twilio: the tenant has no sending number (cg.channel_number)');
+    const base = this.s.baseUrl ?? 'https://api.twilio.com';
+    const form = new URLSearchParams({ To: msg.to, From: msg.from, Body: msg.body });
+    if (this.s.statusCallback) form.set('StatusCallback', this.s.statusCallback);
+    const auth = Buffer.from(`${this.s.accountSid}:${this.s.authToken}`).toString('base64');
+    const res = await (this.s.fetch ?? fetch)(
+      `${base}/2010-04-01/Accounts/${encodeURIComponent(this.s.accountSid)}/Messages.json`,
+      {
+        method: 'POST',
+        headers: {
+          authorization: `Basic ${auth}`,
+          'content-type': 'application/x-www-form-urlencoded',
+        },
+        body: form,
+      },
+    );
+    const body = (await res.json().catch(() => ({}))) as {
+      sid?: string;
+      status?: string;
+      num_segments?: string;
+      code?: number;
+      message?: string;
+    };
+    if (!res.ok || !body.sid)
+      throw new Error(
+        `twilio ${res.status}: ${body.code ?? ''} ${body.message ?? 'send failed'}`.trim(),
+      );
+    return {
+      provider: this.name,
+      providerMessageId: body.sid,
+      status:
+        body.status === 'delivered' ? 'delivered' : body.status === 'sent' ? 'sent' : 'queued',
+      segments: Number(body.num_segments ?? smsSegments(msg.body)),
+    };
   }
 }

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Field app — street sweep</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1D4F91}a:hover{color:#123665}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #FFFFFF; color: #1B1F23; font-family: 'IBM Plex Sans', system-ui, sans-serif; display: flex; flex-direction: column">
+<header style="background: #16202B; color: #FFFFFF; padding: 8px 8px 12px; display: flex; flex-direction: column; gap: 4px">
+<div style="display: flex; align-items: center; gap: 6px">
+<a href="FieldHome.dc.html" style="display: flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 8px; color: #FFFFFF; font-size: 16px; font-weight: 600; text-decoration: none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>Route</a>
+<span style="font-weight: 700; font-size: 17px; flex-grow: 1">Street sweep</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; color: #C9D4DF; padding-right: 8px">{{done}} of 18</span>
+</div>
+<span style="height: 8px; margin: 0 8px; border-radius: 4px; background: #3A4A5C; display: flex"><span style="{{barStyle}}"></span></span>
+</header>
+<main style="flex-grow: 1; padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 13px; font-weight: 700; letter-spacing: 0.04em; color: #4A5560">NOW AT</span>
+<span style="font-size: 24px; font-weight: 700">{{lot}}</span>
+<span style="font-size: 15px; color: #2E353C">Manufactured home · pin matched to parcel</span>
+</div>
+<a href="FieldLocate.dc.html" style="display: flex; align-items: center; min-height: 44px; font-size: 15px; font-weight: 600">Wrong lot?</a>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+<button style="display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; border: 2px solid #1B1F23; border-radius: 10px; background: #FFFFFF; font-family: inherit; font-size: 16px; font-weight: 600"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"></path><circle cx="12" cy="13" r="3.5"></circle></svg>Photo</button>
+<button style="display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; border: 2px solid #1B1F23; border-radius: 10px; background: #FFFFFF; font-family: inherit; font-size: 16px; font-weight: 600"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg>Voice note</button>
+</div>
+<fieldset style="border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px">
+<legend style="font-size: 17px; font-weight: 700; padding: 0 0 8px">Damage to this home <a href="#" style="font-size: 14px; font-weight: 500">see examples</a></legend>
+<sc-for list="{{opts}}" as="o" hint-placeholder-count="6">
+<button onClick="{{o.pick}}" style="{{o.style}}"><span style="{{o.chip}}"></span><span style="display: flex; flex-direction: column; align-items: flex-start; gap: 1px"><span>{{o.label}}</span><span style="font-size: 13px; font-weight: 400; color: #4A5560">{{o.hint}}</span></span></button>
+</sc-for>
+</fieldset>
+<div style="flex-grow: 1"></div>
+<sc-if value="{{hasLast}}" hint-placeholder-val="{{true}}">
+<div role="status" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; background: #F3F5F7; font-size: 15px">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0B6E4F" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg>
+<span style="flex-grow: 1">{{last}} · saved on this phone</span>
+<button onClick="{{undo}}" style="min-height: 44px; padding: 0 10px; border: 0; background: none; color: #1D4F91; font-family: inherit; font-size: 15px; font-weight: 600">Undo</button>
+</div>
+</sc-if>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#1D4F91","options":["#1D4F91","#0B6E4F","#5B3A8E","#7A4A00"]},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { n: 41, done: 7, last: 'Lot 40 · Major' };
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#1D4F91';
+    const s = this.state;
+    const defs = [
+      { id: 'none', label: 'No damage', hint: 'Nothing visible', chip: '#FFFFFF' },
+      { id: 'affected', label: 'Affected', hint: 'Cosmetic: siding, gutters, shingles', chip: '#E3EAF3' },
+      { id: 'minor', label: 'Minor', hint: 'Repairable, still livable', chip: '#9DB4D3' },
+      { id: 'major', label: 'Major', hint: 'Structural damage, not livable', chip: '#3D6699' },
+      { id: 'destroyed', label: 'Destroyed', hint: 'Total loss', chip: '#14264A' },
+      { id: 'cant', label: 'Can’t reach', hint: 'Blocked, unsafe or no access', chip: 'repeating-linear-gradient(45deg,#8A949E 0 4px,#FFFFFF 4px 8px)' }
+    ];
+    const opts = defs.map((o) => ({
+      ...o,
+      style: 'display:flex;align-items:center;gap:12px;min-height:56px;padding:6px 14px;box-sizing:border-box;border:2px solid #8A949E;border-radius:10px;background:#FFFFFF;color:#1B1F23;font-family:inherit;font-size:17px;font-weight:700;text-align:left;cursor:pointer;',
+      chip: 'width:22px;height:22px;flex-shrink:0;border-radius:4px;border:1.5px solid #1B1F23;background:' + o.chip + ';',
+      pick: () => this.setState({ last: 'Lot ' + s.n + ' · ' + o.label, n: s.n + 1, done: Math.min(18, s.done + 1) })
+    }));
+    const pct = Math.round(s.done / 18 * 100);
+    return {
+      accent,
+      opts,
+      lot: '[Lot ' + s.n + ']',
+      done: s.done,
+      barStyle: 'width:' + pct + '%;border-radius:4px;background:#4CC38A;',
+      hasLast: !!s.last,
+      last: s.last,
+      undo: () => this.setState({ n: Math.max(41, s.n - 1), done: Math.max(7, s.done - 1), last: '' })
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Field app — confirm location</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1D4F91}a:hover{color:#123665}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #FFFFFF; color: #1B1F23; font-family: 'IBM Plex Sans', system-ui, sans-serif; display: flex; flex-direction: column">
+<header style="background: #16202B; color: #FFFFFF; padding: 8px 8px; display: flex; align-items: center; gap: 6px">
+<a href="FieldHome.dc.html" style="display: flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 8px; color: #FFFFFF; font-size: 16px; font-weight: 600; text-decoration: none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>Back</a>
+<span style="font-weight: 700; font-size: 17px">Which property?</span>
+</header>
+<div style="position: relative; height: 380px; background: #DDE3D8">
+<svg viewBox="0 0 390 380" width="390" height="380" role="img" aria-label="Parcel map with the GPS pin inside lot 41, highlighted, and neighboring lots 40 and 42 outlined">
+<rect x="0" y="0" width="390" height="380" fill="#DDE3D8"></rect>
+<path d="M0 300 L390 250" stroke="#FFFFFF" stroke-width="22"></path>
+<text x="20" y="300" font-size="13" fill="#4A5560" font-family="IBM Plex Sans, sans-serif" transform="rotate(-7 20 300)">[Street name] — sign down</text>
+<g fill="#FFFFFF" fill-opacity="0.7" stroke="#5B6670" stroke-width="1.5">
+<polygon points="20,120 110,108 118,228 28,240"></polygon>
+<polygon points="250,86 340,74 348,194 258,206"></polygon>
+</g>
+<polygon points="135,104 235,90 243,212 143,226" fill="{{accent}}" fill-opacity="0.16" stroke="{{accent}}" stroke-width="3"></polygon>
+<rect x="160" y="128" width="58" height="30" fill="#8A949E" stroke="#5B6670" transform="rotate(-8 189 143)"></rect>
+<g font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="#1B1F23"><text x="52" y="182">Lot 40</text><text x="282" y="146">Lot 42</text><text x="166" y="200">Lot 41</text></g>
+<circle cx="192" cy="160" r="26" fill="{{accent}}" fill-opacity="0.15"></circle>
+<path d="M192 166 c-12 -14 -14 -20 -14 -26 a14 14 0 0 1 28 0 c0 6 -2 12 -14 26z" fill="#B3261E" stroke="#FFFFFF" stroke-width="2"></path>
+<circle cx="192" cy="140" r="5" fill="#FFFFFF"></circle>
+</svg>
+<span style="position: absolute; right: 10px; top: 10px; padding: 4px 8px; border-radius: 6px; background: #FFFFFF; font-size: 13px; font-weight: 600; border: 1px solid #B8C0C8">Pre-storm photo layer: on</span>
+</div>
+<main style="flex-grow: 1; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 22px; font-weight: 700">Is this the property?</span>
+<span style="font-size: 17px">[Lot 41], Willow Bend</span>
+<span style="font-size: 14px; color: #4A5560">Parcel [ID] · county record: manufactured home</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #2E353C">USNG [15S XX 00000 00000] · GPS ±6 m</span>
+</div>
+<a href="FieldSweep.dc.html" style="display: flex; align-items: center; justify-content: center; min-height: 56px; border-radius: 10px; background: {{accent}}; color: #FFFFFF; font-size: 19px; font-weight: 700; text-decoration: none">Yes, this one</a>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+<button style="min-height: 52px; border: 2px solid #1B1F23; border-radius: 10px; background: #FFFFFF; font-family: inherit; font-size: 16px; font-weight: 600">Pick another lot</button>
+<button style="min-height: 52px; border: 2px solid #1B1F23; border-radius: 10px; background: #FFFFFF; font-family: inherit; font-size: 16px; font-weight: 600">Move the pin</button>
+</div>
+<button style="min-height: 48px; border: 0; background: none; color: #1D4F91; font-family: inherit; font-size: 16px; font-weight: 600">Add a landmark note instead</button>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#1D4F91","options":["#1D4F91","#0B6E4F","#5B3A8E","#7A4A00"]},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#1D4F91' };
+  }
+}
+</script>
+</body>
+</html>

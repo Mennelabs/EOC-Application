@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dispatch board — Exercise WESTWIND</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1D4F91}a:hover{color:#123665}
+</style>
+</helmet>
+<div style="font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1B1F23; background: #F4F6F8; min-height: 1120px; font-size: 14px">
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding: 10px 20px; background: #16202B; color: #FFFFFF">
+<div style="display: flex; align-items: center; gap: 10px">
+<div style="width: 28px; height: 28px; border-radius: 6px; background: {{accent}}; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7M5 10v10h14V10"></path></svg></div>
+<span style="font-weight: 600; font-size: 15px">{{productName}}</span>
+<span style="color: #9FB0C2">[County] Emergency Management</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; padding: 4px 10px; border: 1px solid #3A4A5C; border-radius: 6px">
+<span style="width: 8px; height: 8px; border-radius: 4px; background: #F2A23A"></span>
+<span style="font-weight: 600">WESTWIND</span><span style="color: #C9D4DF">Tornado · Active · T+40h</span>
+</div>
+<button style="flex: 1 1 260px; max-width: 460px; display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 12px; border: 1px solid #3A4A5C; border-radius: 6px; background: #1F2B38; color: #C9D4DF; font-family: inherit; font-size: 14px; text-align: left" aria-label="Open the command window">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>
+<span style="flex-grow: 1">Ask or do anything — “send the nearest chainsaw team to Willow Bend lot 41”</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; padding: 2px 6px; border: 1px solid #3A4A5C; border-radius: 4px">Ctrl K</span>
+</button>
+<div style="margin-left: auto; display: flex; align-items: center; gap: 10px">
+<div style="display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2"><span style="font-weight: 600">Marcus T.</span><span style="font-size: 12px; color: #9FB0C2">Field Coordinator</span></div>
+<div style="width: 32px; height: 32px; border-radius: 16px; background: #3A4A5C; display: flex; align-items: center; justify-content: center; font-weight: 600">MT</div>
+</div>
+</header>
+<div style="display: flex; flex-wrap: wrap; align-items: flex-start">
+<nav aria-label="Workspaces" style="flex: 1 1 200px; max-width: 232px; box-sizing: border-box; padding: 16px 12px; display: flex; flex-direction: column; gap: 2px">
+<a href="Main.dc.html" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px; color: #1B1F23; text-decoration: none">Situation</a>
+<a href="Dispatch.dc.html" aria-current="page" style="display: flex; align-items: center; justify-content: space-between; min-height: 40px; padding: 0 12px; border-radius: 6px; background: #E3EAF3; color: #123665; font-weight: 600; text-decoration: none">Dispatch<span style="font-size: 12px; font-weight: 600; color: #FFFFFF; background: #9A4A00; border-radius: 10px; padding: 1px 8px">1 overdue</span></a>
+<a href="Review.dc.html" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px; color: #1B1F23; text-decoration: none">Review queue</a>
+<a href="Recommend.dc.html" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px; color: #1B1F23; text-decoration: none">Mass care</a>
+<a href="#" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px; color: #1B1F23; text-decoration: none">Roster and check-in</a>
+<a href="#" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px; color: #1B1F23; text-decoration: none">Messages</a>
+<a href="#" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px; color: #1B1F23; text-decoration: none">Net control log</a>
+</nav>
+<main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 20px 24px 32px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h1 style="margin: 0; font-size: 24px; font-weight: 600">Dispatch board</h1>
+<span style="color: #4A5560">Volunteer and resource coordination, not 911 dispatch · 23 teams, 87 people checked in · positions live, 30 s</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<button style="min-height: 32px; padding: 0 12px; border: 1px solid {{accent}}; border-radius: 16px; background: #E3EAF3; color: #123665; font-family: inherit; font-size: 13px; font-weight: 500">All agencies</button>
+<button style="min-height: 32px; padding: 0 12px; border: 1px solid #B8C0C8; border-radius: 16px; background: #FFFFFF; color: #4A5560; font-family: inherit; font-size: 13px">Skill</button>
+<button style="min-height: 32px; padding: 0 12px; border: 1px solid #B8C0C8; border-radius: 16px; background: #FFFFFF; color: #4A5560; font-family: inherit; font-size: 13px">Status</button>
+<button style="min-height: 32px; padding: 0 12px; border: 1px solid #B8C0C8; border-radius: 16px; background: #FFFFFF; color: #4A5560; font-family: inherit; font-size: 13px">Show open needs</button>
+</div>
+</div>
+<div role="alert" style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 14px; background: #FFF1E3; border: 2px solid #9A4A00; border-radius: 8px">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6B3300" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+<div style="flex: 1 1 320px; display: flex; flex-direction: column; gap: 2px; color: #4A2300"><span style="font-weight: 700">CERT Team 4 is overdue</span><span>Missed the 11:00 check-in. Last position 11:02, Oak Hollow north edge. 3 members, lead J. Ortiz.</span></div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button style="min-height: 36px; padding: 0 14px; border: 0; border-radius: 6px; background: #6B3300; color: #FFFFFF; font-family: inherit; font-size: 14px; font-weight: 600">Call team lead</button>
+<button style="min-height: 36px; padding: 0 14px; border: 1px solid #6B3300; border-radius: 6px; background: #FFFFFF; color: #4A2300; font-family: inherit; font-size: 14px; font-weight: 500">Message team</button>
+<button style="min-height: 36px; padding: 0 14px; border: 1px solid #6B3300; border-radius: 6px; background: #FFFFFF; color: #4A2300; font-family: inherit; font-size: 14px; font-weight: 500">Escalate to safety officer</button>
+</div>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+<section aria-labelledby="map-h" style="flex: 2 1 520px; min-width: 0; background: #FFFFFF; border: 1px solid #D5DADF; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+<h2 id="map-h" style="margin: 0; font-size: 16px; font-weight: 600">Live map</h2>
+<svg viewBox="0 0 800 460" style="width: 100%; height: auto; display: block; border-radius: 6px" role="img" aria-label="Live map of teams along the damage path: two available, three en route, several on task, one on break and CERT Team 4 overdue near Oak Hollow, with a downed line hazard and open needs">
+<rect x="0" y="0" width="800" height="460" fill="#E9EDF1"></rect>
+<path d="M0 240 L800 130" stroke="#FFFFFF" stroke-width="9"></path>
+<path d="M120 0 L180 460 M420 0 L460 460 M650 0 L690 460 M0 400 L800 350" stroke="#FFFFFF" stroke-width="4" fill="none"></path>
+<polygon points="60,322 740,150 752,190 72,362" fill="#B3261E" fill-opacity="0.12" stroke="#B3261E" stroke-width="1.2"></polygon>
+<g fill="#5B6670" fill-opacity="0.55"><circle cx="150" cy="318" r="4"></circle><circle cx="166" cy="330" r="4"></circle><circle cx="182" cy="312" r="4"></circle><circle cx="342" cy="270" r="4"></circle><circle cx="356" cy="282" r="4"></circle><circle cx="540" cy="222" r="4"></circle><circle cx="690" cy="182" r="4"></circle><circle cx="706" cy="172" r="4"></circle></g>
+<path d="M240 140 L300 200 L330 250" fill="none" stroke="{{accent}}" stroke-width="2.5" stroke-dasharray="6 5"></path>
+<g font-family="IBM Plex Sans, sans-serif" font-size="12.5" font-weight="600">
+<circle cx="130" cy="296" r="11" fill="#5B3A8E"></circle><text x="146" y="292" fill="#1B1F23">DA-3 on task</text>
+<circle cx="200" cy="350" r="11" fill="#5B3A8E"></circle><text x="216" y="354" fill="#1B1F23">Chainsaw A on task</text>
+<rect x="318" y="244" width="22" height="22" rx="4" fill="#5B3A8E"></rect><text x="346" y="250" fill="#1B1F23">Canteen 2 on task</text>
+<path d="M330 252 m-11 0 l11 -11 l11 11 l-11 11z" fill="{{accent}}" transform="translate(-90 -110)"></path><text x="256" y="138" fill="#1B1F23">DA-5 en route</text>
+<circle cx="250" cy="420" r="11" fill="#0B6E4F"></circle><text x="266" y="424" fill="#1B1F23">Chainsaw B available</text>
+<circle cx="560" cy="290" r="11" fill="#0B6E4F"></circle><text x="576" y="294" fill="#1B1F23">Canvass 2 available</text>
+<circle cx="520" cy="196" r="11" fill="#5B3A8E"></circle><text x="440" y="178" fill="#1B1F23">DA-1 on task</text>
+<circle cx="610" cy="100" r="11" fill="#8A949E"></circle><text x="626" y="104" fill="#1B1F23">Site lead break</text>
+<circle cx="720" cy="140" r="15" fill="none" stroke="#9A4A00" stroke-width="3"></circle><circle cx="720" cy="140" r="9" fill="#9A4A00"></circle><text x="616" y="128" fill="#6B3300">CERT 4 overdue</text>
+</g>
+<g><path d="M598 232 l12 -20 l12 20z" fill="#F2C94C" stroke="#1B1F23" stroke-width="1.5"></path><text x="626" y="230" font-size="12.5" font-family="IBM Plex Sans, sans-serif" fill="#1B1F23">Line down</text></g>
+<g font-family="IBM Plex Sans, sans-serif" font-size="12" fill="#1B1F23"><rect x="152" y="368" width="74" height="22" rx="11" fill="#FFFFFF" stroke="#B3261E" stroke-width="1.5"></rect><text x="160" y="383">Lot 41 need</text></g>
+</svg>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: #2E353C">
+<li style="display: flex; align-items: center; gap: 6px"><span style="width: 12px; height: 12px; border-radius: 6px; background: #0B6E4F"></span>Available</li>
+<li style="display: flex; align-items: center; gap: 6px"><span style="width: 12px; height: 12px; background: {{accent}}; transform: rotate(45deg)"></span>En route</li>
+<li style="display: flex; align-items: center; gap: 6px"><span style="width: 12px; height: 12px; border-radius: 6px; background: #5B3A8E"></span>On task</li>
+<li style="display: flex; align-items: center; gap: 6px"><span style="width: 12px; height: 12px; border-radius: 6px; background: #8A949E"></span>Break</li>
+<li style="display: flex; align-items: center; gap: 6px"><span style="width: 12px; height: 12px; border-radius: 6px; background: #9A4A00; outline: 2px solid #9A4A00; outline-offset: 2px"></span>Overdue</li>
+<li><a href="#">View as list</a></li>
+</ul>
+</section>
+<section aria-labelledby="roster-h" style="flex: 1 1 300px; min-width: 0; background: #FFFFFF; border: 1px solid #D5DADF; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+<h2 id="roster-h" style="margin: 0; font-size: 16px; font-weight: 600">Teams by status</h2>
+<sc-for list="{{groups}}" as="g" hint-placeholder-count="5">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; color: #2E353C; border-bottom: 1px solid #EEF1F4; padding-bottom: 4px"><span>{{g.label}}</span><span style="font-family: 'IBM Plex Mono', monospace">{{g.count}}</span></div>
+<sc-for list="{{g.teams}}" as="t" hint-placeholder-count="2">
+<div style="display: flex; justify-content: space-between; gap: 8px; padding: 4px 0"><span style="font-weight: 500">{{t.name}}</span><span style="color: #4A5560; font-size: 13px; text-align: right">{{t.note}}</span></div>
+</sc-for>
+</div>
+</sc-for>
+</section>
+</div>
+<section aria-labelledby="queue-h" style="background: #FFFFFF; border: 1px solid #D5DADF; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px"><h2 id="queue-h" style="margin: 0; font-size: 16px; font-weight: 600">Unassigned work · 41</h2><span style="font-size: 13px; color: #4A5560">Suggestions are nearest qualified available team; you confirm</span></div>
+<div style="overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; font-size: 14px; min-width: 720px">
+<thead><tr style="text-align: left; color: #4A5560; font-size: 13px"><th style="padding: 8px 10px; border-bottom: 1px solid #D5DADF; font-weight: 500">Priority</th><th style="padding: 8px 10px; border-bottom: 1px solid #D5DADF; font-weight: 500">Work</th><th style="padding: 8px 10px; border-bottom: 1px solid #D5DADF; font-weight: 500">Suggested team</th><th style="padding: 8px 10px; border-bottom: 1px solid #D5DADF; font-weight: 500"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden">Action</span></th></tr></thead>
+<tbody>
+<sc-for list="{{work}}" as="w" hint-placeholder-count="4">
+<tr>
+<td style="padding: 10px; border-bottom: 1px solid #EEF1F4; vertical-align: top"><span style="{{w.prioStyle}}">{{w.prio}}</span></td>
+<td style="padding: 10px; border-bottom: 1px solid #EEF1F4; vertical-align: top"><div style="font-weight: 600">{{w.title}}</div><div style="font-size: 13px; color: #4A5560">{{w.detail}}</div></td>
+<td style="padding: 10px; border-bottom: 1px solid #EEF1F4; vertical-align: top"><div style="font-weight: 500">{{w.team}}</div><div style="font-size: 13px; color: #4A5560">{{w.why}}</div></td>
+<td style="padding: 10px; border-bottom: 1px solid #EEF1F4; vertical-align: top; text-align: right"><button onClick="{{w.assign}}" style="{{w.btnStyle}}">{{w.btn}}</button></td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+</section>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"productName":{"editor":"text","default":"Common Ground"},"accent":{"editor":"color","default":"#1D4F91","options":["#1D4F91","#0B6E4F","#5B3A8E","#7A4A00"]},"$preview":{"width":1440,"height":1120}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { sent: {} };
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#1D4F91';
+    const groups = [
+      { label: 'Overdue', count: 1, teams: [{ name: 'CERT Team 4', note: 'missed 11:00 check-in' }] },
+      { label: 'Available', count: 6, teams: [{ name: 'Chainsaw Team B', note: 'staging, 4 people' }, { name: 'Canvass Team 2', note: 'Spanish speakers' }] },
+      { label: 'En route', count: 3, teams: [{ name: 'DA-5', note: 'to Cedar Ridge, ETA 6 min' }] },
+      { label: 'On task', count: 11, teams: [{ name: 'Canteen 2 (Salvation Army)', note: 'Cedar Ridge stop, 214 meals' }, { name: 'DA-3', note: 'Willow Bend, 7 of 18' }] },
+      { label: 'Break', count: 2, teams: [{ name: 'Shelter site lead', note: 'back 11:30' }] }
+    ];
+    const base = [
+      { id: 'w1', prio: 'High', title: 'Willow Bend lot 41: tree on home', detail: 'Medical equipment needs power · resident inside', team: 'Chainsaw Team B', why: '1.2 mi · available · chainsaw certified' },
+      { id: 'w2', prio: 'High', title: 'Oak Hollow assisted-reporting sweep', detail: 'Coverage alert: 9 reports for 74 homes', team: 'Canvass Team 2', why: '0.8 mi · available · Spanish speakers' },
+      { id: 'w3', prio: 'Normal', title: 'Verification route: Prairie Lakes east', detail: '22 properties without photos', team: 'DA-1 after current route', why: 'finishes about 11:40' },
+      { id: 'w4', prio: 'Normal', title: 'Feeding stop 4 needs 2 servers, 12–2 pm', detail: 'Site staffing gap', team: 'No qualified team free', why: 'request from VOAD partners' }
+    ];
+    const sent = this.state.sent;
+    const work = base.map((w) => {
+      const done = !!sent[w.id];
+      const none = w.team.indexOf('No ') === 0;
+      return {
+        ...w,
+        prioStyle: 'font-size:12px;font-weight:700;padding:2px 8px;border-radius:4px;' + (w.prio === 'High' ? 'background:#FCEBEA;color:#5C1310;' : 'background:#EEF1F4;color:#2E353C;'),
+        btn: done ? 'Sent, awaiting acknowledgement' : (none ? 'Request help' : 'Assign'),
+        assign: () => this.setState({ sent: { ...sent, [w.id]: true } }),
+        btnStyle: 'min-height:36px;padding:0 14px;border-radius:6px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;' +
+          (done ? 'border:1px solid #0B6E4F;background:#E6F2EC;color:#07402E;' : (none ? 'border:1px solid #8A949E;background:#FFFFFF;color:#1B1F23;' : 'border:0;background:' + accent + ';color:#FFFFFF;'))
+      };
+    });
+    return { productName: this.props.productName ?? 'Common Ground', accent, groups, work };
+  }
+}
+</script>
+</body>
+</html>

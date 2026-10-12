@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Review queue — Exercise WESTWIND</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1D4F91}a:hover{color:#123665}
+</style>
+</helmet>
+<div style="font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1B1F23; background: #F4F6F8; min-height: 1180px; font-size: 14px">
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding: 10px 20px; background: #16202B; color: #FFFFFF">
+<div style="display: flex; align-items: center; gap: 10px">
+<div style="width: 28px; height: 28px; border-radius: 6px; background: {{accent}}; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7M5 10v10h14V10"></path></svg></div>
+<span style="font-weight: 600; font-size: 15px">{{productName}}</span>
+<span style="color: #9FB0C2">[County] Emergency Management</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; padding: 4px 10px; border: 1px solid #3A4A5C; border-radius: 6px">
+<span style="width: 8px; height: 8px; border-radius: 4px; background: #F2A23A"></span>
+<span style="font-weight: 600">WESTWIND</span><span style="color: #C9D4DF">Tornado · Active · T+39h</span>
+</div>
+<button style="flex: 1 1 260px; max-width: 460px; display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 12px; border: 1px solid #3A4A5C; border-radius: 6px; background: #1F2B38; color: #C9D4DF; font-family: inherit; font-size: 14px; text-align: left" aria-label="Open the command window">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>
+<span style="flex-grow: 1">Ask or do anything — “show unverified Willow Bend homes without photos”</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; padding: 2px 6px; border: 1px solid #3A4A5C; border-radius: 4px">Ctrl K</span>
+</button>
+<div style="margin-left: auto; display: flex; align-items: center; gap: 10px">
+<div style="display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2"><span style="font-weight: 600">Priya S.</span><span style="font-size: 12px; color: #9FB0C2">Damage Assessment Coordinator</span></div>
+<div style="width: 32px; height: 32px; border-radius: 16px; background: #3A4A5C; display: flex; align-items: center; justify-content: center; font-weight: 600">PS</div>
+</div>
+</header>
+<div style="display: flex; flex-wrap: wrap; align-items: flex-start">
+<nav aria-label="Workspaces" style="flex: 1 1 200px; max-width: 232px; box-sizing: border-box; padding: 16px 12px; display: flex; flex-direction: column; gap: 2px">
+<a href="Main.dc.html" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px; color: #1B1F23; text-decoration: none">Situation</a>
+<a href="Review.dc.html" aria-current="page" style="display: flex; align-items: center; justify-content: space-between; min-height: 40px; padding: 0 12px; border-radius: 6px; background: #E3EAF3; color: #123665; font-weight: 600; text-decoration: none">Review queue<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px">874</span></a>
+<a href="#" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px; color: #1B1F23; text-decoration: none">Field teams</a>
+<a href="#" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px; color: #1B1F23; text-decoration: none">Verified homes</a>
+<a href="#" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px; color: #1B1F23; text-decoration: none">Duplicates</a>
+<a href="#" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px; color: #1B1F23; text-decoration: none">Declaration</a>
+</nav>
+<main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 20px 24px 32px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h1 style="margin: 0; font-size: 24px; font-weight: 600">Review queue</h1>
+<span style="color: #4A5560">874 to review · sorted by need first, then AI severity · 4 field teams out</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<button style="min-height: 32px; padding: 0 12px; border: 1px solid {{accent}}; border-radius: 16px; background: #E3EAF3; color: #123665; font-family: inherit; font-size: 13px; font-weight: 500">Need first</button>
+<button style="min-height: 32px; padding: 0 12px; border: 1px solid #B8C0C8; border-radius: 16px; background: #FFFFFF; color: #4A5560; font-family: inherit; font-size: 13px">Area: all</button>
+<button style="min-height: 32px; padding: 0 12px; border: 1px solid #B8C0C8; border-radius: 16px; background: #FFFFFF; color: #4A5560; font-family: inherit; font-size: 13px">Has photos</button>
+<button style="min-height: 32px; padding: 0 12px; border: 1px solid #B8C0C8; border-radius: 16px; background: #FFFFFF; color: #4A5560; font-family: inherit; font-size: 13px">Home type</button>
+<button style="min-height: 32px; padding: 0 12px; border: 1px solid #B8C0C8; border-radius: 16px; background: #FFFFFF; color: #4A5560; font-family: inherit; font-size: 13px">Language</button>
+</div>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+<section aria-label="Reports to review" style="flex: 1 1 300px; max-width: 380px; display: flex; flex-direction: column; gap: 8px">
+<sc-for list="{{items}}" as="r" hint-placeholder-count="6">
+<button onClick="{{r.pick}}" aria-pressed="{{r.pressed}}" style="{{r.style}}">
+<span style="display: flex; justify-content: space-between; gap: 8px"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600">{{r.ref}}</span><span style="font-size: 12px; color: #4A5560">{{r.age}}</span></span>
+<span style="font-weight: 600">{{r.addr}}</span>
+<span style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{r.flags}}" as="f" hint-placeholder-count="2"><span style="font-size: 12px; font-weight: 600; color: #5C1310; background: #FCEBEA; border-radius: 4px; padding: 2px 6px">{{f}}</span></sc-for>
+<span style="font-size: 12px; color: #2E353C; background: #EEF1F4; border-radius: 4px; padding: 2px 6px">{{r.meta}}</span>
+</span>
+<span style="font-size: 13px; color: #4A5560">AI suggests: <strong style="color: #1B1F23">{{r.ai}}</strong></span>
+</button>
+</sc-for>
+</section>
+<section aria-labelledby="det-h" style="flex: 3 1 520px; min-width: 0; background: #FFFFFF; border: 1px solid #D5DADF; border-radius: 8px; padding: 18px; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; align-items: flex-start">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #4A5560">KXMR-4827 · reported Sat 9:14 PM by SMS · Spanish</span>
+<h2 id="det-h" style="margin: 0; font-size: 20px; font-weight: 600">[Street address], Apt 2B · Cedar Ridge</h2>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<span style="font-size: 12px; font-weight: 600; color: #5C1310; background: #FCEBEA; border-radius: 4px; padding: 3px 8px">Nowhere to stay</span>
+<span style="font-size: 12px; color: #2E353C; background: #EEF1F4; border-radius: 4px; padding: 3px 8px">Renter</span>
+<span style="font-size: 12px; color: #2E353C; background: #EEF1F4; border-radius: 4px; padding: 3px 8px">Apartment</span>
+<span style="font-size: 12px; color: #2E353C; background: #EEF1F4; border-radius: 4px; padding: 3px 8px">Primary residence</span>
+<span style="font-size: 12px; color: #2E353C; background: #EEF1F4; border-radius: 4px; padding: 3px 8px">Renters insurance</span>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px">
+<figure style="margin: 0; display: flex; flex-direction: column; gap: 6px"><div style="height: 150px; border-radius: 6px; background: #DDE3E9; border: 1px dashed #8A949E; display: flex; align-items: center; justify-content: center; color: #4A5560; font-size: 13px">[Photo: whole building]</div><figcaption style="font-size: 12px; color: #4A5560">Whole home · faces blurred</figcaption></figure>
+<figure style="margin: 0; display: flex; flex-direction: column; gap: 6px"><div style="height: 150px; border-radius: 6px; background: #DDE3E9; border: 1px dashed #8A949E; display: flex; align-items: center; justify-content: center; color: #4A5560; font-size: 13px">[Photo: tree on roof]</div><figcaption style="font-size: 12px; color: #4A5560">Worst damage</figcaption></figure>
+<figure style="margin: 0; display: flex; flex-direction: column; gap: 6px"><div style="height: 150px; border-radius: 6px; background: #DDE3E9; border: 1px dashed #8A949E; display: flex; align-items: center; justify-content: center; color: #4A5560; font-size: 13px">[Photo: wet bedroom floor]</div><figcaption style="font-size: 12px; color: #4A5560">Interior · water</figcaption></figure>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 16px">
+<div style="flex: 1 1 280px; display: flex; flex-direction: column; gap: 8px">
+<h3 style="margin: 0; font-size: 14px; font-weight: 600">In the resident’s words</h3>
+<p lang="es" style="margin: 0; padding: 10px 12px; background: #F4F6F8; border-radius: 6px; line-height: 1.5">Un árbol cayó sobre el techo del cuarto de atrás y entró el agua. Tengo seguro de inquilino. No podemos dormir allí.</p>
+<p style="margin: 0; line-height: 1.5; color: #2E353C"><span style="font-size: 12px; font-weight: 600; color: #4A5560">MACHINE TRANSLATION · </span>A tree fell on the back room’s roof and water came in. I have renters insurance. We can’t sleep there.</p>
+<h3 style="margin: 8px 0 0; font-size: 14px; font-weight: 600">Answers</h3>
+<dl style="margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; font-size: 13px">
+<dt style="color: #4A5560">Cause</dt><dd style="margin: 0">Wind or tornado</dd>
+<dt style="color: #4A5560">Damaged</dt><dd style="margin: 0">Roof, tree on home</dd>
+<dt style="color: #4A5560">Water inside</dt><dd style="margin: 0">Under 18 in (from words)</dd>
+<dt style="color: #4A5560">Safe to live in</dt><dd style="margin: 0">Not sure</dd>
+</dl>
+</div>
+<div style="flex: 1 1 280px; display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid #C9A227; background: #FFF9E6; border-radius: 8px">
+<span style="font-size: 12px; font-weight: 700; letter-spacing: 0.04em; color: #5C3700">AI SUGGESTION — NOT VERIFIED</span>
+<span style="font-size: 18px; font-weight: 600">Major damage <span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; font-weight: 500; color: #4A5560">confidence 0.71</span></span>
+<ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; line-height: 1.45">
+<li>Tree resting on roof over one unit (photo 2)</li>
+<li>Roof covering missing in that area (photo 2)</li>
+<li>Water in living space, depth not visible (photo 3, resident)</li>
+</ul>
+<span style="font-size: 12px; color: #4A5560">Photo model v0.4 · reviewers agreed 83% for apartments this event · <a href="#">FEMA matrix: conventionally built</a></span>
+</div>
+</div>
+<fieldset style="margin: 0; border: 1px solid #D5DADF; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 12px">
+<legend style="padding: 0 6px; font-weight: 600">Your decision · official degree of damage</legend>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<sc-for list="{{degrees}}" as="d" hint-placeholder-count="5">
+<label style="{{d.style}}"><input type="radio" name="degree" checked="{{d.on}}" onChange="{{d.pick}}" style="margin: 0; accent-color: {{accent}}">{{d.label}}</label>
+</sc-for>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 16px; font-size: 14px">
+<label style="display: flex; align-items: center; gap: 8px"><input type="radio" name="method" checked style="margin: 0; accent-color: {{accent}}">Verified from photos (desktop)</label>
+<label style="display: flex; align-items: center; gap: 8px"><input type="radio" name="method" style="margin: 0; accent-color: {{accent}}">Needs a field visit</label>
+</div>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #4A5560">Note for the record (optional)<input type="text" placeholder="e.g. one of four units affected; others minor" style="min-height: 36px; padding: 0 10px; border: 1px solid #8A949E; border-radius: 6px; font-family: inherit; font-size: 14px; color: #1B1F23"></label>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+<button style="min-height: 40px; padding: 0 18px; border: 0; border-radius: 6px; background: {{accent}}; color: #FFFFFF; font-family: inherit; font-size: 14px; font-weight: 600">Save and next</button>
+<button style="min-height: 40px; padding: 0 16px; border: 1px solid #8A949E; border-radius: 6px; background: #FFFFFF; font-family: inherit; font-size: 14px; font-weight: 500">Send to field team</button>
+<button style="min-height: 40px; padding: 0 12px; border: 0; background: none; color: #1D4F91; font-family: inherit; font-size: 14px">Mark as duplicate</button>
+<span style="margin-left: auto; font-size: 13px; color: #4A5560">You agree with AI: recorded automatically</span>
+</div>
+</fieldset>
+</section>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"productName":{"editor":"text","default":"Common Ground"},"accent":{"editor":"color","default":"#1D4F91","options":["#1D4F91","#0B6E4F","#5B3A8E","#7A4A00"]},"$preview":{"width":1440,"height":1180}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { sel: 'KXMR-4827', degree: 'major' };
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#1D4F91';
+    const base = [
+      { ref: 'KXMR-4827', age: '13 h', addr: '[Street], Apt 2B · Cedar Ridge', flags: ['Nowhere to stay'], meta: '3 photos · Spanish', ai: 'Major 0.71' },
+      { ref: 'TPLW-2215', age: '15 h', addr: '[Lot 41] · Willow Bend', flags: ['Medical power', 'Unsafe'], meta: 'No photos · field visit', ai: 'Cannot tell' },
+      { ref: 'HQDN-9032', age: '12 h', addr: '[Street] · Willow Bend', flags: ['Nowhere to stay'], meta: '2 photos · manufactured', ai: 'Destroyed 0.64' },
+      { ref: 'MRVC-6608', age: '9 h', addr: '[Street], Apt 7 · Cedar Ridge', flags: ['Food or water'], meta: '1 photo · Spanish', ai: 'Minor 0.58' },
+      { ref: 'BZKT-1174', age: '14 h', addr: '[Street] · Prairie Lakes', flags: [], meta: '4 photos · owner', ai: 'Major 0.82' },
+      { ref: 'WJFA-3391', age: '6 h', addr: '[Street] · Oak Hollow', flags: [], meta: '2 photos · assisted', ai: 'Affected 0.77' }
+    ];
+    const sel = this.state.sel;
+    const items = base.map((r) => {
+      const on = r.ref === sel;
+      return {
+        ...r,
+        pressed: on ? 'true' : 'false',
+        pick: () => this.setState({ sel: r.ref }),
+        style: 'display:flex;flex-direction:column;gap:6px;width:100%;box-sizing:border-box;padding:12px;border-radius:8px;text-align:left;font-family:inherit;font-size:14px;color:#1B1F23;cursor:pointer;' +
+          (on ? 'border:2px solid ' + accent + ';background:#FFFFFF;' : 'border:1px solid #D5DADF;background:#FFFFFF;')
+      };
+    });
+    const dlist = [
+      { id: 'affected', label: 'Affected' },
+      { id: 'minor', label: 'Minor' },
+      { id: 'major', label: 'Major' },
+      { id: 'destroyed', label: 'Destroyed' },
+      { id: 'cannot', label: 'Cannot tell' }
+    ];
+    const degree = this.state.degree;
+    const degrees = dlist.map((d) => {
+      const on = d.id === degree;
+      return {
+        ...d,
+        on,
+        pick: () => this.setState({ degree: d.id }),
+        style: 'display:flex;align-items:center;gap:8px;min-height:40px;padding:0 14px;border-radius:6px;font-size:14px;font-weight:500;cursor:pointer;' +
+          (on ? 'border:2px solid ' + accent + ';background:#E3EAF3;' : 'border:1px solid #8A949E;background:#FFFFFF;')
+      };
+    });
+    return { productName: this.props.productName ?? 'Common Ground', accent, items, degrees };
+  }
+}
+</script>
+</body>
+</html>

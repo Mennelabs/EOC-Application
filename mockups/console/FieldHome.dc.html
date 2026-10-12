@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Field app — my shift</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1D4F91}a:hover{color:#123665}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #FFFFFF; color: #1B1F23; font-family: 'IBM Plex Sans', system-ui, sans-serif; display: flex; flex-direction: column">
+<header style="background: #16202B; color: #FFFFFF; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; justify-content: space-between; align-items: center"><span style="font-weight: 700; font-size: 18px">DA Team 3</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #C9D4DF">On shift 2 h 14 m</span></div>
+<div style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: #C9D4DF"><span style="width: 10px; height: 10px; border-radius: 5px; background: #4CC38A"></span>Sharing location with dispatch while checked in</div>
+</header>
+<div style="display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: #FFF1E3; border-bottom: 2px solid #9A4A00">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6B3300" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+<span style="flex-grow: 1; font-size: 16px; color: #4A2300"><strong>Check-in due 11:30</strong> · 24 min</span>
+<button style="min-height: 44px; padding: 0 14px; border: 0; border-radius: 8px; background: #6B3300; color: #FFFFFF; font-family: inherit; font-size: 16px; font-weight: 700">We're OK</button>
+</div>
+<main style="flex-grow: 1; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+<a href="FieldSweep.dc.html" style="display: flex; flex-direction: column; gap: 6px; padding: 16px; border: 2px solid {{accent}}; border-radius: 10px; color: #1B1F23; text-decoration: none">
+<span style="font-size: 13px; font-weight: 700; letter-spacing: 0.04em; color: #123665">YOUR ROUTE</span>
+<span style="font-size: 20px; font-weight: 700">Willow Bend north</span>
+<span style="font-size: 16px; color: #2E353C">7 of 18 properties done</span>
+<span style="height: 10px; border-radius: 5px; background: #E3EAF3; display: flex"><span style="width: 39%; border-radius: 5px; background: {{accent}}"></span></span>
+<span style="display: flex; align-items: center; justify-content: center; min-height: 52px; margin-top: 6px; border-radius: 8px; background: {{accent}}; color: #FFFFFF; font-size: 18px; font-weight: 700">Continue street sweep</span>
+</a>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+<a href="FieldLocate.dc.html" style="display: flex; flex-direction: column; justify-content: center; gap: 6px; min-height: 92px; padding: 12px; border: 2px solid #1B1F23; border-radius: 10px; color: #1B1F23; text-decoration: none; font-size: 17px; font-weight: 700"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"></path><circle cx="12" cy="10" r="2.5"></circle></svg>New property</a>
+<button style="display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 6px; min-height: 92px; padding: 12px; border: 2px solid #F2C94C; border-radius: 10px; background: #FFF8DC; color: #1B1F23; font-family: inherit; font-size: 17px; font-weight: 700"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l10 18H2z"></path><path d="M12 10v4M12 17h.01"></path></svg>Quick report</button>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 14px; border-radius: 10px; background: #F3F5F7">
+<span style="font-size: 13px; font-weight: 700; letter-spacing: 0.04em; color: #4A5560">MESSAGE FROM DISPATCH · 10:51</span>
+<span style="font-size: 16px; line-height: 1.4">Line down near the east entrance. Use the west entrance only.</span>
+<button style="align-self: flex-start; min-height: 44px; margin-top: 4px; padding: 0 14px; border: 1px solid #1B1F23; border-radius: 8px; background: #FFFFFF; font-family: inherit; font-size: 16px; font-weight: 600">Got it</button>
+</div>
+<div style="flex-grow: 1"></div>
+<div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; border: 1px solid #D5DADF; font-size: 15px">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4A5560" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 12a8 8 0 0 1 14-5M20 12a8 8 0 0 1-14 5M18 3v4h-4M6 21v-4h4"></path></svg>
+<span><strong>3 records on this phone.</strong> They send when you have signal.</span>
+</div>
+<button style="display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 60px; border: 0; border-radius: 10px; background: #B3261E; color: #FFFFFF; font-family: inherit; font-size: 19px; font-weight: 700"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4"></path></svg>Need help — alert dispatch</button>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#1D4F91","options":["#1D4F91","#0B6E4F","#5B3A8E","#7A4A00"]},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#1D4F91' };
+  }
+}
+</script>
+</body>
+</html>

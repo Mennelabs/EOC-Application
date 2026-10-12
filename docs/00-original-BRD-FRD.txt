@@ -1,0 +1,2103 @@
+EMERGENCY MANAGEMENT APPLICATION REBUILD
+BUSINESS REQUIREMENTS DOCUMENT (BRD)
+AND FUNCTIONAL REQUIREMENTS DOCUMENT (FRD)
+
+Document status: Expanded draft for product-owner review.
+Approval status: Not approved for implementation.
+Format: Plain text, suitable for copying into planning and engineering tools.
+
+DOCUMENT PURPOSE AND SOURCE
+
+This document reprocesses the prior feature inventory into business requirements and functional requirements. It includes mission, goals, personas, workflows, rules, data requirements, security, accessibility, global AI action execution, acceptance tests, risks, and open decisions.
+
+The current source file begins partway through the accessibility requirements. Foundational coverage has therefore been reconstructed from the full inventory in this conversation. The surviving accessibility and command requirements are preserved in the annex; ACC-01 through ACC-07 and their introductory context are restored from the earlier specification.
+
+Current-state observations come from the earlier code review. They are not a new production audit or proof that every existing workflow works end to end.
+
+No application code is changed by this document. Overall navigation, page hierarchy, menu structure, and visual layouts remain deliberately unspecified.
+
+READING AND APPROVAL RULES
+
+- "Shall" describes proposed target-system behavior, not current implementation.
+- Explicitly requested: several public roles, extensive accessibility, and an application-wide AI context window with short-key/shorthand action execution.
+- Recommended: the remaining expanded rules and acceptance expectations.
+- Conditional: a requirement applies only if its named optional capability is approved.
+- TBD: a product-owner or operational decision must be made before the affected work is finalized.
+- Proposed personas, permissions, priorities, workflows, and shortcuts are not automatically approved because they appear in this document.
+- Existing, partial, and gap descriptions refer to the prior review, not target-system guarantees.
+
+PRIORITY CONVENTION
+
+P0: Mandatory safeguard or dependency for any related functionality released.
+P1: Proposed core business capability for the rebuild.
+P2: Conditional or later capability requiring scope confirmation.
+
+These priorities are recommendations, not a commitment to a delivery date, budget, or release plan. P0 accessibility and security requirements apply to all functionality released, including a reduced initial scope.
+
+CONTENTS
+
+PART A — BUSINESS REQUIREMENTS DOCUMENT
+A1. Executive summary and problem statement
+A2. Product mission and business goals
+A3. Stakeholders and personas
+A4. Scope, exclusions, assumptions, and dependencies
+A5. Business requirements
+A6. Business processes and outcomes
+A7. Business rules and proposed authorization boundaries
+A8. Success measures, risks, and approval
+
+PART B — FUNCTIONAL REQUIREMENTS DOCUMENT
+B1. System-wide behavior
+B2. Detailed feature requirements: F01 through F18
+B3. Global AI command execution
+B4. Accessibility and public-role requirements
+B5. Logical data requirements
+B6. State models and exception behavior
+B7. Nonfunctional and integration requirements
+B8. Migration, testing, and acceptance
+B9. Requirements traceability
+B10. Decision register and glossary
+
+ANNEX — FULL ACCESSIBILITY AND GLOBAL AI COMMAND REQUIREMENTS
+ACC-01 through ACC-53; CMD-01 through CMD-38; examples, stories, and acceptance expectations.
+
+
+============================================================
+PART A — BUSINESS REQUIREMENTS DOCUMENT
+============================================================
+
+A1. EXECUTIVE SUMMARY AND PROBLEM STATEMENT
+
+The product coordinates emergency-management missions, personnel, community damage information, and recovery resources.
+
+The rebuild should make each persona's work easier without reducing safety, accountability, or accuracy. Public participation must work for varied abilities, languages, literacy, devices, and connectivity.
+
+An application-wide AI command window should let authorized users describe an outcome and have supported actions executed, rather than merely receive instructions about what to click.
+
+BUSINESS PROBLEMS TO ADDRESS
+
+- Repetitive interaction and data entry increase operational effort.
+- Intended features are broader than reliably connected workflows.
+- Inconsistent mission fields, statuses, and metrics undermine trust.
+- Public reporting and public resources have authentication-path mismatches.
+- Simple approval booleans do not adequately represent assessment decisions.
+- Local-only timers do not provide reliable shared accountability.
+- Simulated badge capture/printing can misrepresent operational completion.
+- Sign-in alone does not establish sufficiently granular authorization.
+- Accessibility must be built into every public task, not added after implementation.
+- AI must act through governed operations, not bypass business rules.
+
+EXPECTED BUSINESS OUTCOME
+
+A dependable, accessible coordination system in which people can complete permitted tasks manually or through optional AI assistance, understand what happened, and rely on records and reports.
+
+
+A2. PRODUCT MISSION AND BUSINESS GOALS
+
+MISSION
+
+Help emergency-management teams coordinate response, document community impact, and connect people with recovery information through a trustworthy, accessible application.
+
+Make public participation practical for people with disabilities, different languages and literacy levels, limited connectivity, older devices, and stressful circumstances. AI should reduce effort without becoming a barrier to reporting, understanding information, or receiving confirmation.
+
+GOAL-01. MAKE PUBLIC PARTICIPATION ACCESSIBLE
+- Support all confirmed public roles, assistive technologies, language needs, and authorized assisted reporting.
+- Require accessibility acceptance before release of public functionality.
+
+GOAL-02. REDUCE EFFORT FOR EACH PERSONA
+- Collect necessary information, explain unfamiliar terms, preserve valid input, and reduce repetitive interaction.
+
+GOAL-03. IMPROVE RESPONSE COORDINATION
+- Maintain accurate missions, hazards, personnel, assignments, and update obligations.
+
+GOAL-04. CREATE TRUSTWORTHY DAMAGE INFORMATION
+- Distinguish public observations from reviewed and verified assessments.
+- Preserve evidence, corrections, and decisions.
+
+GOAL-05. CONNECT PEOPLE WITH RECOVERY INFORMATION
+- Publish current approved resources without implying guaranteed assistance or eligibility.
+
+GOAL-06. PROTECT PEOPLE AND INFORMATION
+- Minimize sensitive collection, enforce permissions, and preserve accountability.
+
+GOAL-07. SUPPORT RELIABLE OPERATIONS
+- Handle interrupted tasks, slow networks, service failures, and stale information explicitly.
+
+GOAL-08. USE OPTIONAL, CONTROLLED AI
+- Support drafting, clarification, translation, summaries, and permitted execution without removing manual completion.
+
+GOAL-09. PRODUCE CONSISTENT REPORTING
+- Use shared definitions, bounded reporting periods, and reproducible official snapshots.
+
+GOAL-10. CONFIRM PUBLIC ROLES AND BOUNDARIES
+- Establish the actual public-role list and responsibilities before finalizing permissions.
+- Do not infer a need for public accounts from a business-role label.
+
+
+A3. STAKEHOLDERS AND PERSONAS
+
+S01. Product owner: confirms scope, goals, public roles, and priorities.
+S02. Emergency operations leadership: owns response policies, state transitions, and reporting definitions.
+S03. Assessment leadership: owns classifications, review rules, and verified-damage standards.
+S04. System/security owner: owns access, data protection, retention, and recovery.
+S05. Accessibility/content owner: owns accessibility acceptance, language coverage, and published guidance.
+S06. Delivery team: implements and verifies approved requirements.
+
+These are responsibility categories, not named people or staffed commitments.
+
+PERSONAS
+
+Emergency manager / command staff:
+- Prioritizes resources, monitors hazards and capacity, and briefs leadership.
+- Needs accurate summaries and known data limitations.
+
+Dispatcher / call taker:
+- Captures requests, confirms location, classifies urgency, assigns responders, and requests updates.
+- Needs fast entry with reliable operational rules.
+
+Field responder:
+- Executes assignments and records arrival, conditions, actions, and outcome.
+- Needs hazards, location, team context, and low-effort updates.
+
+Damage assessor / inspector:
+- Records property damage, displacement, needs, and evidence.
+- Needs consistent classification and field-friendly capture.
+
+Assessment reviewer / supervisor:
+- Reviews evidence, requests corrections, and records decisions.
+- Needs explicit states and decision history.
+
+Personnel / credential coordinator:
+- Maintains roster, skills, availability, and identification.
+- Needs accurate qualifications and credential history.
+
+Reporting / planning staff:
+- Prepares period-based summaries, exports, handoffs, and after-action records.
+- Needs reproducible metrics and reviewed snapshots.
+
+Public resident / property representative:
+- Reports damage and obtains recovery information.
+- Needs accessible language, confirmation, privacy, and no staff-account requirement.
+
+System administrator:
+- Manages accounts, permissions, organization settings, and approved shared configuration.
+- Needs controlled administration and auditable changes.
+
+Partner-agency coordinator:
+- Uses verified contacts, records referrals, and tracks follow-up.
+- Needs controlled sharing and genuine delivery/acknowledgment information.
+
+PROPOSED PUBLIC-ROLE EXAMPLES — NOT CONFIRMED ACCOUNT ROLES
+
+- Affected resident or survivor.
+- Property owner or landlord.
+- Renter or household member.
+- Caregiver, family member, or authorized helper.
+- Community member or witness.
+- Community organization or local business representative.
+
+A user may fill more than one role. Disability is not a permission role. Accessibility shall not require proof of disability or a diagnosis.
+
+
+A4. SCOPE, EXCLUSIONS, ASSUMPTIONS, AND DEPENDENCIES
+
+PROPOSED CORE SCOPE
+
+- Authentication and account lifecycle.
+- Mission intake, hazards, location, response state, notes, and outcome.
+- Personnel availability and assignments.
+- Staff and anonymous public damage reporting.
+- Assessment review and evidence.
+- Mission reminders and updates.
+- Badge/identification workflows where approved.
+- Analytics, exports, and official situation reports.
+- Published public recovery resources.
+- Interagency contacts and supported coordination.
+- Organization configuration and product guidance.
+- Extensive public accessibility.
+- Global natural-language and shorthand command execution.
+
+CONDITIONAL SCOPE — REQUIRES APPROVAL
+
+- Public accounts, secure report-status checking, and post-submission corrections.
+- Proxy reporting and optional accommodation requests.
+- Saved public drafts and cross-device resume.
+- Full offline field entry and conflict reconciliation.
+- Continuous GPS or external vehicle-location feeds.
+- Formal certification-management workflows.
+- Equipment/vehicle resource management beyond personnel.
+- Multi-property or bulk organizational public reporting.
+- Physical badge printers and scan-based credential validation.
+- Actual SMS/email delivery and partner-system integrations.
+- Speech dictation.
+- Multi-organization tenancy.
+- A parent incident/disaster entity with linked missions and assessments.
+
+OUT OF SCOPE UNLESS SEPARATELY APPROVED
+
+- Complete 911 telephony or integrated CAD replacement.
+- Autonomous dispatch, structural-safety determination, or assistance-eligibility determination.
+- Unrestricted AI access to databases, shell commands, or arbitrary code.
+- Physical access-control enforcement.
+- A chosen navigation design or major library/framework replacement.
+- Claims of legal compliance, certification, or verified production readiness.
+
+ASSUMPTIONS
+
+- Core operational policy remains human-owned.
+- Essential workflows have non-AI completion.
+- Public submission does not require staff authentication.
+- Public damage information is not automatically verified.
+- A record reference alone is not authorization to read private data.
+- Integration-dependent actions remain unavailable or explicitly pending until their integration is implemented and verified.
+
+DEPENDENCIES
+
+- Agreed mission, personnel, review, and reporting definitions.
+- Confirmed role/permission matrix.
+- Maintained resource content and locally approved emergency instructions.
+- Approved identity, mapping, storage, notification, and AI providers where applicable.
+- Approved retention, backup, restore, and data-handling policies.
+- Representative accessibility testers and supported device/language coverage.
+- Access to historical data and a validated migration mapping.
+
+
+A5. BUSINESS REQUIREMENTS
+
+BR-01. ACCESSIBLE PUBLIC PARTICIPATION — P0
+The business shall support equitable completion of released public tasks without staff credentials or unnecessary barriers.
+Outcome: public users can report, understand confirmation, and obtain resources.
+Trace: F11, F16, ACC-01 through ACC-53.
+
+BR-02. PERSONA-SPECIFIC EFFICIENCY — P1
+The product shall reduce redundant data entry and repeated interactions while preserving clarity.
+Outcome: lower correction effort and fewer abandoned tasks.
+Trace: all feature groups; CMD-01 through CMD-38.
+
+BR-03. MISSION COORDINATION — P1
+The business shall track requests from intake to documented operational completion and administrative closure.
+Outcome: accountable mission ownership, status, hazards, and outcome.
+Trace: F02, F03, F04, F06, F07.
+
+BR-04. PERSONNEL CAPACITY — P1
+The business shall maintain recorded skills, availability, and assignments without silent conflicts.
+Outcome: reliable resource selection and release.
+Trace: F05, F06.
+
+BR-05. TRUSTWORTHY DAMAGE DATA — P1
+The business shall distinguish self-reported, reviewed, and verified property information.
+Outcome: defensible damage totals and review decisions.
+Trace: F10, F11, F12.
+
+BR-06. OPERATIONAL ACCOUNTABILITY — P0
+The business shall retain attributable change and decision history.
+Outcome: reconstructable mission and assessment events.
+Trace: F08; FR-00.03; CMD-37.
+
+BR-07. TIMELY FOLLOW-UP — P1
+The business shall manage durable update obligations and approved escalation.
+Outcome: fewer missed mission updates.
+Trace: F09.
+
+BR-08. RELIABLE REPORTING — P1
+The business shall use consistent metric definitions and reproducible official reports.
+Outcome: agreement between records, totals, and exports.
+Trace: F14, F15.
+
+BR-09. USEFUL RECOVERY INFORMATION — P1
+The business shall publish approved, current, accessible assistance resources.
+Outcome: users understand valid next actions without invented promises.
+Trace: F16, ACC-32 through ACC-36, ACC-49 through ACC-51.
+
+BR-10. CONTROLLED ACCESS AND PRIVACY — P0
+The business shall limit actions and information by role, record scope, and need.
+Outcome: public and staff data boundaries remain enforceable.
+Trace: F01, FR-00.01, FR-00.02; AI-02; CMD-21, CMD-35.
+
+BR-11. APPROPRIATE IDENTIFICATION — P1/P2
+The business shall distinguish issued identification from verified credentials and actual physical printing.
+Outcome: no false operational completion.
+Trace: F13.
+
+BR-12. PARTNER COORDINATION — P1/P2
+The business shall maintain verified contacts and evidence of approved communication attempts.
+Outcome: traceable referrals without unverified delivery claims.
+Trace: F17.
+
+BR-13. GLOBAL AI ACTION EXECUTION — P1
+The product shall provide short-key/shorthand and natural-language action execution from anywhere in supported application contexts.
+Outcome: supported tasks completed through governed actions, not just conversational instructions.
+Trace: FR-C01 through FR-C12; CMD-01 through CMD-38.
+
+BR-14. SAFE OPTIONAL AI — P0
+The business shall retain human control, factual provenance, and non-AI completion.
+Outcome: AI errors or outages do not disable essential work.
+Trace: AI-01 through AI-12; CMD-11, CMD-20 through CMD-38.
+
+BR-15. RELIABILITY AND RECOVERY — P0
+The product shall acknowledge only persisted results and handle interruption without data loss or duplicate effects.
+Outcome: known save states and dependable recovery.
+Trace: FR-00.04 through FR-00.07; NFR-04 through NFR-08.
+
+BR-16. CONTROLLED CONFIGURATION AND CHANGE — P0/P1
+The business shall govern settings, operational definitions, shared commands, and releases.
+Outcome: predictable policies and documented approval.
+Trace: F18; CMD-04; A8; B10.
+
+
+A6. BUSINESS PROCESSES AND OUTCOMES
+
+BP-01. EMERGENCY REQUEST THROUGH CLOSURE
+Trigger: authorized staff records a response request.
+Sequence: capture intake → confirm/qualify location → classify hazards/priority → assign → record response milestones → collect updates/evidence → document outcome → review/close.
+Owner: dispatcher with responder/supervisor responsibilities defined by policy.
+Outcome: closed or otherwise explicitly resolved mission with preserved history.
+Exceptions: ambiguous location, insufficient details, unavailable personnel, canceled request, reopened mission, disconnected update.
+
+BP-02. PUBLIC REPORT THROUGH VERIFIED ASSESSMENT
+Trigger: public user reports observed damage.
+Sequence: explain privacy/emergency boundaries → capture necessary information → review → persist → confirm → staff triage → assessment/evidence → explicit review decision → official reporting if eligible.
+Owner: assessment operations after submission.
+Outcome: report with known source and review status; approved resources available.
+Exceptions: duplicate, incomplete, proxy authority unclear, failed upload, rejected assessment, later correction.
+
+BP-03. RESPONDER ONBOARDING AND DEPLOYMENT
+Trigger: personnel coordinator creates or activates a roster record.
+Sequence: record contact/department/skills → issue identification where included → establish duty/availability → assign → update progress → release → preserve history.
+Outcome: traceable personnel readiness and deployment.
+Exceptions: expired credential if enforced, conflicting assignment, deactivation during assignment.
+
+BP-04. SHIFT HANDOFF AND OFFICIAL BRIEFING
+Trigger: reporting period ends or authorized staff requests a briefing.
+Sequence: resolve period/timezone → gather records → identify critical/overdue/uncertain items → review narrative and totals → issue snapshot → preserve version.
+Outcome: approved reproducible briefing, not a live page mistaken for an issued report.
+Exceptions: incomplete data, conflicting definitions, unauthorized scope, export failure.
+
+BP-05. GLOBAL COMMAND EXECUTION
+Trigger: user invokes context window by shortcut or accessible control.
+Sequence: interpret/read shorthand → resolve scope → clarify → validate → preview consequential changes → confirm → recheck permissions/freshness → execute → verify → return results/audit.
+Outcome: explicit saved, drafted, queued, delivered, failed, or partially completed status.
+Exceptions: ambiguity, provider outage, changed target, revoked permission, partial batch failure.
+
+
+A7. BUSINESS RULES AND PROPOSED AUTHORIZATION BOUNDARIES
+
+RULE-01. Source and verification are separate: public observations are not staff findings.
+RULE-02. Unknown is not zero, false, no damage, or unavailable; preserve uncertainty.
+RULE-03. Assignment does not prove dispatch, travel, or arrival.
+RULE-04. Cleared means operational release; closed means administrative finalization, subject to approved definitions.
+RULE-05. Record locking applies to manual and command-based changes equally.
+RULE-06. Related assignment updates must not silently diverge.
+RULE-07. Every decision records its actor, time, basis, and affected record version.
+RULE-08. Rejection is distinct from pending; duplicates and superseded records remain traceable.
+RULE-09. Changes after approval follow re-review rules rather than silently changing official findings.
+RULE-10. Official reports use defined scope/cutoff and retained snapshots.
+RULE-11. Badge generation, print request, physical print, and credential validity are different facts.
+RULE-12. Resource publication does not determine assistance eligibility.
+RULE-13. AI output is a suggestion unless explicitly accepted and executed through permitted operations.
+RULE-14. Dispatch, priority changes, approval, closure, permissions, publication, destructive/bulk actions, sensitive export, and external sending require the applicable explicit confirmation.
+RULE-15. Clearing conversation history does not erase mandatory operational audit.
+RULE-16. Public accommodation information is optional, restricted, and does not require diagnosis.
+RULE-17. Anonymous public submission does not imply anonymous private-record retrieval.
+RULE-18. Names, properties, and dates must be resolved before consequential execution.
+
+PROPOSED AUTHORIZATION MATRIX — MUST BE APPROVED
+
+Public user:
+- Create permitted public submissions; read published resources.
+- Private status/correction only after approved verification.
+- No access to staff rosters, private missions, or other residents' data.
+
+Dispatcher:
+- Authorized mission intake, classification, assignment, reminders, and operational updates.
+- No implicit account administration or assessment approval.
+
+Responder:
+- Assigned mission information and permitted updates within defined scope.
+- Self-status changes only if policy allows.
+
+Assessor:
+- Authorized assessment creation/edit/evidence; submit for review.
+- No implicit right to approve their own assessment.
+
+Reviewer:
+- Authorized assessment decisions and correction requests.
+- Self-review and escalation policy TBD.
+
+Personnel coordinator:
+- Roster maintenance and approved badge operations.
+- No implicit mission-priority or account-permission rights.
+
+Reporting staff:
+- Authorized metrics, report drafts, and exports.
+- Issuance/publication requires a separate approved permission.
+
+Administrator:
+- Account, configuration, and shared-alias administration.
+- Administrative status does not automatically grant unrestricted sensitive-record access; scope must be explicit.
+
+Partner coordinator:
+- Authorized contacts/referrals and expressly shared records.
+- No implicit access to all operational data.
+
+Default: deny operations not explicitly granted. More than one approved responsibility may be assigned to one person. All proposed roles require server-side enforcement.
+
+
+A8. SUCCESS MEASURES, RISKS, AND APPROVAL
+
+SUCCESS MEASURES — TARGETS AND BASELINES TBD
+
+MET-01. Task completion: successful completion and abandonment for representative persona tasks.
+MET-02. Effort: time-to-complete, repeated entry, and correction count.
+MET-03. Accessibility: manual task success across supported assistive technologies; unresolved defects.
+MET-04. Coordination: assignment conflicts, overdue updates, and verified response milestones.
+MET-05. Damage quality: completeness, duplicates, review turnaround, and re-review frequency.
+MET-06. Reporting: agreement among records, computed totals, and exported totals.
+MET-07. Recovery information: freshness and broken-link rate.
+MET-08. Reliability: failed saves, duplicate effects, availability, restore success, and recovery times.
+MET-09. AI: factual errors, omissions, clarifications, accepted corrections, execution failures, and manual fallback success.
+MET-10. Privacy/accountability: denied unauthorized attempts and actor/decision audit completeness.
+
+Measurement shall be aggregated, purpose-limited, and exclude unnecessary sensitive content. Do not require users to disclose disability to measure general completion.
+
+RISK REGISTER
+
+R01. AI misinterprets an action.
+Mitigation: structured plan, clarification, server validation, explicit confirmation, and result verification.
+
+R02. Accessibility gaps prevent public participation.
+Mitigation: release-gated assistive-technology and representative-user testing, accessible support.
+
+R03. Legacy data has conflicting semantics.
+Mitigation: migration mapping, provenance, quarantine, reconciliation, and signed-off definitions.
+
+R04. Concurrent edits overwrite important changes.
+Mitigation: version checks and explicit conflict resolution.
+
+R05. External failure is mistaken for operational completion.
+Mitigation: separate pending/sent/delivered/printed states and retain provider evidence.
+
+R06. Sensitive information leaks through AI, exports, or shared devices.
+Mitigation: minimal authorized context, controlled export, retention, and shared-device safeguards.
+
+R07. Scope expands into CAD, multi-tenancy, continuous tracking, or offline synchronization.
+Mitigation: explicit conditional scope and separate approval.
+
+R08. Reminders or retry behavior create duplicate or stale effects.
+Mitigation: durable state, idempotency, freshness checks, and no automatic replay of consequential actions.
+
+APPROVAL AND CHANGE CONTROL
+
+- Product owner approves business scope and public roles.
+- Operational owners approve mission/personnel/review rules and official-report definitions.
+- Security/data owner approves permissions, retention, external-provider handling, and recovery.
+- Accessibility owner approves test coverage and remediation criteria.
+- Every changed requirement retains its identifier, reason, dependencies, and revised acceptance expectations.
+- Unresolved P0 decisions block release of dependent functionality.
+- This document is a draft; it is not approval evidence.
+
+
+============================================================
+PART B — FUNCTIONAL REQUIREMENTS DOCUMENT
+============================================================
+
+B1. SYSTEM-WIDE BEHAVIOR
+
+FR-00.01. AUTHORIZATION — P0
+The system shall authorize each read/write/export/action on the server by user, responsibility, record scope, and field sensitivity. It shall recheck authorization when a prepared action executes.
+
+FR-00.02. PUBLIC BOUNDARIES — P0
+The system shall permit unauthenticated reporting and published-resource access while preventing private-record enumeration and unauthorized retrieval.
+
+FR-00.03. AUDIT — P0
+The system shall preserve attributable action/decision records with timestamps, target references, meaningful changes, and applicable execution identifiers.
+
+FR-00.04. SAVE SEMANTICS — P0
+The system shall distinguish unsent, sending, persisted, queued, delivered, and failed states as applicable. It shall never label unsaved work as received.
+
+FR-00.05. CONCURRENCY — P0
+The system shall reject or reconcile stale writes using record versions or an equivalent check. Conflicts shall retain input and show relevant changes.
+
+FR-00.06. IDEMPOTENCY — P0
+The system shall prevent duplicate effects for retried submissions and actions using scoped execution identifiers and consistent results.
+
+FR-00.07. ERROR RECOVERY — P0
+The system shall preserve valid input, explain errors, and offer safe retry/cancel options. Non-idempotent external effects shall not be blindly retried.
+
+FR-00.08. TIME AND UNKNOWN VALUES — P0
+The system shall store timestamps consistently and display/report in an approved timezone. Unknown and not-applicable values shall remain distinguishable from measured zero and negative findings.
+
+FR-00.09. ACCESSIBILITY PARITY — P0
+Manual and AI-assisted tasks shall satisfy applicable ACC-01 through ACC-53. Essential functionality shall not depend on a map, speech, precise gesture, or AI availability.
+
+FR-00.10. CONFIGURABLE DEFINITIONS — P1
+Departments, permitted classifications, lifecycle policies, reporting definitions, and shared aliases shall be governed configurations, not incompatible hardcoded copies.
+
+COMMON ACCEPTANCE CASES
+
+AC-00A: Given insufficient permission, when a direct API or AI action is requested, then it is denied without protected data disclosure and no state changes.
+AC-00B: Given a stale record version, when an update executes, then the user receives a conflict and can preserve their input.
+AC-00C: Given the same valid execution identifier submitted twice, then only one business effect occurs.
+AC-00D: Given a failed save, then no success/received confirmation appears and valid input remains recoverable.
+
+
+B2. DETAILED FEATURE REQUIREMENTS
+
+F01. AUTHENTICATION, ACCOUNTS, AND PERMISSIONS
+Business trace: BR-06, BR-10, BR-16.
+Current-state baseline: authentication exists; user-management mutations and granular permissions are incomplete.
+
+Story: Staff needs appropriate access; administrators need lifecycle control without deleting historical contributions.
+
+FR-01.01 — P1: Support sign-in, sign-out, session expiration, and access-denied handling.
+FR-01.02 — P1: Manage invitations, activation, suspension, and deactivation through an approved identity workflow; do not retain obsolete password forms unsupported by that workflow.
+FR-01.03 — P0: Assign approved responsibilities and record scopes; audit grants and revocations.
+FR-01.04 — P1: Store email, names, profile reference, identity reference, lifecycle state, and role grants.
+FR-01.05 — P0: Keep accounts separate from personnel records; preserve former staff history.
+FR-01.06 — P2: If public identity is included, provide accessible verification/recovery without treating a display reference as a secret.
+
+Acceptance:
+AC-01A: A deactivated user's next protected action is denied according to the approved revocation policy.
+AC-01B: A responder cannot grant administrator permissions or approve assessments without the corresponding grant.
+AC-01C: Deactivation leaves historical actor references intact.
+Exceptions: expired session, revoked scope, identity-provider outage, invitation expiration.
+AI assistance: explain access; never grant rights merely from a request.
+
+
+F02. MISSION INTAKE AND IDENTIFICATION
+Business trace: BR-02, BR-03, BR-06.
+Current-state baseline: comprehensive fields exist alongside incompatible legacy forms.
+
+Story: A call taker needs rapid initial capture and later completion without losing the original report.
+
+FR-02.01 — P1: Create, view, update, and archive permitted mission records with immutable internal ID and unique human-readable reference.
+FR-02.02 — P0: Define draft-save, intake-save, and dispatch prerequisites separately; unknown information shall not be fabricated.
+FR-02.03 — P1: Capture source, caller name/contact/address/role/language, interpreter need, summary, conditions, type, subcategory, urgency, priority, and location.
+FR-02.04 — P0: Generate mission references safely under concurrent creation and retries; deleting/archiving a mission shall not cause reference reuse.
+FR-02.05 — P0: Record creator/updater from authenticated identity and enforce lock policy.
+FR-02.06 — P1: Preserve corrections and original intake provenance; priority changes require approved justification/confirmation.
+
+Acceptance:
+AC-02A: Two simultaneous valid creations produce distinct references; a retry does not create a third record.
+AC-02B: A missing dispatch prerequisite blocks dispatch but retains a permissible draft.
+AC-02C: A locked mission rejects unauthorized edits through manual and command paths.
+Exceptions: duplicate request, unknown caller, interrupted intake, invalid source/type value.
+AI assistance: produce reviewable drafts and explain suggestions; never auto-dispatch from a draft.
+
+
+F03. MISSION LOCATION AND GEOGRAPHIC AWARENESS
+Business trace: BR-01, BR-03, BR-15.
+Current-state baseline: mapping/geocoding exist; live tracking and clustering are not established.
+
+FR-03.01 — P1: Store address components, unit, cross streets, landmarks, coordinates, source, precision/verification state, and verification time.
+FR-03.02 — P1: Support address suggestions, geocoding, reverse geocoding, and optional cross-street enrichment.
+FR-03.03 — P0: Permit manual text/landmark entry and approved approximate/unknown states; never use 0,0 as a missing-location substitute.
+FR-03.04 — P1: Display authorized mission, personnel, and assessment locations with text equivalents and distinct non-color-only meanings.
+FR-03.05 — P0: Identify stale personnel coordinates and device-permission failures.
+FR-03.06 — P2: Continuous location feeds and imagery shall have separately approved sourcing, accuracy, privacy, licensing, and outage rules.
+
+Acceptance:
+AC-03A: Denied GPS permission or failed geocoding does not block a report with valid manual location information.
+AC-03B: An unknown location remains unknown and is not plotted as a verified point.
+AC-03C: A screen-reader user can enter/select location without using a map.
+Exceptions: ambiguous address, no match, provider limit/outage, stale coordinates.
+AI assistance: extract/clarify location; do not invent coordinates.
+
+
+F04. HAZARDS AND SPECIAL CIRCUMSTANCES
+Business trace: BR-03, BR-10, BR-14.
+
+FR-04.01 — P1: Capture mental-health crisis, violence, child/elder involvement, weapons, language barrier, hazmat, and medical emergency.
+FR-04.02 — P1: Support suicidal threats, missing/runaway concerns, utility risk, weather, public-health indicators, and prior-mission links where approved.
+FR-04.03 — P0: Distinguish reported, confirmed, corrected, and cleared hazard information.
+FR-04.04 — P0: Record source/actor/time and protect sensitive hazard fields.
+FR-04.05 — P0: Present critical hazards independently of general narrative.
+
+Acceptance:
+AC-04A: An AI-suggested hazard is labeled unverified until staff accepts it.
+AC-04B: Clearing a hazard preserves the original entry and reason.
+AC-04C: Unauthorized users cannot obtain restricted behavioral-health details.
+Exceptions: conflicting reports, stale hazard, incorrect linked mission.
+
+
+F05. PERSONNEL DIRECTORY AND AVAILABILITY
+Business trace: BR-04, BR-10.
+
+FR-05.01 — P1: Maintain name, operational role, department, contact, skills, badge reference, optional account, location, and availability.
+FR-05.02 — P1: Search/filter recorded qualifications, department, status, and assignment.
+FR-05.03 — P0: Separate duty/availability/response semantics under approved definitions; audit changes.
+FR-05.04 — P0: Restrict self-update versus coordinator-update authority.
+FR-05.05 — P1: Deactivate/archive rather than lose assignment or badge history.
+FR-05.06 — P2: If certifications govern assignments, store verification and expiration and enforce approved eligibility rules.
+
+Acceptance:
+AC-05A: Search for a skill returns only personnel with recorded matching qualifications.
+AC-05B: Inactive personnel are excluded from new assignments unless a permitted exception is explicitly approved.
+AC-05C: Off-duty changes apply the approved release policy rather than silently leaving conflicting mission assignments.
+Exceptions: duplicate personnel, conflicting status, expired qualification, missing account.
+AI assistance: summarize availability; do not infer credentials.
+
+
+F06. ASSIGNMENTS AND RESPONSE LIFECYCLE
+Business trace: BR-03, BR-04, BR-06, BR-15.
+
+FR-06.01 — P1: Support multiple personnel per mission with per-assignment status/history.
+FR-06.02 — P0: Update mission/personnel relationships atomically or with equivalent consistency guarantees.
+FR-06.03 — P0: Check duplicate assignments, commitments, qualification policy, and authorized overrides.
+FR-06.04 — P0: Enforce approved transitions across open, en_route, on_scene, cleared, and closed.
+FR-06.05 — P1: Record call received, dispatch, travel, arrival, transport start/end/destination, and clearing as applicable.
+FR-06.06 — P0: Do not infer en_route merely from assignment; record dispatch method separately from proof of delivery.
+FR-06.07 — P1: Support authorized release and reopening with reasons; closing does not erase deployment history.
+FR-06.08 — P2: Formal team/vehicle/equipment entities require approved scope rather than overloading personnel IDs.
+
+Acceptance:
+AC-06A: Failed assignment leaves neither half of the relationship falsely updated.
+AC-06B: Assigning a person does not create an arrival timestamp.
+AC-06C: A conflicting commitment is blocked or shown for authorized override with reason.
+AC-06D: Closure releases resources according to policy and preserves historical links.
+Exceptions: person deactivated mid-action, stale availability, concurrent dispatch, reverse transition.
+
+
+F07. NOTES, PEOPLE, EVIDENCE, AND OUTCOMES
+Business trace: BR-03, BR-05, BR-06, BR-10.
+
+FR-07.01 — P1: Support call-taker, dispatcher, responder, supervisor, and follow-up narratives with attributable amendments.
+FR-07.02 — P1: Maintain one authoritative people-involved representation with role, name, gender if necessary, contact, address, injury, transport, and behavioral-health details.
+FR-07.03 — P0: Separate time-stamped events from editable summaries and restrict sensitive fields.
+FR-07.04 — P1: Support approved images/documents/media/bodycam/live-feed references with source, uploader, time, access, and retention.
+FR-07.05 — P1: Capture disposition, explanation, case reference, report-required/generated indicators, reviewer, and review time.
+FR-07.06 — P0: Validate closure prerequisites and preserve changes/removals under audit and retention rules.
+
+Acceptance:
+AC-07A: Updating a summary does not replace original event history.
+AC-07B: Restricted evidence cannot be downloaded using an unauthorized direct reference.
+AC-07C: Closure with missing required disposition is rejected with an actionable error.
+Exceptions: invalid file, removed evidence, person correction, unsupported media.
+AI assistance: source-linked summaries and missing-field detection; no fabricated people or events.
+
+
+F08. MISSION HISTORY AND AUDIT
+Business trace: BR-06, BR-10.
+
+FR-08.01 — P0: Record creation, updates, status/priority changes, assignments, notes, decisions, closure/reopen, lock/unlock, and reversal.
+FR-08.02 — P0: Capture actor, event time, entry time, source, action, target, changes, and relevant execution ID.
+FR-08.03 — P1: Support authorized manual operational entries without allowing alteration of protected audit events.
+FR-08.04 — P0: Apply tamper resistance, retention, and audit-access restrictions.
+FR-08.05 — P1: Allow chronological reconstruction and authorized historical export with redaction rules.
+
+Acceptance:
+AC-08A: A delayed entry preserves both occurrence time and time recorded.
+AC-08B: Account deactivation does not remove actor attribution.
+AC-08C: Undo creates a linked compensating/reversal event rather than deleting the original.
+Exceptions: missing migrated attribution must be labeled unknown, not assigned to a guessed person.
+
+
+F09. SITUATION UPDATES AND REMINDERS
+Business trace: BR-07, BR-15.
+Current-state baseline: browser-local timers and early completion before confirmed save.
+
+FR-09.01 — P1: Store mission-linked reminder owner, due time, recurrence if approved, and active/overdue/completed/canceled state.
+FR-09.02 — P1: Support snooze, reset, cancel, acknowledge, and complete with actor/history.
+FR-09.03 — P0: Persist shared state beyond reload; distinguish an acknowledgment from a completed update.
+FR-09.04 — P0: Complete a reminder associated with an update only after that update persists.
+FR-09.05 — P1: Provide accessible overdue indicators; sound is optional and not the sole cue.
+FR-09.06 — P2: Escalation/external notification requires approved recipients, timing, delivery handling, and quiet-period policy where applicable.
+
+Acceptance:
+AC-09A: Reloading or changing devices does not lose an authorized shared reminder.
+AC-09B: A failed situation-update save leaves the reminder incomplete.
+AC-09C: Two staff completing the same reminder do not create duplicate update effects.
+Exceptions: closed mission, overdue recurrence, notification failure, timezone change.
+
+
+F10. STAFF DAMAGE ASSESSMENTS
+Business trace: BR-05, BR-06, BR-10.
+
+FR-10.01 — P1: Create/view/update assessments with date, disaster reference, property location, assessor, and contact.
+FR-10.02 — P1: Capture structure type, occupancy, primary residence, insurance, and unknown states.
+FR-10.03 — P1: Capture damage level/cause, roof/foundation observations, general description, and notes.
+FR-10.04 — P1: Capture utilities, access, immediate needs, displacement, estimate, and evidence through actual supported inputs.
+FR-10.05 — P0: Distinguish estimates from verified costs, public observations from field findings, and unknown from negative findings.
+FR-10.06 — P1: Preserve reassessment versions and link superseded findings.
+FR-10.07 — P0: Validate nonnegative counts/costs and approved severity guidance; reject invalid enumerations without losing input.
+
+Acceptance:
+AC-10A: Zero displaced occupants and unknown occupant count remain distinguishable.
+AC-10B: Reassessment retains prior observations and their provenance.
+AC-10C: Uploaded evidence is associated with the correct assessment and restricted appropriately.
+Exceptions: inaccessible property, missing evidence, ambiguous address, unverified estimate.
+AI assistance: reviewable descriptions/classifications, never official structural-safety conclusions.
+
+
+F11. PUBLIC DAMAGE REPORTING
+Business trace: BR-01, BR-05, BR-09, BR-10.
+Current-state baseline: public form references a staff-protected submission path.
+
+FR-11.01 — P1: Accept valid public reports without a staff session.
+FR-11.02 — P0: Collect necessary reporter/contact/location/damage information with accessible guidance and valid unknown answers.
+FR-11.03 — P0: Explain privacy, emergency-response boundaries, and no assistance guarantee before submission.
+FR-11.04 — P0: Persist once, return accessible confirmation/reference, and distinguish failure from receipt.
+FR-11.05 — P0: Apply accessible anti-abuse and duplicate prevention without blocking legitimate assistive-technology users.
+FR-11.06 — P1: Keep public source and review status explicit; present approved public resources.
+FR-11.07 — P2: Status/correction, proxy submission, resume, and accommodation requests require approved identity/consent/privacy policies.
+
+Acceptance:
+AC-11A: An unsigned resident can submit and receive a saved reference using only a keyboard or screen reader.
+AC-11B: A network timeout followed by retry creates one report.
+AC-11C: A public reference cannot retrieve another resident's private contact details.
+AC-11D: A renter can use unknown owner-only information where permitted.
+Exceptions: failed upload, abuse limit, incomplete description, helper authority unclear.
+
+
+F12. ASSESSMENT REVIEW
+Business trace: BR-05, BR-06, BR-08.
+
+FR-12.01 — P1: Represent submitted, under_review, needs_information, approved, rejected, duplicate, and superseded separately.
+FR-12.02 — P0: Record reviewer, decision time, reason, record version, and applicable evidence.
+FR-12.03 — P1: Support correction requests and resubmission with history.
+FR-12.04 — P0: Restrict decision authority and enforce approved self-review policy.
+FR-12.05 — P0: Re-review materially changed approved findings before including them in new official totals.
+FR-12.06 — P1: Link duplicates without deleting provenance or double-counting.
+
+Acceptance:
+AC-12A: Rejecting a report yields rejected, not generic unapproved/pending.
+AC-12B: An unauthorized assessor cannot approve their own report by an AI command or direct request.
+AC-12C: Changed approved findings follow re-review and do not silently alter issued report snapshots.
+Exceptions: duplicate target inaccessible, conflicting reviewers, withdrawn source, incomplete evidence.
+
+
+F13. BADGES AND IDENTIFICATION
+Business trace: BR-11, BR-06.
+Current-state baseline: records/previews exist; capture/test print are simulated.
+
+FR-13.01 — P1: Create identity documents linked to personnel with role, department, approved photo, template, and access label.
+FR-13.02 — P1: Store validity, active/revoked/expired/replaced state, issuance, and reprint history.
+FR-13.03 — P0: Treat badge access labels separately from account permission.
+FR-13.04 — P1: Produce genuine printable output and support actual photo capture/upload if included.
+FR-13.05 — P2: Integrate physical printing or scan verification only with supported devices/services and verified outcomes.
+FR-13.06 — P0: Distinguish generated, print-requested, print-confirmed, and failed; do not equate a database timestamp with physical success.
+
+Acceptance:
+AC-13A: Generating a document does not mark physical print success.
+AC-13B: Revocation remains visible to an approved verification workflow if implemented.
+AC-13C: A QR/image is not the only accessible identification output.
+Exceptions: missing photo, expired validity, printer outage, lost badge.
+
+
+F14. ANALYTICS AND EXPORTS
+Business trace: BR-08, BR-10.
+Current-state baseline: legacy mission statuses/priorities and missing affected category cause inconsistent counts.
+
+FR-14.01 — P1: Compute mission, personnel, assessment, and badge metrics from approved shared definitions.
+FR-14.02 — P1: Support bounded period/timezone, type, priority, status, department, severity, and authorized search filters where relevant.
+FR-14.03 — P0: Include all supported damage categories and distinguish verified/unverified totals.
+FR-14.04 — P1: Produce trends and utilization using configured departments and declared formulas.
+FR-14.05 — P0: Match displayed and exported scope/totals; identify generation time, definitions, and exclusions.
+FR-14.06 — P1: Support CSV and accessible report output with correct quoting, safe treatment of spreadsheet formula-like input, pagination if needed, and redaction.
+FR-14.07 — P2: Response-time metrics depend on trustworthy milestone data; disclose incomplete records.
+
+Acceptance:
+AC-14A: Closed missions are classified according to the agreed active definition, not legacy resolved text.
+AC-14B: An affected assessment appears in the correct distribution category.
+AC-14C: The same scope yields matching displayed/CSV/report totals and no unauthorized fields.
+Exceptions: missing timestamps, empty period, stale calculation, export failure.
+
+
+F15. OFFICIAL SITUATION REPORTS
+Business trace: BR-08, BR-06.
+
+FR-15.01 — P1: Generate period/scope/cutoff-based drafts containing mission, priority, staffing, approved damage, and operational summaries.
+FR-15.02 — P0: Separate measured facts, staff judgments, and generated narrative; cite relevant sources.
+FR-15.03 — P0: Never hardcode normal/adequate/operational as an assessed condition.
+FR-15.04 — P1: Support review, approval, issuance, classification, and retained versioned snapshot.
+FR-15.05 — P0: Preserve previously issued values after later record changes; issue amendments rather than overwrite.
+FR-15.06 — P1: Export accessible approved content with author/reviewer, scope, generation/issuance times, and limitations.
+
+Acceptance:
+AC-15A: Changing an assessment after issuance leaves the issued snapshot unchanged.
+AC-15B: Unknown communications status is identified as unknown, not operational.
+AC-15C: A generated draft does not become an official report without required review.
+Exceptions: missing evidence, conflicting totals, failed approval, export pagination.
+
+
+F16. PUBLIC ASSISTANCE RESOURCES
+Business trace: BR-01, BR-09.
+Current-state baseline: public resource reads are staff-authenticated.
+
+FR-16.01 — P1: Maintain title, description, type, content/reference, thumbnail, category, ordering, ownership, and publication state.
+FR-16.02 — P0: Make published resources accessible without staff sign-in; keep drafts/private material restricted.
+FR-16.03 — P1: Support review date, expiration, removal from publication, and broken-link handling.
+FR-16.04 — P0: Provide accessible text/HTML or accessible documents for essential guidance.
+FR-16.05 — P2: Approved event/geography/need/language targeting shall not imply live availability or eligibility.
+
+Acceptance:
+AC-16A: An unsigned resident can read a published resource but not its restricted draft.
+AC-16B: Expired information is not silently presented as current.
+AC-16C: Essential information remains available when an external PDF is inaccessible.
+Exceptions: broken reference, outdated translation, file unavailable.
+AI assistance: recommend only approved resources with clear uncertainty.
+
+
+F17. INTERAGENCY CONTACTS AND COORDINATION
+Business trace: BR-12, BR-06, BR-10.
+
+FR-17.01 — P1: Maintain agency/contact, contact methods, type, active state, verification time, and owner.
+FR-17.02 — P0: Restrict contact administration and private information access.
+FR-17.03 — P1: Record referral/communication attempt, recipient, channel, actor, time, purpose, and outcome.
+FR-17.04 — P2: Implement approved sending channels, acknowledgment, and follow-up separately from contact storage.
+FR-17.05 — P0: Record provider evidence where available and distinguish queued/sent/delivered/acknowledged/failed.
+
+Acceptance:
+AC-17A: Selecting email as a channel does not show delivery without evidence.
+AC-17B: A failed send can be retried safely without silent duplicate communication.
+AC-17C: A partner receives only expressly authorized shared information.
+Exceptions: invalid contact, provider timeout, duplicate callback, rejected referral.
+
+
+F18. CONFIGURATION, GUIDANCE, AND USABILITY
+Business trace: BR-02, BR-16, BR-01.
+
+FR-18.01 — P1: Maintain system/organization name, contact information, approved branding, and themes.
+FR-18.02 — P0: Restrict mutations; separate publicly readable branding from private configuration.
+FR-18.03 — P1: Maintain accurate human-reviewed guidance, field definitions, examples, and known limitations.
+FR-18.04 — P0: Support accessible touch/keyboard input and validated themes.
+FR-18.05 — P1: Govern shared classifications, operational definitions, and alias changes with audit.
+FR-18.06 — P2: Multi-organization tenancy requires explicit isolation requirements; branding alone shall not imply it.
+
+Acceptance:
+AC-18A: A signed-in non-admin cannot change protected settings.
+AC-18B: Public branding retrieval does not disclose private service configuration.
+AC-18C: Product help describes implemented behavior rather than nonexistent live tracking or printing.
+Exceptions: invalid setting, conflicting policy update, inaccessible branding asset.
+
+
+B3. GLOBAL AI COMMAND EXECUTION
+
+MANDATORY CAPABILITY
+
+An accessible application-wide AI context window shall accept plain-language requests and short commands and execute supported permitted functions across the application. It shall not be limited to explaining manual steps.
+
+The complete CMD-01 through CMD-38 requirements in the annex are normative proposed FRD requirements. Shortcuts and command syntax remain proposals.
+
+FR-C01. INVOCATION AND INPUT — P1
+Provide configurable non-conflicting shortcut and accessible touch/keyboard control, natural-language entry, deterministic shorthand, discoverable help, and approved aliases.
+Trace: CMD-01 through CMD-05; BR-02, BR-13.
+
+FR-C02. CONTEXT RESOLUTION — P0
+Resolve authorized selected/referenced records, scope, timezone, and freshness. Ask for ambiguity rather than guess. Treat retrieved content as data, not executable instructions.
+Trace: CMD-06 through CMD-11; BR-10, BR-14.
+
+FR-C03. ACTION CONTRACT — P0
+Each supported operation shall declare action name/version, argument schema, target/scoping rules, permission, prerequisites, confirmation class, side effects, idempotency behavior, result schema, and reversal policy.
+Trace: CMD-12; BR-13, BR-14.
+
+FR-C04. FEATURE COVERAGE — P1
+Connect approved mission, personnel, assessment, reminder/report, resource/contact/badge, and administration actions to existing validated business operations as they are implemented.
+Trace: CMD-13 through CMD-19.
+
+FR-C05. PLAN AND CONFIRM — P0
+Distinguish questions/drafts/execution, resolve targets, show consequential diffs, and bind explicit confirmation to the plan, record versions, user, and scope.
+Material changes after confirmation require renewed confirmation.
+Trace: CMD-20 through CMD-23.
+
+FR-C06. EXECUTION CONSISTENCY — P0
+Use atomic related changes where possible, stable execution IDs, bounded retries, and per-action partial-failure results.
+Trace: CMD-24 through CMD-26.
+
+FR-C07. CANCEL AND REVERSE — P0/P1
+Cancel before execution where possible; report completed effects honestly. Offer only supported safe reversal, preserving original/reversal history.
+Trace: CMD-27, CMD-28.
+
+FR-C08. UNSAVED AND BULK WORK — P0
+Protect drafts, make bulk scope explicit, enforce batch/rate limits, and treat macros as individual governed actions.
+Trace: CMD-29, CMD-30.
+
+FR-C09. ACCESSIBLE LANGUAGE AND FALLBACK — P0
+Meet public accessibility, support approved languages, provide typed alternatives to optional dictation, and avoid automatic replay of stale consequential requests after reconnect.
+Trace: CMD-31 through CMD-34.
+
+FR-C10. PRIVACY AND AUDIT — P0
+Minimize model context, govern history, preserve authenticated execution audit, and separate personal conversation removal from mandated record retention.
+Trace: CMD-35 through CMD-37.
+
+FR-C11. PROGRESS AND MEASUREMENT — P1
+Expose interpretation/execution progress, timeout, failure, and verified results; measure quality without unnecessary sensitive logs.
+Trace: CMD-38.
+
+FR-C12. AI GOVERNANCE — P0
+Apply AI-01 through AI-12 below to every generated or executed operation.
+
+AI-01: Essential tasks remain manually completable.
+AI-02: Context is limited to the user's authorized data.
+AI-03: Generated, human-entered, and verified content are distinguishable.
+AI-04: Summaries identify supporting records and relevant times.
+AI-05: Missing information and uncertainty are explicit.
+AI-06: Consequential actions require applicable human confirmation.
+AI-07: Accepted changes and confirming user are audited.
+AI-08: Normal validation applies to generated data.
+AI-09: No fabricated hazards, credentials, damage findings, or operational status.
+AI-10: Provider failure does not disable intake, assignments, or status updates.
+AI-11: Provider retention and sensitive-data policy are approved before use.
+AI-12: Evaluation measures factual accuracy and omissions, not just fluency.
+
+COMMAND REQUEST/RESULT CONTENT — LOGICAL, NOT AN API IMPLEMENTATION
+
+Request:
+- Actor/session and organizational scope.
+- Input or shorthand plus language.
+- Explicit record references and permitted context.
+- Execution identifier and expected versions where relevant.
+
+Prepared plan:
+- Interpreted intent, resolved targets, proposed field changes.
+- Required clarifications, prerequisites, confirmation class.
+- Ordered steps, side effects, and reversal limits.
+
+Result:
+- Per-step status and verified saved references/values.
+- Execution/audit reference.
+- Errors, retry eligibility, and unresolved steps.
+- Actual external delivery evidence if applicable.
+
+Do not expose hidden model reasoning. Show a concise operational explanation and plan.
+
+COMMAND ACCEPTANCE CASES
+
+AC-C01: From an assessment task, an authorized dispatcher can request a mission assignment without first changing application context.
+AC-C02: "Assign Alex" with two authorized matches requests clarification and performs no assignment.
+AC-C03: A public user's request for private mission information is denied without revealing existence or content beyond approved policy.
+AC-C04: Approval prepared for one report cannot be reused to approve a different report or changed version.
+AC-C05: Revoking permission after preview blocks execution even if the user confirms.
+AC-C06: Repeating the same valid action request produces one effect.
+AC-C07: Failure on step two of a multi-step external workflow identifies completed step one and does not claim rollback.
+AC-C08: "Undo that" reports an unavailable reversal for already delivered communication rather than pretending recall.
+AC-C09: A command affecting an unsaved manual draft requests reconciliation instead of overwriting.
+AC-C10: A malicious instruction embedded in a report does not change tool permissions or cause execution.
+AC-C11: Screen-reader/keyboard users can invoke, clarify, confirm, cancel, and understand results.
+AC-C12: AI outage leaves manual workflows and eligible deterministic commands usable; no stale dispatch replays automatically.
+
+
+B4. ACCESSIBILITY AND PUBLIC-ROLE REQUIREMENTS
+
+The full ACC-01 through ACC-53 annex forms part of the proposed FRD. These requirements are not optional enhancements to released public capabilities.
+
+FR-A01 — P0: Target WCAG 2.2 AA; verify full tasks with automation and manual assistive-technology testing.
+FR-A02 — P0: Provide semantic labels, meaningful alternatives, focus management, contrast, text enlargement/reflow, and non-map completion.
+FR-A03 — P0: Support keyboard, touch, voice control, and alternative input without gesture-only or time-pressure dependencies.
+FR-A04 — P0: Provide text alternatives, applicable captions/transcripts, and non-voice assistance.
+FR-A05 — P0: Use plain language, minimal required input, unknown answers, error recovery, review, reduced motion, and non-AI help.
+FR-A06 — P0: Translate complete tasks for approved languages; human-review critical guidance and retain original source text.
+FR-A07 — P0: Support slow networks, permission denial, safe retry, shared-device privacy, and optional media loading.
+FR-A08 — P0: Make consent, any authentication/anti-abuse, assisted reporting, and accommodation handling accessible and privacy-aware.
+FR-A09 — P0: Publish accessible documents, confirmations, external-resource alternatives, and accessible optional AI.
+FR-A10 — P1: Maintain accessibility support, known limitations, ownership, and remediation process.
+
+PUBLIC-ROLE ACCEPTANCE
+
+AC-A01: Blind resident completes reporting, corrects validation errors, and reads confirmation without map use.
+AC-A02: Low-vision user enlarges/reflows content without loss of controls or required information.
+AC-A03: Limited-dexterity user completes without precise gestures or short time limits.
+AC-A04: Deaf/non-speaking user receives essential guidance and support without audio-only/voice-only dependence.
+AC-A05: A supported-language user receives translated errors, consent, and confirmation, not just introductory text.
+AC-A06: Denied camera/GPS permissions do not block valid manual reporting.
+AC-A07: Shared-device user can finish without private content being exposed to the next user.
+AC-A08: Optional AI does not replace clear field guidance or require a conversation.
+AC-A09: Proxy reporting, if approved, preserves helper/subject distinction and authorized follow-up boundaries.
+
+No proposed public-role example is a confirmed permission role until approved. Public accounts, accommodation collection, proxy reporting, and status/correction remain conditional scope.
+
+
+B5. LOGICAL DATA REQUIREMENTS
+
+This is a conceptual data dictionary, not a prescribed database schema.
+All entities shall have stable identifiers, applicable timestamps, retention/access rules, and integrity constraints.
+
+D01. USER ACCOUNT
+Identity reference, email, names, profile image reference, active/suspended/deactivated state, responsibility grants, record scope, creation/update.
+Relationship: optional personnel link; many audit actions.
+
+D02. MISSION
+Identification: internal ID, unique mission number, state, record version, lock state, creator/updater.
+Intake: call source; caller name/phone/address/role/language; interpreter need; call received time.
+Baseline call sources: 911, non_emergency, officer_initiated, walk_in, text, radio.
+Baseline caller roles: complainant, victim, witness, survivor, anonymous.
+Baseline caller languages: English, Spanish, Chinese, Arabic, Hindi, French, Russian. This is not evidence of complete translated public experiences.
+Location: primary address, apartment/unit, city/state/ZIP, cross streets, coordinates, landmarks, source, verification.
+Classification: fire/medical/law/welfare_check/utility/disaster; subcategory; priority 1–5; urgency; summary; reported conditions.
+Hazards: mental health, violence, child/elder, weapons, language barrier, hazmat, medical; approved additional suicide/missing/utility/weather/public-health fields.
+Operational: dispatch method, assigned resources via assignment records, timestamps, transport destination.
+Narrative: call-taker/dispatcher/responder/supervisor/follow-up notes with provenance.
+Outcome: disposition, explanation, case reference, report-required/generated, reviewer/time.
+Baseline dispositions: no_action_taken, report_filed, arrest_made, transported, completed_mission.
+References: prior missions, documents, images, audio/video, bodycam, live feed, interagency activity.
+
+D03. PERSONNEL
+Name, role, department, contact, recorded skills, optional qualifications, duty/availability/response state, location/freshness, account link, badge reference, active state.
+Baseline combined statuses: available, on_duty, off_duty, in_transit, on_scene. Separate duty/availability/response semantics are a proposed improvement requiring approved migration.
+
+D04. ASSIGNMENT
+Mission reference, person/resource reference, assignment state, assigned/released times, actor, reason, override where approved.
+Relationship: mission has many assignments; person may have multiple historical assignments. Concurrent-active policy is TBD.
+Do not store team/vehicle IDs in a personnel-only relationship without explicit typing.
+
+D05. DAMAGE REPORT / ASSESSMENT
+Assessment date, disaster/event reference if approved, address/coordinates, source/reporter/contact.
+Structure: single_family/mobile_home/multi_family/manufactured/apartment/commercial/public/infrastructure/unknown.
+Occupancy: owner/renter/unknown; primary residence.
+Insurance: homeowners/renters/flood/none/unknown, subject to approved collection policy.
+Severity: no_damage/affected/minor/major/destroyed.
+Cause: wind/flood/fire/earthquake/tornado/hurricane/hail/ice/other/unknown.
+Foundation/roof findings and descriptions; utilities, access, immediate needs.
+Estimated cost with currency/precision and estimate-versus-verified flag; displaced count with unknown distinction.
+Description, notes, evidence links, verification level, review state, version, superseded/duplicate references.
+
+D06. REVIEW DECISION
+Assessment/version reference, reviewer, decision, reason, evidence references, decision time, correction/resubmission linkage.
+Relationship: assessment has many historical decisions; current state derives from approved rules.
+
+D07. PERSON INVOLVED
+Mission, name, role victim/suspect/witness/subject/reporting party/survivor, necessary demographic fields, contact, address, injury, transport, behavioral-health detail.
+Restrict sensitive fields; keep one authoritative representation.
+
+D08. EVIDENCE / ATTACHMENT
+Parent record, file/reference type, storage reference, original name, MIME type, size, uploader/source/time, accessible description, integrity metadata where needed, access, retention.
+Do not expose protected evidence through public permanent URLs.
+
+D09. EVENT / AUDIT
+Target, actor, action, event/entry time, changes, reason, source, request/execution/reversal reference.
+Application audit and operational narrative may have different access/retention.
+
+D10. REMINDER
+Mission, owner, due time/timezone, recurrence if approved, state, acknowledgment/completion/snooze history, associated saved update, escalation rule if approved.
+
+D11. BADGE
+Personnel, name/role/department/photo, template, access label, valid-from/until, state, identifier/scan reference if approved, issuance/replacement/print-attempt history.
+
+D12. PUBLIC RESOURCE
+Title, description, type photo/pdf/url/text, content/reference, thumbnail, category, ordering, draft/published/expired/archived state, owner, review/expiry, language, optional approved targeting.
+
+D13. INTERAGENCY CONTACT / COMMUNICATION
+Contact name/type/channels/active/verification.
+Communication mission/referral link, actor/recipient/channel/time, authorized content/reference, queued/sent/delivered/acknowledged/failed state, provider receipt where applicable.
+
+D14. REPORT SNAPSHOT
+Scope, reporting period/timezone, cutoff, definition versions, included record versions/totals, narrative provenance, author/reviewer, draft/reviewed/issued/superseded state, classification, issued time, export references.
+
+D15. SETTINGS AND COMMAND CONFIGURATION
+Key/value or typed policy, public/private flag, owner, changed by/time, version.
+Aliases: personal/shared owner, normalized expansion, allowed actions, version, audit.
+Command execution: actor/scope, interpreted plan, target versions, confirmation, per-step results, execution/reversal IDs, retention.
+
+D16. EVENT / ORGANIZATION — CONDITIONAL
+If approved, parent disaster/event and tenant organization provide explicit ownership and cross-record relationships.
+Tenant isolation shall be enforced independently of branding.
+
+DATA VALIDATION RULES
+
+- Required versus optional versus unknown must be defined per task stage.
+- Costs use nonnegative approved currency/precision; do not silently round imported values.
+- Counts are nonnegative whole numbers or explicitly unknown.
+- Coordinates, when present, must be valid and have declared verification.
+- Timestamps preserve source and chronology; legitimate delayed entry is allowed without hiding inconsistencies.
+- Enumerations have one canonical definition and governed changes.
+- Inactive/archived references remain valid historically.
+- Missing migrated values are not replaced with fabricated facts.
+
+
+B6. STATE MODELS AND EXCEPTION BEHAVIOR
+
+ALL STATE TABLES BELOW ARE PROPOSED AND REQUIRE OPERATIONAL APPROVAL.
+
+MISSION
+Draft, if approved: not yet an operational mission.
+Open → En route → On scene → Cleared → Closed is the nominal sequence.
+Allowed skips, canceled/no-response cases, transport substates, and reverse transitions must be defined by policy.
+Assignment does not automatically change travel state.
+Closed → Open requires authorized reopening and reason; preserve prior closure.
+Each transition validates permission, prerequisites, freshness, applicable confirmation, timestamp, resource effects, and audit.
+
+PERSONNEL / ASSIGNMENT
+Separate duty state from availability and mission-specific response state if approved.
+Assignment progresses assigned → responding → on_scene → released, with cancellation rules.
+One assignment's release must not erase another valid commitment.
+Off-duty/inactive transitions resolve active commitments explicitly.
+
+ASSESSMENT
+Submitted → Under review.
+Under review → Needs information / Approved / Rejected / Duplicate.
+Needs information → Submitted after correction.
+Approved findings materially changed → re-review under approved policy.
+Any retained version may be superseded by a linked newer version.
+Duplicates reference a valid retained primary report; official counting rules prevent double inclusion.
+
+REMINDER
+Active → Overdue by due time.
+Active/Overdue → Snoozed or reset with history.
+Active/Overdue → Acknowledged if separate acknowledgment is enabled.
+Completion requires the associated business action to persist.
+Canceled and completed are distinct; recurrence creates identifiable next obligations.
+
+OFFICIAL REPORT
+Draft → Reviewed → Issued.
+Issued content is immutable as a snapshot.
+Correction produces amendment/replacement linked to the prior issue.
+
+BADGE AND EXTERNAL DELIVERY
+Badge validity is distinct from generated/print-requested/print-confirmed/print-failed.
+Communication queued → sent → delivered → acknowledged as supported by actual evidence; failure may occur at each supported stage.
+Do not infer receipt where a provider supports only send acceptance.
+
+COMMAND EXECUTION
+Received → Interpreted → Clarification needed OR Prepared.
+Prepared → Awaiting confirmation OR Validated.
+Confirmed → Revalidated → Executing.
+Executing → Succeeded / Partially succeeded / Failed / Canceled where actually supported.
+Completed action → reversal only if supported and permitted.
+Expired/stale plans must be prepared and, if consequential, confirmed again.
+
+EXCEPTION CONTRACT
+
+- Validation failure: no business mutation; actionable errors; retained input.
+- Authorization failure: deny with minimal disclosure; no mutation.
+- Conflict: identify stale state; retain draft; request reconciliation.
+- Network uncertainty: show unknown outcome and resolve by execution ID before retry.
+- Provider outage: preserve manual work; show pending/failed honestly.
+- Partial external execution: list actual effects; offer safe follow-up, not fictitious rollback.
+- Unsupported action: state unsupported and suggest an available permitted alternative.
+- Sensitive data requested: reject or redact according to policy.
+
+
+B7. NONFUNCTIONAL AND INTEGRATION REQUIREMENTS
+
+NFR-01. ACCESSIBILITY — P0
+Target WCAG 2.2 AA across released tasks and applicable generated content. Complete representative manual tests; do not claim legal certification.
+Trace: ACC-01 through ACC-53.
+
+NFR-02. SECURITY — P0
+Use approved secure session/identity mechanisms, least privilege, input validation, protected file access, safe external references, and appropriate encryption in transit/at rest. Test object/field-level access and public enumeration.
+
+NFR-03. PRIVACY AND RETENTION — P0
+Approve field necessity, consent, role access, provider use, retention, export/redaction, and deletion/archive handling. Keep secrets and unnecessary personal data out of logs. Define conflict between deletion requests and mandatory records through approved policy.
+
+NFR-04. RELIABILITY — P0
+Define availability objectives and degraded operation. Essential intake and saves shall expose actual states; automatic retries shall be bounded and safe.
+Target availability and maximum outage duration: TBD.
+
+NFR-05. BACKUP AND RESTORE — P0
+Define recovery point/time objectives, backup scope/retention, restore ownership, and tested restoration including attachments and relationships.
+RPO, RTO, and restore-test cadence: TBD before operational launch.
+
+NFR-06. PERFORMANCE AND CAPACITY — P1
+Define concurrent staff/public users, mission/assessment volumes, evidence sizes, slow-network profile, and older devices.
+Establish response targets separately for entry, search, saving, exports, AI interpretation, and execution.
+Targets/load profile: TBD; test both expected and surge loads.
+
+NFR-07. SYNCHRONIZATION — P0/P1
+Define permitted freshness/staleness windows and how cross-user updates propagate. Show last known state and prevent stale consequential execution.
+Live synchronization mechanism and maximum lag: TBD.
+
+NFR-08. FIELD/OFFLINE OPERATION — P2
+If full offline entry is approved, specify encrypted local storage, retention, sync identity, conflict handling, and pending-versus-received distinction.
+Basic network-failure recovery is P0 even without full offline support.
+
+NFR-09. INTERNATIONALIZATION — P0 for approved languages
+Support Unicode, language metadata, relevant scripts/direction, approved date/number formatting, and complete translated task content. Human-review critical guidance.
+
+NFR-10. OBSERVABILITY — P1
+Measure save/command/integration failures, latency, conflicts, duplicate prevention, and audit completeness without sensitive prompt/content leakage. Define alert owners.
+
+NFR-11. MAINTAINABILITY — P1
+Use consistent shared definitions and validated business operations for manual, shorthand, and natural-language paths. Maintain approved documentation and action contracts.
+
+NFR-12. ACCESSIBLE EXPORT QUALITY — P0
+Essential information shall not be available only as inaccessible scans, images, or QR codes. PDF exports require structure/reading-order verification; CSV is not a substitute for accessible narrative guidance.
+
+INTEGRATION CONTRACTS
+
+INT-01. Identity: sign-in/session/revocation/invitation supported by approved provider; fallback does not weaken access.
+INT-02. Mapping/geocoding: declared coverage, licensing, rate limits, privacy, ambiguous-match and outage behavior; manual alternative.
+INT-03. Evidence storage: protected access, supported upload, scanning/validation policy, retention, backup.
+INT-04. AI provider: approved context/retention, timeouts, quotas, supported languages, quality evaluation; manual/deterministic fallback.
+INT-05. Communications, conditional: real sending, safe retry, authenticated provider callbacks, delivery semantics, recipient/content confirmation.
+INT-06. Printing/verification, conditional: supported output/device protocol, attempt/result evidence, expired/revoked handling.
+INT-07. External CAD/vehicle tracking/partner feeds, conditional: separately approved contracts and reconciliation; not implied by data fields.
+
+Every integration shall identify operational owner, credentials handled through approved secrets tooling, failure modes, and a testable success contract.
+
+
+B8. MIGRATION, TESTING, AND ACCEPTANCE
+
+MIGRATION REQUIREMENTS
+
+MIG-01: Inventory source records, relationships, enums, duplicates, evidence references, and retained audit information.
+MIG-02: Approve mappings for legacy incident/mission naming, textual/numeric priorities, and legacy statuses.
+MIG-03: Map approval booleans conservatively; false does not prove rejected. Preserve unknown legacy review semantics.
+MIG-04: Preserve IDs/references where practical, or retain explicit crosswalks without reference reuse.
+MIG-05: Reconcile mission/personnel assignments and quarantine inconsistent cases for human review.
+MIG-06: Preserve sensitive access and attachment ownership; do not make private evidence public.
+MIG-07: Validate counts, relationships, categories, timestamps, cost precision, and official snapshot meaning.
+MIG-08: Rehearse migration, verify backup/restore, and define an approved cutover/recovery process.
+MIG-09: Obtain operational sign-off on reconciled data and residual exceptions before using it as authoritative.
+
+TEST STRATEGY
+
+- Unit/business-rule tests: canonical enums, state transitions, calculations, prerequisites, and permissions.
+- Service/integration tests: assignments, save idempotency, evidence access, provider results, audit.
+- End-to-end tests: public submission, staff intake/assignment/update/closure, review, report issuance, command confirmation/execution.
+- Accessibility: keyboard, VoiceOver/iOS, TalkBack/Android, representative desktop screen-reader/browser combinations, zoom/reflow, contrast, alternative input, accessible exports.
+- Security: direct-object/field access, public enumeration, proxy scope, role revocation, command injection, malicious retrieved content, safe export.
+- Reliability: dropped connection, uncertain save outcome, retry, stale plan, simultaneous edits, provider outage, partial execution.
+- Migration: source-to-target counts/crosswalks and relationship integrity.
+- AI evaluation: supported/unsupported intent, ambiguity, hallucination/omission, translated requests, sensitive context, confirmation binding.
+
+LAUNCH ACCEPTANCE GATES
+
+GATE-01: Approved scope, actual public-role list, permission boundaries, and dependent policies.
+GATE-02: Released feature acceptance cases pass; unresolved blocking failures are remediated.
+GATE-03: Accessibility acceptance evidence covers complete released public tasks.
+GATE-04: No known unauthorized-access bypass in released functionality.
+GATE-05: Save/assignment consistency, duplicate prevention, and concurrency handling verified.
+GATE-06: Public submissions/resources work without staff credentials.
+GATE-07: Official reports/exports reconcile with approved definitions and retained snapshots.
+GATE-08: AI confirmation, scope, injection defenses, verified results, and manual fallback pass.
+GATE-09: Migration and tested recovery meet approved targets.
+GATE-10: Content/support owners, known limitations, operational training, and incident handling are established.
+
+Accessibility release criteria and defect severity must be approved, not replaced by a blanket claim that automated checks passed.
+
+
+B9. REQUIREMENTS TRACEABILITY
+
+FORMAT: Business requirement | Functional coverage | Verification
+
+BR-01 | FR-11, FR-16, FR-A01–A10, ACC-01–53 | AC-11, AC-16, AC-A01–A09, GATE-03/06
+BR-02 | FR-02, FR-18, FR-C01–C11 | AC-02, AC-18, AC-C01/02/09/11; MET-01/02
+BR-03 | FR-02, FR-03, FR-04, FR-06, FR-07 | AC-02–07; BP-01
+BR-04 | FR-05, FR-06 | AC-05/06; BP-03
+BR-05 | FR-10, FR-11, FR-12 | AC-10–12; BP-02; MET-05
+BR-06 | FR-00.03, FR-08, FR-12, FR-C10 | AC-08/12; audit tests; GATE-05
+BR-07 | FR-09, FR-C04 | AC-09; reminder persistence/failure tests
+BR-08 | FR-14, FR-15 | AC-14/15; GATE-07; MET-06
+BR-09 | FR-16, FR-A06/A09 | AC-16; resource freshness/language checks
+BR-10 | FR-00.01/02, FR-01, FR-C02/C05/C10, NFR-02/03 | AC-00A, AC-01, AC-C03/05/10; GATE-04
+BR-11 | FR-13 | AC-13; badge/printing contract tests
+BR-12 | FR-17 | AC-17; actual delivery/acknowledgment tests if included
+BR-13 | FR-C01–C11, CMD-01–38 | AC-C01–C12; BP-05
+BR-14 | FR-C12, AI-01–12 | AC-C04/05/10/12; AI evaluations; GATE-08
+BR-15 | FR-00.04–07, NFR-04–08, MIG-01–09 | AC-00B–D; failure/recovery tests; GATE-09
+BR-16 | FR-18, CMD-04, A8 approval/change control | AC-18; shared-alias/version tests; GATE-01
+
+ACCESSIBILITY ANNEX TRACE
+
+ACC-01–03 → FR-A01/A10 → conformance approach, manual coverage, support.
+ACC-04–12 → FR-A02 → semantics, visual adaptation, text/location alternatives.
+ACC-13–18 → FR-A03 → keyboard/motor/focus/time-limit tests.
+ACC-19–22 → FR-A04 → audio/media/non-voice equivalence.
+ACC-23–31 → FR-A05 → plain language, errors, review, interruption, motion, manual help.
+ACC-32–36 → FR-A06 → complete language coverage and critical-content review.
+ACC-37–41 → FR-A07 → network, upload, permissions, shared-device tests.
+ACC-42–48 → FR-A08 → input, identity, abuse, consent, helper/privacy tests.
+ACC-49–53 → FR-A09 → documents, confirmation, external resources, AI accessibility.
+
+COMMAND ANNEX TRACE
+
+CMD-01–05 → FR-C01; CMD-06–11 → FR-C02; CMD-12 → FR-C03.
+CMD-13–19 → FR-C04; CMD-20–23 → FR-C05; CMD-24–26 → FR-C06.
+CMD-27–28 → FR-C07; CMD-29–30 → FR-C08; CMD-31–34 → FR-C09.
+CMD-35–37 → FR-C10; CMD-38 → FR-C11.
+
+PRIOR INVENTORY COVERAGE
+
+F01–F18 are expanded in B2.
+GOAL-01–GOAL-10 are retained in A2.
+AI-01–AI-12 are retained in B3.
+Public accessibility and global command details are retained/restored in the annex.
+All four original end-to-end stories are expanded as BP-01–BP-04; command execution adds BP-05.
+Original cross-cutting requirements are expanded in B1, B5–B8.
+
+
+B10. DECISION REGISTER AND GLOSSARY
+
+Each TBD requires an owner, decision, approval evidence, and date when resolved.
+
+DEC-01. Daily coordination, disaster coordination, or both? Owner: product/operations.
+DEC-02. Exact public-role list and account requirements? Owner: product/security.
+DEC-03. Parent event/disaster and multi-organization scope? Owner: product/data.
+DEC-04. Individual/team/vehicle/equipment resource scope? Owner: operations.
+DEC-05. Responsibility/record/field permission matrix and self-review policy? Owner: operations/security.
+DEC-06. Save/dispatch/closure prerequisites and allowed mission transitions? Owner: operations.
+DEC-07. Duty/availability semantics, concurrent assignments, release/override? Owner: operations.
+DEC-08. Damage classification, verification, decision states, re-review, counting? Owner: assessment lead.
+DEC-09. Public status/correction/withdrawal verification? Owner: product/security.
+DEC-10. Proxy authority, consent, and helper follow-up access? Owner: product/privacy.
+DEC-11. Supported languages, support channels, accommodation handling? Owner: content/accessibility.
+DEC-12. Draft retention, shared devices, full offline and location tracking? Owner: product/security.
+DEC-13. Badge purpose, physical printing, credential scan validation? Owner: credential coordinator.
+DEC-14. Actual notification channels, recipients, delivery/escalation rules? Owner: operations.
+DEC-15. Metric formulas, reporting periods, official review/snapshots? Owner: planning.
+DEC-16. Command defaults/syntax, aliases, batch limits, confirmation details, reversal? Owner: product/operations/security.
+DEC-17. AI provider, sensitive context, retention, languages, quality threshold? Owner: product/security.
+DEC-18. Numeric availability/latency/load/RPO/RTO/retention targets? Owner: operations/delivery/security.
+DEC-19. Accessibility test coverage, release severity criteria, remediation owner? Owner: accessibility/product.
+DEC-20. Migration mapping, cutover, residual exceptions, recovery approval? Owner: data/operations.
+DEC-21. Integration licensing, providers, budgets, and support ownership? Owner: product/operations.
+DEC-22. Approved delivery phases and funding? Owner: product.
+
+No fixed budget, delivery timeline, operating SLA, or legal-compliance certification is asserted by this draft.
+
+GLOSSARY
+
+BRD: why the business needs the product, its outcomes, scope, rules, and success measures.
+FRD: what the system must do, its inputs, behavior, exceptions, and verifiable acceptance.
+Persona: responsibility/use-case grouping, not necessarily a permission role.
+Public role: a confirmed public participant responsibility; examples remain proposed.
+Mission: operational response record, separate from a potential parent disaster/event.
+Assessment: documented property/community impact with source and verification.
+Cleared: proposed operational completion/release.
+Closed: proposed administrative finalization.
+Draft: work not yet submitted/issued; not evidence of dispatch or receipt.
+Verified: confirmed through an approved process, not simply generated or reported.
+Idempotency: repeated delivery of one request does not repeat its business effect.
+Record version: a means to detect changes since a request was prepared.
+Compensating action: a new action correcting an earlier effect when true undo is unavailable.
+Action catalog: explicitly supported governed operations callable manually or by commands.
+Shorthand: concise deterministic syntax for an approved action.
+Short key: keyboard invocation or approved abbreviated command, distinguished in implementation.
+Official snapshot: retained report values and provenance for a specific issued period/scope.
+WCAG: Web Content Accessibility Guidelines; AA is the proposed accessibility target.
+RPO: maximum approved data-loss interval in recovery.
+RTO: maximum approved restoration time.
+
+END OF BRD/FRD CORE
+
+============================================================
+ANNEX — COMPLETE PUBLIC ACCESSIBILITY AND GLOBAL COMMAND DETAIL
+============================================================
+
+ANNEX STATUS AND NUMBERING
+
+The retained section numbers 9 and 10 below refer to the earlier inventory. They are preserved for reference and are not navigation specifications.
+
+All entries below are proposed rebuild requirements, not claims of existing implementation. The annex complements the BRD and FRD; conditional features remain conditional even where detailed requirements are provided.
+
+Sections 9.1–9.3 and ACC-01 through ACC-07 are restored from the earlier requirements. From ACC-08 onward, the surviving source text is preserved without omissions.
+
+
+============================================================
+9. PUBLIC ROLES AND ACCESSIBILITY REQUIREMENTS
+============================================================
+
+STATUS AND SCOPE
+
+The product owner has specified several public roles and extensive accessibility features for those roles. The exact role list has not yet been supplied.
+
+The public-role examples below are candidates for confirmation, not established account roles.
+
+Accessibility applies to all public tasks: reporting, correcting information if supported, reading resources, understanding consent, receiving confirmation, and obtaining help. Relevant requirements also apply to staff tasks.
+
+This section defines capabilities and acceptance expectations, not navigation patterns or layouts.
+
+
+9.1 PROPOSED PUBLIC-ROLE EXAMPLES
+
+PUBLIC ROLE A: AFFECTED RESIDENT / SURVIVOR
+- Reports damage or community impact affecting themselves.
+- Needs plain language, low-effort entry, interruption recovery, accessible confirmation, and assistance information.
+
+PUBLIC ROLE B: PROPERTY OWNER / LANDLORD
+- Reports damage to a property they own or represent.
+- Needs clear property identification and a distinction between reporter and occupants.
+- Multiple-property reporting requires scope confirmation.
+
+PUBLIC ROLE C: RENTER / HOUSEHOLD MEMBER
+- Reports damage and displacement without needing ownership information.
+- Needs unknown answers and must not be blocked by owner-only information.
+
+PUBLIC ROLE D: CAREGIVER / FAMILY MEMBER / AUTHORIZED HELPER
+- Assists someone with reporting or resource access.
+- Needs identification of the reporter and the person represented.
+- Proxy reporting requires approved consent, authority, and privacy rules.
+
+PUBLIC ROLE E: COMMUNITY MEMBER / WITNESS
+- Reports observed property or infrastructure damage.
+- Needs to distinguish observed facts from assumptions and state when ownership or occupancy is unknown.
+- Third-party observations are not owner-confirmed assessments.
+
+PUBLIC ROLE F: COMMUNITY ORGANIZATION / LOCAL BUSINESS REPRESENTATIVE
+- Reports organizational impact or seeks approved recovery information.
+- Needs clear representation and contact information.
+- Organizational and bulk reporting require scope confirmation.
+
+DISABILITY IS NOT A PERMISSION ROLE
+- Do not create permission roles based on disability.
+- People in any public role may use screen readers, magnification, voice control, switch devices, captions, translation, or assisted reporting.
+- Accessibility must be available without proving a disability or disclosing a diagnosis.
+
+
+9.2 ACCESSIBILITY STANDARD AND VERIFICATION
+
+ACC-01. ACCESSIBILITY TARGET
+- Target WCAG 2.2 Level AA for public-facing experiences and apply the same target to staff experiences.
+- Validate complete tasks, including external services and generated documents.
+- Verify conformance; using an accessible component library does not prove it.
+- Determine applicable legal and procurement obligations separately; this document does not certify legal compliance.
+
+ACC-02. TESTING COVERAGE
+- Test reporting, validation, interrupted-task recovery, submission confirmation, resources, and any supported status/correction workflow.
+- Combine automated checks with keyboard, screen-reader, magnification, mobile accessibility, and representative-user testing.
+- Include VoiceOver on iOS, TalkBack on Android, and representative desktop screen-reader/browser combinations.
+- Record defects and retest before release.
+
+ACC-03. ACCESSIBILITY SUPPORT
+- Publish an accessible statement describing supported capabilities, known limitations, and how to report barriers.
+- Maintain an accessible assistance contact.
+- Establish ownership and response expectations for accessibility feedback.
+
+
+9.3 VISION AND SCREEN-READER SUPPORT
+
+ACC-04. SEMANTIC INFORMATION
+- Use meaningful headings, labels, groups, and reading order.
+- Programmatically associate fields with instructions, requirements, and errors.
+
+ACC-05. ACCESSIBLE NAMES
+- Give meaningful names to controls, attachments, and actions.
+- Do not rely solely on icons, placeholders, or visual position.
+
+ACC-06. DYNAMIC ANNOUNCEMENTS
+- Announce validation results, saved state, submission results, and important updates to assistive technology.
+- Avoid excessive or repeated announcements.
+
+ACC-07. TEXT RESIZING AND REFLOW
+- Support text resizing to 200% without loss of functionality.
+- Support reflow at 320 CSS pixels without unnecessary two-dimensional scrolling, except essential two-dimensional content such as maps.
+- Provide an equivalent non-map way to complete location-related tasks.
+
+ACC-08. CONTRAST
+- Meet applicable AA text and non-text contrast requirements.
+- Support visible focus, selected states, error states, and controls in every theme.
+
+ACC-09. COLOR-INDEPENDENT MEANING
+- Express priority, severity, approval, and errors through text or other cues in addition to color.
+
+ACC-10. HIGH-CONTRAST COMPATIBILITY
+- Preserve information and usable controls with operating-system forced colors and contrast settings.
+
+ACC-11. IMAGE ALTERNATIVES
+- Provide useful text alternatives for informative images.
+- Mark decorative images appropriately.
+- Provide editable descriptions for uploaded evidence when descriptions are needed.
+- AI-generated descriptions must be reviewable and must not assert unverified damage findings.
+
+ACC-12. LOCATION WITHOUT VISION
+- Allow textual location entry, coordinate entry where appropriate, and landmark descriptions.
+- Do not require selecting a point on a map to submit.
+- Make lookup results understandable to screen-reader users.
+
+
+9.4 MOTOR, KEYBOARD, TOUCH, AND VOICE ACCESS
+
+ACC-13. KEYBOARD COMPLETION
+- Allow all essential public tasks using only a keyboard.
+- Avoid keyboard traps and provide clear focus.
+
+ACC-14. FOCUS MANAGEMENT
+- Preserve logical focus when content changes.
+- Ensure focus is not obscured by overlays or persistent content.
+- Return focus appropriately after temporary interactions close.
+
+ACC-15. TOUCH TARGETS
+- Meet WCAG 2.2 AA target-size requirements, including applicable exceptions.
+- Prefer targets of at least 44 by 44 CSS pixels for primary field-use actions where practical.
+
+ACC-16. SIMPLE INPUT ALTERNATIVES
+- Do not require dragging, swiping, complex gestures, or precise pointer movement.
+- Provide simple alternatives for any gesture-based action.
+
+ACC-17. VOICE AND SWITCH COMPATIBILITY
+- Make visible labels consistent with accessible names for voice control.
+- Support sequential operation with switch devices and alternative input tools.
+
+ACC-18. NO UNNECESSARY TIME PRESSURE
+- Avoid timed public entry when possible.
+- Provide warning and extension options for applicable time limits.
+- Preserve work safely when a session expires.
+
+
+9.5 HEARING, SPEECH, AND MEDIA ACCESS
+
+ACC-19. TEXT EQUIVALENTS
+- Never make an audible alert the only indication of a result or problem.
+- Provide text equivalents for operational instructions conveyed through sound.
+
+ACC-20. CAPTIONS AND TRANSCRIPTS
+- Provide accurate captions and transcripts for published media where applicable.
+- Do not publish important guidance as inaccessible audio or video alone.
+
+ACC-21. OPTIONAL VOICE INPUT
+- If dictation is introduced, provide equivalent typed input.
+- Let users review and correct transcripts before submission.
+- Do not assume the user can speak or can safely speak aloud.
+
+ACC-22. NON-VOICE ASSISTANCE
+- Offer a maintained non-voice assistance channel when public support is provided.
+- Do not require a telephone call as the only way to resolve a reporting barrier.
+
+
+9.6 COGNITIVE ACCESSIBILITY, LITERACY, AND STRESS
+
+ACC-23. PLAIN LANGUAGE
+- Explain emergency-management and damage-assessment terms.
+- Use direct wording and concrete examples.
+- Have public content reviewed for comprehension.
+
+ACC-24. LIMITED REQUIRED INFORMATION
+- Ask only for necessary information.
+- Clearly distinguish required and optional fields.
+- Allow unknown and not applicable when valid.
+
+ACC-25. CONSISTENT INSTRUCTIONS
+- Keep terminology consistent across input, confirmation, resources, and generated content.
+- Explain the expected answer and format before errors occur.
+
+ACC-26. ERROR RECOVERY
+- Identify what is wrong, which field is affected, and how to correct it.
+- Preserve valid answers.
+- Provide accessible error summaries and field-level guidance.
+
+ACC-27. REVIEW AND CORRECTION
+- Let users review and correct important information before final submission.
+- Provide correction or withdrawal rules after submission where supported.
+
+ACC-28. INTERRUPTION RECOVERY
+- Consider optional saved drafts and resumable submissions.
+- Distinguish local drafts, uploaded drafts, and submitted reports.
+- Never expose saved information to the next person using a shared device.
+
+ACC-29. MOTION AND FLASHING
+- Respect reduced-motion preferences.
+- Avoid flashing content and unnecessary animation.
+- Do not communicate important information through animation alone.
+
+ACC-30. CALM, ACCURATE CONFIRMATION
+- Clearly state whether the report was received.
+- Provide a reference number in accessible text.
+- Explain expected next steps without promising response times or assistance that have not been approved.
+
+ACC-31. HELP WITHOUT AI
+- Provide human-reviewed instructions and examples even if conversational AI is available.
+- Never require a chat conversation to finish a public task.
+
+
+9.7 LANGUAGE AND TRANSLATION
+
+ACC-32. LANGUAGE SCOPE
+- Confirm supported public languages based on community needs.
+- Do not assume current caller-language fields establish translated public experiences.
+
+ACC-33. COMPLETE TRANSLATION
+- Translate instructions, field labels, errors, consent, confirmation, help, and resources for supported languages.
+- Preserve entered information when changing language where practical.
+
+ACC-34. LANGUAGE METADATA
+- Identify the language of content for assistive technology.
+- Support relevant scripts and text direction when those languages are in scope.
+
+ACC-35. TRANSLATION QUALITY
+- Human-review safety-critical instructions and official assistance information.
+- Label machine-translated content where appropriate.
+- Preserve original report text alongside translations.
+- Do not make eligibility or safety decisions based solely on an unreviewed translation.
+
+ACC-36. ACCEPT VARIED NAMES AND ADDRESSES
+- Support appropriate Unicode input and varied name formats.
+- Avoid unnecessary formatting restrictions on contact and address information.
+
+
+9.8 LOW BANDWIDTH, OLDER DEVICES, AND INTERRUPTIONS
+
+ACC-37. LIGHTWEIGHT COMPLETION
+- Keep essential reporting functional without loading optional maps, imagery, or AI services.
+- Establish performance targets using representative older devices and slow networks.
+
+ACC-38. UPLOAD RESILIENCE
+- Explain accepted file formats and size limits before upload.
+- Provide accessible progress, cancellation, and retry behavior.
+- Preserve other report information after a failed upload.
+- Consider compression and resumable upload where needed.
+
+ACC-39. NETWORK FAILURE
+- Clearly distinguish unsent, sending, failed, and received states.
+- Protect retries against duplicate submissions.
+- Do not imply that an offline draft has been received by staff.
+
+ACC-40. OPTIONAL DEVICE PERMISSIONS
+- Provide manual alternatives when location, camera, or microphone permissions are denied or unavailable.
+
+ACC-41. SHARED-DEVICE SAFETY
+- Avoid retaining sensitive personal information by default on public or shared devices.
+- Clearly explain and control any saved-draft behavior.
+- Provide a way to remove local draft information.
+
+
+9.9 FORMS, IDENTITY, CONSENT, AND PRIVACY
+
+ACC-42. ACCESSIBLE INPUT ASSISTANCE
+- Use appropriate autofill and input-purpose metadata.
+- Allow paste and password-manager assistance where authentication exists.
+- Avoid repeated entry of information already provided when it can safely be reused.
+
+ACC-43. ACCESSIBLE AUTHENTICATION
+- If public accounts or report-status authentication are added, avoid memory or puzzle requirements without accessible alternatives.
+- Support accessible recovery and verification.
+
+ACC-44. ACCESSIBLE ANTI-ABUSE CONTROLS
+- Do not rely solely on image puzzles or audio challenges.
+- Evaluate anti-abuse tools for keyboard, screen-reader, cognitive, and mobile accessibility.
+
+ACC-45. CLEAR CONSENT
+- Explain why information is collected and how it is used.
+- Distinguish required acknowledgments from optional communication consent.
+- Do not bundle optional consent into permission to report damage.
+
+ACC-46. ASSISTED REPORTING
+- If proxy reporting is enabled, distinguish the helper, affected person, and property representative.
+- Record relevant authority or consent without collecting unnecessary sensitive information.
+- Define what confirmations or follow-up information the helper may receive.
+
+ACC-47. ACCOMMODATION REQUESTS
+- Consider an optional way to request accessible follow-up or a preferred communication method.
+- Do not require a medical diagnosis.
+- Restrict access to accommodation information and define how requests will actually be handled.
+
+ACC-48. EMERGENCY AND ELIGIBILITY CLARITY
+- Provide accessible, locally approved instructions for immediate emergencies.
+- State that a damage report is not an emergency dispatch request.
+- State that submission does not determine assistance eligibility.
+
+
+9.10 ACCESSIBLE RESOURCES, DOCUMENTS, AND AI
+
+ACC-49. ACCESSIBLE DOCUMENTS
+- Publish resources in accessible text or HTML where practical.
+- Use tagged, structured PDFs with logical reading order when PDFs are required.
+- Do not use scanned-image documents as the only source of essential guidance.
+
+ACC-50. ACCESSIBLE CONFIRMATION OUTPUT
+- Make report references, summaries, and any downloadable receipts accessible.
+- Do not provide confirmation only as an image or QR code.
+
+ACC-51. ACCESSIBLE EXTERNAL RESOURCES
+- Review critical external resources for accessibility.
+- Provide accessible equivalent information or assistance when a critical dependency creates a barrier.
+
+ACC-52. OPTIONAL AI ASSISTANCE
+- Make AI interaction usable with keyboard, screen readers, voice control, and magnification.
+- Provide equivalent structured, non-conversational completion.
+- Do not replace specific field errors with vague AI explanations.
+
+ACC-53. CONTROLLED AI OUTPUT
+- Allow users to edit or reject generated text.
+- Offer simpler explanations without changing the underlying facts.
+- Announce AI activity and results accessibly without excessive interruptions.
+- Do not expose private report information through generated responses or external sharing.
+
+
+9.11 PUBLIC ACCESSIBILITY USER STORIES
+
+- As a blind resident, I want to complete and confirm a damage report with a screen reader without using a map.
+- As a person with low vision, I want enlarged text and sufficient contrast without losing information or controls.
+- As a person with limited dexterity, I want to complete the task without precise gestures or short time limits.
+- As a voice-control user, I want to operate actions using their visible labels.
+- As a Deaf or hard-of-hearing resident, I want all essential information and assistance available without relying on audio.
+- As a person who cannot speak, I want typed reporting and non-voice help.
+- As a person experiencing stress or cognitive fatigue, I want plain language, clear examples, and forgiving error recovery.
+- As a renter, I want to submit a report without owner-only information.
+- As a helper, I want to report on someone's behalf under clear consent and privacy rules.
+- As a person using another language, I want instructions, errors, and confirmation in a supported language.
+- As a person with slow connectivity, I want to complete essential reporting without optional media or AI.
+- As a shared-device user, I want my report and contact information protected after I finish.
+- As a resident who does not want AI assistance, I want to complete the same task without it.
+
+
+9.12 MINIMUM ACCEPTANCE EXPECTATIONS
+
+Before public release:
+- A representative keyboard-only user can complete reporting and access resources without a pointer.
+- A screen-reader user can identify fields, understand errors, review answers, submit, and receive confirmation.
+- Text enlargement and reflow do not remove required information or functionality.
+- Unknown location or denied device permission does not block a valid report.
+- Failed submissions preserve answers and never show a false received state.
+- Retrying a submission does not create unintended duplicates.
+- Public resources and essential confirmations are accessible without staff authentication.
+- Supported-language coverage includes validation, consent, and confirmation, not only introductory text.
+- AI unavailability does not prevent completion.
+- Public-role permissions and proxy-reporting boundaries are tested.
+- Accessibility defects and known limitations are documented and reviewed against the agreed release criteria.
+
+ROLE-SCOPE DECISIONS STILL REQUIRED
+- Confirm the exact public roles.
+- Confirm whether public accounts are needed for any role.
+- Confirm proxy authority and consent rules.
+- Confirm whether organizational or multiple-property reporting is included.
+- Confirm supported languages and accessible support channels.
+- Confirm whether saved drafts, status tracking, corrections, and accommodation requests are included.
+- Confirm ownership of accessibility testing and ongoing remediation.
+
+
+============================================================
+10. GLOBAL AI COMMAND WINDOW, SHORT KEYS, AND SHORTHAND
+============================================================
+
+STATUS AND INTENT
+
+This is a requested rebuild capability, not an existing implemented feature.
+
+Product-owner requirement:
+Instead of clicking throughout the application, a user should be able to open an AI context window, type a demand, change, or function, and have it take action anywhere in the application.
+
+The command window is an application-wide action interface, not merely a chatbot that explains what to click. It should perform supported actions and return verified results.
+
+"Anywhere" means available across application contexts and capable of working across supported features, subject to the user's permissions. It does not mean unrestricted access to every record or arbitrary execution of code.
+
+This section defines functional behavior, keyboard invocation, and execution requirements. It does not prescribe the application's overall navigation pattern or visual layout.
+
+
+10.1 GOALS
+
+- Reduce repetitive clicking and data entry.
+- Let people express their intended outcome in natural language.
+- Support short, repeatable commands for common tasks.
+- Apply the same action interface across missions, personnel, assessments, resources, reporting, and authorized administration.
+- Preserve context without requiring the user to repeatedly identify the same record.
+- Make execution transparent, permission-aware, accessible, and recoverable.
+- Provide the same validation and accountability as equivalent manual actions.
+
+
+10.2 GLOBAL ACCESS AND INVOCATION
+
+CMD-01. APPLICATION-WIDE AVAILABILITY
+- Make the command window available throughout supported application experiences.
+- Do not require changing application context before asking it to act on a different authorized feature.
+- Preserve the user's current work unless the requested action explicitly changes it.
+
+CMD-02. SHORT-KEY INVOCATION
+- Provide a configurable keyboard shortcut to open or focus the command window.
+- Proposed desktop defaults are Ctrl+K on Windows/Linux and Command+K on macOS, subject to conflict and accessibility review.
+- Do not override reserved system or assistive-technology shortcuts.
+- Provide an accessible on-screen alternative for touch users and people who cannot use shortcuts.
+- Allow closing or canceling without losing unrelated work.
+
+CMD-03. SHORTHAND COMMANDS
+- Support concise commands alongside natural language.
+- Proposed examples:
+  - /mission new
+  - /mission 20261009-003 status on_scene
+  - /assign 20261009-003 person:123
+  - /damage draft
+  - /sitrep draft
+  - /resource find shelter
+- Treat these as illustrative syntax, not finalized commands.
+- Resolve commands to stable record identifiers, not names alone.
+- Make recognized commands and required arguments discoverable through accessible help.
+
+CMD-04. REUSABLE ALIASES
+- Allow approved aliases for frequently used commands, such as "brief" for a briefing draft.
+- Define whether aliases are personal or organization-wide.
+- Restrict organization-wide alias changes to authorized administrators.
+- Show the expanded action and targets before consequential execution.
+- Reject aliases that conflict with reserved commands or conceal destructive actions.
+
+CMD-05. NO REQUIRED AI CONVERSATION
+- Allow deterministic shorthand to execute through the same validated action system without unnecessary model interpretation.
+- Preserve manual completion for all essential actions.
+- AI or command-window outages must not disable the underlying operational capabilities.
+
+
+10.3 CONTEXT AND TARGET RESOLUTION
+
+CMD-06. EXPLICIT CONTEXT
+- Use authorized context such as the selected record, current task, and referenced identifiers.
+- Show which record or scope the command will affect.
+- Let users override or clear inferred context.
+- Never treat every visible record as a selected action target.
+
+CMD-07. CROSS-FEATURE COMMANDS
+- Support acting on a mission while the user is working with personnel, or drafting a report while reviewing assessments.
+- Do not bind action capability solely to the currently displayed feature.
+- Apply permissions to each referenced feature and record independently.
+
+CMD-08. AMBIGUITY HANDLING
+- Ask a focused clarification when a person, mission, property, date, or scope is ambiguous.
+- Do not guess between similarly named personnel or properties.
+- If "this mission" is used without a valid selected mission, request an identifier.
+- Present only authorized matches.
+
+CMD-09. CONTEXT FRESHNESS
+- Refresh important record state before acting.
+- Identify records changed since the command was prepared.
+- Require renewed review when a change materially alters the intended action.
+- Do not use an old conversation as authoritative evidence of current availability or approval state.
+
+CMD-10. TEMPORAL CONTEXT
+- Resolve relative dates and times using the configured organizational timezone.
+- Show the interpreted date/time when it affects an action or reporting period.
+- Clarify ambiguous instructions such as "tomorrow morning" when an exact time is required.
+
+CMD-11. USER INPUT VERSUS RECORD CONTENT
+- Treat report descriptions, attachments, external resources, and other users' notes as data, not instructions to the command system.
+- Do not execute commands embedded in retrieved content.
+- Do not allow record content to override permissions, confirmation requirements, or system rules.
+
+
+10.4 SUPPORTED ACTION COVERAGE
+
+CMD-12. ACTION CATALOG
+- Maintain an explicit catalog of supported actions, parameters, permissions, validation, and confirmation requirements.
+- Connect actions to the same server-side business operations used by manual workflows.
+- Do not grant the model unrestricted SQL, shell, or arbitrary code execution.
+- Clearly identify unsupported actions instead of claiming they were completed.
+
+CMD-13. MISSION ACTIONS
+- Search and summarize authorized missions.
+- Create mission drafts and validate required information.
+- Update permitted fields.
+- Suggest or change priority under applicable confirmation rules.
+- Assign or release personnel.
+- Record permitted status changes and situation updates.
+- Request closure or reopening with required justification.
+- Apply record-lock and review rules.
+
+CMD-14. PERSONNEL ACTIONS
+- Find personnel by recorded skills, department, or availability.
+- Update permitted profile and status fields.
+- Show assignment conflicts.
+- Request assignments using the same operational rules as manual assignment.
+- Do not infer qualifications or availability that are not recorded.
+
+CMD-15. DAMAGE-ASSESSMENT ACTIONS
+- Create and update drafts.
+- Find reports and suggest duplicates.
+- Record evidence references through supported attachment workflows.
+- Request review, clarification, approval, or rejection according to permissions.
+- Preserve the distinction between public observation and verified assessment.
+
+CMD-16. REPORTING AND REMINDER ACTIONS
+- Draft summaries and situation reports.
+- Generate permitted exports with explicit scope and reporting period.
+- Create, modify, snooze, or complete supported reminders.
+- Keep official report issuance separate from generating a draft.
+- Do not complete a reminder until the associated update or action has saved.
+
+CMD-17. RESOURCE, CONTACT, AND BADGE ACTIONS
+- Search published resources and authorized contacts.
+- Draft or update resources where authorized.
+- Request supported badge issuance or reprint workflows.
+- Distinguish generating a badge document from a confirmed physical print.
+- Do not claim external messages were delivered without delivery evidence.
+
+CMD-18. ADMINISTRATIVE ACTIONS
+- Support authorized configuration and account operations only after their underlying workflows exist.
+- Require explicit confirmation for permission changes, deactivation, and destructive configuration.
+- Never grant permissions merely because a command asks for them.
+
+CMD-19. PUBLIC-ROLE ACTIONS
+- Let public users draft or submit their own reports and find approved resources.
+- Apply identity or secure-reference verification before returning private report status or permitting corrections.
+- Apply approved proxy-reporting rules when acting on someone else's behalf.
+- Do not expose staff rosters, private missions, or other residents' data to public users.
+- Do not convert a public damage report into emergency dispatch without a separately approved workflow.
+
+
+10.5 EXECUTION AND SAFETY
+
+CMD-20. STRUCTURED ACTION PLAN
+- Convert each request into explicit targets, parameters, expected changes, and required checks.
+- For multi-action requests, show the sequence and dependencies.
+- Differentiate questions, suggestions, drafts, and requests to execute.
+
+CMD-21. PERMISSION CHECKS AT EXECUTION
+- Authenticate and authorize each action on the server.
+- Recheck authorization when the user confirms execution.
+- Prevent access through aliases, bulk commands, conversation history, or inferred context from bypassing permissions.
+
+CMD-22. CONFIRMATION POLICY
+- Read-only lookups and reversible drafting may execute without extra confirmation where permitted.
+- Apply the existing human-confirmation requirement to dispatch, priority changes, approval, closure, permissions, and external communications.
+- Require confirmation for destructive actions, bulk changes, publication, and sensitive exports.
+- Show exact records, changed values, and material consequences.
+- Do not infer confirmation from silence or unrelated conversation.
+
+CMD-23. VALIDATION
+- Use the same required fields, state transitions, assignment rules, and privacy controls as manual actions.
+- Validate generated values before saving.
+- Explain missing requirements in plain language and retain the draft.
+
+CMD-24. ATOMIC OPERATIONS AND PARTIAL FAILURE
+- Perform related database changes together where possible, including mission/personnel assignment updates.
+- Do not promise all-or-nothing completion for external side effects that cannot be rolled back.
+- If part of a multi-action request fails, state exactly what succeeded, what failed, and what remains.
+- Avoid automatic retry of non-idempotent external actions.
+
+CMD-25. DUPLICATE PREVENTION
+- Protect against repeated execution caused by double submission, retries, reconnects, or model/tool retries.
+- Associate requests with execution identifiers.
+- Return prior results where appropriate rather than creating duplicate records.
+
+CMD-26. VERIFIED RESULTS
+- Show success only after the underlying operation confirms it.
+- Return affected record references and relevant saved values.
+- Distinguish drafted, queued, saved, sent, delivered, and failed.
+- Refresh affected data so manual and command-based experiences agree.
+
+CMD-27. CANCELLATION
+- Allow cancellation before execution.
+- For work already underway, report whether cancellation actually stopped it.
+- Do not claim cancellation reversed an already completed external action.
+
+CMD-28. UNDO AND RECOVERY
+- Offer undo for actions that can safely be reversed.
+- Define which actions require a compensating action rather than true undo.
+- Preserve history of the original and reversal actions.
+- Explain when dispatch, delivered communication, or issued documents cannot be recalled.
+
+CMD-29. UNSAVED WORK
+- Do not silently overwrite a user's unsaved form changes.
+- Warn when command execution affects the same record as an open draft.
+- Offer an explicit choice to preserve, reconcile, or discard conflicting draft information.
+
+CMD-30. BULK AND REPEATED ACTIONS
+- Define allowed batch sizes, rate limits, and role restrictions.
+- Show the resolved record count and scope before bulk execution.
+- Provide per-record results for partial failures.
+- Treat recurring aliases or macros as multiple governed actions, not unrestricted automation.
+
+
+10.6 ACCESSIBILITY AND PUBLIC USABILITY
+
+CMD-31. ACCESSIBLE COMMAND INTERACTION
+- Support keyboard-only, screen-reader, magnification, voice-control, and touch operation.
+- Manage focus consistently and return it appropriately when closed.
+- Announce clarification, execution progress, errors, and results without excessive interruptions.
+- Meet the accessibility requirements in Section 9.
+
+CMD-32. PLAIN-LANGUAGE AND LANGUAGE SUPPORT
+- Accept natural-language requests without requiring users to memorize syntax.
+- Explain shorthand and unsupported requests clearly.
+- Support approved languages and preserve original text where translation is used.
+- Apply additional review to translated consequential actions.
+
+CMD-33. OPTIONAL DICTATION
+- If voice input is included, allow transcript review and correction before action.
+- Provide a fully equivalent typed interaction.
+- Never execute a consequential action solely from an unreviewed speech transcript.
+
+CMD-34. LOW-CONNECTIVITY BEHAVIOR
+- Preserve unsubmitted command text safely where appropriate.
+- Clearly show when a request has not reached the server.
+- Do not replay stale queued consequential commands automatically after reconnect.
+- Allow deterministic supported commands where the AI provider is unavailable, without implying offline server access.
+
+
+10.7 PRIVACY, AUDIT, AND PERFORMANCE
+
+CMD-35. MINIMUM NECESSARY CONTEXT
+- Send only authorized information needed to interpret and execute the request.
+- Exclude unrelated sensitive records from model context.
+- Apply approved provider-retention and sensitive-data policies.
+
+CMD-36. HISTORY CONTROLS
+- Define command-history retention and access.
+- Avoid exposing private command history on shared devices.
+- Distinguish clearing personal conversation history from deleting mandatory operational audit records.
+
+CMD-37. EXECUTION AUDIT
+- Record the initiating user, target records, interpreted action, confirming user where applicable, execution time, and result.
+- Capture meaningful before-and-after changes.
+- Avoid unnecessary storage of sensitive free-text prompts in general-purpose logs.
+- Associate multi-action results with the original request.
+
+CMD-38. RESPONSIVENESS AND OBSERVABILITY
+- Establish latency and timeout targets for interpretation and execution separately.
+- Provide progress for longer operations.
+- Measure completion, clarification frequency, errors, duplicate prevention, and user corrections.
+- Monitor AI/action failures without logging secrets or unnecessary personal content.
+
+
+10.8 EXAMPLE REQUESTS AND EXPECTED BEHAVIOR
+
+Example: "Create a welfare-check mission at [address]."
+- Prepare a draft, resolve the location, ask for missing required information, and use the normal mission-save rules.
+- Do not imply that drafting dispatched a responder.
+
+Example: "Assign [person] to mission [reference]."
+- Resolve the exact person and mission, check skills/availability/conflicts and permissions, show the proposed assignment, obtain confirmation, and save related changes consistently.
+
+Example: "Mark this mission on scene."
+- Resolve the selected mission, verify permitted state transition, update the status and relevant timestamp under the applicable confirmation policy, and report the saved result.
+
+Example: "Change priority to 1."
+- Identify the target mission, request required justification, display the change, and obtain confirmation.
+
+Example: "Give me a briefing for the last 12 hours."
+- Resolve timezone and reporting scope, gather authorized records, and create a sourced draft.
+- Do not publish an official report without the required review.
+
+Example: "Approve all these damage reports."
+- Resolve exact reports and count, check review permissions and completeness, show decisions and exceptions, and require explicit bulk confirmation.
+
+Example: "Find shelter resources near the property in my report."
+- Use only authorized report location and approved published resources.
+- Do not invent live bed availability, eligibility, or operating hours.
+
+Example: "Undo that."
+- Identify the last eligible executed action, explain reversal effects, request confirmation if necessary, and report whether reversal succeeded.
+
+
+10.9 USER STORIES
+
+- As a dispatcher, I want to type an assignment request from anywhere in the application instead of completing repeated manual interactions.
+- As a responder, I want a short command to update an authorized mission with minimal effort.
+- As a supervisor, I want the command window to identify its target and proposed changes before consequential actions.
+- As planning staff, I want to request a scoped briefing without manually collecting records.
+- As an administrator, I want aliases for common tasks that still obey permissions and confirmation rules.
+- As a public resident, I want to describe what I need in plain language without gaining access to private operational information.
+- As an assistive-technology user, I want the command window to be an accessible alternative, not a new barrier.
+- As any user, I want explicit failure and recovery information rather than a conversational claim that an action succeeded.
+
+
+10.10 MINIMUM ACCEPTANCE EXPECTATIONS
+
+- The command window can be invoked from every supported application context by an accessible control and, on supported desktop devices, a non-conflicting keyboard shortcut.
+- A permitted cross-feature action does not require the user to leave the current task first.
+- Natural language and shorthand call the same validated action operations.
+- Ambiguous targets produce clarification instead of guessed changes.
+- A public user's command cannot return private staff or other residents' information.
+- Required confirmation includes exact targets and consequential changes.
+- A permission change between preparation and execution prevents unauthorized completion.
+- Repeated submission does not create duplicate missions, assignments, or messages.
+- Assignment updates remain consistent across mission and personnel records.
+- Partial failures produce per-action results and a clear recovery path.
+- "Undo" reverses only eligible actions and never falsely claims recall of external effects.
+- Unsaved work is not silently overwritten.
+- Screen-reader and keyboard users can invoke, clarify, confirm, cancel, and understand results.
+- AI-provider failure leaves essential manual workflows usable.
+- Completed command actions appear in the audit history with authenticated actor and verified outcome.
+
+
+10.11 DECISIONS TO CONFIRM BEFORE IMPLEMENTATION
+
+- Final keyboard shortcut defaults and customization.
+- Final shorthand syntax and reserved commands.
+- Personal versus organization-wide aliases.
+- Supported action catalog and rollout order.
+- Public-role command coverage and identity verification.
+- Confirmation policy for low-risk updates and recurring tasks.
+- Undo eligibility and retention of reversal history.
+- Batch limits and external-action rate limits.
+- Whether dictation is included.
+- Command-history retention and shared-device behavior.
+- Model-provider data handling and supported languages.
+- Performance targets and success measures.
+
+END OF EXPANDED BRD AND FRD

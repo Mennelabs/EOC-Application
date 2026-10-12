@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Situation — Exercise WESTWIND</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1D4F91}a:hover{color:#123665}
+</style>
+</helmet>
+<div style="font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1B1F23; background: #F4F6F8; min-height: 1180px; font-size: 14px">
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding: 10px 20px; background: #16202B; color: #FFFFFF">
+<div style="display: flex; align-items: center; gap: 10px">
+<div style="width: 28px; height: 28px; border-radius: 6px; background: {{accent}}; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7M5 10v10h14V10"></path></svg></div>
+<span style="font-weight: 600; font-size: 15px">{{productName}}</span>
+<span style="color: #9FB0C2">[County] Emergency Management</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; padding: 4px 10px; border: 1px solid #3A4A5C; border-radius: 6px">
+<span style="width: 8px; height: 8px; border-radius: 4px; background: #F2A23A"></span>
+<span style="font-weight: 600">WESTWIND</span><span style="color: #C9D4DF">Tornado · Active · T+39h</span>
+</div>
+<button style="flex: 1 1 260px; max-width: 460px; display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 12px; border: 1px solid #3A4A5C; border-radius: 6px; background: #1F2B38; color: #C9D4DF; font-family: inherit; font-size: 14px; text-align: left" aria-label="Open the command window">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>
+<span style="flex-grow: 1">Ask or do anything — “draft the 2 pm sitrep”</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; padding: 2px 6px; border: 1px solid #3A4A5C; border-radius: 4px">Ctrl K</span>
+</button>
+<div style="margin-left: auto; display: flex; align-items: center; gap: 10px">
+<div style="display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2"><span style="font-weight: 600">Dana R.</span><span style="font-size: 12px; color: #9FB0C2">County EM Director</span></div>
+<div style="width: 32px; height: 32px; border-radius: 16px; background: #3A4A5C; display: flex; align-items: center; justify-content: center; font-weight: 600">DR</div>
+</div>
+</header>
+<div style="display: flex; flex-wrap: wrap; align-items: flex-start">
+<nav aria-label="Workspaces" style="flex: 1 1 200px; max-width: 232px; box-sizing: border-box; padding: 16px 12px; display: flex; flex-direction: column; gap: 2px">
+<a href="Main.dc.html" aria-current="page" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px; background: #E3EAF3; color: #123665; font-weight: 600; text-decoration: none">Situation</a>
+<a href="Dispatch.dc.html" style="display: flex; align-items: center; justify-content: space-between; min-height: 40px; padding: 0 12px; border-radius: 6px; color: #1B1F23; text-decoration: none">Dispatch<span style="font-size: 12px; font-weight: 600; color: #FFFFFF; background: #9A4A00; border-radius: 10px; padding: 1px 8px">1 overdue</span></a>
+<a href="Review.dc.html" style="display: flex; align-items: center; justify-content: space-between; min-height: 40px; padding: 0 12px; border-radius: 6px; color: #1B1F23; text-decoration: none">Review queue<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #4A5560">874</span></a>
+<a href="Recommend.dc.html" style="display: flex; align-items: center; justify-content: space-between; min-height: 40px; padding: 0 12px; border-radius: 6px; color: #1B1F23; text-decoration: none">Mass care<span style="font-size: 12px; font-weight: 600; color: #FFFFFF; background: {{accent}}; border-radius: 10px; padding: 1px 8px">1</span></a>
+<a href="#" style="display: flex; align-items: center; justify-content: space-between; min-height: 40px; padding: 0 12px; border-radius: 6px; color: #1B1F23; text-decoration: none">Needs board<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #4A5560">612</span></a>
+<a href="#" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px; color: #1B1F23; text-decoration: none">Sites</a>
+<a href="#" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px; color: #1B1F23; text-decoration: none">Messaging</a>
+<a href="#" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px; color: #1B1F23; text-decoration: none">Resource requests</a>
+<a href="#" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px; color: #1B1F23; text-decoration: none">Declaration</a>
+<a href="#" style="display: flex; align-items: center; justify-content: space-between; min-height: 40px; padding: 0 12px; border-radius: 6px; color: #1B1F23; text-decoration: none">Facility registry<span style="font-size: 12px; font-weight: 600; color: #5C3700; background: #FCEBC7; border-radius: 10px; padding: 1px 8px">3 new</span></a>
+<a href="#" style="display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 6px; color: #1B1F23; text-decoration: none">Event log</a>
+</nav>
+<main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 20px 24px 32px; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h1 style="margin: 0; font-size: 24px; font-weight: 600">Situation</h1>
+<span style="color: #4A5560">Updated Mon 10:04 AM · 6 sources · <a href="#">what changed since the 6 AM briefing (38 items)</a></span>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button style="min-height: 36px; padding: 0 14px; border: 1px solid #8A949E; border-radius: 6px; background: #FFFFFF; color: #1B1F23; font-family: inherit; font-size: 14px; font-weight: 500">Briefing mode</button>
+<button style="min-height: 36px; padding: 0 14px; border: 0; border-radius: 6px; background: {{accent}}; color: #FFFFFF; font-family: inherit; font-size: 14px; font-weight: 600">Draft sitrep</button>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px">
+<div style="background: #FFFFFF; border: 1px solid #D5DADF; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 4px"><span style="color: #4A5560">Resident reports</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 600">1,612</span><span style="font-size: 13px; color: #4A5560">+346 since 6 AM · 1,388 homes</span></div>
+<div style="background: #FFFFFF; border: 1px solid #D5DADF; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 4px"><span style="color: #4A5560">Verified homes</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 600">388</span><span style="font-size: 13px; color: #4A5560">29 destroyed · 71 major · 104 minor · 184 affected</span></div>
+<div style="background: #FFFFFF; border: 1px solid #D5DADF; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 4px"><span style="color: #4A5560">Displaced households</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 600">131</span><span style="font-size: 13px; color: #4A5560">186 people in shelter last night</span></div>
+<div style="background: #FFFFFF; border: 1px solid #D5DADF; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 4px"><span style="color: #4A5560">Needs</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 600">612 open</span><span style="font-size: 13px; color: #4A5560">498 claimed · 126 done</span></div>
+<div style="background: #FFFFFF; border: 1px solid #D5DADF; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 4px"><span style="color: #4A5560">Power out</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 600">6,200</span><span style="font-size: 13px; color: #4A5560">customers · utility feed, 8 min old</span></div>
+<div style="background: #FFFFFF; border: 1px solid #D5DADF; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 4px"><span style="color: #4A5560">Declaration window</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 600">28 days</span><span style="font-size: 13px; color: #4A5560">left of 30 · package 28% verified</span></div>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+<section aria-labelledby="map-h" style="flex: 2 1 520px; min-width: 0; background: #FFFFFF; border: 1px solid #D5DADF; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px">
+<h2 id="map-h" style="margin: 0; font-size: 16px; font-weight: 600">Impact map</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{layers}}" as="l" hint-placeholder-count="6">
+<button aria-pressed="{{l.pressed}}" onClick="{{l.toggle}}" style="{{l.style}}">{{l.label}}</button>
+</sc-for>
+</div>
+</div>
+<svg viewBox="0 0 800 440" style="width: 100%; height: auto; display: block; border-radius: 6px" role="img" aria-label="Map of the damage path running west to east, with report clusters at Willow Bend, Cedar Ridge and Prairie Lakes, the outage area, the shelter, four feeding stops, a proposed distribution point and a coverage alert at Oak Hollow">
+<rect x="0" y="0" width="800" height="440" fill="#E9EDF1"></rect>
+<path d="M0 230 L800 120" stroke="#FFFFFF" stroke-width="9"></path>
+<path d="M120 0 L180 440 M420 0 L460 440 M650 0 L690 440 M0 380 L800 330" stroke="#FFFFFF" stroke-width="4" fill="none"></path>
+<sc-if value="{{show.outage}}" hint-placeholder-val="{{true}}"><polygon points="40,250 300,140 720,70 790,150 760,300 420,380 90,400" fill="#F2C46B" fill-opacity="0.28" stroke="#8A5300" stroke-width="1.5" stroke-dasharray="6 5"></polygon><text x="660" y="300" font-size="13" fill="#5C3700" font-family="IBM Plex Sans, sans-serif">Power outage area</text></sc-if>
+<sc-if value="{{show.path}}" hint-placeholder-val="{{true}}"><polygon points="60,312 740,140 752,180 72,352" fill="#B3261E" fill-opacity="0.16" stroke="#B3261E" stroke-width="1.5"></polygon></sc-if>
+<sc-if value="{{show.reports}}" hint-placeholder-val="{{true}}">
+<circle cx="140" cy="312" r="26" fill="#8C1D18" fill-opacity="0.85"></circle><circle cx="186" cy="300" r="14" fill="#5B6670" fill-opacity="0.75"></circle>
+<circle cx="330" cy="262" r="30" fill="#8C1D18" fill-opacity="0.85"></circle><circle cx="372" cy="250" r="16" fill="#5B6670" fill-opacity="0.75"></circle>
+<circle cx="520" cy="212" r="22" fill="#8C1D18" fill-opacity="0.85"></circle><circle cx="560" cy="204" r="24" fill="#5B6670" fill-opacity="0.75"></circle>
+<circle cx="700" cy="168" r="8" fill="#5B6670" fill-opacity="0.75"></circle>
+</sc-if>
+<g font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="#1B1F23">
+<text x="96" y="368">Willow Bend</text><text x="300" y="318">Cedar Ridge</text><text x="490" y="262">Prairie Lakes</text>
+</g>
+<sc-if value="{{show.alerts}}" hint-placeholder-val="{{true}}"><rect x="660" y="128" width="96" height="70" rx="8" fill="none" stroke="#C25E00" stroke-width="2.5" stroke-dasharray="6 4"></rect><text x="640" y="116" font-size="13" font-weight="600" fill="#8A3F00" font-family="IBM Plex Sans, sans-serif">Oak Hollow: 12% reporting</text></sc-if>
+<sc-if value="{{show.sites}}" hint-placeholder-val="{{true}}">
+<rect x="282" y="62" width="22" height="22" rx="4" fill="{{accent}}"></rect><text x="312" y="78" font-size="13" fill="#1B1F23" font-family="IBM Plex Sans, sans-serif">Shelter (gym) 186 / 350</text>
+<path d="M204 270 l9 -16 l9 16z" fill="#0B6E4F"></path><path d="M392 226 l9 -16 l9 16z" fill="#0B6E4F"></path><path d="M600 182 l9 -16 l9 16z" fill="#0B6E4F"></path><path d="M250 360 l9 -16 l9 16z" fill="#0B6E4F"></path>
+<path d="M560 290 l16 16 l-16 16 l-16 -16z" fill="none" stroke="{{accent}}" stroke-width="2.5" stroke-dasharray="4 3"></path><text x="584" y="311" font-size="13" fill="#1B1F23" font-family="IBM Plex Sans, sans-serif">Proposed POD</text>
+<circle cx="350" cy="296" r="11" fill="none" stroke="{{accent}}" stroke-width="2.5" stroke-dasharray="4 3"></circle>
+</sc-if>
+</svg>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: #2E353C">
+<li style="display: flex; align-items: center; gap: 6px"><span style="width: 12px; height: 12px; border-radius: 6px; background: #8C1D18"></span>Verified major or destroyed</li>
+<li style="display: flex; align-items: center; gap: 6px"><span style="width: 12px; height: 12px; border-radius: 6px; background: #5B6670"></span>Not yet verified</li>
+<li style="display: flex; align-items: center; gap: 6px"><span style="width: 12px; height: 12px; border-radius: 3px; background: {{accent}}"></span>Shelter</li>
+<li style="display: flex; align-items: center; gap: 6px"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M0 11 L6 1 L12 11z" fill="#0B6E4F"></path></svg>Feeding stop</li>
+<li style="display: flex; align-items: center; gap: 6px"><span style="width: 12px; height: 12px; border: 2px dashed {{accent}}; box-sizing: border-box"></span>Proposed, not approved</li>
+<li><a href="#">View as list</a></li>
+</ul>
+</section>
+<section aria-labelledby="dec-h" style="flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+<h2 id="dec-h" style="margin: 0; font-size: 16px; font-weight: 600">Needs your decision</h2>
+<a href="Recommend.dc.html" style="display: flex; flex-direction: column; gap: 6px; padding: 14px; background: #FFFFFF; border: 2px solid {{accent}}; border-radius: 8px; color: #1B1F23; text-decoration: none">
+<span style="font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: #123665">RECOMMENDATION · MASS CARE</span>
+<span style="font-weight: 600; font-size: 15px">Distribution point + walk-up site for the outage area</span>
+<span style="color: #2E353C">Type II drive-through and a walk-up point near Cedar Ridge. Luis reviewed; needs your approval.</span>
+<span style="color: #1D4F91; font-weight: 600">Review recommendation</span>
+</a>
+<div style="display: flex; flex-direction: column; gap: 6px; padding: 14px; background: #FFFFFF; border: 1px solid #D5DADF; border-radius: 8px">
+<span style="font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: #8A3F00">COVERAGE ALERT</span>
+<span style="font-weight: 600; font-size: 15px">Oak Hollow: 9 reports for 74 homes in the path</span>
+<span style="color: #2E353C">Likely under-reported, not undamaged. Suggested: door hangers and an assisted-reporting team.</span>
+<div style="display: flex; gap: 8px; flex-wrap: wrap"><button style="min-height: 34px; padding: 0 12px; border: 1px solid #8A949E; border-radius: 6px; background: #FFFFFF; font-family: inherit; font-size: 13px; font-weight: 500">Assign outreach</button><button style="min-height: 34px; padding: 0 12px; border: 0; background: none; color: #1D4F91; font-family: inherit; font-size: 13px">Dismiss with reason</button></div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; padding: 14px; background: #FFFFFF; border: 1px solid #D5DADF; border-radius: 8px">
+<span style="font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: #4A5560">RESOURCE REQUEST · ICS 213RR</span>
+<span style="font-weight: 600; font-size: 15px">4 portable generators for feeding stops</span>
+<span style="color: #2E353C">Drafted by Luis. Approve to send to the state.</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; padding: 14px; background: #FFFFFF; border: 1px solid #D5DADF; border-radius: 8px">
+<span style="font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: #4A5560">FACILITY REGISTRY · FOUND BY AI</span>
+<span style="font-weight: 600; font-size: 15px">3 possible sites near unmet need</span>
+<span style="color: #2E353C">A church hall, a closed grocery lot and a library branch. Sources attached; not yet qualified.</span>
+</div>
+</section>
+</div>
+<section aria-labelledby="log-h" style="background: #FFFFFF; border: 1px solid #D5DADF; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px"><h2 id="log-h" style="margin: 0; font-size: 16px; font-weight: 600">Significant events</h2><a href="#">Full log and ICS 214s</a></div>
+<div style="overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; font-size: 14px; min-width: 560px">
+<thead><tr style="text-align: left; color: #4A5560; font-size: 13px"><th style="padding: 8px 10px; border-bottom: 1px solid #D5DADF; font-weight: 500">Time</th><th style="padding: 8px 10px; border-bottom: 1px solid #D5DADF; font-weight: 500">Source</th><th style="padding: 8px 10px; border-bottom: 1px solid #D5DADF; font-weight: 500">Event</th></tr></thead>
+<tbody>
+<tr><td style="padding: 8px 10px; border-bottom: 1px solid #EEF1F4; font-family: 'IBM Plex Mono', monospace">09:52</td><td style="padding: 8px 10px; border-bottom: 1px solid #EEF1F4">Utility feed</td><td style="padding: 8px 10px; border-bottom: 1px solid #EEF1F4">Restoration estimate for 6,200 customers moved to 3–5 days</td></tr>
+<tr><td style="padding: 8px 10px; border-bottom: 1px solid #EEF1F4; font-family: 'IBM Plex Mono', monospace">09:31</td><td style="padding: 8px 10px; border-bottom: 1px solid #EEF1F4">Priya (damage)</td><td style="padding: 8px 10px; border-bottom: 1px solid #EEF1F4">Field team 3 finished Willow Bend route: 41 homes verified</td></tr>
+<tr><td style="padding: 8px 10px; border-bottom: 1px solid #EEF1F4; font-family: 'IBM Plex Mono', monospace">08:47</td><td style="padding: 8px 10px; border-bottom: 1px solid #EEF1F4">Waze</td><td style="padding: 8px 10px; border-bottom: 1px solid #EEF1F4">Road closed: debris on fairgrounds access road</td></tr>
+<tr><td style="padding: 8px 10px; border-bottom: 1px solid #EEF1F4; font-family: 'IBM Plex Mono', monospace">08:15</td><td style="padding: 8px 10px; border-bottom: 1px solid #EEF1F4">Capt. Ruth (Salvation Army)</td><td style="padding: 8px 10px; border-bottom: 1px solid #EEF1F4">Canteen 2 at Cedar Ridge stop; 380 meals planned</td></tr>
+<tr><td style="padding: 8px 10px; font-family: 'IBM Plex Mono', monospace">07:40</td><td style="padding: 8px 10px">Shelter lead</td><td style="padding: 8px 10px">Overnight census 186; 4 power-dependent residents on generator circuit</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"productName":{"editor":"text","default":"Common Ground"},"accent":{"editor":"color","default":"#1D4F91","options":["#1D4F91","#0B6E4F","#5B3A8E","#7A4A00"]},"$preview":{"width":1440,"height":1180}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { on: { reports: true, path: true, outage: true, sites: true, alerts: true } };
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#1D4F91';
+    const on = this.state.on;
+    const defs = [
+      { id: 'reports', label: 'Reports' },
+      { id: 'path', label: 'Damage path' },
+      { id: 'outage', label: 'Outages' },
+      { id: 'sites', label: 'Sites' },
+      { id: 'alerts', label: 'Coverage alerts' }
+    ];
+    const layers = defs.map((d) => {
+      const active = !!on[d.id];
+      return {
+        label: d.label,
+        pressed: active ? 'true' : 'false',
+        toggle: () => this.setState({ on: { ...on, [d.id]: !active } }),
+        style: 'min-height:30px;padding:0 10px;border-radius:15px;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;' +
+          (active ? 'border:1px solid ' + accent + ';background:#E3EAF3;color:#123665;' : 'border:1px solid #B8C0C8;background:#FFFFFF;color:#4A5560;')
+      };
+    });
+    return { productName: this.props.productName ?? 'Common Ground', accent, layers, show: on };
+  }
+}
+</script>
+</body>
+</html>

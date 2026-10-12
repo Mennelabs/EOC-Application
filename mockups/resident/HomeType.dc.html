@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>What kind of home</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1D4F91}a:hover{color:#123665}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #FFFFFF; color: #1B1F23; font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; display: flex; flex-direction: column">
+<div style="height: 6px; background: {{accent}}"></div>
+<nav style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid #D5DADF">
+<a href="Safety.dc.html" style="display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 8px; font-size: 17px; font-weight: 700; text-decoration: none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>Back</a>
+<span style="font-size: 15px; color: #4A5560">About 9 questions left</span>
+</nav>
+<main style="flex-grow: 1; padding: 24px 20px 20px; display: flex; flex-direction: column; gap: 16px">
+<h1 style="margin: 0; font-size: 28px; line-height: 1.2; font-weight: 700">What kind of home is it?</h1>
+<p style="margin: 0; font-size: 17px; line-height: 1.45; color: #2E353C">Different homes are checked in different ways, so this helps us look at yours fairly.</p>
+<fieldset style="border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px">
+<legend style="position: absolute; width: 1px; height: 1px; overflow: hidden">What kind of home is it?</legend>
+<sc-for list="{{opts}}" as="o" hint-placeholder-count="4">
+<label style="{{o.style}}">
+<input type="radio" name="hometype" checked="{{o.on}}" onChange="{{o.pick}}" style="width: 24px; height: 24px; margin: 0; accent-color: {{accent}}; flex-shrink: 0">
+<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0"><path d="{{o.icon}}"></path></svg>
+<span>{{o.label}}</span>
+</label>
+</sc-for>
+</fieldset>
+<div style="flex-grow: 1"></div>
+<a href="Question.dc.html" style="display: flex; align-items: center; justify-content: center; min-height: 56px; border-radius: 8px; background: {{accent}}; color: #FFFFFF; font-size: 20px; font-weight: 700; text-decoration: none">Continue</a>
+<div style="display: flex; justify-content: center">
+<a href="Question.dc.html" style="display: flex; align-items: center; min-height: 44px; font-size: 17px">I don’t know</a>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#1D4F91","options":["#1D4F91","#0B6E4F","#5B3A8E","#7A4A00"]},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { picked: 'apt' };
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#1D4F91';
+    const base = [
+      { id: 'house', label: 'House', icon: 'M3 11l9-7 9 7M5 10v10h14V10M10 20v-6h4v6' },
+      { id: 'apt', label: 'Apartment or condo', icon: 'M5 21V3h14v18M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2' },
+      { id: 'mobile', label: 'Mobile or manufactured home', icon: 'M2 16V8h16l4 4v4M2 16h20M6 19a2 2 0 1 0 0-.01M16 19a2 2 0 1 0 0-.01' },
+      { id: 'other', label: 'Something else', icon: 'M12 17h.01M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14' }
+    ];
+    const picked = this.state.picked;
+    const opts = base.map((o) => {
+      const on = picked === o.id;
+      return {
+        ...o,
+        on,
+        pick: () => this.setState({ picked: o.id }),
+        style: 'display:flex;align-items:center;gap:14px;min-height:64px;padding:0 16px;box-sizing:border-box;border-radius:8px;font-size:19px;font-weight:700;cursor:pointer;' +
+          (on ? 'border:3px solid ' + accent + ';background:#EEF3FA;' : 'border:2px solid #8A949E;background:#FFFFFF;')
+      };
+    });
+    return { accent, opts };
+  }
+}
+</script>
+</body>
+</html>

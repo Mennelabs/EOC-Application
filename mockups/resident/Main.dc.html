@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Report storm damage — welcome</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1D4F91}a:hover{color:#123665}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #FFFFFF; color: #1B1F23; font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; display: flex; flex-direction: column">
+<div style="height: 6px; background: {{accent}}"></div>
+<header style="display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 1px solid #D5DADF">
+<div style="display: flex; align-items: center; gap: 10px">
+<div style="width: 40px; height: 40px; border: 2px dashed #8A949E; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #4A5560; text-align: center">LOGO</div>
+<div style="font-size: 15px; font-weight: 700; line-height: 1.2">[County] Emergency Management</div>
+</div>
+<button style="display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 12px; border: 2px solid #1B1F23; border-radius: 6px; background: #FFFFFF; color: #1B1F23; font-family: inherit; font-size: 16px; font-weight: 700" aria-label="Change language, current language English">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"></path></svg>
+English
+</button>
+</header>
+<div style="background: #FCEBEA; border-bottom: 2px solid #B3261E; padding: 14px 20px; display: flex; gap: 12px; align-items: center">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8C1D18" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l10 18H2z"></path><path d="M12 10v5M12 18h.01"></path></svg>
+<div style="font-size: 17px; line-height: 1.35; color: #5C1310"><strong>In danger right now?</strong> Call <a href="tel:911" style="color: #5C1310; font-weight: 700">911</a>. This form does not send help.</div>
+</div>
+<main style="flex-grow: 1; padding: 32px 20px 24px; display: flex; flex-direction: column; gap: 20px">
+<h1 style="margin: 0; font-size: 32px; line-height: 1.15; font-weight: 700">Tell us how the storm affected your home</h1>
+<p style="margin: 0; font-size: 19px; line-height: 1.5; color: #2E353C">We will ask one question at a time. You can say “I don’t know” or skip.</p>
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 16px; background: #F3F5F7; border-radius: 8px">
+<div style="display: flex; gap: 12px; align-items: center; font-size: 17px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1B1F23" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>About 5 minutes</div>
+<div style="display: flex; gap: 12px; align-items: center; font-size: 17px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1B1F23" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>No account or ID needed</div>
+<div style="display: flex; gap: 12px; align-items: center; font-size: 17px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1B1F23" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 10l9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"></path></svg>Renters and owners can both report</div>
+</div>
+<div style="flex-grow: 1"></div>
+<a href="Safety.dc.html" style="display: flex; align-items: center; justify-content: center; min-height: 56px; border-radius: 8px; background: {{accent}}; color: #FFFFFF; font-size: 20px; font-weight: 700; text-decoration: none">Start</a>
+<p style="margin: 0; font-size: 15px; line-height: 1.45; color: #4A5560">Reporting does not decide whether you get help. Prefer to talk? Call or text <strong style="color: #1B1F23">[local number]</strong>.</p>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#1D4F91","options":["#1D4F91","#0B6E4F","#5B3A8E","#7A4A00"]},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#1D4F91' };
+  }
+}
+</script>
+</body>
+</html>

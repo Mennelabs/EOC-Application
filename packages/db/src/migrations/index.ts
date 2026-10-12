@@ -9,6 +9,12 @@ import * as m0007 from './0007_data_protection.ts';
 import * as m0008 from './0008_execution.ts';
 import * as m0009 from './0009_data_dictionary_rows.ts';
 import * as m0010 from './0010_tenant_provisioning.ts';
+import * as m0011 from './0011_intake_graph.ts';
+import * as m0012 from './0012_parties_locations.ts';
+import * as m0013 from './0013_reports.ts';
+import * as m0014 from './0014_needs_consent.ts';
+import * as m0015 from './0015_channels.ts';
+import * as m0016 from './0016_ai_register.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -22,4 +28,10 @@ export const migrations: Record<string, Migration> = {
   '0008_execution': m0008,
   '0009_data_dictionary_rows': m0009,
   '0010_tenant_provisioning': m0010,
+  '0011_intake_graph': m0011,
+  '0012_parties_locations': m0012,
+  '0013_reports': m0013,
+  '0014_needs_consent': m0014,
+  '0015_channels': m0015,
+  '0016_ai_register': m0016,
 };

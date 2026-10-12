@@ -18,6 +18,7 @@ export type DataCategory =
   | 'household'
   | 'free_text'
   | 'financial'
+  | 'evidence'
   | 'access_needs'
   | 'health'
   | 'counseling'
@@ -31,6 +32,7 @@ export const DATA_CATEGORIES: readonly DataCategory[] = [
   'household',
   'free_text',
   'financial',
+  'evidence',
   'access_needs',
   'health',
   'counseling',

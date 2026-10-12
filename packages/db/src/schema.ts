@@ -350,6 +350,343 @@ export interface OutboxTable {
   last_error: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Layer 2: intake, reports, review (migrations 0011–0016)
+// ---------------------------------------------------------------------------
+
+export type IntakeChannel = 'web' | 'sms' | 'voice' | 'assisted';
+export type Relationship = 'own_home' | 'helper' | 'witness' | 'organization';
+export type ReviewState =
+  | 'submitted'
+  | 'under_review'
+  | 'needs_information'
+  | 'approved'
+  | 'rejected'
+  | 'duplicate'
+  | 'superseded';
+export type VerificationLevel =
+  'self_reported' | 'desktop_verified' | 'field_verified' | 'cannot_verify';
+export type FemaDegree = 'affected' | 'minor' | 'major' | 'destroyed' | 'no_damage' | 'cannot_tell';
+export type ReviewDecisionKind =
+  | 'approve'
+  | 'reject'
+  | 'needs_information'
+  | 'duplicate'
+  | 'supersede'
+  | 'reopen'
+  | 'verify'
+  | 'set_degree';
+export type MessageState = 'queued' | 'sent' | 'delivered' | 'acknowledged' | 'failed';
+
+export interface IntakeGraphTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  key: string;
+  graph_version: number;
+  status: Generated<'draft' | 'published' | 'retired'>;
+  graph: JsonValue;
+  hazards: Generated<string[]>;
+  languages: Generated<string[]>;
+  change_reason: string | null;
+  published_at: TsNullable;
+  published_by: Uuid | null;
+}
+
+export interface ReferenceCodeTable {
+  tenant_id: Uuid;
+  code: string;
+  state: Generated<'free' | 'leased' | 'used'>;
+  leased_by: string | null;
+  leased_at: TsNullable;
+  execution_id: Uuid | null;
+  report_id: Uuid | null;
+  created_at: TsGen;
+}
+
+export interface IntakeSubmissionTable {
+  execution_id: Uuid;
+  tenant_id: Uuid;
+  event_id: Uuid | null;
+  channel: IntakeChannel;
+  reference_code: string;
+  payload_enc: Buffer;
+  status: Generated<'queued' | 'stored' | 'processed' | 'failed'>;
+  attempts: Generated<number>;
+  last_error: string | null;
+  received_at: TsGen;
+  processed_at: TsNullable;
+}
+
+export interface PartyTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  kind: 'resident' | 'helper' | 'witness' | 'organization';
+  display_name_enc: Buffer | null;
+  contact_enc: Buffer | null;
+  phone_bidx: Buffer | null;
+  email_bidx: Buffer | null;
+  language: Generated<string>;
+  sms_opt_in: Generated<boolean>;
+  sms_opt_in_evidence: JsonValue | null;
+}
+
+export interface LocationTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  line1: string | null;
+  unit: string | null;
+  city: string | null;
+  state: string | null;
+  postal: string | null;
+  landmark: string | null;
+  note: string | null;
+  no_fixed_address: Generated<boolean>;
+  geom: ColumnType<unknown, unknown, unknown> | null;
+  precision: Generated<'exact' | 'approximate' | 'area' | 'unknown'>;
+  source: Generated<'resident' | 'geocoder' | 'reviewer' | 'field'>;
+  parcel_id: string | null;
+  usng: string | null;
+}
+
+export interface ReportTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  reference_code: string;
+  execution_id: Uuid;
+  event_id: Uuid | null;
+  graph_key: string;
+  graph_version: number;
+  channel_of_origin: IntakeChannel;
+  channels_used: Generated<string[]>;
+  relationship: Relationship;
+  reporter_party_id: Uuid | null;
+  subject_party_id: Uuid | null;
+  helper_party_id: Uuid | null;
+  location_id: Uuid | null;
+  answers: JsonGen<Record<string, unknown>>;
+  answers_enc: Buffer | null;
+  original_text_enc: Buffer | null;
+  original_lang: string | null;
+  translation_enc: Buffer | null;
+  translation_provider: string | null;
+  extraction_id: Uuid | null;
+  review_state: Generated<ReviewState>;
+  verification_level: Generated<VerificationLevel>;
+  fema_degree: FemaDegree | null;
+  fema_degree_set_by: Uuid | null;
+  fema_degree_set_at: TsNullable;
+  is_primary_residence: boolean | null;
+  pre_existing_damage: boolean | null;
+  duplicate_of: Uuid | null;
+  supersedes: Uuid | null;
+  need_signals: JsonGen<Record<string, boolean>>;
+  danger_flag: Generated<boolean>;
+  told_to_call_911_at: TsNullable;
+  submitted_at: TsGen;
+  withdrawn_at: TsNullable;
+}
+
+export interface ReportVersionTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  report_id: Uuid;
+  report_version: number;
+  snapshot: JsonValue;
+  changed_by_kind: 'resident' | 'reviewer' | 'system';
+  changed_by: Uuid | null;
+  reason: string | null;
+  created_at: TsGen;
+}
+
+export interface ReviewDecisionTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  report_id: Uuid;
+  report_version: number;
+  reviewer_account_id: Uuid;
+  decision: ReviewDecisionKind;
+  reason: string;
+  evidence_refs: JsonGen<unknown[]>;
+  ai_suggestion_id: Uuid | null;
+  agreed_with_ai: boolean | null;
+  created_at: TsGen;
+}
+
+export interface CorrectionRequestTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  report_id: Uuid;
+  questions: JsonValue;
+  message: string | null;
+  sent_via: 'sms' | 'email' | 'voice' | 'none' | null;
+  requested_by: Uuid;
+  requested_at: TsGen;
+  answered_at: TsNullable;
+  resolution: 'answered' | 'withdrawn' | 'expired' | null;
+}
+
+export interface PhotoTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  execution_id: Uuid;
+  report_id: Uuid | null;
+  shot: Generated<string>;
+  source: Generated<'web' | 'mms' | 'assisted' | 'field'>;
+  object_key_original: string;
+  derivative_keys: JsonGen<Record<string, string>>;
+  exif_stripped: Generated<boolean>;
+  blur_status: Generated<'pending' | 'applied' | 'skipped_no_detector' | 'failed'>;
+  status: Generated<'uploading' | 'uploaded' | 'processed' | 'failed' | 'rejected'>;
+  content_type: string | null;
+  width: number | null;
+  height: number | null;
+  bytes: ColumnType<string | number, number | string, number | string> | null;
+  sha256: Buffer | null;
+  suggested_taken_at: TsNullable;
+  suggested_geom: ColumnType<unknown, unknown, unknown> | null;
+  uploaded_at: TsNullable;
+  processed_at: TsNullable;
+}
+
+export interface NeedTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  report_id: Uuid | null;
+  subject_party_id: Uuid | null;
+  event_id: Uuid | null;
+  category: string;
+  detail: string | null;
+  status: Generated<'open' | 'claimed' | 'met' | 'closed' | 'withdrawn'>;
+}
+
+export interface ConsentTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  party_id: Uuid;
+  report_id: Uuid | null;
+  org_type: string;
+  granted: Generated<boolean>;
+  granted_at: TsNullable;
+  withdrawn_at: TsNullable;
+  channel: 'web' | 'sms' | 'voice' | 'assisted' | 'staff' | null;
+  evidence: JsonValue | null;
+}
+
+export interface PostSubmissionAnswersTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  report_id: Uuid;
+  aggregate_answers: JsonGen<Record<string, unknown>>;
+  restricted_answers_enc: Buffer | null;
+}
+
+export interface DraftTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  resume_code_hash: Buffer;
+  execution_id: Uuid;
+  payload_enc: Buffer;
+  expires_at: Ts;
+  consumed_at: TsNullable;
+  created_at: TsGen;
+}
+
+export interface OtpChallengeTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  report_id: Uuid;
+  contact_bidx: Buffer;
+  channel: 'sms' | 'email';
+  code_hash: Buffer;
+  attempts: Generated<number>;
+  expires_at: Ts;
+  consumed_at: TsNullable;
+  created_at: TsGen;
+}
+
+export interface IntakeSessionTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  channel: 'sms' | 'voice';
+  phone_bidx: Buffer;
+  phone_enc: Buffer;
+  event_id: Uuid | null;
+  language: Generated<string>;
+  graph_key: string;
+  graph_version: number;
+  cursor: string | null;
+  answers_enc: Buffer | null;
+  execution_id: Uuid;
+  state: Generated<'active' | 'paused' | 'submitted' | 'stopped' | 'expired'>;
+  opt_out: Generated<boolean>;
+  last_inbound_at: TsGen;
+}
+
+export interface MessageTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  channel: 'sms' | 'mms' | 'voice' | 'email';
+  to_bidx: Buffer | null;
+  to_enc: Buffer;
+  template: string;
+  body_enc: Buffer;
+  state: Generated<MessageState>;
+  provider: string | null;
+  provider_message_id: string | null;
+  provider_evidence: JsonGen<Record<string, unknown>>;
+  error: string | null;
+  report_id: Uuid | null;
+  party_id: Uuid | null;
+  queued_at: TsGen;
+  sent_at: TsNullable;
+  delivered_at: TsNullable;
+  failed_at: TsNullable;
+}
+
+export interface AbuseSignalTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  kind: string;
+  subject_hash: Buffer;
+  execution_id: Uuid | null;
+  score: Generated<number>;
+  decision: 'allow' | 'verify' | 'deny';
+  details: JsonGen<Record<string, unknown>>;
+  created_at: TsGen;
+}
+
+export interface AiUseRegisterTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  feature: string;
+  provider: string;
+  model: string;
+  model_version: string | null;
+  data_sent: string;
+  decision_informed: string;
+  human_checkpoint: string;
+  owner: string;
+  us_region: Generated<boolean>;
+  zero_retention: Generated<boolean>;
+  no_training: Generated<boolean>;
+  evaluation: JsonGen<Record<string, unknown>>;
+  enabled: Generated<boolean>;
+}
+
+export interface ExtractionTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  execution_id: Uuid;
+  input_hash: Buffer;
+  provider: string;
+  model: string;
+  output: JsonValue;
+  confirmed: JsonValue | null;
+  rejected: JsonValue | null;
+  filtered_reasons: Generated<string[]>;
+  created_at: TsGen;
+}
+
 export interface Database {
   'cg.tenant': TenantTable;
   'cg.jurisdiction': JurisdictionTable;
@@ -378,4 +715,24 @@ export interface Database {
   'cg.idempotency_key': IdempotencyKeyTable;
   'cg.governed_definition': GovernedDefinitionTable;
   'cg.outbox': OutboxTable;
+  'cg.intake_graph': IntakeGraphTable;
+  'cg.reference_code': ReferenceCodeTable;
+  'cg.intake_submission': IntakeSubmissionTable;
+  'cg.party': PartyTable;
+  'cg.location': LocationTable;
+  'cg.report': ReportTable;
+  'cg.report_version': ReportVersionTable;
+  'cg.review_decision': ReviewDecisionTable;
+  'cg.correction_request': CorrectionRequestTable;
+  'cg.photo': PhotoTable;
+  'cg.need': NeedTable;
+  'cg.consent': ConsentTable;
+  'cg.post_submission_answers': PostSubmissionAnswersTable;
+  'cg.draft': DraftTable;
+  'cg.otp_challenge': OtpChallengeTable;
+  'cg.intake_session': IntakeSessionTable;
+  'cg.message': MessageTable;
+  'cg.abuse_signal': AbuseSignalTable;
+  'cg.ai_use_register': AiUseRegisterTable;
+  'cg.extraction': ExtractionTable;
 }

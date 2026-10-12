@@ -141,6 +141,77 @@ export const actions = {
   'legal_hold.read': a('read', 'legal_hold', 'Read legal holds'),
   'legal_hold.place': a('admin', 'legal_hold', 'Place a legal hold', { consequential: true }),
   'legal_hold.release': a('admin', 'legal_hold', 'Release a legal hold', { consequential: true }),
+
+  // ---- Layer 2: intake, reports, review ----
+  'intake.read': a(
+    'read',
+    'intake_graph',
+    'Published question graph, branding and languages for an event',
+    { public: true },
+  ),
+  'intake.submit': a(
+    'write',
+    'report',
+    'Submit a damage report or a need without a staff session',
+    { public: true },
+  ),
+  'intake.draft': a('write', 'draft', 'Pause and resume a report with a short code', {
+    public: true,
+  }),
+  'intake.upload': a('write', 'photo', 'Upload photos for a submission', { public: true }),
+  'intake.extract': a('read', 'extraction', 'Candidate answers from free text (fixed schema)', {
+    public: true,
+  }),
+  'intake.lookup': a('read', 'report', 'Start and verify a reference-code lookup (one-time code)', {
+    public: true,
+  }),
+  'report.self_read': a('read', 'report', 'Read own report after verification', { public: true }),
+  'report.self_update': a(
+    'write',
+    'report',
+    'Correct, add to, withdraw own report or change consent',
+    { public: true },
+  ),
+  'intake_graph.read': a('read', 'intake_graph', 'Read question graph versions'),
+  'intake_graph.edit': a('admin', 'intake_graph', 'Draft a new question graph version'),
+  'intake_graph.publish': a('admin', 'intake_graph', 'Publish a question graph version', {
+    consequential: true,
+  }),
+  'report.read': a('read', 'report', 'Read damage reports and the review queue'),
+  'report.create_assisted': a(
+    'write',
+    'report',
+    "Record a report on a resident's behalf (assisted intake)",
+  ),
+  'report.update': a('write', 'report', "Update a report's location or answers as a reviewer"),
+  'report.review': a(
+    'write',
+    'report',
+    'Decide: approve, reject, needs information, duplicate, supersede, reopen',
+    { consequential: true },
+  ),
+  'report.verify': a('write', 'report', 'Set the verification level'),
+  'report.set_degree': a('write', 'report', 'Set the official FEMA degree of damage', {
+    consequential: true,
+  }),
+  'report.request_information': a('write', 'report', 'Ask the resident for more information'),
+  'photo.read': a('read', 'photo', 'Read photos (originals need the evidence category)'),
+  'need.read': a('read', 'need', 'Read needs'),
+  'need.update': a('write', 'need', "Update a need's status"),
+  'consent.read': a('read', 'consent', 'Read sharing consent'),
+  'message.read': a('read', 'message', 'Read messages sent to residents'),
+  'intake_session.read': a(
+    'read',
+    'intake_session',
+    'Read SMS and voice sessions (agent hand-off)',
+  ),
+  'ai_register.read': a('read', 'ai_use_register', 'Read the AI use register'),
+  'ai_register.write': a(
+    'admin',
+    'ai_use_register',
+    'Enable or disable an AI feature for the tenant',
+    { consequential: true },
+  ),
 } as const satisfies Record<string, ActionMeta>;
 
 export type ActionKey = keyof typeof actions;
@@ -162,6 +233,9 @@ export function actionMatches(pattern: string, action: string): boolean {
 /** A7 / AC-12B: approving a finding the same person recorded. */
 export const SELF_REVIEW_ACTIONS: readonly string[] = [
   'report.approve',
+  'report.review',
+  'report.verify',
+  'report.set_degree',
   'assessment.approve',
   'finding.approve',
 ];

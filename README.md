@@ -149,6 +149,7 @@ pnpm test              # unit tests (vitest)
 pnpm test:integration  # against the running stack (STACK_URL, COMPOSE_FILES to override)
 pnpm test:e2e          # Playwright + axe accessibility and the onboarding journey (npx playwright install chromium first)
 scripts/backup.sh && scripts/restore.sh backups/<stamp>   # NFR-05; drills in tests/drills/
+DATABASE_MIGRATOR_URL=... pnpm --filter @cg/db check:migrations 3   # newest migrations up, down, up; dictionary and RLS checks (SEC-05/11)
 pnpm reqindex          # regenerate docs/requirements-index.md after editing docs/0*
 ```
 

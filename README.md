@@ -4,7 +4,7 @@ A disaster community-response platform for county and city emergency management,
 
 The product name is configuration (`PRODUCT_NAME`, ADM-03). "Common Ground" is the current working name.
 
-**Status:** first deliverables for review (requirements index, architecture, ADRs, scaffold, layer-1 plan). No feature code yet. Build order follows SCL-14, one layer at a time.
+**Status:** layer 1 (platform foundations) built and tested; see `docs/plans/layer-1-report.md`, `docs/plans/layer-1-status.md` and `docs/traceability.md`. Build order follows SCL-14, one layer at a time; `CLAUDE.md` has the rules for resuming work.
 
 ## Where things live
 
@@ -56,7 +56,7 @@ Behind a corporate proxy that inspects TLS, pass its CA to the builds: `docker c
 
 ## Seed data
 
-The `seed` service runs on every `up` and writes the synthetic county (tenants, areas, parcels, facilities, personnel, resident reports) to the `seed_data` volume. To write it locally instead:
+The `seed` service writes the synthetic county (tenants, areas, parcels, facilities, personnel, resident reports) to the `seed_data` volume; `seed-load` loads the WESTWIND hierarchy, shipped role templates and the console cast into the database and hands provisioning (identity realms, invitations) to the worker. Both run on every `up` and are no-ops when already loaded. To write the JSON locally instead:
 
 ```sh
 pnpm seed                      # -> tools/seed/out/
@@ -74,7 +74,8 @@ pnpm typecheck
 pnpm check:product-name   # ADM-03: product name never hardcoded
 pnpm test              # unit tests (vitest)
 pnpm test:integration  # against the running stack (STACK_URL, COMPOSE_FILES to override)
-pnpm test:e2e          # Playwright + axe accessibility, desktop and phone (npx playwright install chromium first)
+pnpm test:e2e          # Playwright + axe accessibility and the onboarding journey (npx playwright install chromium first)
+scripts/backup.sh && scripts/restore.sh backups/<stamp>   # NFR-05; drills in tests/drills/
 pnpm reqindex          # regenerate docs/requirements-index.md after editing docs/0*
 ```
 

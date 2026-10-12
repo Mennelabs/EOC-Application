@@ -4,14 +4,14 @@ Status: proposed for review (first deliverable, 2026-10-12). Every technology na
 
 ## 1. Principles that shape everything
 
-| Principle | Where it comes from | What it means in the design |
-| --- | --- | --- |
-| A resident submission never fails | SCL-03, SCL-06, FR-00.04, CLAUDE.md rule 8 | Intake writes go to a durable queue, not straight into the main tables. The client keeps an outbox and shows "Not sent yet" until the server confirms. |
-| People decide, AI assists | AIG-*, AI-*, RULE-13, PHO-11 | AI sits behind interfaces, returns suggestions in fixed schemas and holds no credentials. Consequential changes run through the same action catalog as manual ones. |
-| Default deny, everywhere | FR-00.01, SEC-06, ADM-05 | One server-side policy engine decides every read, write and export, with hard guardrails ahead of county-configured roles. Postgres row-level security is the backstop. |
-| Portable from day one | SCL-11 | Every cloud dependency is behind an adapter with a local stand-in. Configuration only from environment variables and secrets. The same images run on Docker Desktop and in the government cloud. |
-| The CJIS enclave is separate | SEC-12, SCL-12 | Its own containers, network, database, keys, identity and audit. Criminal-justice data never passes through the main platform. |
-| Synthetic data only | SCL-12 | The seed generator builds a fictional county. There is no import path for production data on a laptop. |
+| Principle                         | Where it comes from                        | What it means in the design                                                                                                                                                                      |
+| --------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| A resident submission never fails | SCL-03, SCL-06, FR-00.04, CLAUDE.md rule 8 | Intake writes go to a durable queue, not straight into the main tables. The client keeps an outbox and shows "Not sent yet" until the server confirms.                                           |
+| People decide, AI assists         | AIG-_, AI-_, RULE-13, PHO-11               | AI sits behind interfaces, returns suggestions in fixed schemas and holds no credentials. Consequential changes run through the same action catalog as manual ones.                              |
+| Default deny, everywhere          | FR-00.01, SEC-06, ADM-05                   | One server-side policy engine decides every read, write and export, with hard guardrails ahead of county-configured roles. Postgres row-level security is the backstop.                          |
+| Portable from day one             | SCL-11                                     | Every cloud dependency is behind an adapter with a local stand-in. Configuration only from environment variables and secrets. The same images run on Docker Desktop and in the government cloud. |
+| The CJIS enclave is separate      | SEC-12, SCL-12                             | Its own containers, network, database, keys, identity and audit. Criminal-justice data never passes through the main platform.                                                                   |
+| Synthetic data only               | SCL-12                                     | The seed generator builds a fictional county. There is no import path for production data on a laptop.                                                                                           |
 
 ## 2. Containers
 
@@ -59,32 +59,32 @@ flowchart LR
 
 ### 2.1 Main platform (`compose.yaml`)
 
-| Service | Image | Role | Health check |
-| --- | --- | --- | --- |
-| `gateway` | `caddy` | TLS on `https://localhost` with Caddy's local CA (SEC-10 in transit). Routes `/` → resident app, `/console` → console, `/api` → api, `/auth` → Keycloak, `/tiles` → PMTiles files. Security headers (HSTS, CSP). | `GET /healthz` |
-| `web` | built from `apps/web-resident` + `apps/web-console` | Static, versioned builds of the two web apps. Separate from the API, so intake pages stay up when the API is degraded (SCL-06). | `GET /healthz` |
-| `api` | built from `services/api` | Every HTTP endpoint: public intake, OTP lookup, published resources, staff console API, field-app sync API, Twilio webhooks. Stateless, scales horizontally. | `/health/live`; `/health/ready` checks db, queue, objects, keys and idp |
-| `worker` | built from `services/worker` (same base as api) | Queue consumers: intake persistence, photo processing, notifications, retention deletion, outbox relay, scheduled jobs. Scales separately from the API. | `/health/live`, `/health/ready` |
-| `db` | `postgis/postgis` | System of record. Separate logical databases for the platform and for Keycloak. | `pg_isready` |
-| `queue` | `rabbitmq` (management) | Durable quorum queues for intake and jobs. AMQP 0-9-1 runs unchanged on Amazon MQ for RabbitMQ in GovCloud. | `rabbitmq-diagnostics ping` |
-| `objects` | MinIO | Photos, documents, exports, official-report snapshots. Per-tenant prefixes and keys (SEC-05). | `/minio/health/ready` |
-| `keys` + `keys-init` | `openbao/openbao` | Transit engine: per-tenant keys for envelope encryption (SEC-10). Secrets for local dev. `keys-init` initialises and unseals it on first run and stores the dev unseal key in a local volume. **Dev only**: the cloud uses its KMS. | `bao status` |
-| `idp` | `keycloak/keycloak` | One realm per tenant: SSO brokering (SAML/OIDC) to the tenant's IdP, passkeys/WebAuthn MFA, local accounts as a last resort (finding G-01). | `/health/ready` |
-| `mail` | `axllent/mailpit` | Local SMTP sink with a web UI. Stand-in for the email provider (finding Q-02). | `/livez` |
-| `geocoder` | `mediagis/nominatim` (profile `maps`) | Self-hosted address search and reverse geocoding (SCL-13). First start imports the region extract. | `/status` |
-| `tiles-build` | one-shot (profile `maps-build`) | Builds the region's vector tiles (PMTiles) from the OSM extract with Planetiler. Writes into the `tiles` volume served by the gateway. | exits 0 |
+| Service              | Image                                               | Role                                                                                                                                                                                                                                | Health check                                                            |
+| -------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `gateway`            | `caddy`                                             | TLS on `https://localhost` with Caddy's local CA (SEC-10 in transit). Routes `/` → resident app, `/console` → console, `/api` → api, `/auth` → Keycloak, `/tiles` → PMTiles files. Security headers (HSTS, CSP).                    | `GET /healthz`                                                          |
+| `web`                | built from `apps/web-resident` + `apps/web-console` | Static, versioned builds of the two web apps. Separate from the API, so intake pages stay up when the API is degraded (SCL-06).                                                                                                     | `GET /healthz`                                                          |
+| `api`                | built from `services/api`                           | Every HTTP endpoint: public intake, OTP lookup, published resources, staff console API, field-app sync API, Twilio webhooks. Stateless, scales horizontally.                                                                        | `/health/live`; `/health/ready` checks db, queue, objects, keys and idp |
+| `worker`             | built from `services/worker` (same base as api)     | Queue consumers: intake persistence, photo processing, notifications, retention deletion, outbox relay, scheduled jobs. Scales separately from the API.                                                                             | `/health/live`, `/health/ready`                                         |
+| `db`                 | `postgis/postgis`                                   | System of record. Separate logical databases for the platform and for Keycloak.                                                                                                                                                     | `pg_isready`                                                            |
+| `queue`              | `rabbitmq` (management)                             | Durable quorum queues for intake and jobs. AMQP 0-9-1 runs unchanged on Amazon MQ for RabbitMQ in GovCloud.                                                                                                                         | `rabbitmq-diagnostics ping`                                             |
+| `objects`            | MinIO                                               | Photos, documents, exports, official-report snapshots. Per-tenant prefixes and keys (SEC-05).                                                                                                                                       | `/minio/health/ready`                                                   |
+| `keys` + `keys-init` | `openbao/openbao`                                   | Transit engine: per-tenant keys for envelope encryption (SEC-10). Secrets for local dev. `keys-init` initialises and unseals it on first run and stores the dev unseal key in a local volume. **Dev only**: the cloud uses its KMS. | `bao status`                                                            |
+| `idp`                | `keycloak/keycloak`                                 | One realm per tenant: SSO brokering (SAML/OIDC) to the tenant's IdP, passkeys/WebAuthn MFA, local accounts as a last resort (finding G-01).                                                                                         | `/health/ready`                                                         |
+| `mail`               | `axllent/mailpit`                                   | Local SMTP sink with a web UI. Stand-in for the email provider (finding Q-02).                                                                                                                                                      | `/livez`                                                                |
+| `geocoder`           | `mediagis/nominatim` (profile `maps`)               | Self-hosted address search and reverse geocoding (SCL-13). First start imports the region extract.                                                                                                                                  | `/status`                                                               |
+| `tiles-build`        | one-shot (profile `maps-build`)                     | Builds the region's vector tiles (PMTiles) from the OSM extract with Planetiler. Writes into the `tiles` volume served by the gateway.                                                                                              | exits 0                                                                 |
 
 The CJIS set sits in its own compose file (`compose.cjis.yaml`), started together with the main one through `COMPOSE_PROFILES` in `.env`, but on its own network, volumes and secrets.
 
 ### 2.2 CJIS enclave (`compose.cjis.yaml`, built in layer 5, skeleton from day one)
 
-| Service | Purpose |
-| --- | --- |
-| `cjis-gateway` | The enclave's only entry point. It accepts only tokens from `cjis-idp`, and in the cloud only mutual TLS. |
-| `cjis-api` | Law-enforcement mission fields, suspect roles, weapons, arrest dispositions, bodycam references (SEC-12, PPL-01), with its own audit trail. |
-| `cjis-db` | Its own PostgreSQL instance and volume. Not reachable from `cg_platform`. |
-| `cjis-keys` | Its own OpenBao. Keys never shared with the platform. |
-| `cjis-idp` | Its own Keycloak with its own MFA policy and personnel-screening attributes (CJIS Security Policy 5.6, 5.12). Added in layer 5. |
+| Service        | Purpose                                                                                                                                     |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cjis-gateway` | The enclave's only entry point. It accepts only tokens from `cjis-idp`, and in the cloud only mutual TLS.                                   |
+| `cjis-api`     | Law-enforcement mission fields, suspect roles, weapons, arrest dispositions, bodycam references (SEC-12, PPL-01), with its own audit trail. |
+| `cjis-db`      | Its own PostgreSQL instance and volume. Not reachable from `cg_platform`.                                                                   |
+| `cjis-keys`    | Its own OpenBao. Keys never shared with the platform.                                                                                       |
+| `cjis-idp`     | Its own Keycloak with its own MFA policy and personnel-screening attributes (CJIS Security Policy 5.6, 5.12). Added in layer 5.             |
 
 **How the two halves meet.** The platform stores only an opaque `cji_ref` (a random ID) on a mission. A CJIS-qualified user who opens that mission in the console signs in to the enclave separately. The browser then fetches the CJI fields directly from `cjis-gateway` with the enclave's token, so CJI never passes through the platform's API, logs, queue or AI providers. A user without an enclave session sees "Restricted: CJIS" and nothing else (ADM-05 guardrail). The enclave holds **no real CJI** until it runs in an authorized government cloud and has passed the state CJIS audit (SCL-12).
 
@@ -238,20 +238,20 @@ fema_form_mapping(version, form, field, source_expression)                      
 
 Each adapter is a TypeScript interface in `packages/adapters`, with a local implementation used on Docker Desktop and a cloud implementation chosen by environment variables. Business code imports only the interface.
 
-| Adapter | Interface | Local (Docker Desktop) | Government cloud |
-| --- | --- | --- | --- |
-| `storage` | put/get/presign multipart/delete/lock | MinIO via the S3 API | S3 (GovCloud) or any S3-compatible store |
-| `keys` | encrypt/decrypt data key per tenant, rotate | OpenBao transit | AWS KMS / Azure Key Vault (FIPS 140-validated) |
-| `secrets` | read secret | env + OpenBao KV | Secrets Manager / Key Vault, injected as env |
-| `queue` | publish (with confirms), consume, dead-letter | RabbitMQ | Amazon MQ for RabbitMQ (same protocol); SQS adapter possible |
-| `idp` | verify token, admin API for users/roles | Keycloak | Keycloak in-cluster (same image) |
-| `comms` | sendSms, sendVoice, parse inbound webhook, status callback | Simulator + Twilio client (sandbox) | Twilio (toll-free per county) |
-| `email` | send | Mailpit SMTP | Provider chosen by Adam (Q-02), e.g. SES |
-| `ai.llm`, `ai.stt`, `ai.translate`, `ai.image` | typed, schema-validated calls; every output records provider + model (AIG-12) | Deterministic fake provider | Per-tenant provider that passes AIG-06 + AIG-08 |
-| `ai.damage` | classify(photo) → suggestion | Fake, **disabled by default** (PHO-12) | Validated partner model |
-| `geocoder` | search, reverse | Nominatim | Same container |
-| `routing` | travel time matrix, route | Straight-line fallback; Valhalla later | Same container (Q-03) |
-| `conditions` | outages, road closures | File feeds | Utility/DOT feeds, Waze for Cities (Q-04) |
+| Adapter                                        | Interface                                                                     | Local (Docker Desktop)                 | Government cloud                                             |
+| ---------------------------------------------- | ----------------------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------ |
+| `storage`                                      | put/get/presign multipart/delete/lock                                         | MinIO via the S3 API                   | S3 (GovCloud) or any S3-compatible store                     |
+| `keys`                                         | encrypt/decrypt data key per tenant, rotate                                   | OpenBao transit                        | AWS KMS / Azure Key Vault (FIPS 140-validated)               |
+| `secrets`                                      | read secret                                                                   | env + OpenBao KV                       | Secrets Manager / Key Vault, injected as env                 |
+| `queue`                                        | publish (with confirms), consume, dead-letter                                 | RabbitMQ                               | Amazon MQ for RabbitMQ (same protocol); SQS adapter possible |
+| `idp`                                          | verify token, admin API for users/roles                                       | Keycloak                               | Keycloak in-cluster (same image)                             |
+| `comms`                                        | sendSms, sendVoice, parse inbound webhook, status callback                    | Simulator + Twilio client (sandbox)    | Twilio (toll-free per county)                                |
+| `email`                                        | send                                                                          | Mailpit SMTP                           | Provider chosen by Adam (Q-02), e.g. SES                     |
+| `ai.llm`, `ai.stt`, `ai.translate`, `ai.image` | typed, schema-validated calls; every output records provider + model (AIG-12) | Deterministic fake provider            | Per-tenant provider that passes AIG-06 + AIG-08              |
+| `ai.damage`                                    | classify(photo) → suggestion                                                  | Fake, **disabled by default** (PHO-12) | Validated partner model                                      |
+| `geocoder`                                     | search, reverse                                                               | Nominatim                              | Same container                                               |
+| `routing`                                      | travel time matrix, route                                                     | Straight-line fallback; Valhalla later | Same container (Q-03)                                        |
+| `conditions`                                   | outages, road closures                                                        | File feeds                             | Utility/DOT feeds, Waze for Cities (Q-04)                    |
 
 **Degradation (SCL-06).** Each adapter reports health. A `degradation` service turns features off in this order: AI → photo processing deferred → maps off → text intake only. The UI shows the mode honestly. Intake never depends on AI, photos or maps.
 
@@ -327,17 +327,17 @@ The console, dispatch board and needs board receive changes through **Server-Sen
 
 ## 12. Path from Docker Desktop to the government cloud
 
-| Local (today) | Government cloud (later) | Change needed |
-| --- | --- | --- |
-| `docker compose up` | Kubernetes (EKS in AWS GovCloud, or AKS in Azure Government) via OpenTofu + Helm (SCL-07) | New IaC; same images |
-| PostGIS container | Amazon RDS for PostgreSQL with PostGIS (Multi-AZ) | Connection env vars |
-| RabbitMQ container | Amazon MQ for RabbitMQ | Connection env vars |
-| MinIO | S3 with object lock and per-tenant KMS keys | Endpoint/credentials env vars |
-| OpenBao (dev unseal) | AWS KMS + Secrets Manager | `KEYS_PROVIDER=aws-kms` |
-| Keycloak container | Same image, HA, external DB | Env vars |
-| Caddy local CA | ALB + WAF + ACM certificates | Gateway replaced by the platform ingress |
-| Mailpit | Approved email provider | `EMAIL_PROVIDER` |
-| CJIS compose project | Separate account/subscription with its own network boundary (SEC-12) | Separate deployment |
-| Single node | Multi-AZ + warm standby in a second US region, RPO ≤ 15 min, RTO ≤ 1 h (SCL-05) | Proven only there (`Gov` in the index) |
+| Local (today)        | Government cloud (later)                                                                  | Change needed                            |
+| -------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `docker compose up`  | Kubernetes (EKS in AWS GovCloud, or AKS in Azure Government) via OpenTofu + Helm (SCL-07) | New IaC; same images                     |
+| PostGIS container    | Amazon RDS for PostgreSQL with PostGIS (Multi-AZ)                                         | Connection env vars                      |
+| RabbitMQ container   | Amazon MQ for RabbitMQ                                                                    | Connection env vars                      |
+| MinIO                | S3 with object lock and per-tenant KMS keys                                               | Endpoint/credentials env vars            |
+| OpenBao (dev unseal) | AWS KMS + Secrets Manager                                                                 | `KEYS_PROVIDER=aws-kms`                  |
+| Keycloak container   | Same image, HA, external DB                                                               | Env vars                                 |
+| Caddy local CA       | ALB + WAF + ACM certificates                                                              | Gateway replaced by the platform ingress |
+| Mailpit              | Approved email provider                                                                   | `EMAIL_PROVIDER`                         |
+| CJIS compose project | Separate account/subscription with its own network boundary (SEC-12)                      | Separate deployment                      |
+| Single node          | Multi-AZ + warm standby in a second US region, RPO ≤ 15 min, RTO ≤ 1 h (SCL-05)           | Proven only there (`Gov` in the index)   |
 
 Nothing in application code changes for the move. Only environment variables, secrets and the infrastructure code do (SCL-11).

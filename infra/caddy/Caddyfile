@@ -1,0 +1,47 @@
+# Local gateway (ADR-0020). TLS with Caddy's local CA, security headers,
+# routing. In the government cloud the platform ingress replaces this.
+{
+	local_certs
+	admin off
+}
+
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(self), geolocation=(self), microphone=(self)"
+		-Server
+	}
+}
+
+# Internal health endpoint for the container health check (not published).
+:8088 {
+	respond /healthz "ok" 200
+}
+
+{$GATEWAY_HOST:localhost} {
+	import security_headers
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy api:8080
+	}
+
+	# Keycloak sets its own CSP for its pages.
+	handle /auth/* {
+		reverse_proxy idp:8080
+	}
+
+	# Self-hosted map tiles (PMTiles over range requests, ADR-0015).
+	handle_path /tiles/* {
+		root * /srv/tiles
+		header Access-Control-Allow-Origin "*"
+		file_server
+	}
+
+	handle {
+		header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self'; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		reverse_proxy web:8080
+	}
+}

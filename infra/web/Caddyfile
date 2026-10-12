@@ -1,0 +1,30 @@
+# Static web apps. /config.json is filled from environment variables when the
+# container starts, so one build runs everywhere (SCL-11, ADM-03).
+{
+	admin off
+}
+
+:8080 {
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	handle /config.json {
+		header Content-Type "application/json"
+		header Cache-Control "no-store"
+		respond `{"productName":"{$PRODUCT_NAME}","countyName":"{$COUNTY_NAME}","helpPhone":"{$HELP_PHONE}"}` 200
+	}
+
+	redir /console /console/
+	handle_path /console/* {
+		root * /srv/console
+		try_files {path} /index.html
+		file_server
+	}
+
+	handle {
+		root * /srv/resident
+		try_files {path} /index.html
+		file_server
+	}
+}

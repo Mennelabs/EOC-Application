@@ -1,0 +1,10 @@
+{
+  "name": "@cg/seed",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "node src/cli.ts",
+    "typecheck": "tsc --noEmit -p ."
+  }
+}

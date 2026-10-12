@@ -1,0 +1,16 @@
+{
+  "name": "@cg/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.ts",
+    "dev": "node --watch src/main.ts",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@cg/adapters": "workspace:*",
+    "@cg/config": "workspace:*",
+    "fastify": "5.12.5"
+  }
+}

@@ -1,5 +1,8 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { accountRoutes } from './accounts.ts';
+import { auditRoutes } from './audit.ts';
+import { breakGlassRoutes } from './breakglass.ts';
+import { definitionRoutes } from './definitions.ts';
 import { eventRoutes } from './events.ts';
 import { meRoutes } from './me.ts';
 import { personnelRoutes } from './personnel.ts';
@@ -14,4 +17,7 @@ export const routes: FastifyPluginAsync[] = [
   accountRoutes,
   personnelRoutes,
   roleRoutes,
+  breakGlassRoutes,
+  auditRoutes,
+  definitionRoutes,
 ];

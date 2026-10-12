@@ -144,6 +144,7 @@ services:
       - queue_data:/var/lib/rabbitmq
     ports:
       - '127.0.0.1:${QUEUE_UI_PORT:-15672}:15672'
+      - '127.0.0.1:${QUEUE_PORT:-5672}:5672'
     healthcheck:
       test: ['CMD', 'rabbitmq-diagnostics', '-q', 'check_port_connectivity']
       interval: 10s
@@ -161,6 +162,7 @@ services:
       - objects_data:/data
     ports:
       - '127.0.0.1:${OBJECTS_UI_PORT:-9001}:9001'
+      - '127.0.0.1:${OBJECTS_PORT:-9000}:9000'
     networks: [platform]
 
   keys:
@@ -169,6 +171,8 @@ services:
     volumes:
       - ./infra/openbao/config.hcl:/etc/openbao/cg.hcl:ro
       - keys_data:/openbao/file
+    ports:
+      - '127.0.0.1:${KEYS_PORT:-8200}:8200'
     healthcheck:
       # Healthy once the server answers; it starts sealed and keys-init unseals it.
       test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8200/v1/sys/seal-status']
@@ -208,6 +212,8 @@ services:
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?}
     depends_on:
       db: { condition: service_healthy }
+    ports:
+      - '127.0.0.1:${IDP_PORT:-8081}:8080'
     healthcheck:
       test:
         - CMD-SHELL

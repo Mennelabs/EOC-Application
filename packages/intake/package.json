@@ -1,0 +1,16 @@
+{
+  "name": "@cg/intake",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "lint:strings": "node src/lint-cli.ts"
+  },
+  "dependencies": {
+    "zod": "4.6.5"
+  }
+}

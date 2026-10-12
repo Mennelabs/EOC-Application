@@ -36,6 +36,9 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild"
-    ]
+    ],
+    "overrides": {
+      "rolldown": "1.2.12"
+    }
   }
 }

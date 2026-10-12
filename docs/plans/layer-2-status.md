@@ -1,6 +1,6 @@
 # Layer 2 status
 
-The coordination record for layer 2 (resident intake, review queue, verification). Any session resumes from this file, not from chat. Update it in every commit that changes a task's state. Plan: [`layer-2.md`](layer-2.md). Decisions: [`../decisions.md`](../decisions.md). Layer 1 record: [`layer-1-status.md`](layer-1-status.md).
+The coordination record for layer 2 (resident intake, review queue, verification). Any session resumes from this file, not from chat. Update it in every commit that changes a task's state. PR #4 (layer 1) merged on 2026-10-12 with a merge commit; this branch was then rebased onto `main`, and the task commits below carry the hashes after that rebase. CI run 50 on `f1622ab` is green end to end (checks, scans, stack suites, database suites, browser journeys, load smoke). Plan: [`layer-2.md`](layer-2.md). Decisions: [`../decisions.md`](../decisions.md). Layer 1 record: [`layer-1-status.md`](layer-1-status.md).
 
 ## Resume checklist
 

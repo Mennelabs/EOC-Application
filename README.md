@@ -50,6 +50,27 @@ Then open:
 | http://localhost:15672     | RabbitMQ management (`cg`, password in `.env`)                                                                                                               |
 | http://localhost:9001      | MinIO console (`cg-local`, password in `.env`)                                                                                                               |
 
+### Sign in to the console
+
+The sign-in screen asks for the **organization** first: that is the tenant key, which is also the Keycloak realm. The synthetic WESTWIND county is `county`; the other organizations are `state`, `region`, `city`, `coad`, `canteen`, `shelter-ngo`, `cleanup` and `legal`. Every seeded account uses the synthetic password `Westwind-Exercise-2026!`.
+
+| Organization  | Account                      | Role                          |
+| ------------- | ---------------------------- | ----------------------------- |
+| `county`      | admin@example.org            | tenant administrator          |
+| `county`      | security.admin@example.org   | security administrator        |
+| `county`      | dana.director@example.org    | county EM director            |
+| `county`      | priya.assessment@example.org | damage assessment coordinator |
+| `county`      | marcus.gis@example.org       | planning / GIS lead           |
+| `county`      | luis.masscare@example.org    | mass care coordinator         |
+| `county`      | keisha.afn@example.org       | access and functional needs   |
+| `county`      | tomas.pio@example.org        | public information officer    |
+| `coad`        | jen.coad@example.org         | COAD chair                    |
+| `canteen`     | ruth.canteen@example.org     | NGO incident commander        |
+| `shelter-ngo` | nurse@example.org            | shelter nurse                 |
+| `state`       | state.liaison@example.org    | state liaison                 |
+
+Interactive sign-in is password **and** passkey (SEC-07). The first sign-in of each account asks to register a passkey: Windows Hello, Touch ID, a security key or a phone all work; later sign-ins ask for it after the password. Permission changes need a second administrator, so use `admin@example.org` to request and `security.admin@example.org` to approve.
+
 The CJIS enclave (`cjis-*` services) starts on its own internal network. It has no published ports on purpose: `docker compose exec cjis-api wget -qO- http://127.0.0.1:8080/health/ready`.
 
 Maps (SCL-13) are opt-in because the first build downloads the Missouri OpenStreetMap extract: set `COMPOSE_PROFILES=maps` in `.env` for the geocoder and run `docker compose --profile maps-build run --rm tiles-build` once for vector tiles.

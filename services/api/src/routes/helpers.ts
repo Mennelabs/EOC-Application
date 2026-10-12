@@ -53,12 +53,12 @@ export async function enqueueOutbox(
 /** Narrow a PATCH body to the columns actually present, mapping camelCase → snake_case. */
 export function pickDefined<T extends Record<string, unknown>>(
   body: T,
-  map: Record<keyof T & string, string>,
+  map: Partial<Record<keyof T & string, string>>,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, column] of Object.entries(map)) {
     const v = body[key];
-    if (v !== undefined) out[column] = v;
+    if (v !== undefined && column) out[column] = v;
   }
   return out;
 }

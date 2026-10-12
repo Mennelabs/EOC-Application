@@ -8,6 +8,7 @@ import {
 } from 'fastify-type-provider-zod';
 import type { Kysely } from 'kysely';
 import type { Database } from '@cg/db';
+import type { FieldCrypto } from '@cg/crypto';
 import { runProbes, type Probe } from '@cg/adapters';
 import { AuthError, type SubjectLoader } from './auth/subject.ts';
 import { errorHandler } from './errors.ts';
@@ -25,11 +26,19 @@ export interface AppOptions {
   logLevel?: string;
   db?: Kysely<Database>;
   subjects?: SubjectLoader;
+  /** Field encryption for restricted columns (SEC-10); absent only in unit tests. */
+  fieldCrypto?: FieldCrypto;
   /** Route plugins mounted under /api/v1. */
   routes?: FastifyPluginAsync[];
 }
 
 export type App = Awaited<ReturnType<typeof buildApp>>;
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    fieldCrypto: FieldCrypto;
+  }
+}
 
 export async function buildApp(opts: AppOptions) {
   const app = Fastify({
@@ -44,6 +53,7 @@ export async function buildApp(opts: AppOptions) {
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
   app.setErrorHandler(errorHandler);
+  if (opts.fieldCrypto) app.decorate('fieldCrypto', opts.fieldCrypto);
 
   // SCL-09: documented REST API, generated from the same schemas that validate requests.
   await app.register(swagger, {

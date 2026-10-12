@@ -165,6 +165,9 @@ importers:
       '@cg/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@cg/crypto':
+        specifier: workspace:*
+        version: link:../../packages/crypto
       '@cg/db':
         specifier: workspace:*
         version: link:../../packages/db

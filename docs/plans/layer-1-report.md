@@ -1,6 +1,6 @@
 # Layer 1 report: platform foundations
 
-Date: 2026-10-12. Branch `claude/determined-gates-zd5i8m`, PR #1. Status record: [`layer-1-status.md`](layer-1-status.md). Evidence per requirement: [`../traceability.md`](../traceability.md).
+Date: 2026-10-12 (CI and Windows start-up fixes added the same day). Branch `claude/determined-gates-zd5i8m`, PR #1. Status record: [`layer-1-status.md`](layer-1-status.md). Evidence per requirement: [`../traceability.md`](../traceability.md).
 
 ## What was built
 
@@ -32,8 +32,8 @@ Date: 2026-10-12. Branch `claude/determined-gates-zd5i8m`, PR #1. Status record:
 Nothing is red. These are the honest gaps:
 
 1. **Manual accessibility passes (GATE-03).** Automated axe checks pass on every released screen; the manual checklist (keyboard, NVDA/VoiceOver, 200% zoom) has no records yet. GATE-03 is claimed only for automated evidence.
-2. **CI on GitHub.** `.github/workflows/ci.yml` is defined with pinned actions, but its first run on GitHub Actions is not visible from this environment. Please check the Actions tab on PR #1.
-3. **MinIO image from source** (`infra/minio/Dockerfile`) still unverified here because Docker Hub rate-limits the `alpine` base in this sandbox; one `docker compose build objects` on Docker Desktop settles it. The stack was tested with an equivalent MinIO image.
+2. **CI on GitHub.** Every run up to `cb80066` was red. The compose stack itself came up healthy on GitHub (run 13), but `docker compose up --wait` then failed on the finished `seed` one-shot (docker/compose#10596: a one-shot needs a dependant), Trivy flagged seven HIGH findings in the base image's bundled npm, Semgrep asked for an explicit GCM tag length and pnpm supply-chain settings, and prettier rejected the generated traceability table. All four are fixed (status task K); the integration and e2e steps run on GitHub for the first time after that push, so the first green run is still to be seen.
+3. **MinIO image from source** (`infra/minio/Dockerfile`): built and healthy in CI run 13, so this is settled; only the build sandbox cannot build it (Docker Hub rate limit on `alpine`).
 4. **SSO brokering (SEC-07).** Realms are ready to broker to a tenant's own SAML/OIDC provider; no test exercises an external provider yet.
 5. **Partials by design** (see traceability): display in the tenant's timezone, record-category retention sweeps, OpenTelemetry metrics, infrastructure as code for the cloud. Each arrives with the layer that needs it.
 

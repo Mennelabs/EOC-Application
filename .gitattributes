@@ -1,0 +1,23 @@
+# The database, key-service and gateway containers run the bind-mounted
+# scripts and config files exactly as checked out, so every text file keeps
+# LF line endings on every platform, Windows included (a CRLF init.sh fails
+# inside the container). Git for Windows otherwise converts to CRLF.
+* text=auto eol=lf
+
+# Keep Windows-native files readable in Notepad and PowerShell ISE.
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.pdf binary
+*.zip binary
+*.gz binary

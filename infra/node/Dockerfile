@@ -18,6 +18,11 @@ FROM node:24-alpine
 ARG APP
 ENV NODE_ENV=production APP_DIR=/repo/${APP}
 WORKDIR /repo
+# The runtime only runs `node`: drop npm, npx, corepack and yarn and their
+# bundled dependency trees, which are the usual source of image-scan findings
+# (CLAUDE.md rule 9: container scanning in CI).
+RUN rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx \
+           /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn*
 COPY --from=deps --chown=node:node /repo /repo
 # Writable data directory for one-shot jobs (e.g. seed output volume).
 RUN mkdir -p /data/seed && chown -R node:node /data

@@ -29,12 +29,14 @@ The product name is configuration (`PRODUCT_NAME`, ADM-03). "Common Ground" is t
 
 ## Start the stack
 
-Requirements: Docker Desktop (Compose v2), Node 24 (`.nvmrc`), pnpm 10 (`corepack enable`).
+Requirements: Docker Desktop (Compose v2), Node 24 (`.nvmrc`), pnpm 10 (`corepack enable`). On Windows read [Windows (Docker Desktop)](#windows-docker-desktop) first.
 
 ```sh
 scripts/init-env.sh          # writes .env with random local secrets (never committed)
 docker compose up -d --wait  # builds images, starts every service, waits for health
 ```
+
+The first `up` builds seven images and pulls six more; 10–20 minutes on a laptop is normal. `--wait` returns 0 once every service is healthy and the one-shot jobs (`migrate`, `keys-init`, `seed`, `seed-load`) have finished; `docker compose ps -a` shows the state at any time.
 
 Then open:
 
@@ -53,6 +55,56 @@ The CJIS enclave (`cjis-*` services) starts on its own internal network. It has 
 Maps (SCL-13) are opt-in because the first build downloads the Missouri OpenStreetMap extract: set `COMPOSE_PROFILES=maps` in `.env` for the geocoder and run `docker compose --profile maps-build run --rm tiles-build` once for vector tiles.
 
 Behind a corporate proxy that inspects TLS, pass its CA to the builds: `docker compose build --build-arg HTTPS_PROXY=... ` and `--secret id=extra_ca,src=/path/ca.pem` (see `infra/node/Dockerfile`).
+
+### Windows (Docker Desktop)
+
+Docker Desktop runs the stack in WSL 2 (Settings → General → _Use the WSL 2 based engine_, on by default). Pick one of two ways to work.
+
+**Recommended: work inside WSL 2.** The shell scripts, pnpm and every test then run unchanged, and builds are several times faster than from a Windows folder.
+
+1. In PowerShell once: `wsl --install -d Ubuntu` (reboot if asked). In Docker Desktop → Settings → Resources → _WSL integration_, enable Ubuntu and Apply.
+2. Open the Ubuntu terminal and clone inside the Linux file system (your home directory, not `/mnt/c/...`):
+
+   ```sh
+   git clone https://github.com/Mennelabs/EOC-Application.git ~/common-ground
+   cd ~/common-ground
+   scripts/init-env.sh
+   docker compose up -d --wait
+   ```
+
+3. For the checks, install Node 24 in Ubuntu (nodejs.org → Download → Linux, or `nvm install 24`), then `corepack enable && pnpm install`.
+4. Windows browsers reach the stack at the same URLs (https://localhost/ and so on).
+
+**PowerShell only.** The stack runs the same; the shell scripts (`backup.sh`, `restore.sh`, the drills) and `pnpm test:e2e` need the WSL or Git Bash shell.
+
+```powershell
+git clone https://github.com/Mennelabs/EOC-Application.git
+cd EOC-Application
+.\scripts\init-env.ps1        # blocked by the execution policy? powershell -ExecutionPolicy Bypass -File scripts\init-env.ps1
+docker compose up -d --wait
+```
+
+For the checks install Node 24 LTS from nodejs.org (the installer adds corepack), then `corepack enable` and `pnpm install` in the repository.
+
+**Trusting the local certificate (optional).** Browsers warn once about Caddy's local CA. To trust it in Edge and Chrome: `docker compose cp gateway:/data/caddy/pki/authorities/local/root.crt .` then `certutil -addstore -user Root root.crt` (Firefox keeps its own store: Settings → Certificates → Import).
+
+**When it does not start**
+
+- `required variable PRODUCT_NAME is missing a value`: `.env` is missing; run the init script in the repository folder.
+- A clone made before `.gitattributes` existed may hold CRLF line endings. Symptoms: `db`, `cjis-db` or `keys-init` exit at once with `/bin/sh^M: bad interpreter`, `set: illegal option -` or `: not found`. Fix, in the repository folder (`.env` is untracked and survives):
+
+  ```powershell
+  git config core.autocrlf false
+  git rm -r --cached -q .
+  git reset --hard
+  docker compose down -v
+  docker compose up -d --wait
+  ```
+
+- Ports 80 and 443 must be free for the gateway; `bind: An attempt was made to access a socket in a way forbidden by its access permissions` means another program or a Hyper-V reservation holds one. Find the holder with `netstat -ano | findstr ":443 "` then `tasklist /FI "PID eq <pid>"`; IIS (_World Wide Web Publishing Service_) and VMware Workstation's shared VMs are the usual ones. The development ports (5432, 5672, 15672, 9000, 9001, 8200, 8081, 8025) can be moved in `.env` with `DB_PORT`, `QUEUE_PORT`, `QUEUE_UI_PORT`, `OBJECTS_PORT`, `OBJECTS_UI_PORT`, `KEYS_PORT`, `IDP_PORT` and `MAIL_UI_PORT`; `netsh interface ipv4 show excludedportrange protocol=tcp` lists Hyper-V's reserved ranges.
+- The stack wants about 6 GB of memory. Raise WSL 2's share in `%UserProfile%\.wslconfig` (`[wsl2]` then `memory=8GB`), then `wsl --shutdown` and restart Docker Desktop.
+- `container common-ground-<service>-1 exited (<code>)` or a service that never becomes healthy: `docker compose ps -a` shows which one and `docker compose logs <service>` why.
+- `docker compose ps -a` and `docker compose logs --no-color > compose-logs.txt` are what to share when it still fails.
 
 ## Seed data
 

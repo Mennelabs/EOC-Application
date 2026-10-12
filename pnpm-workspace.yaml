@@ -3,3 +3,10 @@ packages:
   - services/*
   - packages/*
   - tools/seed
+
+# Supply-chain guardrails (CLAUDE.md rule 9). Transitive dependencies only
+# from the registry, nothing published in the last seven days, and no package
+# may downgrade these settings.
+blockExoticSubdeps: true
+minimumReleaseAge: 10080
+trustPolicy: no-downgrade

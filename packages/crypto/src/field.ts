@@ -70,7 +70,7 @@ export class FieldCrypto {
   async encrypt(tenantId: string, plaintext: string): Promise<Buffer> {
     const { version, dek } = await this.activeKey(tenantId);
     const iv = randomBytes(IV_BYTES);
-    const cipher = createCipheriv('aes-256-gcm', dek, iv);
+    const cipher = createCipheriv('aes-256-gcm', dek, iv, { authTagLength: TAG_BYTES });
     cipher.setAAD(Buffer.from(tenantId));
     const ct = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
     const header = Buffer.alloc(3);
@@ -90,7 +90,7 @@ export class FieldCrypto {
     const iv = blob.subarray(3, 3 + IV_BYTES);
     const tag = blob.subarray(3 + IV_BYTES, 3 + IV_BYTES + TAG_BYTES);
     const ct = blob.subarray(3 + IV_BYTES + TAG_BYTES);
-    const decipher = createDecipheriv('aes-256-gcm', dek, iv);
+    const decipher = createDecipheriv('aes-256-gcm', dek, iv, { authTagLength: TAG_BYTES });
     decipher.setAAD(Buffer.from(tenantId));
     decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(ct), decipher.final()]).toString('utf8');

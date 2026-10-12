@@ -60,24 +60,9 @@
     "",
     "Versioned definitions implemented; route not yet covered by the integration suite."
   ],
-  "AC-00A": [
-    "pass",
-    "",
-    "layer1.int.test.ts (denied generically, denial audited)",
-    ""
-  ],
-  "AC-00B": [
-    "pass",
-    "",
-    "layer1.int.test.ts (stale If-Match → 409 with current record)",
-    ""
-  ],
-  "AC-00C": [
-    "pass",
-    "",
-    "layer1.int.test.ts (Idempotency-Key replay)",
-    ""
-  ],
+  "AC-00A": ["pass", "", "layer1.int.test.ts (denied generically, denial audited)", ""],
+  "AC-00B": ["pass", "", "layer1.int.test.ts (stale If-Match → 409 with current record)", ""],
+  "AC-00C": ["pass", "", "layer1.int.test.ts (Idempotency-Key replay)", ""],
   "AC-00D": [
     "partial",
     "services/api/src/errors.ts, apps/web-console/src/ui/primitives.tsx (Status)",
@@ -222,24 +207,9 @@
     "layer1.int.test.ts (SCL-01), stack smoke in task A",
     ""
   ],
-  "AC-18A": [
-    "pass",
-    "",
-    "layer1.int.test.ts (director denied legal holds), templates.test.ts",
-    ""
-  ],
-  "AC-18B": [
-    "pass",
-    "",
-    "stack.int.test.ts (meta keys)",
-    ""
-  ],
-  "AC-18C": [
-    "deferred",
-    "",
-    "",
-    "Product help content is written with the features it describes."
-  ],
+  "AC-18A": ["pass", "", "layer1.int.test.ts (director denied legal holds), templates.test.ts", ""],
+  "AC-18B": ["pass", "", "stack.int.test.ts (meta keys)", ""],
+  "AC-18C": ["deferred", "", "", "Product help content is written with the features it describes."],
   "NFR-02": [
     "pass",
     "infra/caddy/Caddyfile (TLS, HSTS, CSP), infra/postgres/init.sh (least privilege), zod validation, services/api/src/logging.ts",
@@ -390,12 +360,7 @@
     "tools/seed/test/county.test.ts, stack.int.test.ts (isolation)",
     ""
   ],
-  "SCL-15": [
-    "pass",
-    "docs/adr/0001–0023",
-    "",
-    ""
-  ],
+  "SCL-15": ["pass", "docs/adr/0001–0023", "", ""],
   "ADM-01": [
     "partial",
     "routes/tenants.ts, accounts.ts, roles.ts; console administration workspaces",
@@ -420,12 +385,7 @@
     "one test file per guardrail, layer1.int.test.ts",
     ""
   ],
-  "ACCT-01": [
-    "pass",
-    "0004_identity.ts",
-    "",
-    ""
-  ],
+  "ACCT-01": ["pass", "0004_identity.ts", "", ""],
   "RULE-02": [
     "partial",
     "nullable columns distinct from zero across the schema",
@@ -468,12 +428,7 @@
     "guardrail suites, layer1.int.test.ts, stack.int.test.ts",
     "No known bypass in released functionality."
   ],
-  "GATE-05": [
-    "pass",
-    "",
-    "layer1.int.test.ts (idempotency, versions), DB tests",
-    ""
-  ],
+  "GATE-05": ["pass", "", "layer1.int.test.ts (idempotency, versions), DB tests", ""],
   "GATE-09": [
     "partial",
     "",
@@ -492,24 +447,9 @@
     "tests/e2e (axe WCAG 2.2 AA on released screens)",
     "Public tasks and their full ACC coverage arrive with intake (layer 2); manual checklist pending."
   ],
-  "BRD:FR-A*": [
-    "partial",
-    "see ACC-*",
-    "tests/e2e",
-    "As ACC-*."
-  ],
-  "AC-A*": [
-    "deferred",
-    "",
-    "",
-    "Public-role acceptance cases need the resident intake (layer 2)."
-  ],
-  "NFR-01": [
-    "partial",
-    "",
-    "tests/e2e",
-    "Automated only; manual passes pending."
-  ],
+  "BRD:FR-A*": ["partial", "see ACC-*", "tests/e2e", "As ACC-*."],
+  "AC-A*": ["deferred", "", "", "Public-role acceptance cases need the resident intake (layer 2)."],
+  "NFR-01": ["partial", "", "tests/e2e", "Automated only; manual passes pending."],
   "NFR-09": [
     "partial",
     "packages/i18n via react-intl in the resident app, Keycloak realm locales",
@@ -534,12 +474,7 @@
     "",
     "Public submissions and resources without staff credentials: layers 2 and 3."
   ],
-  "GATE-07": [
-    "deferred",
-    "",
-    "",
-    "Official reports and exports: layer 6."
-  ],
+  "GATE-07": ["deferred", "", "", "Official reports and exports: layer 6."],
   "GATE-08": [
     "deferred",
     "",

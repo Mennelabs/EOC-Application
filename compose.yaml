@@ -1,5 +1,6 @@
 # Common Ground local stack: `docker compose up` (SCL-11).
-# Run scripts/init-env.sh once first; it writes .env with random local secrets.
+# Run scripts/init-env.sh (or scripts/init-env.ps1 on Windows) once first; it
+# writes .env with random local secrets.
 # Synthetic data only on this stack (SCL-12).
 name: common-ground
 
@@ -94,6 +95,10 @@ services:
       - keys_init:/bao-init:ro
     depends_on:
       migrate: { condition: service_completed_successfully }
+      # The exercise county is loaded before the worker starts consuming the
+      # outbox; it also keeps `up --wait` from treating the finished loader as
+      # a failure (one-shots need a dependant, docker/compose#10596).
+      seed-load: { condition: service_completed_successfully }
       queue: { condition: service_healthy }
       idp: { condition: service_healthy }
       objects: { condition: service_healthy }
@@ -132,6 +137,7 @@ services:
       DATABASE_URL: postgres://cg_worker:${CG_WORKER_PASSWORD:?}@db:5432/cg
     depends_on:
       migrate: { condition: service_completed_successfully }
+      seed: { condition: service_completed_successfully }
     restart: 'no'
     networks: [platform]
 

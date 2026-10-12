@@ -159,7 +159,8 @@ export const photoProcess: TopicHandler = async (ctx, msg) => {
       .where('tenant_id', '=', row.tenant_id)
       .where('sha256', '=', processed.sha256)
       .where('execution_id', '<>', row.execution_id)
-      .limit(3)
+      .orderBy('created_at', 'desc')
+      .limit(5)
       .execute();
     await trx
       .updateTable('cg.photo')

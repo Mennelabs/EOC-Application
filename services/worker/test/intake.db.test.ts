@@ -576,11 +576,11 @@ describe.skipIf(!workerUrl)('worker filing (database-backed)', () => {
       .select('flags')
       .where('id', '=', other.id)
       .executeTakeFirstOrThrow();
-    expect(
-      (report.flags as ReportFlag[]).some(
-        (f) => f.kind === 'duplicate_photo' && f.reportId === firstReportId,
-      ),
-    ).toBe(true);
+    // Earlier runs of this suite leave twins behind too; the newest twin is this run's first report.
+    const dup = (report.flags as ReportFlag[]).filter((f) => f.kind === 'duplicate_photo');
+    expect(dup.length).toBeGreaterThan(0);
+    expect(dup.every((f) => f.photoId === photoId)).toBe(true);
+    expect(dup.some((f) => f.reportId === firstReportId)).toBe(true);
   });
 
   it('keeps the reference-code pool topped up (INT-22)', async () => {

@@ -38,6 +38,20 @@ export const platformSchema = baseSchema.extend({
   SMTP_URL: url,
 });
 
+/** Worker: platform settings plus identity-provider administration and mail. */
+export const workerSchema = platformSchema.extend({
+  KC_ADMIN_USER: z.string().min(1),
+  KC_ADMIN_PASSWORD: z.string().min(8),
+  /** Where browsers reach the gateway, for realm redirect URIs and emails. */
+  GATEWAY_PUBLIC_URL: url,
+  MAIL_FROM: z.string().min(3).default('no-reply@localhost'),
+  /** Development only: realms get a confidential test client with direct-access grants. */
+  IDP_DEV_DIRECT_GRANT: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+});
+
 /** CJIS enclave API (SEC-12): its own database and keys, nothing shared. */
 export const cjisSchema = baseSchema.extend({
   CJIS_DATABASE_URL: url,
@@ -46,6 +60,7 @@ export const cjisSchema = baseSchema.extend({
 
 export type BaseConfig = z.infer<typeof baseSchema>;
 export type PlatformConfig = z.infer<typeof platformSchema>;
+export type WorkerConfig = z.infer<typeof workerSchema>;
 export type CjisConfig = z.infer<typeof cjisSchema>;
 
 export class ConfigError extends Error {

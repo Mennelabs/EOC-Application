@@ -85,11 +85,18 @@ services:
     environment:
       <<: *node-env
       DATABASE_URL: postgres://cg_worker:${CG_WORKER_PASSWORD:?}@db:5432/cg
+      KC_ADMIN_USER: cg-admin
+      KC_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?}
+      GATEWAY_PUBLIC_URL: https://${GATEWAY_HOST:-localhost}
+      MAIL_FROM: no-reply@${GATEWAY_HOST:-localhost}
+      IDP_DEV_DIRECT_GRANT: ${IDP_DEV_DIRECT_GRANT:-true}
     volumes:
       - keys_init:/bao-init:ro
     depends_on:
       migrate: { condition: service_completed_successfully }
       queue: { condition: service_healthy }
+      idp: { condition: service_healthy }
+      objects: { condition: service_healthy }
     healthcheck: *node-health
     networks: [platform]
 
@@ -112,6 +119,19 @@ services:
     command: ['sh', '-c', 'exec node tools/seed/src/cli.ts --out /data/seed']
     volumes:
       - seed_data:/data/seed
+    restart: 'no'
+    networks: [platform]
+
+  # Loads the synthetic WESTWIND county (tenants, template roles, cast accounts)
+  # and hands provisioning to the worker. Re-runs are no-ops (SCL-12).
+  seed-load:
+    build: { context: ., dockerfile: infra/node/Dockerfile, args: { APP: tools/seed } }
+    image: common-ground/seed:local
+    environment:
+      ENTRY: load.ts
+      DATABASE_URL: postgres://cg_worker:${CG_WORKER_PASSWORD:?}@db:5432/cg
+    depends_on:
+      migrate: { condition: service_completed_successfully }
     restart: 'no'
     networks: [platform]
 

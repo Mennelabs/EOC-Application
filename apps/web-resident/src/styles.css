@@ -315,9 +315,6 @@ a.button {
   margin: 0;
 }
 .review-section .row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0.25rem 1rem;
   padding-block: 0.6rem;
   border-block-end: 1px solid var(--line);
 }
@@ -326,6 +323,10 @@ a.button {
 }
 .review-section dd {
   margin: 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.25rem 1rem;
+  align-items: start;
 }
 .tag {
   display: inline-block;

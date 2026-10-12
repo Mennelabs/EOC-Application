@@ -133,7 +133,7 @@ export function ChoiceGroup({
 
 export function Progress({ text }: { text: string }) {
   return (
-    <p className="progress" aria-live="polite">
+    <p className="progress" role="status">
       {text}
     </p>
   );

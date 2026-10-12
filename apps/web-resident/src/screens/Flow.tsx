@@ -1247,16 +1247,14 @@ function Review({
           <dl>
             {s.items.map((item) => (
               <div className="row" key={item.id}>
-                <div>
-                  <dt>{item.prompt}</dt>
-                  <dd>
+                <dt>{item.prompt}</dt>
+                <dd>
+                  <span className="answer">
                     {item.answer}
                     {state.fromWords.includes(item.id) ? (
                       <span className="tag">{t('review.fromWords')}</span>
                     ) : null}
-                  </dd>
-                </div>
-                <div>
+                  </span>
                   <button
                     type="button"
                     className="link"
@@ -1265,7 +1263,7 @@ function Review({
                   >
                     {t('review.change')}
                   </button>
-                </div>
+                </dd>
               </div>
             ))}
           </dl>
@@ -1275,51 +1273,67 @@ function Review({
         <h2 id="rev-needs">{t('review.needs')}</h2>
         <dl>
           <div className="row">
-            <div>
-              <dt>{t('review.needs')}</dt>
-              <dd>
+            <dt>{t('review.needs')}</dt>
+            <dd>
+              <span className="answer">
                 {state.needs.length ? state.needs.map(needLabel).join(', ') : t('review.none')}
-              </dd>
-            </div>
-            <div>
-              <button type="button" className="link" onClick={() => onChange('needs')}>
+              </span>
+              <button
+                type="button"
+                className="link"
+                onClick={() => onChange('needs')}
+                aria-label={`${t('review.change')}: ${t('review.needs')}`}
+              >
                 {t('review.change')}
               </button>
-            </div>
+            </dd>
           </div>
           <div className="row">
-            <div>
-              <dt>{t('review.consent')}</dt>
-              <dd>{consentYes.length ? consentYes.join(', ') : t('review.none')}</dd>
-            </div>
-            <div>
-              <button type="button" className="link" onClick={() => onChange('consent')}>
+            <dt>{t('review.consent')}</dt>
+            <dd>
+              <span className="answer">
+                {consentYes.length ? consentYes.join(', ') : t('review.none')}
+              </span>
+              <button
+                type="button"
+                className="link"
+                onClick={() => onChange('consent')}
+                aria-label={`${t('review.change')}: ${t('review.consent')}`}
+              >
                 {t('review.change')}
               </button>
-            </div>
+            </dd>
           </div>
           <div className="row">
-            <div>
-              <dt>{t('review.photos')}</dt>
-              <dd>{photos ? t('photos.added', { n: photos }) : t('review.none')}</dd>
-            </div>
-            <div>
-              <button type="button" className="link" onClick={() => onChange('photos')}>
+            <dt>{t('review.photos')}</dt>
+            <dd>
+              <span className="answer">
+                {photos ? t('photos.added', { n: photos }) : t('review.none')}
+              </span>
+              <button
+                type="button"
+                className="link"
+                onClick={() => onChange('photos')}
+                aria-label={`${t('review.change')}: ${t('review.photos')}`}
+              >
                 {t('review.change')}
               </button>
-            </div>
+            </dd>
           </div>
           {state.ownWords ? (
             <div className="row">
-              <div>
-                <dt>{t('review.ownWords')}</dt>
-                <dd>{state.ownWords}</dd>
-              </div>
-              <div>
-                <button type="button" className="link" onClick={() => onChange('own_words')}>
+              <dt>{t('review.ownWords')}</dt>
+              <dd>
+                <span className="answer">{state.ownWords}</span>
+                <button
+                  type="button"
+                  className="link"
+                  onClick={() => onChange('own_words')}
+                  aria-label={`${t('review.change')}: ${t('review.ownWords')}`}
+                >
                   {t('review.change')}
                 </button>
-              </div>
+              </dd>
             </div>
           ) : null}
         </dl>

@@ -12,12 +12,13 @@ import { HeadObjectCommand, PutObjectCommand, type S3Client } from '@aws-sdk/cli
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import type { Transaction } from 'kysely';
+import { sql, type Transaction } from 'kysely';
 import { z } from 'zod';
 import type { QueueConnection } from '@cg/adapters';
 import { extractionQuestions, redact, validateExtraction, type AiProvider } from '@cg/ai';
 import type { Database } from '@cg/db';
 import { normalisePhone } from '@cg/crypto';
+import { upsertAfterAnswers } from '@cg/db';
 import { validateAnswer, type QuestionGraph, type QuestionNode } from '@cg/intake';
 import { ApiError, errors } from '../errors.ts';
 import { enqueueOutbox } from '../routes/helpers.ts';
@@ -54,7 +55,8 @@ export interface PublicRouteDeps {
   codes: ReferenceCodeLeaser;
   risk?: RiskScorer;
   getQueue: () => QueueConnection | undefined;
-  objects?: { client: S3Client; bucket: string; maxBytes: number };
+  /** presignClient signs URLs browsers can reach (S3_PUBLIC_ENDPOINT); client talks to storage internally. */
+  objects?: { client: S3Client; presignClient?: S3Client; bucket: string; maxBytes: number };
   residentTokenSecret: string;
   defaultGraph: QuestionGraph;
   /** Provider in force for a tenant (AIG-12); absent means no AI anywhere (INT-16). */
@@ -159,6 +161,8 @@ export const publicRoutes =
           );
           const faith = await configValue<boolean>(trx, 'intake.faith_partners');
           const helpPhone = await configValue<string>(trx, 'intake.help_phone');
+          const smsTerms = await configValue<string>(trx, 'sms.terms_url');
+          const smsPrivacy = await configValue<string>(trx, 'sms.privacy_url');
           const languages = graph.languages.filter((l) => tenant.locales.includes(l));
           return {
             tenant: { slug: tenant.slug, name: tenant.name, branding: tenant.branding },
@@ -171,6 +175,8 @@ export const publicRoutes =
             },
             languages: languages.length > 0 ? languages : ['en'],
             helpPhone: helpPhone ?? null,
+            // docs/06: the opt-in box links to the county's SMS terms and privacy pages.
+            sms: { termsUrl: smsTerms ?? null, privacyUrl: smsPrivacy ?? null },
             graph: {
               ...graph,
               emergencyInstructions: emergency ?? graph.emergencyInstructions,
@@ -210,6 +216,152 @@ export const publicRoutes =
           referenceCode: result.referenceCode,
           status: result.status,
           verificationSuggested: result.verificationSuggested,
+        });
+      },
+    );
+
+    // --------------------------------------------- after the report is saved
+    /** "Text this number to me" on the confirmation screen (INT-22, ACC-30): up to three times, within a day. */
+    app.post(
+      '/intake/:tenant/submissions/:executionId/text-code',
+      {
+        schema: {
+          tags: ['public intake'],
+          params: tenantParam.extend({ executionId: z.uuid() }),
+          body: z.object({
+            phone: z.string().min(7).max(30),
+            language: z.string().min(2).max(10).default('en'),
+          }),
+        },
+      },
+      async (request, reply) => {
+        const tenant = tenantOf(request);
+        guessLookups(request);
+        await request.authorize('intake.submit', { type: 'report', tenantId: tenant.id });
+        const phone = normalisePhone(request.body.phone);
+        const executionId = request.params.executionId;
+        await request.tx(async (trx) => {
+          const row = await trx
+            .selectFrom('cg.intake_submission')
+            .select(['reference_code', 'received_at', 'confirmation_texts'])
+            .where('execution_id', '=', executionId)
+            .executeTakeFirst();
+          // The answer is the same whether or not anything matched (RULE-17).
+          if (
+            !row ||
+            row.received_at.getTime() < now().getTime() - 24 * 3600_000 ||
+            row.confirmation_texts >= 3
+          )
+            return;
+          await trx
+            .updateTable('cg.intake_submission')
+            .set({ confirmation_texts: row.confirmation_texts + 1 })
+            .where('execution_id', '=', executionId)
+            .execute();
+          await enqueueOutbox(
+            trx,
+            tenant.id,
+            'message.send',
+            {
+              template: 'confirmation',
+              channel: 'sms',
+              toEnc: (await app.fieldCrypto.encrypt(tenant.id, phone)).toString('base64'),
+              language: request.body.language,
+              variables: { referenceCode: row.reference_code },
+            },
+            null,
+          );
+          await request.audit(trx, {
+            action: 'intake.text_code',
+            targetType: 'intake_submission',
+            targetId: executionId,
+            changes: { fields: [{ name: 'texts', to: row.confirmation_texts + 1 }] },
+          });
+        });
+        return reply.code(202).send({ status: 'sent' });
+      },
+    );
+
+    /** Optional questions answered after the report is safely saved (INT-19, EQ-13). */
+    app.post(
+      '/intake/:tenant/submissions/:executionId/after',
+      {
+        schema: {
+          tags: ['public intake'],
+          params: tenantParam.extend({ executionId: z.uuid() }),
+          body: z.object({
+            graphKey: z.string().min(1),
+            graphVersion: z.number().int().positive(),
+            answers: z.record(z.string(), answerValueSchema),
+          }),
+        },
+      },
+      async (request) => {
+        const tenant = tenantOf(request);
+        await request.authorize('intake.submit', { type: 'report', tenantId: tenant.id });
+        const executionId = request.params.executionId;
+        return request.tx(async (trx) => {
+          const row = await trx
+            .selectFrom('cg.intake_submission')
+            .select(['execution_id'])
+            .where('execution_id', '=', executionId)
+            .executeTakeFirst();
+          if (!row) throw errors.notFound();
+          const graph = await loadGraph(
+            trx,
+            request.body.graphKey,
+            request.body.graphVersion,
+            deps.defaultGraph,
+          );
+          const after = new Map(graph.afterSubmission.map((q) => [q.id, q]));
+          const fields: { name: string; message: string }[] = [];
+          for (const [id, value] of Object.entries(request.body.answers)) {
+            const q = after.get(id);
+            if (!q) fields.push({ name: id, message: 'unknown question' });
+            else
+              for (const e of validateAnswer(q, value))
+                fields.push({ name: id, message: e.message });
+          }
+          if (fields.length > 0)
+            throw new ApiError(400, 'validation_failed', 'Some answers need another look.', {
+              fields,
+            });
+          const answers = request.body.answers;
+          await trx
+            .updateTable('cg.intake_submission')
+            .set({
+              after_enc: await app.fieldCrypto.encrypt(tenant.id, JSON.stringify(answers)),
+              after_merged_at: null,
+            })
+            .where('execution_id', '=', executionId)
+            .execute();
+          // Filed already? Then the answers go straight onto the report; otherwise the worker merges them.
+          const report = await trx
+            .selectFrom('cg.report')
+            .select('id')
+            .where('execution_id', '=', executionId)
+            .executeTakeFirst();
+          if (report) {
+            await upsertAfterAnswers(trx, {
+              tenantId: tenant.id,
+              reportId: report.id,
+              answers,
+              isRestricted: (id) => after.get(id)?.classification === 'restricted',
+              encrypt: (text) => app.fieldCrypto.encrypt(tenant.id, text),
+            });
+            await trx
+              .updateTable('cg.intake_submission')
+              .set({ after_merged_at: now() })
+              .where('execution_id', '=', executionId)
+              .execute();
+          }
+          await request.audit(trx, {
+            action: 'intake.after_answers',
+            targetType: 'intake_submission',
+            targetId: executionId,
+            changes: { fields: [{ name: 'answers', to: Object.keys(answers).length }] },
+          });
+          return { status: report ? 'saved' : 'queued' };
         });
       },
     );
@@ -391,6 +543,11 @@ export const publicRoutes =
             shot: z.string().min(1).max(40).default('other'),
             contentType: z.enum(['image/jpeg', 'image/png', 'image/webp', 'image/heic']),
             bytes: z.number().int().positive(),
+            /** Read on the device from the picture's own data before it was stripped (PHO-06); suggestions only. */
+            takenAt: z.iso.datetime().optional(),
+            location: z
+              .object({ lat: z.number().min(-90).max(90), lon: z.number().min(-180).max(180) })
+              .optional(),
           }),
         },
       },
@@ -433,6 +590,10 @@ export const publicRoutes =
               object_key_original: '',
               content_type: request.body.contentType,
               bytes: request.body.bytes,
+              suggested_taken_at: request.body.takenAt ? new Date(request.body.takenAt) : null,
+              suggested_geom: request.body.location
+                ? sql`ST_SetSRID(ST_MakePoint(${request.body.location.lon}, ${request.body.location.lat}), 4326)`
+                : null,
             })
             .returning('id')
             .executeTakeFirstOrThrow();
@@ -447,7 +608,9 @@ export const publicRoutes =
         const expiresIn = 900;
         const uploadUrl = await getSignedUrl(
           // The presigner's client type predates exactOptionalPropertyTypes; the runtime object is the same.
-          objects.client as unknown as Parameters<typeof getSignedUrl>[0],
+          (objects.presignClient ?? objects.client) as unknown as Parameters<
+            typeof getSignedUrl
+          >[0],
           new PutObjectCommand({
             Bucket: objects.bucket,
             Key: photo.key,

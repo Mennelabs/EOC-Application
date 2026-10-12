@@ -11,7 +11,13 @@ import { createHash } from 'node:crypto';
 import { sql, type Kysely, type Transaction } from 'kysely';
 import { z } from 'zod';
 import { normalisePhone } from '@cg/crypto';
-import { countFreeCodes, generateCodes, type Database, type ReportFlag } from '@cg/db';
+import {
+  countFreeCodes,
+  generateCodes,
+  upsertAfterAnswers,
+  type Database,
+  type ReportFlag,
+} from '@cg/db';
 import {
   needSignals,
   parseGraph,
@@ -359,7 +365,6 @@ export async function fileSubmission(ctx: JobContext, input: FilingInput): Promi
       // Answers: restricted ones encrypted, the rest as queryable JSON (SEC-10).
       const skip = new Set([...PARTY_QUESTIONS, ...LOCATION_QUESTIONS]);
       const main = partitionAnswers(answers, questions, skip);
-      const extra = partitionAnswers(after, questions, new Set());
       const signals = needSignals(graph, { ...answers, ...after }, payload.needs);
       const dangerNow = valueOf(answers['danger_now']);
       const danger = dangerNow === 'yes' || dangerNow === 'not_sure';
@@ -480,19 +485,34 @@ export async function fileSubmission(ctx: JobContext, input: FilingInput): Promi
           .onConflict((oc) => oc.doNothing())
           .execute();
       }
-      if (Object.keys(after).length > 0) {
-        await trx
-          .insertInto('cg.post_submission_answers')
-          .values({
-            tenant_id: tenantId,
-            report_id: report.id,
-            aggregate_answers: JSON.stringify(extra.clear),
-            restricted_answers_enc:
-              Object.keys(extra.restricted).length > 0
-                ? await enc(JSON.stringify(extra.restricted))
-                : null,
-          })
-          .execute();
+      // After-saving answers: in the payload, or sent later and kept on the submission row (INT-19).
+      const late = await trx
+        .selectFrom('cg.intake_submission')
+        .select(['after_enc'])
+        .where('execution_id', '=', executionId)
+        .executeTakeFirst();
+      const lateAnswers: Answers = late?.after_enc
+        ? (JSON.parse(await ctx.crypto.decrypt(tenantId, late.after_enc)) as Answers)
+        : {};
+      const allAfter: Answers = { ...after, ...lateAnswers };
+      if (Object.keys(allAfter).length > 0) {
+        await upsertAfterAnswers(trx, {
+          tenantId,
+          reportId: report.id,
+          answers: Object.fromEntries(
+            Object.entries(allAfter).filter(
+              ([id]) => questions.has(id) && !graph.nodes.some((n) => n.id === id),
+            ),
+          ),
+          isRestricted: (id) => questions.get(id)?.classification === 'restricted',
+          encrypt: enc,
+        });
+        if (late?.after_enc)
+          await trx
+            .updateTable('cg.intake_submission')
+            .set({ after_merged_at: receivedAt })
+            .where('execution_id', '=', executionId)
+            .execute();
       }
       await trx
         .updateTable('cg.photo')
@@ -644,6 +664,57 @@ export async function sweepStoredSubmissions(ctx: JobContext, limit = 50): Promi
   }
   if (filed > 0) ctx.log.info({ filed }, 'stored submissions filed');
   return filed;
+}
+
+/** After-saving answers that arrived once the report was filed are merged here (INT-19). */
+export async function mergeLateAnswers(ctx: JobContext, limit = 50): Promise<number> {
+  const rows = await ctx.db
+    .selectFrom('cg.intake_submission as s')
+    .innerJoin('cg.report as r', 'r.execution_id', 's.execution_id')
+    .select([
+      's.execution_id as execution_id',
+      's.tenant_id as tenant_id',
+      's.after_enc as after_enc',
+      'r.id as report_id',
+      'r.graph_key as graph_key',
+      'r.graph_version as graph_version',
+    ])
+    .where('s.after_enc', 'is not', null)
+    .where('s.after_merged_at', 'is', null)
+    .limit(limit)
+    .execute();
+  let merged = 0;
+  for (const row of rows) {
+    if (!row.after_enc) continue;
+    await asSystem(ctx.db, row.tenant_id, async (trx) => {
+      const graph = await loadGraph(trx, row.graph_key, row.graph_version, ctx.defaultGraph);
+      const after = new Map(graph.afterSubmission.map((q) => [q.id, q]));
+      const answers = JSON.parse(
+        await ctx.crypto.decrypt(row.tenant_id, row.after_enc!),
+      ) as Answers;
+      await upsertAfterAnswers(trx, {
+        tenantId: row.tenant_id,
+        reportId: row.report_id,
+        answers: Object.fromEntries(Object.entries(answers).filter(([id]) => after.has(id))),
+        isRestricted: (id) => after.get(id)?.classification === 'restricted',
+        encrypt: (text) => ctx.crypto.encrypt(row.tenant_id, text),
+      });
+      await trx
+        .updateTable('cg.intake_submission')
+        .set({ after_merged_at: new Date() })
+        .where('execution_id', '=', row.execution_id)
+        .execute();
+      await systemAudit(trx, row.tenant_id, 'intake.after_answers', {
+        action: 'report.after_answers_merged',
+        targetType: 'report',
+        targetId: row.report_id,
+        executionId: row.execution_id,
+        changes: { fields: [{ name: 'answers', to: Object.keys(answers).length }] },
+      });
+    });
+    merged++;
+  }
+  return merged;
 }
 
 /** Keeps at least `floor` free reference codes per tenant so the API never generates on the hot path. */

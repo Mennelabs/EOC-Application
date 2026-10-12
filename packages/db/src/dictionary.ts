@@ -387,6 +387,12 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
       attempts: { c: 'internal' },
       last_error: { c: 'internal' },
       received_at: { c: 'internal' },
+      after_enc: {
+        c: 'restricted',
+        d: 'Encrypted after-saving answers until merged into the report (INT-19)',
+      },
+      after_merged_at: { c: 'internal' },
+      confirmation_texts: { c: 'internal', d: 'Times the code was texted on request (INT-22)' },
       processed_at: { c: 'internal' },
     },
     { standard: false },

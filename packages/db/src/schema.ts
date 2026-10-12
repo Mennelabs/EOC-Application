@@ -424,6 +424,9 @@ export interface IntakeSubmissionTable {
   last_error: string | null;
   received_at: TsGen;
   processed_at: TsNullable;
+  after_enc: Buffer | null;
+  after_merged_at: TsNullable;
+  confirmation_texts: Generated<number>;
 }
 
 export interface PartyTable extends Stamped {

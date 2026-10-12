@@ -20,6 +20,13 @@
 	respond /healthz "ok" 200
 }
 
+# Object storage for direct photo uploads (SCL-04): presigned URLs name this
+# host; the signature covers the host and path, so nothing is rewritten.
+objects.{$GATEWAY_HOST:localhost} {
+	import security_headers
+	reverse_proxy objects:9000
+}
+
 {$GATEWAY_HOST:localhost} {
 	import security_headers
 	encode zstd gzip
@@ -41,7 +48,7 @@
 	}
 
 	handle {
-		header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self'; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		header Content-Security-Policy "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self' https://objects.{$GATEWAY_HOST:localhost}; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 		reverse_proxy web:8080
 	}
 }

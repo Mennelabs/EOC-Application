@@ -32,6 +32,8 @@ export const platformSchema = baseSchema.extend({
   S3_ACCESS_KEY_ID: z.string().min(1),
   S3_SECRET_ACCESS_KEY: z.string().min(8),
   S3_BUCKET: z.string().min(3),
+  /** Where browsers reach object storage for direct uploads (SCL-04); absent means the internal endpoint. */
+  S3_PUBLIC_ENDPOINT: z.preprocess((v) => (v === '' ? undefined : v), url.optional()),
   KEYS_PROVIDER: z.enum(['openbao']).default('openbao'),
   OPENBAO_ADDR: url,
   OPENBAO_TOKEN_FILE: z.string().min(1),

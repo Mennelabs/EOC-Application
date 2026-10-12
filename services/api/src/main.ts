@@ -56,7 +56,22 @@ let queue: QueueConnection | undefined;
 const resolver = new TenantResolver(db);
 const codes = new ReferenceCodeLeaser(db, `${process.env['HOSTNAME'] ?? 'api'}:${process.pid}`);
 const risk = new RiskScorer();
-const objects = { client: s3, bucket: config.S3_BUCKET, maxBytes: config.PUBLIC_UPLOAD_MAX_BYTES };
+// Browsers upload to the public object host (SCL-04); the API itself talks to storage internally.
+const presignClient = config.S3_PUBLIC_ENDPOINT
+  ? createS3({
+      endpoint: config.S3_PUBLIC_ENDPOINT,
+      region: config.S3_REGION,
+      accessKeyId: config.S3_ACCESS_KEY_ID,
+      secretAccessKey: config.S3_SECRET_ACCESS_KEY,
+      bucket: config.S3_BUCKET,
+    })
+  : undefined;
+const objects = {
+  client: s3,
+  ...(presignClient ? { presignClient } : {}),
+  bucket: config.S3_BUCKET,
+  maxBytes: config.PUBLIC_UPLOAD_MAX_BYTES,
+};
 const twilio =
   config.TWILIO_ACCOUNT_SID && config.TWILIO_AUTH_TOKEN
     ? { accountSid: config.TWILIO_ACCOUNT_SID, authToken: config.TWILIO_AUTH_TOKEN }

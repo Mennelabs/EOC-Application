@@ -25,7 +25,7 @@ import { westwindGraph } from '@cg/intake';
 import { createDb } from '@cg/db';
 import { KeycloakAdmin } from './idp/keycloak.ts';
 import { anchorAuditChains, expireBreakGlass, retentionSweep } from './jobs/handlers.ts';
-import { sweepStoredSubmissions, topUpReferenceCodes } from './jobs/intake.ts';
+import { mergeLateAnswers, sweepStoredSubmissions, topUpReferenceCodes } from './jobs/intake.ts';
 import { consume, consumeIntake, relayOnce } from './jobs/relay.ts';
 import type { JobContext, Schedule } from './jobs/types.ts';
 import { nullMailer, smtpMailer } from './mail.ts';
@@ -126,7 +126,10 @@ const schedules: Schedule[] = [
   {
     name: 'intake-stored-sweep',
     everyMs: 10_000,
-    run: (c) => sweepStoredSubmissions(c).then(() => undefined),
+    run: (c) =>
+      sweepStoredSubmissions(c)
+        .then(() => mergeLateAnswers(c))
+        .then(() => undefined),
   },
   { name: 'reference-code-pool', everyMs: 60_000, run: (c) => topUpReferenceCodes(c) },
 ];

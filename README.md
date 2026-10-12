@@ -50,7 +50,11 @@ Then open:
 | http://localhost:15672     | RabbitMQ management (`cg`, password in `.env`)                                                                                                               |
 | http://localhost:9001      | MinIO console (`cg-local`, password in `.env`)                                                                                                               |
 
-### Text and call the county (simulator)
+### Report damage as a resident
+
+Open `https://localhost/county/westwind` (the root forwards there; `DEFAULT_TENANT` and `DEFAULT_EVENT` in `.env` change it). The flow asks one question at a time from the published graph, keeps answers on the device encrypted, works offline until it can send, and ends with a reference number such as `KXMR-4827`. Other entry points: `…/westwind/kiosk` (assisted entry by a helper, cleared from the device when done), `…/westwind/resume` (continue a paused report with its code), `/county/my-report` (reference number + the phone or email given → one-time code → status, consent, corrections, withdrawal; one-time codes to email land in Mailpit at `http://localhost:8025`). Photos upload straight to object storage through `https://objects.localhost` (trust the same local CA; browsers resolve `*.localhost` themselves).
+
+## Text and call the county (simulator)
 
 Without Twilio, the API plays the phone on synthetic data. Text the exercise county's number (`+13145550100`) from any number:
 

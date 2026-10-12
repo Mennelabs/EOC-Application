@@ -12,7 +12,7 @@
 	handle /config.json {
 		header Content-Type "application/json"
 		header Cache-Control "no-store"
-		respond `{"productName":"{$PRODUCT_NAME}","countyName":"{$COUNTY_NAME}","helpPhone":"{$HELP_PHONE}"}` 200
+		respond `{"productName":"{$PRODUCT_NAME}","countyName":"{$COUNTY_NAME}","helpPhone":"{$HELP_PHONE}","tenant":"{$DEFAULT_TENANT}","event":"{$DEFAULT_EVENT}"}` 200
 	}
 
 	redir /console /console/

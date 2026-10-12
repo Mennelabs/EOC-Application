@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="House">
+  <rect width="64" height="64" fill="#0b4f6c"/>
+  <path d="M16 33 32 19l16 14M21 31v15h22V31M29 46v-9h6v9" fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

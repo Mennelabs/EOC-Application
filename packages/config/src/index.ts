@@ -36,6 +36,14 @@ export const platformSchema = baseSchema.extend({
   IDP_PUBLIC_BASE: url,
   IDP_HEALTH_URL: url,
   SMTP_URL: url,
+  /** Signs resident tokens issued after reference code + one-time code (SEC-09); never in code. */
+  RESIDENT_TOKEN_SECRET: z.string().min(32),
+  /** Largest photo a resident may upload after client-side compression (PHO-05). */
+  PUBLIC_UPLOAD_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(6 * 1024 * 1024),
 });
 
 /** Worker: platform settings plus identity-provider administration and mail. */

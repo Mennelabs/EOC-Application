@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@cg/db": "workspace:*",
+    "@cg/intake": "workspace:*",
     "@cg/provisioning": "workspace:*",
     "kysely": "0.29.6"
   }

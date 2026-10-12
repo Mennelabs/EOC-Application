@@ -35,7 +35,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   await sql`
     create table cg.reference_code (
       tenant_id uuid not null references cg.tenant(id),
-      code text not null check (code ~ '^[A-HJ-NP-Z]{4}-[2-9]{4}$'),
+      code text not null check (code ~ '^[A-HJKMNP-Z]{4}-[2-9]{4}$'),
       state text not null default 'free' check (state in ('free', 'leased', 'used')),
       leased_by text,
       leased_at timestamptz,

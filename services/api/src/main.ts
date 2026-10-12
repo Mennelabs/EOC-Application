@@ -19,6 +19,10 @@ import { FieldCrypto, OpenBaoKeyService, dbKeyStore } from '@cg/crypto';
 import { buildApp } from './app.ts';
 import { createSubjectLoader } from './auth/subject.ts';
 import { routes } from './routes/index.ts';
+import { westwindGraph } from '@cg/intake';
+import { ReferenceCodeLeaser } from './public/reference-codes.ts';
+import { publicRoutes } from './public/routes.ts';
+import { TenantResolver } from './public/tenant-resolver.ts';
 
 const config = loadConfig(platformSchema);
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
@@ -54,6 +58,16 @@ const app = await buildApp({
     publicBase: config.IDP_PUBLIC_BASE,
   }),
   routes,
+  publicRoutes: [
+    publicRoutes({
+      resolver: new TenantResolver(db),
+      codes: new ReferenceCodeLeaser(db, `${process.env['HOSTNAME'] ?? 'api'}:${process.pid}`),
+      getQueue: () => queue,
+      objects: { client: s3, bucket: config.S3_BUCKET, maxBytes: config.PUBLIC_UPLOAD_MAX_BYTES },
+      residentTokenSecret: config.RESIDENT_TOKEN_SECRET,
+      defaultGraph: westwindGraph,
+    }),
+  ],
   probes: [
     postgresProbe('db', pool),
     queueProbe('queue', () => queue),

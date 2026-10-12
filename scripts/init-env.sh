@@ -27,5 +27,6 @@ RABBITMQ_PASSWORD=$(rand)
 MINIO_ROOT_PASSWORD=$(rand)
 CJIS_POSTGRES_PASSWORD=$(rand)
 CJIS_APP_PASSWORD=$(rand)
+RESIDENT_TOKEN_SECRET=$(rand)
 ENV
 echo "Wrote .env with fresh local secrets."

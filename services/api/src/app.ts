@@ -30,6 +30,8 @@ export interface AppOptions {
   fieldCrypto?: FieldCrypto;
   /** Route plugins mounted under /api/v1. */
   routes?: FastifyPluginAsync[];
+  /** Route plugins mounted under /api/public (no staff session; layer 2 intake). */
+  publicRoutes?: FastifyPluginAsync[];
 }
 
 export type App = Awaited<ReturnType<typeof buildApp>>;
@@ -99,6 +101,9 @@ export async function buildApp(opts: AppOptions) {
 
   for (const routes of opts.routes ?? []) {
     await app.register(routes, { prefix: '/api/v1' });
+  }
+  for (const routes of opts.publicRoutes ?? []) {
+    await app.register(routes, { prefix: '/api/public' });
   }
 
   return app;

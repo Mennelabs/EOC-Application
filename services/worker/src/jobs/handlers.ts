@@ -3,7 +3,8 @@
  * work already done and records nothing new (BRD:FR-00.06).
  */
 import { roleTemplates } from '@cg/authz';
-import { ensureRetentionDefaults, ensureTemplateRoles } from '@cg/provisioning';
+import { westwindGraph } from '@cg/intake';
+import { ensureIntakeGraph, ensureRetentionDefaults, ensureTemplateRoles } from '@cg/provisioning';
 import { sql } from 'kysely';
 import { allTenantIds, asSystem, systemAudit } from '../system.ts';
 import type { JobContext, OutboxMessage, TopicHandler } from './types.ts';
@@ -24,6 +25,7 @@ export const tenantProvision: TopicHandler = async (ctx, msg) => {
   await asSystem(ctx.db, tenantId, async (trx) => {
     await ensureRetentionDefaults(trx, tenantId);
     await ensureTemplateRoles(trx, tenantId);
+    await ensureIntakeGraph(trx, tenantId, westwindGraph);
     await systemAudit(trx, tenantId, 'tenant.provision', {
       action: 'tenant.provision',
       targetType: 'tenant',
@@ -32,6 +34,7 @@ export const tenantProvision: TopicHandler = async (ctx, msg) => {
         fields: [
           { name: 'roles_from_templates', to: roleTemplates.length },
           { name: 'retention_defaults', to: true },
+          { name: 'intake_graph', to: `${westwindGraph.key}@${westwindGraph.version}` },
         ],
       },
       executionId: msg.executionId,

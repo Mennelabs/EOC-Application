@@ -99,6 +99,8 @@ export interface AccountSubject {
 export interface PublicSubject {
   kind: 'public';
   tenantId?: string;
+  /** Set after reference code + one-time code verification (SEC-09): the one report this subject may read. */
+  resident?: { reportId: string };
 }
 
 export interface SystemSubject {

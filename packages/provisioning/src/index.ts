@@ -57,3 +57,36 @@ export async function ensureRetentionDefaults(
 ): Promise<void> {
   await sql`select cg.seed_retention_defaults(${tenantId}::uuid, null)`.execute(trx);
 }
+
+/**
+ * Every tenant starts with the shipped question graph as published version 1
+ * (INT-01, CON-02). A county edits it as configuration from then on.
+ */
+export async function ensureIntakeGraph(
+  trx: Transaction<Database>,
+  tenantId: string,
+  graph: { key: string; version: number; hazards: readonly string[]; languages: readonly string[] },
+): Promise<boolean> {
+  const existing = await trx
+    .selectFrom('cg.intake_graph')
+    .select('id')
+    .where('tenant_id', '=', tenantId)
+    .where('key', '=', graph.key)
+    .executeTakeFirst();
+  if (existing) return false;
+  await trx
+    .insertInto('cg.intake_graph')
+    .values({
+      tenant_id: tenantId,
+      key: graph.key,
+      graph_version: graph.version,
+      status: 'published',
+      graph: JSON.stringify(graph),
+      hazards: [...graph.hazards],
+      languages: [...graph.languages],
+      change_reason: 'shipped default graph',
+      published_at: new Date(),
+    })
+    .execute();
+  return true;
+}

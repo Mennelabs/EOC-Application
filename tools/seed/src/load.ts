@@ -13,7 +13,8 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'kysely';
 import { createDb, withTenant, type Database } from '@cg/db';
-import { ensureRetentionDefaults, ensureTemplateRoles } from '@cg/provisioning';
+import { westwindGraph } from '@cg/intake';
+import { ensureIntakeGraph, ensureRetentionDefaults, ensureTemplateRoles } from '@cg/provisioning';
 import type { Kysely, Transaction } from 'kysely';
 import { tenants as tenantSpecs } from './county.ts';
 
@@ -176,6 +177,31 @@ async function ensureAccount(
   return { id: account.id, created: true };
 }
 
+/** The WESTWIND tornado exercise event with its public intake link and keywords (docs/02, CHN-08). */
+async function ensureExerciseEvent(trx: Transaction<Database>, tenantId: string): Promise<void> {
+  const existing = await trx
+    .selectFrom('cg.event')
+    .select('id')
+    .where('tenant_id', '=', tenantId)
+    .where('intake_slug', '=', 'westwind')
+    .executeTakeFirst();
+  if (existing) return;
+  await trx
+    .insertInto('cg.event')
+    .values({
+      tenant_id: tenantId,
+      name: 'Exercise WESTWIND tornado',
+      hazard_type: 'tornado',
+      status: 'active',
+      intake_slug: 'westwind',
+      intake_keywords: ['DAMAGE', 'DANOS', 'DAÑOS'],
+      opened_at: new Date(),
+      created_by: SEED_ACTOR_A,
+      updated_by: SEED_ACTOR_A,
+    })
+    .execute();
+}
+
 export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
   const tenantIds: Record<string, string> = {};
   const accountIds: Record<string, string> = {};
@@ -188,6 +214,8 @@ export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
     await withTenant(db, { tenantId: id }, async (trx) => {
       await ensureRetentionDefaults(trx, id);
       await ensureTemplateRoles(trx, id);
+      await ensureIntakeGraph(trx, id, westwindGraph);
+      if (spec.key === 'county') await ensureExerciseEvent(trx, id);
       if (created) {
         await trx
           .insertInto('cg.outbox')

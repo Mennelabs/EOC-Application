@@ -27,6 +27,7 @@ x-node-env: &node-env
   IDP_PUBLIC_BASE: https://${GATEWAY_HOST:-localhost}/auth
   IDP_HEALTH_URL: http://idp:9000/auth/health/ready
   SMTP_URL: smtp://mail:1025
+  RESIDENT_TOKEN_SECRET: ${RESIDENT_TOKEN_SECRET:?}
 
 x-node-health: &node-health
   test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/health/ready']

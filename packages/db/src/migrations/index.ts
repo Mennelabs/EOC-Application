@@ -15,6 +15,7 @@ import * as m0013 from './0013_reports.ts';
 import * as m0014 from './0014_needs_consent.ts';
 import * as m0015 from './0015_channels.ts';
 import * as m0016 from './0016_ai_register.ts';
+import * as m0017 from './0017_public_tenant_lookup.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -34,4 +35,5 @@ export const migrations: Record<string, Migration> = {
   '0014_needs_consent': m0014,
   '0015_channels': m0015,
   '0016_ai_register': m0016,
+  '0017_public_tenant_lookup': m0017,
 };

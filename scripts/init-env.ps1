@@ -54,7 +54,8 @@ $lines = @(
   "RABBITMQ_PASSWORD=$(New-Secret)",
   "MINIO_ROOT_PASSWORD=$(New-Secret)",
   "CJIS_POSTGRES_PASSWORD=$(New-Secret)",
-  "CJIS_APP_PASSWORD=$(New-Secret)"
+  "CJIS_APP_PASSWORD=$(New-Secret)",
+  "RESIDENT_TOKEN_SECRET=$(New-Secret)"
 )
 
 # UTF-8 without a byte-order mark and LF endings: Docker Compose reads the

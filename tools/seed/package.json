@@ -9,6 +9,7 @@
     "load": "node src/load.ts"
   },
   "dependencies": {
+    "@cg/ai": "workspace:*",
     "@cg/db": "workspace:*",
     "@cg/intake": "workspace:*",
     "@cg/provisioning": "workspace:*",

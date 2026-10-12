@@ -13,8 +13,14 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'kysely';
 import { createDb, withTenant, type Database } from '@cg/db';
+import { evaluateProvider, fakeProvider } from '@cg/ai';
 import { westwindGraph } from '@cg/intake';
-import { ensureIntakeGraph, ensureRetentionDefaults, ensureTemplateRoles } from '@cg/provisioning';
+import {
+  ensureAiRegister,
+  ensureIntakeGraph,
+  ensureRetentionDefaults,
+  ensureTemplateRoles,
+} from '@cg/provisioning';
 import type { Kysely, Transaction } from 'kysely';
 import { tenants as tenantSpecs } from './county.ts';
 
@@ -204,6 +210,7 @@ async function ensureExerciseEvent(trx: Transaction<Database>, tenantId: string)
 
 export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
   const tenantIds: Record<string, string> = {};
+  const evaluation = await evaluateProvider(fakeProvider);
   const accountIds: Record<string, string> = {};
 
   // Hierarchy in dependency order (parents first, as listed in county.ts).
@@ -215,6 +222,7 @@ export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
       await ensureRetentionDefaults(trx, id);
       await ensureTemplateRoles(trx, id);
       await ensureIntakeGraph(trx, id, westwindGraph);
+      await ensureAiRegister(trx, id, fakeProvider, evaluation);
       if (spec.key === 'county') await ensureExerciseEvent(trx, id);
       if (created) {
         await trx

@@ -15,6 +15,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import type { Transaction } from 'kysely';
 import { z } from 'zod';
 import type { QueueConnection } from '@cg/adapters';
+import { extractionQuestions, redact, validateExtraction, type AiProvider } from '@cg/ai';
 import type { Database } from '@cg/db';
 import { normalisePhone } from '@cg/crypto';
 import {
@@ -49,6 +50,8 @@ export interface PublicRouteDeps {
   objects?: { client: S3Client; bucket: string; maxBytes: number };
   residentTokenSecret: string;
   defaultGraph: QuestionGraph;
+  /** Provider in force for a tenant (AIG-12); absent means no AI anywhere (INT-16). */
+  ai?: { providerFor(tenantId: string, trx: Transaction<Database>): Promise<AiProvider> };
   now?: () => Date;
 }
 
@@ -426,6 +429,99 @@ export const publicRoutes =
           referenceCode,
           status: 'received',
           verificationSuggested: prepared.risk.decision === 'verify',
+        });
+      },
+    );
+
+    // ------------------------------------------------------------ extraction
+    app.post(
+      '/intake/:tenant/extract',
+      {
+        schema: {
+          tags: ['public intake'],
+          params: tenantParam,
+          body: z.object({
+            executionId: z.uuid(),
+            text: z.string().min(1).max(10_000),
+            language: z.string().min(2).max(10).optional(),
+            graphKey: z.string().min(1),
+            graphVersion: z.number().int().positive(),
+          }),
+        },
+      },
+      async (request) => {
+        const tenant = tenantOf(request);
+        await request.authorize('intake.extract', { type: 'extraction', tenantId: tenant.id });
+        // INT-16: without AI the same graph runs; the client gets an honest "off" and continues.
+        const off = () =>
+          new ApiError(
+            409,
+            'ai_off',
+            'Help from a computer is switched off here. Please answer the questions directly.',
+          );
+        if (!deps.ai) throw off();
+        return request.tx(async (trx) => {
+          const feature = await trx
+            .selectFrom('cg.ai_use_register')
+            .select(['enabled', 'provider'])
+            .where('feature', '=', 'intake.extraction')
+            .executeTakeFirst();
+          if (!feature?.enabled) throw off();
+          const provider = await deps.ai!.providerFor(tenant.id, trx);
+          if (!provider.llm || provider.info.provider !== feature.provider) throw off();
+          const graph = await loadGraph(
+            trx,
+            request.body.graphKey,
+            request.body.graphVersion,
+            deps.defaultGraph,
+          );
+          const { text } = redact(request.body.text); // AIG-05
+          const started = Date.now();
+          const out = await provider.llm.extract({
+            text,
+            ...(request.body.language ? { language: request.body.language } : {}),
+            questions: extractionQuestions(graph),
+          });
+          const valid = validateExtraction(graph, out.output); // AIG-03
+          const row = await trx
+            .insertInto('cg.extraction')
+            .values({
+              tenant_id: tenant.id,
+              execution_id: request.body.executionId,
+              input_hash: sha([request.body.text]),
+              provider: out.provider.provider,
+              model: out.provider.model,
+              output: JSON.stringify({
+                candidates: valid.candidates,
+                language: valid.language ?? null,
+                injectionSuspected: valid.injectionSuspected,
+              }),
+              filtered_reasons: valid.dropped.map((d) => `${d.questionId}:${d.reason}`),
+            })
+            .returning('id')
+            .executeTakeFirstOrThrow();
+          await request.audit(trx, {
+            action: 'intake.extract',
+            targetType: 'extraction',
+            targetId: row.id,
+            changes: {
+              fields: [
+                { name: 'provider', to: `${out.provider.provider}/${out.provider.model}` },
+                { name: 'candidates', to: valid.candidates.length },
+                { name: 'injection_suspected', to: valid.injectionSuspected },
+                { name: 'latency_ms', to: Date.now() - started },
+              ],
+            },
+          });
+          return {
+            extractionId: row.id,
+            candidates: valid.candidates,
+            language: valid.language ?? null,
+            injectionSuspected: valid.injectionSuspected,
+            provider: out.provider,
+            // AIG-10: the resident is told plainly; the client shows this and the off switch.
+            notice: 'A computer helped fill in these answers. Please check them.',
+          };
         });
       },
     );

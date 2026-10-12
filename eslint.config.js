@@ -37,6 +37,8 @@ export default tseslint.config(
       'tools/**/*.ts',
       'packages/db/src/migrate.ts',
       'packages/db/src/migrate-check.ts',
+      'packages/intake/src/lint-cli.ts',
+      'packages/ai/src/evaluation/cli.ts',
       'tools/**/*.mjs',
     ],
     rules: { 'no-console': 'off' },

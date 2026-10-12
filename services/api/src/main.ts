@@ -19,6 +19,7 @@ import { FieldCrypto, OpenBaoKeyService, dbKeyStore } from '@cg/crypto';
 import { buildApp } from './app.ts';
 import { createSubjectLoader } from './auth/subject.ts';
 import { routes } from './routes/index.ts';
+import { fakeProvider, providerByName } from '@cg/ai';
 import { westwindGraph } from '@cg/intake';
 import { ReferenceCodeLeaser } from './public/reference-codes.ts';
 import { publicRoutes } from './public/routes.ts';
@@ -66,6 +67,18 @@ const app = await buildApp({
       objects: { client: s3, bucket: config.S3_BUCKET, maxBytes: config.PUBLIC_UPLOAD_MAX_BYTES },
       residentTokenSecret: config.RESIDENT_TOKEN_SECRET,
       defaultGraph: westwindGraph,
+      ai: {
+        // AIG-12: the provider is tenant configuration; only registered, compliant providers exist here.
+        async providerFor(_tenantId, trx) {
+          const row = await trx
+            .selectFrom('cg.tenant_config')
+            .select('value')
+            .where('key', '=', 'ai.provider')
+            .executeTakeFirst();
+          const name = typeof row?.value === 'string' ? row.value : 'fake';
+          return providerByName(name) ?? fakeProvider;
+        },
+      },
     }),
   ],
   probes: [

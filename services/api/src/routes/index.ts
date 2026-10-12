@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { accountRoutes } from './accounts.ts';
+import { aiRegisterRoutes } from './ai-register.ts';
 import { auditRoutes } from './audit.ts';
 import { breakGlassRoutes } from './breakglass.ts';
 import { definitionRoutes } from './definitions.ts';
@@ -20,4 +21,5 @@ export const routes: FastifyPluginAsync[] = [
   breakGlassRoutes,
   auditRoutes,
   definitionRoutes,
+  aiRegisterRoutes,
 ];

@@ -150,6 +150,8 @@ pnpm test:integration  # against the running stack (STACK_URL, COMPOSE_FILES to 
 pnpm test:e2e          # Playwright + axe accessibility and the onboarding journey (npx playwright install chromium first)
 scripts/backup.sh && scripts/restore.sh backups/<stamp>   # NFR-05; drills in tests/drills/
 DATABASE_MIGRATOR_URL=... pnpm --filter @cg/db check:migrations 3   # newest migrations up, down, up; dictionary and RLS checks (SEC-05/11)
+pnpm --filter @cg/intake lint:strings   # INT-08: reading-grade table and tone findings for the question graph
+pnpm --filter @cg/ai evaluate           # AIG-08: evaluation report for the AI provider (default: fake)
 pnpm reqindex          # regenerate docs/requirements-index.md after editing docs/0*
 ```
 

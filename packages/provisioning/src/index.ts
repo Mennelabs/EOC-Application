@@ -4,6 +4,7 @@
  * run again on a tenant that already has some of it.
  */
 import { sql, type Transaction } from 'kysely';
+import { AI_FEATURES, type AiProvider, type EvaluationSummary } from '@cg/ai';
 import { roleTemplates } from '@cg/authz';
 import type { Database } from '@cg/db';
 
@@ -89,4 +90,54 @@ export async function ensureIntakeGraph(
     })
     .execute();
   return true;
+}
+
+/**
+ * AI use register rows for a tenant (AIG-01): every shipped feature with the
+ * provider in force. Features turn on only for a compliant, evaluated
+ * provider (AIG-06/08); the severity suggestion stays off (PHO-12).
+ */
+export async function ensureAiRegister(
+  trx: Transaction<Database>,
+  tenantId: string,
+  provider: AiProvider,
+  evaluation: EvaluationSummary | null,
+): Promise<number> {
+  let inserted = 0;
+  for (const f of AI_FEATURES) {
+    const existing = await trx
+      .selectFrom('cg.ai_use_register')
+      .select('id')
+      .where('tenant_id', '=', tenantId)
+      .where('feature', '=', f.feature)
+      .executeTakeFirst();
+    if (existing) continue;
+    const supported = Boolean(provider[f.needs]);
+    const compliant =
+      provider.compliance.usRegion &&
+      provider.compliance.zeroRetention &&
+      provider.compliance.noTraining;
+    const enabled = !f.lockedOff && supported && compliant && evaluation?.passed === true;
+    await trx
+      .insertInto('cg.ai_use_register')
+      .values({
+        tenant_id: tenantId,
+        feature: f.feature,
+        provider: provider.info.provider,
+        model: provider.info.model,
+        model_version: provider.info.version ?? null,
+        data_sent: f.dataSent,
+        decision_informed: f.decisionInformed,
+        human_checkpoint: f.humanCheckpoint,
+        owner: f.owner,
+        us_region: provider.compliance.usRegion,
+        zero_retention: provider.compliance.zeroRetention,
+        no_training: provider.compliance.noTraining,
+        evaluation: JSON.stringify(evaluation ?? {}),
+        enabled,
+      })
+      .execute();
+    inserted += 1;
+  }
+  return inserted;
 }

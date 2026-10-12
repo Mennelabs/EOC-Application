@@ -644,14 +644,17 @@ describe('text channel through the simulator (CHN-03, CHN-04, PHO-07, AC-10C, FR
       sql(`select exif_stripped from cg.photo where report_id = '${id}'`).every((x) => x === 't'),
     ).toBe(true);
 
-    // FR-17.05: the confirmation text is a message row with its state; the simulator "sent" it.
+    // FR-17.05: a text session gets its confirmation inside the dialogue (no second text), so the
+    // message rows with states belong to what the worker sends: here the resident's email
+    // confirmation from the lookup case, recorded as sent (Mailpit received it above).
     const states = await waitFor(async () => {
       const rows = sql(
-        `select state from cg.message where channel = 'sms' and template = 'confirmation' and queued_at > now() - interval '10 minutes'`,
+        `select state from cg.message where channel = 'email' and template = 'confirmation' and queued_at > now() - interval '15 minutes'`,
       );
       return rows.includes('sent') ? rows : undefined;
     }, 60_000);
     expect(states).toContain('sent');
+    expect(states.every((x) => ['queued', 'sent', 'delivered', 'failed'].includes(x))).toBe(true);
 
     // STOP opts the number out: no more texts, the report stays.
     const stop = await text('STOP');

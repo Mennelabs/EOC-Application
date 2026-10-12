@@ -1,0 +1,37 @@
+# Layer 3 status
+
+The coordination record for layer 3 (needs board, partner sharing with consent, public "Find help"). Any session resumes from this file, not from chat. Update it in every commit that changes a task's state. Plan: [`layer-3.md`](layer-3.md). Decisions: [`../decisions.md`](../decisions.md). Layer 2 record: [`layer-2-status.md`](layer-2-status.md).
+
+## Resume checklist
+
+1. `pnpm install && pnpm typecheck && pnpm test && pnpm lint && pnpm check:product-name` green before new work.
+2. Stack for integration work: `scripts/init-env.sh` (or `scripts\init-env.ps1`) then `docker compose up -d --wait`; `COMPOSE_PROFILES=maps` for the tiles and geocoder.
+3. Pick the first task below that is not `done`, finish it to green, commit citing requirement IDs, update this file, push.
+
+## Tasks
+
+| #   | Task                                                                                                                                                                                                                             | State | Commits | Verified by | Notes |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------- | ----------- | ----- |
+| A   | Migrations 0021–0026 (need extensions, need_event, board_visibility, share_grant, referral, partner_contact, site, resource, resource_text, publication, zip_centroid), dictionary, retention, actions and template grants, seed | todo  |         |             |       |
+| B   | Sharing core: minimum-field projections, grant derivation, revocation with recall notices, partner-scoped read API, text keyword for withdrawal                                                                                  | todo  |         |             |       |
+| C   | Needs board API: list with visibility, claim/assign/release/done with overlap warnings, CSV and API export, key counts, needs-only public flow                                                                                   | todo  |         |             |       |
+| D   | Sites and resources API, publication log, public help endpoint with nearest-by-ZIP, feeds (HSDS, GeoJSON), widget, media page, alert drafts                                                                                      | todo  |         |             |       |
+| E   | Channels: SHELTER/REFUGIO with ZIP, voice read-out, resident updates and replies, referrals and notifications                                                                                                                    | todo  |         |             |       |
+| F   | Public "Find help" page (`apps/web-help`): list first, optional map, search, print views, EN/ES, accessibility statement, size budget                                                                                            | todo  |         |             |       |
+| G   | Console: needs board, partner workspace, sites, resources, publication log, contacts, key counts, partner onboarding                                                                                                             | todo  |         |             |       |
+| H   | Worker: grant derivation, recall notices, site reconfirm reminders, resource review and link checks, publication fan-out, contact re-verification                                                                                | todo  |         |             |       |
+| I   | Tests: unit, database-backed, stack suite (AC-16, AC-17, NED, PUB), browser + axe, size budget, load smoke                                                                                                                       | todo  |         |             |       |
+| J   | Docs: ADR-0029 maps, ADR-0030 sharing, ADR-0031 feeds, traceability, layer-3 report, README, a11y records                                                                                                                        | todo  |         |             |       |
+
+## Known issues and deferred items
+
+- See `layer-3.md` §11 for deferred IDs and §12 for the readings taken in the residents' favour.
+- Two text keywords are new (`NOSHARE`, and `SHELTER`/`REFUGIO` now answer with sites): `docs/06` is updated in task E and the change is flagged for the carrier submission.
+
+## Boundaries (single session; recorded for a later fan-out if Adam enables it)
+
+| Slice                      | Owns                                                                                                            | Reads only                      |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| Sharing and board (A–C, H) | migrations 0021–0026, `packages/authz/src/sharing.ts`, `services/api/src/routes/needs*`, `shared*`, worker jobs | `packages/db`, `packages/authz` |
+| Public information (D–F)   | `services/api/src/routes/sites*`, `resources*`, `services/api/src/public/help.ts`, `apps/web-help`              | API contracts                   |
+| Console (G)                | `apps/web-console/src/screens/{needs,partner,sites,resources,contacts}.tsx`                                     | API contracts                   |

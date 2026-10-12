@@ -240,9 +240,8 @@ test.describe('resident report', () => {
     await page.getByLabel('Your resume code').fill(resumeCode);
     await pressButton(page, 'Continue');
     // Back on the question after the safety one, with the earlier answer kept.
-    await expect(page.getByRole('heading', { level: 1 })).not.toHaveText(
-      'Is anyone in danger right now?',
-    );
+    // (Wait for that question itself: the resume screen has a Back of its own.)
+    await expect(page.getByRole('heading', { name: 'Is this your home?' })).toBeVisible();
     await pressButton(page, 'Back');
     await expect(page.getByRole('radio', { name: 'No, everyone is safe' })).toBeChecked();
   });

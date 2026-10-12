@@ -63,6 +63,10 @@ jobs:
           pnpm vitest run --project unit services/api/test/public.db.test.ts services/api/test/channels.db.test.ts services/api/test/reports.db.test.ts services/worker/test/intake.db.test.ts
       - run: npx playwright install --with-deps chromium
       - run: pnpm test:e2e
+      - name: Load smoke profiles through the k6 container (SCL-03)
+        run: |
+          tests/load/run.sh submissions smoke
+          tests/load/run.sh sms-sessions smoke
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:

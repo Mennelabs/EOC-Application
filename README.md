@@ -167,7 +167,8 @@ pnpm typecheck
 pnpm check:product-name   # ADM-03: product name never hardcoded
 pnpm test              # unit tests (vitest)
 pnpm test:integration  # against the running stack (STACK_URL, COMPOSE_FILES to override)
-pnpm test:e2e          # Playwright + axe accessibility and the onboarding journey (npx playwright install chromium first)
+pnpm test:e2e          # Playwright + axe: resident flow, kiosk, console onboarding and review journeys (npx playwright install chromium first)
+tests/load/run.sh submissions smoke   # k6 load profiles (SCL-03) through the pinned k6 container; `full` is the target profile, see tests/load/README.md
 scripts/backup.sh && scripts/restore.sh backups/<stamp>   # NFR-05; drills in tests/drills/
 DATABASE_MIGRATOR_URL=... pnpm --filter @cg/db check:migrations 3   # newest migrations up, down, up; dictionary and RLS checks (SEC-05/11)
 pnpm --filter @cg/intake lint:strings   # INT-08: reading-grade table and tone findings for the question graph

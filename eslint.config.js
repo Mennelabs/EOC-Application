@@ -26,6 +26,11 @@ export default tseslint.config(
     },
   },
   {
+    // k6 load profiles run inside k6, with its globals (SCL-03).
+    files: ['tests/load/**/*.js'],
+    languageOptions: { globals: { __ENV: 'readonly', __VU: 'readonly', __ITER: 'readonly' } },
+  },
+  {
     // Service workers run in their own global scope.
     files: ['apps/web-*/public/sw.js'],
     languageOptions: { globals: { ...globals.serviceworker } },

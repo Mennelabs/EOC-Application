@@ -52,6 +52,15 @@ test.describe('resident welcome', () => {
     await expect(page.getByRole('status')).not.toBeEmpty();
   });
 
+  test('assisted (kiosk) entry: the helper banner is announced, the same questions follow (CHN-05/06/07)', async ({
+    page,
+  }) => {
+    await page.goto('/county/westwind/kiosk');
+    await expect(page.getByRole('status').filter({ hasText: 'Assisted report' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await expectNoViolations(page);
+  });
+
   test('ACC-07: reflows at 320 CSS px without horizontal scrolling', async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 640 });
     await page.goto('/');

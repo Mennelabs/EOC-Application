@@ -239,9 +239,12 @@ test.describe('resident report', () => {
     await page.goto('/county/westwind/resume');
     await page.getByLabel('Your resume code').fill(resumeCode);
     await pressButton(page, 'Continue');
-    // Back on the question after the safety one, with the earlier answer kept.
-    // (Wait for that question itself: the resume screen has a Back of its own.)
-    await expect(page.getByRole('heading', { name: 'Is this your home?' })).toBeVisible();
+    // Back on the question after the safety one, with the earlier answer kept. Start chose
+    // "own home", so the next question is the address; wait for it before pressing Back
+    // (the resume screen has a Back of its own).
+    await expect(page.getByRole('heading', { name: 'Where is the home?' })).toBeVisible({
+      timeout: 15_000,
+    });
     await pressButton(page, 'Back');
     await expect(page.getByRole('radio', { name: 'No, everyone is safe' })).toBeChecked();
   });

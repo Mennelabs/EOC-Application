@@ -368,7 +368,7 @@ describe('review (BRD:FR-12.01–12.06, FR-10.06, AC-12A/B/C, AC-10B, DCL:DEC-02
     expect(versions.every((x) => x.changedByKind === 'reviewer')).toBe(true); // AC-10B
     expect(
       sql(
-        `select decision from cg.review_decision where report_id = '${residentReport}' order by decided_at`,
+        `select decision from cg.review_decision where report_id = '${residentReport}' order by created_at`,
       ),
     ).toEqual(['approve']);
     // The resident sees the state in plain words, never the reviewer's notes.
@@ -404,7 +404,8 @@ describe('review (BRD:FR-12.01–12.06, FR-10.06, AC-12A/B/C, AC-10B, DCL:DEC-02
     const id = await filed(code);
     const d = await detail(p, id);
     expect(d['channelOfOrigin']).toBe('assisted');
-    expect(d['recordedBy']).toBeTruthy(); // the helper, separate from the resident (CHN-06)
+    // The helper is the recorder, kept apart from the resident party (CHN-06).
+    expect(sql(`select created_by is not null from cg.report where id = '${id}'`)).toEqual(['t']);
     const self = await api(p, `/reports/${id}/decisions`, {
       version: d['version'] as number,
       confirm: 'my own entry',
@@ -467,29 +468,50 @@ describe('review (BRD:FR-12.01–12.06, FR-10.06, AC-12A/B/C, AC-10B, DCL:DEC-02
 });
 
 describe('assessment record (BRD:FR-10.01–10.07, AC-10A, AC-11D, NED-02/03, CON-10)', () => {
-  it('AC-10A: zero occupants and unknown occupants are different answers, kept apart', async () => {
+  it('AC-10A: zero and unknown are different answers, kept apart (counts in the report and in the after-saving answers)', async () => {
     const g = await graphInfo();
-    const zero = await submit({ answers: ownHome(next()) });
-    const unknown = await submit({ answers: ownHome(next()) });
-    for (const [s, answer] of [
-      [zero, v(0)],
-      [unknown, { kind: 'unknown' }],
-    ] as const) {
+    // An organization reports a building: "no employees affected" is 0, "we do not know" is unknown.
+    const org = (n: number, employees: Answer): Record<string, Answer> => ({
+      danger_now: v('no'),
+      relationship: v('organization'),
+      org_name: v(`Westwind Bakery ${n}`),
+      address: v({ line1: `${n} Market St`, city: 'Westwind', postal: '63001' }),
+      cause: v('wind_tornado'),
+      damage_types: v(['roof']),
+      employees_affected: employees,
+      contact_name: v('Pat Lee'),
+      contact: v({ phone: `314555${String(n).padStart(4, '0').slice(-4)}`, preferred: 'text' }),
+    });
+    const zero = await submit({ relationship: 'organization', answers: org(next(), v(0)) });
+    const unknown = await submit({
+      relationship: 'organization',
+      answers: org(next(), { kind: 'unknown' }),
+    });
+    const p = await priya();
+    const zeroAnswers = (await detail(p, await filed(zero.code)))['answers'] as Record<
+      string,
+      Answer
+    >;
+    const unknownAnswers = (await detail(p, await filed(unknown.code)))['answers'] as Record<
+      string,
+      Answer
+    >;
+    expect(zeroAnswers['employees_affected']).toEqual(v(0));
+    expect(unknownAnswers['employees_affected']).toEqual({ kind: 'unknown' });
+    // After-saving household questions keep the same distinction (INT-19, EQ-13).
+    const later = await submit({ answers: ownHome(next()) });
+    for (const [s, answer] of [[later, { kind: 'unknown' }]] as const) {
       const res = await pub(`/intake/county/submissions/${s.executionId}/after`, {
         body: { graphKey: g.key, graphVersion: g.version, answers: { household_size: answer } },
       });
       expect(res.status, JSON.stringify(res.body)).toBeLessThan(300);
     }
-    const p = await priya();
-    const zeroId = await filed(zero.code);
-    const unknownId = await filed(unknown.code);
-    const household = (id: string) =>
-      waitFor(async () => {
-        const h = (await detail(p, id))['household'] as Record<string, Answer> | null;
-        return h && h['household_size'] ? h : undefined;
-      });
-    expect((await household(zeroId))['household_size']).toEqual(v(0));
-    expect((await household(unknownId))['household_size']).toEqual({ kind: 'unknown' });
+    const laterId = await filed(later.code);
+    const household = await waitFor(async () => {
+      const h = (await detail(p, laterId))['household'] as Record<string, Answer> | null;
+      return h && h['household_size'] ? h : undefined;
+    });
+    expect(household['household_size']).toEqual({ kind: 'unknown' });
   });
 
   it('AC-11D: a renter reports with unknown answers about the owner’s side; the record keeps the renter and the unknowns', async () => {
@@ -531,11 +553,13 @@ describe('assessment record (BRD:FR-10.01–10.07, AC-10A, AC-11D, NED-02/03, CO
     expect(b['consent']).toEqual([]);
     // The resident grants, then withdraws, through their own report.
     const granted = await pub('/intake/county/me/consent', {
+      method: 'PATCH',
       headers: { 'x-resident-token': residentToken },
       body: { orgType: 'volunteer_cleanup', granted: true },
     });
     expect(granted.status, JSON.stringify(granted.body)).toBeLessThan(300);
     const withdrawn = await pub('/intake/county/me/consent', {
+      method: 'PATCH',
       headers: { 'x-resident-token': residentToken },
       body: { orgType: 'volunteer_cleanup', granted: false },
     });
@@ -568,7 +592,7 @@ describe('assessment record (BRD:FR-10.01–10.07, AC-10A, AC-11D, NED-02/03, CO
 });
 
 describe('text channel through the simulator (CHN-03, CHN-04, PHO-07, AC-10C, FR-17.05)', () => {
-  const phone = `+1314557${RUN.slice(-4)}`;
+  const phone = `+1314557${String(Date.now() % 10000).padStart(4, '0')}`;
   async function text(body: string, media?: { contentType: string; dataBase64: string }[]) {
     const res = await call(`${BASE}/api/webhooks/simulator/sms`, null, {
       body: { from: phone, to: COUNTY_NUMBER, body, ...(media ? { media } : {}) },

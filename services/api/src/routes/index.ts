@@ -5,8 +5,10 @@ import { auditRoutes } from './audit.ts';
 import { breakGlassRoutes } from './breakglass.ts';
 import { definitionRoutes } from './definitions.ts';
 import { eventRoutes } from './events.ts';
+import { intakeGraphRoutes } from './intake-graphs.ts';
 import { meRoutes } from './me.ts';
 import { personnelRoutes } from './personnel.ts';
+import { reportRoutes } from './reports.ts';
 import { roleRoutes } from './roles.ts';
 import { tenantRoutes } from './tenants.ts';
 
@@ -22,4 +24,6 @@ export const routes: FastifyPluginAsync[] = [
   auditRoutes,
   definitionRoutes,
   aiRegisterRoutes,
+  reportRoutes,
+  intakeGraphRoutes,
 ];

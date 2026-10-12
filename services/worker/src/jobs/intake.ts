@@ -449,6 +449,9 @@ export async function fileSubmission(ctx: JobContext, input: FilingInput): Promi
           danger_flag: danger,
           told_to_call_911_at: danger ? receivedAt : null, // the app showed "call 911" (CON-10)
           submitted_at: receivedAt,
+          // CHN-06, guardrail G4: the staff member who entered an assisted report recorded it.
+          created_by: payload.assisted?.helperAccountId ?? null,
+          updated_by: payload.assisted?.helperAccountId ?? null,
         })
         .returning('id')
         .executeTakeFirstOrThrow();

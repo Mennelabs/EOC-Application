@@ -10,6 +10,8 @@ import {
   RetentionScreen,
   RolesScreen,
 } from './screens/permissions.tsx';
+import { AiRegisterScreen, AssistedScreen, IntakeSetupScreen } from './screens/intake.tsx';
+import { ReportDetailScreen, ReviewQueueScreen } from './screens/review.tsx';
 import { ConfirmDialog, Field, Status } from './ui/primitives.tsx';
 
 /**
@@ -20,6 +22,9 @@ import { ConfirmDialog, Field, Status } from './ui/primitives.tsx';
  */
 const routes = [
   { path: '/console/', label: 'Home', layer: 1 },
+  { path: '/console/reports', label: 'Review queue', layer: 2 },
+  { path: '/console/assist', label: 'Assisted report', layer: 2 },
+  { path: '/console/intake', label: 'Intake setup', layer: 2 },
   { path: '/console/events', label: 'Events', layer: 1 },
   { path: '/console/tenants', label: 'Organizations', layer: 1 },
   { path: '/console/accounts', label: 'Staff accounts', layer: 1 },
@@ -29,6 +34,7 @@ const routes = [
   { path: '/console/audit', label: 'Audit log', layer: 1 },
   { path: '/console/break-glass', label: 'Emergency access', layer: 1 },
   { path: '/console/retention', label: 'Retention', layer: 1 },
+  { path: '/console/ai-register', label: 'AI use register', layer: 2 },
 ] as const;
 
 interface Me {
@@ -163,7 +169,17 @@ export function App({ config }: { config: RuntimeConfig }) {
   }
 
   const screen = (() => {
+    if (path.startsWith('/console/reports/'))
+      return <ReportDetailScreen id={path.slice('/console/reports/'.length)} navigate={navigate} />;
     switch (path) {
+      case '/console/reports':
+        return <ReviewQueueScreen navigate={navigate} />;
+      case '/console/assist':
+        return <AssistedScreen />;
+      case '/console/intake':
+        return <IntakeSetupScreen />;
+      case '/console/ai-register':
+        return <AiRegisterScreen />;
       case '/console/events':
         return <EventsScreen />;
       case '/console/tenants':

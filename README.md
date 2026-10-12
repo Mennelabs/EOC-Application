@@ -87,6 +87,10 @@ The sign-in screen asks for the **organization** first: that is the tenant key, 
 
 Interactive sign-in is password **and** passkey (SEC-07). The first sign-in of each account asks to register a passkey: Windows Hello, Touch ID, a security key or a phone all work; later sign-ins ask for it after the password. Permission changes need a second administrator, so use `admin@example.org` to request and `security.admin@example.org` to approve.
 
+### Review reports as staff
+
+Sign in as `priya.assessment@example.org` (`county`). **Review queue** lists reports with need signals first (unsafe, no shelter tonight, medical, displaced), then the oldest; filters cover event, state, verification, channel, flags and a reference number. A report opens to its answers grouped as the resident saw them, photos (links only for roles with the evidence category, blurred faces and plates when a detector is configured), needs, consent and the version history. Decisions (approve, reject, needs information, duplicate, supersede, reopen), the verification level and the FEMA degree of damage each ask for confirmation and a reason; the FEMA matrix next to the form is the official wording (DEC-03). A helper cannot approve a report they entered (guardrail G4). **Intake setup** shows each open event's resident link, kiosk link, text keywords and a QR code to print, and the question-graph versions: a new draft must pass the reading-level and tone rules before it can be published. **Assisted report** opens the kiosk flow for an event in a new tab. **AI use register** is the read-only list of every AI feature, its provider and its human checkpoint.
+
 The CJIS enclave (`cjis-*` services) starts on its own internal network. It has no published ports on purpose: `docker compose exec cjis-api wget -qO- http://127.0.0.1:8080/health/ready`.
 
 Maps (SCL-13) are opt-in because the first build downloads the Missouri OpenStreetMap extract: set `COMPOSE_PROFILES=maps` in `.env` for the geocoder and run `docker compose --profile maps-build run --rm tiles-build` once for vector tiles.

@@ -76,22 +76,33 @@ const twilio =
   config.TWILIO_ACCOUNT_SID && config.TWILIO_AUTH_TOKEN
     ? { accountSid: config.TWILIO_ACCOUNT_SID, authToken: config.TWILIO_AUTH_TOKEN }
     : undefined;
+const submitDeps = {
+  codes,
+  risk,
+  getQueue: () => queue,
+  defaultGraph: westwindGraph,
+  crypto: fieldCrypto,
+  now: () => new Date(),
+};
+// AIG-12: the provider is tenant configuration; only registered, compliant providers exist here.
+const ai = {
+  async providerFor(
+    _tenantId: string,
+    trx: import('kysely').Transaction<import('@cg/db').Database>,
+  ) {
+    const row = await trx
+      .selectFrom('cg.tenant_config')
+      .select('value')
+      .where('key', '=', 'ai.provider')
+      .executeTakeFirst();
+    const name = typeof row?.value === 'string' ? row.value : 'fake';
+    return providerByName(name) ?? fakeProvider;
+  },
+};
 const sessions = new ChannelSessions({
   crypto: fieldCrypto,
   defaultGraph: westwindGraph,
-  submit: (req, input) =>
-    submitIntake(
-      {
-        codes,
-        risk,
-        getQueue: () => queue,
-        defaultGraph: westwindGraph,
-        crypto: fieldCrypto,
-        now: () => new Date(),
-      },
-      req,
-      input,
-    ),
+  submit: (req, input) => submitIntake(submitDeps, req, input),
   objects,
   media: twilio
     ? twilioMediaFetcher(twilio.accountSid, twilio.authToken, config.PUBLIC_UPLOAD_MAX_BYTES)
@@ -120,20 +131,10 @@ const app = await buildApp({
       objects,
       residentTokenSecret: config.RESIDENT_TOKEN_SECRET,
       defaultGraph: westwindGraph,
-      ai: {
-        // AIG-12: the provider is tenant configuration; only registered, compliant providers exist here.
-        async providerFor(_tenantId, trx) {
-          const row = await trx
-            .selectFrom('cg.tenant_config')
-            .select('value')
-            .where('key', '=', 'ai.provider')
-            .executeTakeFirst();
-          const name = typeof row?.value === 'string' ? row.value : 'fake';
-          return providerByName(name) ?? fakeProvider;
-        },
-      },
+      ai,
     }),
   ],
+  reportDeps: { objects, ai, submit: (req, input) => submitIntake(submitDeps, req, input) },
   webhookRoutes: [
     webhookRoutes({
       resolver,

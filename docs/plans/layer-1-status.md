@@ -32,7 +32,7 @@ The coordination record for layer 1 (foundations, SCL-14). Any session resumes f
 - Geography scope in grants (SEC-06 "geography") is accepted in the type but not evaluated until layer 2 adds PostGIS record geometries; noted in `packages/authz/src/engine.ts`.
 - Email provider (Q-02) unresolved: invitations and break-glass notices go to Mailpit locally.
 - Manual accessibility passes (keyboard, screen reader, 200% zoom) have no records yet in `docs/a11y/`; GATE-03 is claimed on automated evidence only.
-- Layer 2 does not start until Adam approves layer 1 (`layer-1-report.md`, decisions needed).
+- **Layer 1 approved by Adam on 2026-10-12** (`docs/decisions.md`). Layer 2 record: [`layer-2-status.md`](layer-2-status.md).
 
 ## Optional fan-out after E (not enabled)
 

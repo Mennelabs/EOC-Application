@@ -4,7 +4,7 @@ A disaster community-response platform for county and city emergency management,
 
 The product name is configuration (`PRODUCT_NAME`, ADM-03). "Common Ground" is the current working name.
 
-**Status:** layer 1 (platform foundations) built and tested; see `docs/plans/layer-1-report.md`, `docs/plans/layer-1-status.md` and `docs/traceability.md`. Build order follows SCL-14, one layer at a time; `CLAUDE.md` has the rules for resuming work.
+**Status:** layer 1 (platform foundations) built, tested and approved 2026-10-12; layer 2 (resident intake) in progress. See `docs/plans/layer-2-status.md`, `docs/plans/layer-1-report.md` and `docs/traceability.md`. Build order follows SCL-14, one layer at a time; `CLAUDE.md` has the rules for resuming work.
 
 ## Where things live
 
@@ -49,6 +49,27 @@ Then open:
 | http://localhost:8025      | Mailpit: every email the system sends                                                                                                                        |
 | http://localhost:15672     | RabbitMQ management (`cg`, password in `.env`)                                                                                                               |
 | http://localhost:9001      | MinIO console (`cg-local`, password in `.env`)                                                                                                               |
+
+### Sign in to the console
+
+The sign-in screen asks for the **organization** first: that is the tenant key, which is also the Keycloak realm. The synthetic WESTWIND county is `county`; the other organizations are `state`, `region`, `city`, `coad`, `canteen`, `shelter-ngo`, `cleanup` and `legal`. Every seeded account uses the synthetic password `Westwind-Exercise-2026!`.
+
+| Organization  | Account                      | Role                          |
+| ------------- | ---------------------------- | ----------------------------- |
+| `county`      | admin@example.org            | tenant administrator          |
+| `county`      | security.admin@example.org   | security administrator        |
+| `county`      | dana.director@example.org    | county EM director            |
+| `county`      | priya.assessment@example.org | damage assessment coordinator |
+| `county`      | marcus.gis@example.org       | planning / GIS lead           |
+| `county`      | luis.masscare@example.org    | mass care coordinator         |
+| `county`      | keisha.afn@example.org       | access and functional needs   |
+| `county`      | tomas.pio@example.org        | public information officer    |
+| `coad`        | jen.coad@example.org         | COAD chair                    |
+| `canteen`     | ruth.canteen@example.org     | NGO incident commander        |
+| `shelter-ngo` | nurse@example.org            | shelter nurse                 |
+| `state`       | state.liaison@example.org    | state liaison                 |
+
+Interactive sign-in is password **and** passkey (SEC-07). The first sign-in of each account asks to register a passkey: Windows Hello, Touch ID, a security key or a phone all work; later sign-ins ask for it after the password. Permission changes need a second administrator, so use `admin@example.org` to request and `security.admin@example.org` to approve.
 
 The CJIS enclave (`cjis-*` services) starts on its own internal network. It has no published ports on purpose: `docker compose exec cjis-api wget -qO- http://127.0.0.1:8080/health/ready`.
 

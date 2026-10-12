@@ -7,7 +7,7 @@
  * own account, so projects never race on a shared user.
  */
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 const WCAG = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const BASE = process.env['BASE_URL'] ?? 'https://localhost';
@@ -19,6 +19,14 @@ process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 async function expectNoViolations(page: Page) {
   const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
   expect(results.violations.map((v) => `${v.id}: ${v.help} (${v.nodes.length})`)).toEqual([]);
+}
+
+/** True once the element is visible, false after `ms`. `isVisible()` alone never waits. */
+async function appears(locator: Locator, ms: number): Promise<boolean> {
+  return locator.waitFor({ state: 'visible', timeout: ms }).then(
+    () => true,
+    () => false,
+  );
 }
 
 async function token(realm: string, user: string): Promise<string> {
@@ -162,7 +170,7 @@ test.describe('console sign-in', () => {
     await page.goto(link);
     // Keycloak confirms email links before acting on them.
     const proceed = page.getByRole('link', { name: /click here to proceed/i });
-    if (await proceed.isVisible({ timeout: 3_000 }).catch(() => false)) await proceed.click();
+    if (await appears(proceed, 5_000)) await proceed.click();
     // Required action 1: set a password.
     await page.getByRole('textbox', { name: /new password/i }).fill(PASSWORD);
     await page.getByRole('textbox', { name: /confirm password/i }).fill(PASSWORD);
@@ -170,28 +178,38 @@ test.describe('console sign-in', () => {
       .getByRole('button', { name: /submit|save|sign in/i })
       .first()
       .click();
-    // Required action 2: register a passkey.
+    // Required action 2: register a passkey. The label prompt and the
+    // "account updated" page with its way back arrive at the runner's pace,
+    // so this handles whatever Keycloak shows until the console is reached.
     await page
       .getByRole('button', { name: /register|sign in with (security key|passkey)/i })
       .first()
       .click({ timeout: 15_000 });
     const label = page.getByRole('textbox', { name: /label|name/i });
-    if (await label.isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await label.fill('Exercise passkey');
-      await page
-        .getByRole('button', { name: /ok|save|submit|register/i })
-        .first()
-        .click();
-    }
-
-    // Keycloak confirms the account update and offers the way back.
     const back = page.getByRole('link', { name: /back to application/i });
-    if (await back.isVisible({ timeout: 10_000 }).catch(() => false)) await back.click();
-    await page.waitForURL(/\/console\/?/, { timeout: 30_000 });
+    const atConsole = () => /^\/console\/?/.test(new URL(page.url()).pathname);
+    let labelled = false;
+    let wentBack = false;
+    const deadline = Date.now() + 60_000;
+    while (!atConsole() && Date.now() < deadline) {
+      if (!labelled && (await label.isVisible())) {
+        labelled = true;
+        await label.fill('Exercise passkey');
+        await page
+          .getByRole('button', { name: /ok|save|submit|register/i })
+          .first()
+          .click();
+      } else if (!wentBack && (await back.isVisible())) {
+        wentBack = true;
+        await back.click();
+      }
+      await page.waitForTimeout(500);
+    }
+    await page.waitForURL((u) => /^\/console\/?/.test(u.pathname), { timeout: 30_000 });
 
     // Sign in to the console: organization, then Keycloak (password + passkey) unless SSO carries over.
     const org = page.getByLabel('Organization');
-    if (await org.isVisible({ timeout: 5_000 }).catch(() => false)) {
+    if (await appears(org, 10_000)) {
       await org.fill('county');
       await page.getByRole('button', { name: 'Continue' }).click();
       // Either Keycloak asks for credentials, or an SSO session lands us home.
@@ -206,7 +224,7 @@ test.describe('console sign-in', () => {
         const useKey = page.getByRole('button', {
           name: /sign in with (security key|passkey)|authenticate/i,
         });
-        if (await useKey.isVisible({ timeout: 8_000 }).catch(() => false)) await useKey.click();
+        if (await appears(useKey, 10_000)) await useKey.click();
       }
     }
     await expect(page.getByRole('heading', { name: 'Welcome' })).toBeVisible({ timeout: 30_000 });

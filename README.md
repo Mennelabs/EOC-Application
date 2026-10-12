@@ -36,7 +36,7 @@ scripts/init-env.sh          # writes .env with random local secrets (never comm
 docker compose up -d --wait  # builds images, starts every service, waits for health
 ```
 
-The first `up` builds seven images and pulls six more; 10–20 minutes on a laptop is normal. `--wait` returns 0 once every service is healthy and the one-shot jobs (`migrate`, `keys-init`, `seed`, `seed-load`) have finished; `docker compose ps -a` shows the state at any time.
+The first `up` builds seven images and pulls six more; 10–20 minutes on a laptop is normal. `--wait` returns 0 once every service is healthy and the one-shot jobs (`migrate`, `keys-init`, `seed`, `seed-load`) have finished; `docker compose ps -a` shows the state at any time. The worker then provisions the nine synthetic organizations (sign-in realms, cast accounts) for another minute or two; `docker compose logs -f worker` shows it, and the test suites wait for it on their own.
 
 Then open:
 
@@ -131,7 +131,7 @@ scripts/backup.sh && scripts/restore.sh backups/<stamp>   # NFR-05; drills in te
 pnpm reqindex          # regenerate docs/requirements-index.md after editing docs/0*
 ```
 
-CI (`.github/workflows/ci.yml`) runs all of these plus Semgrep, Trivy dependency/secret/container scans and an SBOM.
+CI (`.github/workflows/ci.yml`) runs all of these plus Semgrep, Trivy dependency/secret/container scans and an SBOM. Image scans fail the build on fixed HIGH/CRITICAL findings in our layers and the Alpine packages; findings inside the upstream Caddy binary are reported without failing, because every Caddy release lags its Go libraries, and are cleared by bumping the pinned Caddy image (`compose.yaml`, `infra/web/Dockerfile`).
 
 ## Development loop without Docker rebuilds
 

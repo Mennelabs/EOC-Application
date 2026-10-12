@@ -27,7 +27,7 @@ The coordination record for layer 1 (foundations, SCL-14). Any session resumes f
 
 ## Known issues and deferred items
 
-- CI on GitHub was red on every run until task K: `docker compose up --wait` failed on the finished `seed` one-shot (docker/compose#10596), Trivy flagged the base image's bundled npm, Semgrep wanted an explicit GCM tag length and pnpm supply-chain settings, prettier rejected the generated traceability table. All fixed in K; the compose job's integration and e2e steps run on GitHub for the first time after it.
+- CI on GitHub was red on every run until task K: `docker compose up --wait` failed on the finished `seed` one-shot (docker/compose#10596), Trivy flagged the base image's bundled npm, Semgrep wanted an explicit GCM tag length and pnpm supply-chain settings, prettier rejected the generated traceability table. All fixed in K. The first run after it showed two more: the integration suite signed in before the worker had provisioned the cast (both suites now wait in a global setup, `tests/support/stack.ts`), and the web image scan flagged the upstream Caddy binary (Caddy bumped to 2.11.4; the binary's findings are now report-only in CI, see README). Policy decision for Adam to confirm or reverse.
 - MinIO from-source image (`infra/minio/Dockerfile`): built and healthy in CI run 13 (`common-ground/minio:local`); only the build sandbox cannot build it (Docker Hub rate limit on `alpine`).
 - Geography scope in grants (SEC-06 "geography") is accepted in the type but not evaluated until layer 2 adds PostGIS record geometries; noted in `packages/authz/src/engine.ts`.
 - Email provider (Q-02) unresolved: invitations and break-glass notices go to Mailpit locally.

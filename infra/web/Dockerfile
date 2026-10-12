@@ -10,7 +10,7 @@ RUN --mount=type=secret,id=extra_ca,required=false \
  && pnpm --filter @cg/web-resident build \
  && pnpm --filter @cg/web-console build
 
-FROM caddy:2.8.4-alpine
+FROM caddy:2.11.4-alpine
 COPY infra/web/Caddyfile /etc/caddy/Caddyfile
 COPY --from=build /repo/apps/web-resident/dist /srv/resident
 COPY --from=build /repo/apps/web-console/dist /srv/console

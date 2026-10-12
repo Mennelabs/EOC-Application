@@ -37,7 +37,7 @@ x-node-health: &node-health
 
 services:
   gateway:
-    image: caddy:2.8.4-alpine
+    image: caddy:2.11.4-alpine
     environment:
       GATEWAY_HOST: ${GATEWAY_HOST:-localhost}
     volumes:

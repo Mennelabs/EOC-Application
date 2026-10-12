@@ -4,53 +4,20 @@
  * pre-generated into cg.reference_code and leased to this API instance in
  * batches, so the submission hot path does not wait on the database
  * (architecture §7). The worker binds code → report when it files the
- * submission; stale leases return to the pool.
+ * submission and keeps the pool topped up; the code rules live in @cg/db.
  */
-import { randomInt } from 'node:crypto';
 import type { Kysely, Transaction } from 'kysely';
 import { sql } from 'kysely';
-import { withTenant, type Database } from '@cg/db';
+import { generateCodes, withTenant, type Database } from '@cg/db';
 
-export const CODE_LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ';
-export const CODE_DIGITS = '23456789';
-export const CODE_PATTERN = /^[A-HJKMNP-Z]{4}-[2-9]{4}$/;
-
-export function randomCode(): string {
-  let letters = '';
-  for (let i = 0; i < 4; i++) letters += CODE_LETTERS[randomInt(CODE_LETTERS.length)];
-  let digits = '';
-  for (let i = 0; i < 4; i++) digits += CODE_DIGITS[randomInt(CODE_DIGITS.length)];
-  return `${letters}-${digits}`;
-}
-
-/** Accepts what people type: lower case, missing hyphen, spaces, 0/O and 1/I confusions. */
-export function normaliseCode(input: string): string | null {
-  const raw = input.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (raw.length !== 8) return null;
-  const letters = raw.slice(0, 4).replace(/0/g, 'O').replace(/1/g, 'I');
-  const digits = raw.slice(4).replace(/O/g, '0').replace(/I|L/g, '1');
-  const code = `${letters}-${digits}`;
-  return CODE_PATTERN.test(code) ? code : null;
-}
-
-/** Inserts `count` fresh free codes for a tenant (collisions are skipped and retried). */
-export async function generateCodes(
-  trx: Transaction<Database>,
-  tenantId: string,
-  count: number,
-): Promise<number> {
-  let inserted = 0;
-  for (let attempt = 0; attempt < 5 && inserted < count; attempt++) {
-    const codes = Array.from({ length: count - inserted }, randomCode);
-    const res = await trx
-      .insertInto('cg.reference_code')
-      .values(codes.map((code) => ({ tenant_id: tenantId, code })))
-      .onConflict((oc) => oc.doNothing())
-      .executeTakeFirst();
-    inserted += Number(res.numInsertedOrUpdatedRows ?? 0);
-  }
-  return inserted;
-}
+export {
+  CODE_DIGITS,
+  CODE_LETTERS,
+  CODE_PATTERN,
+  generateCodes,
+  normaliseCode,
+  randomCode,
+} from '@cg/db';
 
 export class ReferenceCodeLeaser {
   private readonly pools = new Map<string, string[]>();

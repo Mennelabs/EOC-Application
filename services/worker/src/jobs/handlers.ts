@@ -13,6 +13,14 @@ import {
 } from '@cg/provisioning';
 import { sql } from 'kysely';
 import { allTenantIds, asSystem, systemAudit } from '../system.ts';
+import { messageSend } from './messages.ts';
+import { photoProcess } from './photos.ts';
+import {
+  consentChanged,
+  correctionRequested,
+  reportCorrected,
+  reportWithdrawn,
+} from './reports.ts';
 import type { JobContext, OutboxMessage, TopicHandler } from './types.ts';
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : String(v ?? ''));
@@ -231,7 +239,13 @@ export const topicHandlers: Record<string, TopicHandler> = {
   'account.status': accountStatus,
   'event.participant.add': eventParticipantAdd,
   'break_glass.started': breakGlassStarted,
-  'event.opened': async () => undefined, // layer 2: publish intake link/keyword to channels
+  'event.opened': async () => undefined, // channels announce the keyword and link in F
+  'photo.process': photoProcess,
+  'message.send': messageSend,
+  'correction.requested': correctionRequested,
+  'report.withdrawn': reportWithdrawn,
+  'report.corrected': reportCorrected,
+  'consent.changed': consentChanged,
 };
 
 // ---- schedules --------------------------------------------------------------

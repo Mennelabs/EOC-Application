@@ -152,6 +152,7 @@ scripts/backup.sh && scripts/restore.sh backups/<stamp>   # NFR-05; drills in te
 DATABASE_MIGRATOR_URL=... pnpm --filter @cg/db check:migrations 3   # newest migrations up, down, up; dictionary and RLS checks (SEC-05/11)
 pnpm --filter @cg/intake lint:strings   # INT-08: reading-grade table and tone findings for the question graph
 pnpm --filter @cg/ai evaluate           # AIG-08: evaluation report for the AI provider (default: fake)
+pnpm --filter @cg/db check:migrations 1 # drill the newest migration up, down and up against the compose database (needs DATABASE_MIGRATOR_URL)
 pnpm reqindex          # regenerate docs/requirements-index.md after editing docs/0*
 ```
 

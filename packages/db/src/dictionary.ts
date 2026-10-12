@@ -418,6 +418,10 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     source: { c: 'internal' },
     parcel_id: { c: 'internal' },
     usng: { c: 'sensitive' },
+    address_key: {
+      c: 'sensitive',
+      d: 'Normalised address for duplicate detection (PHO-15); same category as line1',
+    },
   }),
   report: table({
     reference_code: { c: 'internal' },
@@ -466,6 +470,14 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     duplicate_of: { c: 'internal', d: 'BRD:FR-12.06' },
     supersedes: { c: 'internal' },
     need_signals: { c: 'internal', d: 'unsafe, displaced, no_shelter, medical (PHO-14)' },
+    flags: {
+      c: 'internal',
+      d: 'Reviewer flags set by the worker: possible duplicates, verification suggested, AI-assisted (PHO-15, SEC-17)',
+    },
+    content_hash: {
+      c: 'internal',
+      d: 'SHA-256 of the non-contact answers for exact-duplicate detection (PHO-15)',
+    },
     danger_flag: { c: 'internal', d: 'Awareness only, never dispatch (CON-10)' },
     told_to_call_911_at: { c: 'internal' },
     submitted_at: { c: 'internal' },

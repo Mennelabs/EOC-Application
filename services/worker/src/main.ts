@@ -2,8 +2,9 @@
  * Worker: outbox relay, queue consumer and scheduled system jobs
  * (architecture §2.1, ADR-0007). Runs as the cg_worker database role.
  */
+import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import pino from 'pino';
 import { loadConfig, workerSchema } from '@cg/config';
 import {
@@ -14,12 +15,17 @@ import {
   postgresProbe,
   queueProbe,
   runProbes,
+  SimulatorSms,
   type QueueConnection,
 } from '@cg/adapters';
+import { fakeProvider, providerByName } from '@cg/ai';
+import { FieldCrypto, OpenBaoKeyService, dbKeyStore } from '@cg/crypto';
+import { westwindGraph } from '@cg/intake';
 import { createDb } from '@cg/db';
 import { KeycloakAdmin } from './idp/keycloak.ts';
 import { anchorAuditChains, expireBreakGlass, retentionSweep } from './jobs/handlers.ts';
-import { consume, relayOnce } from './jobs/relay.ts';
+import { sweepStoredSubmissions, topUpReferenceCodes } from './jobs/intake.ts';
+import { consume, consumeIntake, relayOnce } from './jobs/relay.ts';
 import type { JobContext, Schedule } from './jobs/types.ts';
 import { nullMailer, smtpMailer } from './mail.ts';
 
@@ -28,6 +34,12 @@ const log = pino({ level: config.LOG_LEVEL, base: { service: 'worker' } });
 const pool = createPool(config.DATABASE_URL, 5);
 const db = createDb(config.DATABASE_URL, 5);
 let queue: QueueConnection | undefined;
+// Key-service token is injected as a file by the keys-init container (ADR-0009).
+const keyToken = readFileSync(config.OPENBAO_TOKEN_FILE, 'utf8').trim();
+const fieldCrypto = new FieldCrypto(
+  new OpenBaoKeyService(config.OPENBAO_ADDR, keyToken),
+  dbKeyStore(db),
+);
 
 const s3 = createS3({
   endpoint: config.S3_ENDPOINT,
@@ -46,12 +58,30 @@ const ctx: JobContext = {
     adminPassword: config.KC_ADMIN_PASSWORD,
   }),
   mail: config.SMTP_URL ? smtpMailer(config.SMTP_URL, config.MAIL_FROM) : nullMailer,
+  sms: new SimulatorSms(), // the Twilio sender arrives with the channel work (F) and is configuration
+  crypto: fieldCrypto,
   urls: {
     gatewayPublic: config.GATEWAY_PUBLIC_URL,
     idpPublic: config.IDP_PUBLIC_BASE,
     idpInternal: config.IDP_INTERNAL_BASE,
   },
   objects: {
+    async get(key) {
+      const res = await s3.send(new GetObjectCommand({ Bucket: config.S3_BUCKET, Key: key }));
+      const bytes = await res.Body?.transformToByteArray();
+      if (!bytes) throw new Error(`object ${key} has no body`);
+      return { body: Buffer.from(bytes), contentType: res.ContentType ?? null };
+    },
+    async put(key, body, contentType) {
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: config.S3_BUCKET,
+          Key: key,
+          Body: body,
+          ContentType: contentType,
+        }),
+      );
+    },
     async putAnchor(key, body) {
       await s3.send(
         new PutObjectCommand({
@@ -63,6 +93,19 @@ const ctx: JobContext = {
       );
     },
   },
+  ai: {
+    // AIG-12: the provider is tenant configuration; only registered, compliant providers exist here.
+    async providerFor(_tenantId, trx) {
+      const row = await trx
+        .selectFrom('cg.tenant_config')
+        .select('value')
+        .where('key', '=', 'ai.provider')
+        .executeTakeFirst();
+      const name = typeof row?.value === 'string' ? row.value : 'fake';
+      return providerByName(name) ?? fakeProvider;
+    },
+  },
+  defaultGraph: westwindGraph,
   devDirectGrant: config.IDP_DEV_DIRECT_GRANT,
 };
 
@@ -70,6 +113,13 @@ const schedules: Schedule[] = [
   { name: 'break-glass-expiry', everyMs: 60_000, run: expireBreakGlass },
   { name: 'audit-anchor', everyMs: 15 * 60_000, run: anchorAuditChains },
   { name: 'retention-sweep', everyMs: 24 * 3600_000, run: retentionSweep },
+  // SCL-06: submissions stored while the queue was down, or whose message was lost, are filed from the row.
+  {
+    name: 'intake-stored-sweep',
+    everyMs: 10_000,
+    run: (c) => sweepStoredSubmissions(c).then(() => undefined),
+  },
+  { name: 'reference-code-pool', everyMs: 60_000, run: (c) => topUpReferenceCodes(c) },
 ];
 
 const probes = [postgresProbe('db', pool), queueProbe('queue', () => queue)];
@@ -83,7 +133,8 @@ async function keepQueueConnected(attempt = 0): Promise<void> {
       void keepQueueConnected();
     });
     await consume(ctx, queue.channel);
-    log.info('queue connected; consuming jobs');
+    await consumeIntake(ctx, await queue.connection.createChannel());
+    log.info('queue connected; consuming jobs and submissions');
   } catch (err) {
     queue = undefined;
     const delay = Math.min(30_000, 500 * 2 ** attempt);

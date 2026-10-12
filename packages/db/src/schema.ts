@@ -366,6 +366,15 @@ export type ReviewState =
   | 'superseded';
 export type VerificationLevel =
   'self_reported' | 'desktop_verified' | 'field_verified' | 'cannot_verify';
+/** What a reviewer must see about a filed report; set by the worker, never a decision (PHO-15, SEC-17). */
+export interface ReportFlag {
+  kind: 'possible_duplicate' | 'duplicate_photo' | 'verify_suggested' | 'ai_assisted';
+  reason: string;
+  reportId?: string;
+  photoId?: string;
+  at: string;
+}
+
 export type FemaDegree = 'affected' | 'minor' | 'major' | 'destroyed' | 'no_damage' | 'cannot_tell';
 export type ReviewDecisionKind =
   | 'approve'
@@ -446,6 +455,7 @@ export interface LocationTable extends Stamped {
   source: Generated<'resident' | 'geocoder' | 'reviewer' | 'field'>;
   parcel_id: string | null;
   usng: string | null;
+  address_key: string | null;
 }
 
 export interface ReportTable extends Stamped {
@@ -480,6 +490,8 @@ export interface ReportTable extends Stamped {
   duplicate_of: Uuid | null;
   supersedes: Uuid | null;
   need_signals: JsonGen<Record<string, boolean>>;
+  flags: JsonGen<ReportFlag[]>;
+  content_hash: Buffer | null;
   danger_flag: Generated<boolean>;
   told_to_call_911_at: TsNullable;
   submitted_at: TsGen;

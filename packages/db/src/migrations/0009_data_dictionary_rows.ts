@@ -7,7 +7,23 @@
 import { sql, type Kysely } from 'kysely';
 import { dictionary } from '../dictionary.ts';
 
+/**
+ * Loads the dictionary for the tables that exist at this point of the
+ * migration chain: a fresh database runs 0009 before the layer-2 tables
+ * exist, so entries for later tables wait for the migration that creates
+ * them and reloads; the same goes for columns added to existing tables. One
+ * check holds at every call: no existing column is undocumented. The drill
+ * (migrate-check.ts) refuses entries that the final schema does not have
+ * (a typo or a dropped column).
+ */
 export async function loadDictionary(db: Kysely<unknown>): Promise<void> {
+  const existing = await sql<{ table_name: string; column_name: string }>`
+    select c.table_name::text, c.column_name::text
+    from information_schema.columns c
+    join information_schema.tables t
+      on t.table_schema = c.table_schema and t.table_name = c.table_name
+    where c.table_schema = 'cg' and t.table_type = 'BASE TABLE'`.execute(db);
+  const columns = new Set(existing.rows.map((r) => `${r.table_name}.${r.column_name}`));
   const rows = Object.entries(dictionary).flatMap(([table, cols]) =>
     Object.entries(cols).map(([column, e]) => ({
       table,
@@ -19,6 +35,8 @@ export async function loadDictionary(db: Kysely<unknown>): Promise<void> {
   );
   await sql`delete from cg.data_dictionary`.execute(db);
   for (const r of rows) {
+    // Columns a later migration adds (or tables it creates) are loaded by that migration's reload.
+    if (!columns.has(`${r.table}.${r.column}`)) continue;
     await sql`
       insert into cg.data_dictionary (table_name, column_name, classification, retention_category, description)
       values (${r.table}, ${r.column}, ${r.classification}, ${r.retention}, ${r.description})`.execute(
@@ -30,18 +48,6 @@ export async function loadDictionary(db: Kysely<unknown>): Promise<void> {
   if (missing.rows.length > 0) {
     const list = missing.rows.map((m) => `${m.table_name}.${m.column_name}`).join(', ');
     throw new Error(`SEC-11: columns without a data-dictionary entry: ${list}`);
-  }
-  const stale = await sql<{ table_name: string; column_name: string }>`
-    select d.table_name, d.column_name from cg.data_dictionary d
-    where not exists (
-      select 1 from information_schema.columns c
-      join information_schema.tables t
-        on t.table_schema = c.table_schema and t.table_name = c.table_name
-      where c.table_schema = 'cg' and t.table_type = 'BASE TABLE'
-        and c.table_name = d.table_name and c.column_name = d.column_name)`.execute(db);
-  if (stale.rows.length > 0) {
-    const list = stale.rows.map((m) => `${m.table_name}.${m.column_name}`).join(', ');
-    throw new Error(`data dictionary names columns that do not exist: ${list}`);
   }
 }
 

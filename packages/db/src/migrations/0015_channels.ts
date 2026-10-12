@@ -5,6 +5,7 @@
  * (SEC-17).
  */
 import { sql, type Kysely } from 'kysely';
+import { loadDictionary } from './0009_data_dictionary_rows.ts';
 
 export async function up(db: Kysely<unknown>): Promise<void> {
   await sql`
@@ -123,6 +124,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   );
   await sql`select cg.apply_tenant_rls('cg.abuse_signal')`.execute(db);
   await sql`drop policy tenant_update on cg.abuse_signal`.execute(db);
+  await loadDictionary(db);
 }
 
 export async function down(db: Kysely<unknown>): Promise<void> {

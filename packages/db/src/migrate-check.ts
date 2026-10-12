@@ -52,6 +52,14 @@ const dict = await sql<{ n: string }>`select count(*)::text as n from cg.data_di
 );
 const undocumented = await sql<{ table_name: string; column_name: string }>`
   select * from cg.undocumented_columns()`.execute(db);
+// The dictionary in code must not name tables or columns the final schema lacks (SEC-11).
+const staleDictionary = await sql<{ table_name: string; column_name: string }>`
+  select d.table_name, d.column_name from cg.data_dictionary d
+  where not exists (
+    select 1 from information_schema.columns c
+    where c.table_schema = 'cg' and c.table_name = d.table_name and c.column_name = d.column_name)`.execute(
+  db,
+);
 // Every table that carries tenant data (a tenant_id column) must have RLS forced (SEC-05).
 const noRls = await sql<{ t: string }>`
   select c.relname as t from pg_class c
@@ -66,10 +74,12 @@ console.log(
     tables: Number(tables.rows[0]?.n),
     dictionaryRows: Number(dict.rows[0]?.n),
     undocumented: undocumented.rows.map((r) => `${r.table_name}.${r.column_name}`),
+    staleDictionary: staleDictionary.rows.map((r) => `${r.table_name}.${r.column_name}`),
     tablesWithoutRls: noRls.rows.map((r) => r.t),
   }),
 );
-if (undocumented.rows.length > 0 || noRls.rows.length > 0) process.exit(1);
+if (undocumented.rows.length > 0 || staleDictionary.rows.length > 0 || noRls.rows.length > 0)
+  process.exit(1);
 for (let i = 0; i < steps; i++) show(`down ${i + 1}`, await migrator.migrateDown());
 show('up again', await migrator.migrateToLatest());
 await db.destroy();

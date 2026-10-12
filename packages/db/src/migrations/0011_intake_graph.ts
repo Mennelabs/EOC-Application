@@ -3,6 +3,7 @@
  * (layer-2 plan §2; INT-01, INT-22, FL-01, BRD:FR-11.04, SCL-03, SCL-06).
  */
 import { sql, type Kysely } from 'kysely';
+import { loadDictionary } from './0009_data_dictionary_rows.ts';
 
 export async function up(db: Kysely<unknown>): Promise<void> {
   // Versioned, tenant-configurable question graphs (INT-01, CON-02, SCL-07).
@@ -71,6 +72,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     db,
   );
   await sql`select cg.apply_tenant_rls('cg.intake_submission')`.execute(db);
+  await loadDictionary(db);
 }
 
 export async function down(db: Kysely<unknown>): Promise<void> {

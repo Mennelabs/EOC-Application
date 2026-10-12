@@ -179,8 +179,13 @@ export class KeycloakAdmin {
           directAccessGrantsEnabled: false,
           implicitFlowEnabled: false,
           serviceAccountsEnabled: false,
-          redirectUris: [spec.consoleRedirect],
-          webOrigins: [spec.consoleOrigin],
+          // Dev realms also accept the Vite dev server so `pnpm dev` can sign in.
+          redirectUris: spec.devDirectGrant
+            ? [spec.consoleRedirect, 'http://localhost:5173/console/*']
+            : [spec.consoleRedirect],
+          webOrigins: spec.devDirectGrant
+            ? [spec.consoleOrigin, 'http://localhost:5173']
+            : [spec.consoleOrigin],
           attributes: {
             'pkce.code.challenge.method': 'S256',
             'post.logout.redirect.uris': spec.consoleRedirect,

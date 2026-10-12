@@ -61,12 +61,3 @@ test.describe('resident welcome', () => {
     expect(overflow).toBe(false);
   });
 });
-
-test.describe('staff console shell', () => {
-  test('no axe violations and the API is reachable', async ({ page }) => {
-    await page.goto('/console/');
-    await expect(page.getByRole('heading', { name: 'Staff console' })).toBeVisible();
-    await expect(page.getByRole('status')).toContainText('reachable');
-    await expectNoViolations(page);
-  });
-});

@@ -1,42 +1,208 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { api, describeFailure, setConfirmHandler, type Confirmation } from './api/client.ts';
+import { beginLogin, completeLogin, loadSession, rememberedRealm, signOut } from './auth/oidc.ts';
 import type { RuntimeConfig } from './runtime-config.ts';
+import { AccountsScreen, EventsScreen, PersonnelScreen, TenantsScreen } from './screens/admin.tsx';
+import {
+  ApprovalsScreen,
+  AuditScreen,
+  BreakGlassScreen,
+  RetentionScreen,
+  RolesScreen,
+} from './screens/permissions.tsx';
+import { ConfirmDialog, Field, Status } from './ui/primitives.tsx';
 
 /**
- * Console shell (CON-01): one console with role-based workspaces. The
- * workspace list follows the WESTWIND cast (docs/02). Each workspace arrives
- * with its layer; staff sign-in (SEC-07) and permissions (ADM-04/05) arrive
- * in layer 1, so nothing here shows data yet.
+ * Console shell (CON-01): one console, role-based workspaces. Layer 1 ships
+ * the administration workspaces; the others arrive with their layers. The
+ * navigation shows every workspace the API answers for; a denied workspace
+ * shows the denial, never a blank page.
  */
-const workspaces = [
-  { name: 'Situation', layer: 3 },
-  { name: 'Review queue', layer: 2 },
-  { name: 'Needs board', layer: 3 },
-  { name: 'Mass care', layer: 3 },
-  { name: 'Sites', layer: 3 },
-  { name: 'Messaging', layer: 3 },
-  { name: 'Dispatch', layer: 4 },
-  { name: 'Declaration', layer: 6 },
-  { name: 'Facility registry', layer: 7 },
-  { name: 'Event log', layer: 8 },
-  { name: 'Administration', layer: 1 },
+const routes = [
+  { path: '/console/', label: 'Home', layer: 1 },
+  { path: '/console/events', label: 'Events', layer: 1 },
+  { path: '/console/tenants', label: 'Organizations', layer: 1 },
+  { path: '/console/accounts', label: 'Staff accounts', layer: 1 },
+  { path: '/console/personnel', label: 'Personnel', layer: 1 },
+  { path: '/console/roles', label: 'Roles', layer: 1 },
+  { path: '/console/approvals', label: 'Permission changes', layer: 1 },
+  { path: '/console/audit', label: 'Audit log', layer: 1 },
+  { path: '/console/break-glass', label: 'Emergency access', layer: 1 },
+  { path: '/console/retention', label: 'Retention', layer: 1 },
 ] as const;
 
-interface Meta {
-  version: string;
-  dataMode: string;
+interface Me {
+  accountId: string;
+  tenantId: string;
+  roles: { key: string; version: number }[];
+  breakGlass: { id: string; expiresAt: string } | null;
+}
+
+function usePath() {
+  const [path, setPath] = useState(location.pathname.replace(/\/$/, '') || '/console');
+  useEffect(() => {
+    const onPop = () => setPath(location.pathname.replace(/\/$/, '') || '/console');
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+  const navigate = useCallback((to: string) => {
+    history.pushState(null, '', to);
+    setPath(to.replace(/\/$/, '') || '/console');
+    document.getElementById('main')?.focus();
+  }, []);
+  return { path, navigate };
+}
+
+function SignIn({ config }: { config: RuntimeConfig }) {
+  const [realm, setRealm] = useState(rememberedRealm() ?? '');
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <main id="main" tabIndex={-1} className="signin">
+      <h1>Sign in to {config.productName || 'the console'}</h1>
+      <p>
+        Enter your organization’s sign-in name. You will sign in with your password and your
+        passkey.
+      </p>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError(null);
+          beginLogin(realm.trim().toLowerCase()).catch((err: unknown) =>
+            setError(describeFailure(err)),
+          );
+        }}
+      >
+        <Field label="Organization" hint="For example: county" {...(error ? { error } : {})}>
+          {({ id, describedBy, invalid }) => (
+            <input
+              id={id}
+              aria-describedby={describedBy}
+              aria-invalid={invalid || undefined}
+              value={realm}
+              onChange={(e) => setRealm(e.target.value)}
+              autoComplete="organization"
+              required
+            />
+          )}
+        </Field>
+        <button type="submit" className="primary">
+          Continue
+        </button>
+      </form>
+    </main>
+  );
 }
 
 export function App({ config }: { config: RuntimeConfig }) {
-  const [meta, setMeta] = useState<Meta | null>(null);
+  const { path, navigate } = usePath();
+  const [session, setSession] = useState(() => loadSession());
+  const [me, setMe] = useState<Me | null>(null);
+  const [meError, setMeError] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<{
+    action: string;
+    description: string;
+    resolve: (c: Confirmation) => void;
+  } | null>(null);
   const product = config.productName || 'Console';
 
   useEffect(() => {
     document.title = `${product} — ${config.countyName || 'Console'}`;
-    fetch('/api/meta')
-      .then((r) => (r.ok ? (r.json() as Promise<Meta>) : null))
-      .then(setMeta)
-      .catch(() => setMeta(null));
   }, [product, config.countyName]);
+
+  useEffect(() => {
+    setConfirmHandler(
+      (action, description) =>
+        new Promise((resolve) => setConfirm({ action, description, resolve })),
+    );
+  }, []);
+
+  useEffect(() => {
+    if (path === '/console/callback') {
+      completeLogin()
+        .then((to) => {
+          setSession(loadSession());
+          navigate(to);
+        })
+        .catch((err: unknown) => {
+          setMeError(describeFailure(err));
+          navigate('/console/');
+        });
+    }
+  }, [path, navigate]);
+
+  const loadMe = useCallback(() => {
+    if (!session) return;
+    api<Me>('/me')
+      .then((m) => {
+        setMe(m);
+        setMeError(null);
+      })
+      .catch((err: unknown) => {
+        setMeError(describeFailure(err));
+        if ((err as { status?: number }).status === 401) {
+          setSession(null);
+          setMe(null);
+        }
+      });
+  }, [session]);
+  useEffect(loadMe, [loadMe]);
+
+  if (!session) {
+    return (
+      <>
+        <header className="top">
+          <p className="product">{product}</p>
+          <p className="county">
+            {config.countyName ? `${config.countyName} Emergency Management` : ''}
+          </p>
+        </header>
+        {meError ? <Status kind="error">{meError}</Status> : null}
+        <SignIn config={config} />
+      </>
+    );
+  }
+
+  const screen = (() => {
+    switch (path) {
+      case '/console/events':
+        return <EventsScreen />;
+      case '/console/tenants':
+        return <TenantsScreen />;
+      case '/console/accounts':
+        return <AccountsScreen />;
+      case '/console/personnel':
+        return <PersonnelScreen />;
+      case '/console/roles':
+        return <RolesScreen />;
+      case '/console/approvals':
+        return <ApprovalsScreen />;
+      case '/console/audit':
+        return <AuditScreen />;
+      case '/console/break-glass':
+        return <BreakGlassScreen onChanged={loadMe} />;
+      case '/console/retention':
+        return <RetentionScreen />;
+      default:
+        return (
+          <section aria-labelledby="home-h">
+            <h1 id="home-h">Welcome</h1>
+            {me ? (
+              <dl className="meta">
+                <dt>Your roles</dt>
+                <dd>
+                  {me.roles.map((r) => `${r.key} (v${r.version})`).join(', ') ||
+                    'none assigned yet'}
+                </dd>
+                <dt>Data</dt>
+                <dd>Synthetic exercise data only</dd>
+              </dl>
+            ) : (
+              <p role="status">Loading your account…</p>
+            )}
+          </section>
+        );
+    }
+  })();
 
   return (
     <>
@@ -48,37 +214,52 @@ export function App({ config }: { config: RuntimeConfig }) {
         <p className="county">
           {config.countyName ? `${config.countyName} Emergency Management` : ''}
         </p>
+        <button type="button" className="link light" onClick={signOut}>
+          Sign out
+        </button>
       </header>
+      {me?.breakGlass ? (
+        <p className="banner" role="status">
+          Emergency access is active until {new Date(me.breakGlass.expiresAt).toLocaleTimeString()}.
+          Every record you open is audited as restricted.
+        </p>
+      ) : null}
+      {meError ? <Status kind="error">{meError}</Status> : null}
       <div className="layout">
         <nav aria-label="Workspaces">
           <ul>
-            {workspaces.map((w) => (
-              <li key={w.name}>
-                <span aria-disabled="true">
-                  {w.name} <span className="soon">(layer {w.layer})</span>
-                </span>
+            {routes.map((r) => (
+              <li key={r.path}>
+                <a
+                  href={r.path}
+                  aria-current={
+                    path === r.path.replace(/\/$/, '') ||
+                    (r.path === '/console/' && path === '/console')
+                      ? 'page'
+                      : undefined
+                  }
+                  onClick={(e) => {
+                    e.preventDefault();
+                    navigate(r.path);
+                  }}
+                >
+                  {r.label}
+                </a>
               </li>
             ))}
           </ul>
         </nav>
-        <main id="main">
-          <h1>Staff console</h1>
-          <p>
-            Staff sign-in with your organization’s single sign-on and a passkey is being built in
-            layer 1. No resident data is shown before sign-in and permission checks exist.
-          </p>
-          <dl className="meta">
-            <dt>API</dt>
-            <dd>
-              <span role="status">
-                {meta ? `reachable, version ${meta.version}` : 'not reachable'}
-              </span>
-            </dd>
-            <dt>Data</dt>
-            <dd>{meta?.dataMode === 'synthetic' ? 'Synthetic exercise data only' : '—'}</dd>
-          </dl>
+        <main id="main" tabIndex={-1}>
+          {screen}
         </main>
       </div>
+      <ConfirmDialog
+        request={confirm ? { action: confirm.action, description: confirm.description } : null}
+        onDone={(c) => {
+          confirm?.resolve(c);
+          setConfirm(null);
+        }}
+      />
     </>
   );
 }

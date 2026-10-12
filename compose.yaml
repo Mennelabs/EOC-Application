@@ -219,7 +219,10 @@ services:
     command:
       - start
       - --http-enabled=true
-      - --hostname-strict=false
+      # Public URL for every realm (issuer, email links); the worker's admin
+      # calls stay on the internal address thanks to the dynamic backchannel.
+      - --hostname=https://${GATEWAY_HOST:-localhost}/auth
+      - --hostname-backchannel-dynamic=true
       - --proxy-headers=xforwarded
       - --http-relative-path=/auth
       - --health-enabled=true

@@ -56,6 +56,13 @@ export const platformSchema = baseSchema.extend({
     .int()
     .positive()
     .default(6 * 1024 * 1024),
+  /**
+   * Abuse protection (SEC-17): public submissions from one address per ten
+   * minutes before a verification flag, and before a retryable 429. A load
+   * generator on a single host needs the deny limit raised (tests/load).
+   */
+  PUBLIC_IP_VERIFY_PER_10MIN: z.coerce.number().int().positive().default(20),
+  PUBLIC_IP_DENY_PER_10MIN: z.coerce.number().int().positive().default(120),
 });
 
 /** Worker: platform settings plus identity-provider administration and mail. */

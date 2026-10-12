@@ -60,6 +60,9 @@ $lines = @(
 TWILIO_ACCOUNT_SID=
 TWILIO_AUTH_TOKEN=
 WEBHOOK_PUBLIC_BASE=
+# Abuse protection per address (SEC-17); raise the deny limit only for a load generator on one host.
+PUBLIC_IP_VERIFY_PER_10MIN=20
+PUBLIC_IP_DENY_PER_10MIN=120
 )
 
 # UTF-8 without a byte-order mark and LF endings: Docker Compose reads the

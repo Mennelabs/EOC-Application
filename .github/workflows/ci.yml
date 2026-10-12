@@ -49,6 +49,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: scripts/init-env.sh
+      - name: One runner address sends every suite and the load smoke; the per-address flood limit (SEC-17) is unit-tested, so it is raised here
+        run: echo "PUBLIC_IP_DENY_PER_10MIN=100000" >> .env
       - run: docker compose build
       - run: docker compose up -d --wait --wait-timeout 600
       - name: Show status on failure

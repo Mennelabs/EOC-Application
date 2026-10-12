@@ -13,4 +13,6 @@ tests/load/run.sh sms-sessions smoke
 BASE_URL=https://stack.example.test tests/load/run.sh submissions full
 ```
 
+**One load host looks like a flood.** The abuse protection (SEC-17) refuses more than `PUBLIC_IP_DENY_PER_10MIN` submissions from one address per ten minutes (default 120) with a retryable 429, which is the right answer to a real flood and the wrong one for k6. On the stack under test set `PUBLIC_IP_DENY_PER_10MIN=100000` in `.env` before `docker compose up` (CI does this for the smoke profile), or spread the generator across addresses.
+
 Summaries are written to `tests/load/out/<script>-<profile>.json` (git-ignored). Queue depth during a run: `docker compose exec queue rabbitmqctl list_queues name messages`. Everything sent is synthetic (SCL-12); the confirmation texts go to the simulator, never to a carrier.

@@ -34,6 +34,9 @@ x-node-env: &node-env
   TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
   TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
   WEBHOOK_PUBLIC_BASE: ${WEBHOOK_PUBLIC_BASE:-}
+  # Abuse protection per address (SEC-17); raise the deny limit only for a load generator on one host.
+  PUBLIC_IP_VERIFY_PER_10MIN: ${PUBLIC_IP_VERIFY_PER_10MIN:-20}
+  PUBLIC_IP_DENY_PER_10MIN: ${PUBLIC_IP_DENY_PER_10MIN:-120}
 
 x-node-health: &node-health
   test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/health/ready']

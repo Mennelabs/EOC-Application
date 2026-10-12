@@ -24,7 +24,7 @@ import { westwindGraph } from '@cg/intake';
 import { dataUrlFetcher, twilioMediaFetcher } from './channels/media.ts';
 import { webhookRoutes } from './channels/routes.ts';
 import { ChannelSessions } from './channels/session.ts';
-import { RiskScorer } from './public/abuse.ts';
+import { DEFAULT_LIMITS, RiskScorer } from './public/abuse.ts';
 import { ReferenceCodeLeaser } from './public/reference-codes.ts';
 import { submitIntake } from './public/submit.ts';
 import { publicRoutes } from './public/routes.ts';
@@ -55,7 +55,11 @@ let queue: QueueConnection | undefined;
 // One submission path for every channel (CHN-01): the web route and the text and voice sessions share it.
 const resolver = new TenantResolver(db);
 const codes = new ReferenceCodeLeaser(db, `${process.env['HOSTNAME'] ?? 'api'}:${process.pid}`);
-const risk = new RiskScorer();
+const risk = new RiskScorer({
+  ...DEFAULT_LIMITS,
+  ipVerify: config.PUBLIC_IP_VERIFY_PER_10MIN,
+  ipDeny: config.PUBLIC_IP_DENY_PER_10MIN,
+});
 // Browsers upload to the public object host (SCL-04); the API itself talks to storage internally.
 const presignClient = config.S3_PUBLIC_ENDPOINT
   ? createS3({

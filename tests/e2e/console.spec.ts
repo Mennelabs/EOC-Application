@@ -347,9 +347,14 @@ test.describe('console review (CON-02, CON-05, BRD:FR-12, DCL:DEC-02/03, AIG-01,
     for (const name of ['Intake setup', 'Assisted report', 'AI use register']) {
       await page.getByRole('link', { name }).click();
       await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
+      if (name === 'Intake setup') {
+        // The event's links, keywords and a code to print (CHN-08).
+        await expect(page.getByText(/Kiosk \/ assisted link/)).toBeVisible();
+        await expect(page.getByRole('img', { name: /Code that opens/ })).toBeVisible({
+          timeout: 15_000,
+        });
+      }
       await expectNoViolations(page);
     }
-    await expect(page.getByText(/Kiosk \/ assisted link/)).toBeVisible();
-    await expect(page.getByRole('img', { name: /Code that opens/ })).toBeVisible();
   });
 });

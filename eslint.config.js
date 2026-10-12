@@ -33,7 +33,12 @@ export default tseslint.config(
   },
   {
     // CLIs and migration runners print one JSON line per result by design.
-    files: ['tools/**/*.ts', 'packages/db/src/migrate.ts', 'tools/**/*.mjs'],
+    files: [
+      'tools/**/*.ts',
+      'packages/db/src/migrate.ts',
+      'packages/db/src/migrate-check.ts',
+      'tools/**/*.mjs',
+    ],
     rules: { 'no-console': 'off' },
   },
 );

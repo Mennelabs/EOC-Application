@@ -1,0 +1,290 @@
+# Common Ground local stack: `docker compose up` (SCL-11).
+# Run scripts/init-env.sh once first; it writes .env with random local secrets.
+# Synthetic data only on this stack (SCL-12).
+name: common-ground
+
+include:
+  - compose.cjis.yaml # CJIS enclave skeleton on its own network (SEC-12, ADR-0021)
+
+x-node-env: &node-env
+  NODE_ENV: production
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  PRODUCT_NAME: ${PRODUCT_NAME:?run scripts/init-env.sh first}
+  DATA_CLASSIFICATION_MODE: synthetic
+  PORT: '8080'
+  DATABASE_URL: postgres://cg_app:${CG_APP_PASSWORD:?}@db:5432/cg
+  AMQP_URL: amqp://cg:${RABBITMQ_PASSWORD:?}@queue:5672
+  S3_ENDPOINT: http://objects:9000
+  S3_REGION: us-east-1
+  S3_ACCESS_KEY_ID: cg-local
+  S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?}
+  S3_BUCKET: cg-local
+  KEYS_PROVIDER: openbao
+  OPENBAO_ADDR: http://keys:8200
+  OPENBAO_TOKEN_FILE: /bao-init/app-token
+  IDP_ISSUER_URL: https://${GATEWAY_HOST:-localhost}/auth/realms/westwind
+  IDP_HEALTH_URL: http://idp:9000/auth/health/ready
+  SMTP_URL: smtp://mail:1025
+
+x-node-health: &node-health
+  test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/health/ready']
+  interval: 10s
+  timeout: 5s
+  retries: 12
+  start_period: 20s
+
+services:
+  gateway:
+    image: caddy:2.8.4-alpine
+    environment:
+      GATEWAY_HOST: ${GATEWAY_HOST:-localhost}
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - tiles:/srv/tiles:ro
+    ports:
+      - '${GATEWAY_HTTPS_PORT:-443}:443'
+      - '${GATEWAY_HTTP_PORT:-80}:80'
+    depends_on:
+      web: { condition: service_healthy }
+      api: { condition: service_started }
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8088/healthz']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [platform]
+
+  web:
+    build: { context: ., dockerfile: infra/web/Dockerfile }
+    image: common-ground/web:local
+    environment:
+      PRODUCT_NAME: ${PRODUCT_NAME:?}
+      COUNTY_NAME: ${COUNTY_NAME:-Westwind County}
+      HELP_PHONE: ${HELP_PHONE:-(314) 555-0142}
+    networks: [platform]
+
+  api:
+    build: { context: ., dockerfile: infra/node/Dockerfile, args: { APP: services/api } }
+    image: common-ground/api:local
+    environment: *node-env
+    volumes:
+      - keys_init:/bao-init:ro
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      queue: { condition: service_healthy }
+      objects: { condition: service_healthy }
+      keys-init: { condition: service_completed_successfully }
+    healthcheck: *node-health
+    networks: [platform]
+
+  worker:
+    build: { context: ., dockerfile: infra/node/Dockerfile, args: { APP: services/worker } }
+    image: common-ground/worker:local
+    environment:
+      <<: *node-env
+      DATABASE_URL: postgres://cg_worker:${CG_WORKER_PASSWORD:?}@db:5432/cg
+    volumes:
+      - keys_init:/bao-init:ro
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      queue: { condition: service_healthy }
+    healthcheck: *node-health
+    networks: [platform]
+
+  migrate:
+    build: { context: ., dockerfile: infra/node/Dockerfile, args: { APP: packages/db } }
+    image: common-ground/migrate:local
+    environment:
+      ENTRY: migrate.ts
+      DATABASE_MIGRATOR_URL: postgres://cg_migrator:${CG_MIGRATOR_PASSWORD:?}@db:5432/cg
+    depends_on:
+      db: { condition: service_healthy }
+    restart: 'no'
+    networks: [platform]
+
+  seed:
+    build: { context: ., dockerfile: infra/node/Dockerfile, args: { APP: tools/seed } }
+    image: common-ground/seed:local
+    environment:
+      ENTRY: cli.ts
+    command: ['sh', '-c', 'exec node tools/seed/src/cli.ts --out /data/seed']
+    volumes:
+      - seed_data:/data/seed
+    restart: 'no'
+    networks: [platform]
+
+  db:
+    image: postgis/postgis:16-3.4-alpine
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      CG_MIGRATOR_PASSWORD: ${CG_MIGRATOR_PASSWORD:?}
+      CG_APP_PASSWORD: ${CG_APP_PASSWORD:?}
+      CG_WORKER_PASSWORD: ${CG_WORKER_PASSWORD:?}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
+    ports:
+      - '127.0.0.1:${DB_PORT:-5432}:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U postgres -d cg']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [platform]
+
+  queue:
+    image: rabbitmq:4.0-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: cg
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?}
+    volumes:
+      - queue_data:/var/lib/rabbitmq
+    ports:
+      - '127.0.0.1:${QUEUE_UI_PORT:-15672}:15672'
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'check_port_connectivity']
+      interval: 10s
+      timeout: 10s
+      retries: 12
+    networks: [platform]
+
+  objects:
+    build: { context: infra/minio }
+    image: common-ground/minio:local
+    environment:
+      MINIO_ROOT_USER: cg-local
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+    volumes:
+      - objects_data:/data
+    ports:
+      - '127.0.0.1:${OBJECTS_UI_PORT:-9001}:9001'
+    networks: [platform]
+
+  keys:
+    image: openbao/openbao:2.1.0
+    command: ['server', '-config=/etc/openbao/cg.hcl']
+    volumes:
+      - ./infra/openbao/config.hcl:/etc/openbao/cg.hcl:ro
+      - keys_data:/openbao/file
+    healthcheck:
+      # Healthy once the server answers; it starts sealed and keys-init unseals it.
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8200/v1/sys/seal-status']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [platform]
+
+  keys-init:
+    image: openbao/openbao:2.1.0
+    entrypoint: ['/bin/sh', '/init.sh']
+    environment:
+      BAO_ADDR: http://keys:8200
+    volumes:
+      - ./infra/openbao/init.sh:/init.sh:ro
+      - keys_init:/bao-init
+    depends_on:
+      keys: { condition: service_healthy }
+    restart: 'no'
+    networks: [platform]
+
+  idp:
+    image: keycloak/keycloak:26.0.7
+    command:
+      - start
+      - --http-enabled=true
+      - --hostname-strict=false
+      - --proxy-headers=xforwarded
+      - --http-relative-path=/auth
+      - --health-enabled=true
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://db:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?}
+      KC_BOOTSTRAP_ADMIN_USERNAME: cg-admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?}
+    depends_on:
+      db: { condition: service_healthy }
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /auth/health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"UP"' <&3
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks: [platform]
+
+  mail:
+    image: axllent/mailpit:v1.21
+    ports:
+      - '127.0.0.1:${MAIL_UI_PORT:-8025}:8025'
+    healthcheck:
+      test: ['CMD', '/mailpit', 'readyz']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [platform]
+
+  # --- Maps (SCL-13). Opt in with COMPOSE_PROFILES=maps (geocoder) and run the
+  # one-shot tile build once: `docker compose --profile maps-build run --rm tiles-build`.
+  geocoder:
+    profiles: [maps]
+    image: mediagis/nominatim:4.5
+    environment:
+      PBF_URL: ${OSM_PBF_URL:-https://download.geofabrik.de/north-america/us/missouri-latest.osm.pbf}
+      REPLICATION_URL: ''
+      IMPORT_STYLE: address
+      NOMINATIM_PASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes:
+      - geocoder_data:/var/lib/postgresql/16/main
+    shm_size: 1g
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:8080/status']
+      interval: 30s
+      timeout: 5s
+      retries: 240
+      start_period: 10m
+    networks: [platform]
+
+  tiles-build:
+    profiles: [maps-build]
+    image: eclipse-temurin:21-jre-alpine
+    working_dir: /work
+    environment:
+      OSM_PBF_URL: ${OSM_PBF_URL:-https://download.geofabrik.de/north-america/us/missouri-latest.osm.pbf}
+      PLANETILER_VERSION: ${PLANETILER_VERSION:-0.8.4}
+    command:
+      - sh
+      - -c
+      - >-
+        apk add --no-cache curl >/dev/null &&
+        curl -fL -o planetiler.jar https://github.com/onthegomap/planetiler/releases/download/v$${PLANETILER_VERSION}/planetiler.jar &&
+        curl -fL -o region.osm.pbf "$${OSM_PBF_URL}" &&
+        java -Xmx4g -jar planetiler.jar --osm-path=region.osm.pbf --download --output=/tiles/region.pmtiles --force
+    volumes:
+      - tiles:/tiles
+      - tiles_work:/work
+    restart: 'no'
+    networks: [platform]
+
+networks:
+  platform:
+    name: cg_platform
+
+volumes:
+  caddy_data:
+  db_data:
+  queue_data:
+  objects_data:
+  keys_data:
+  keys_init:
+  seed_data:
+  tiles:
+  tiles_work:
+  geocoder_data:

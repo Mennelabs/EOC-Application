@@ -1,0 +1,89 @@
+:root {
+  --ink: #1b1f23;
+  --muted: #4a5560;
+  --surface: #ffffff;
+  --panel: #f3f5f7;
+  --brand: #0b4f6c;
+  --focus: #b34700;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--surface);
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+.skip {
+  position: absolute;
+  inset-inline-start: -999px;
+}
+.skip:focus {
+  inset-inline-start: 1rem;
+  inset-block-start: 1rem;
+  background: var(--surface);
+  padding: 0.5rem;
+  z-index: 1;
+}
+.top {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+  background: var(--brand);
+  color: #fff;
+  padding: 0.75rem 1rem;
+}
+.top p {
+  margin: 0;
+}
+.product {
+  font-weight: 700;
+}
+.layout {
+  display: flex;
+  flex-wrap: wrap;
+}
+nav {
+  background: var(--panel);
+  min-inline-size: 14rem;
+  flex: 0 0 auto;
+}
+nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 1rem;
+}
+nav li {
+  padding-block: 0.375rem;
+}
+.soon {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+main {
+  flex: 1 1 20rem;
+  padding: 1rem 1.5rem;
+  max-inline-size: 60rem;
+}
+.meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+}
+.meta dt {
+  font-weight: 600;
+}
+.meta dd {
+  margin: 0;
+}
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}

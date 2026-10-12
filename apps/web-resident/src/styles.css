@@ -1,0 +1,119 @@
+/*
+ * Resident styles. WCAG 2.2 AA: 4.5:1 text contrast, visible focus, reflow at
+ * 320 px, 200% zoom, 44 px targets, logical properties for future RTL (EQ-09).
+ */
+:root {
+  --ink: #1b1f23;
+  --muted: #4a5560;
+  --surface: #ffffff;
+  --brand: #0b4f6c;
+  --brand-ink: #ffffff;
+  --safety-bg: #fdecea;
+  --safety-ink: #7a1d14;
+  --focus: #b34700;
+  color-scheme: light;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  font-size: 100%;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--surface);
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+#root {
+  max-inline-size: 40rem;
+  margin-inline: auto;
+  padding-inline: 1rem;
+}
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  justify-content: space-between;
+  padding-block: 1rem;
+}
+.agency {
+  font-weight: 600;
+  margin: 0;
+}
+.lang {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+select,
+button {
+  font: inherit;
+  min-block-size: 44px;
+}
+select {
+  padding-inline: 0.5rem;
+  border: 1px solid var(--muted);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.safety {
+  background: var(--safety-bg);
+  color: var(--safety-ink);
+  border-inline-start: 6px solid var(--safety-ink);
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+}
+.safety h2 {
+  font-size: 1.125rem;
+  margin: 0;
+}
+.safety p {
+  margin: 0.25rem 0 0;
+}
+h1 {
+  font-size: 1.5rem;
+  line-height: 1.25;
+  margin-block: 1.5rem 0.5rem;
+}
+.facts {
+  padding-inline-start: 1.25rem;
+}
+.primary {
+  background: var(--brand);
+  color: var(--brand-ink);
+  border: 0;
+  border-radius: 6px;
+  padding-inline: 2rem;
+  inline-size: 100%;
+  font-weight: 600;
+  cursor: pointer;
+}
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.notice {
+  min-block-size: 1.5em;
+}
+footer {
+  color: var(--muted);
+  border-block-start: 1px solid #d0d7de;
+  margin-block-start: 2rem;
+  padding-block: 1rem;
+}
+.powered {
+  font-size: 0.875rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

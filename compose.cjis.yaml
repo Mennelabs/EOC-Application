@@ -1,0 +1,76 @@
+# CJIS enclave skeleton (SEC-12, ADR-0021). Separate network, database,
+# keys and volumes; nothing here is reachable from cg_platform. The enclave's
+# own identity provider is added in layer 5. No real CJI on a laptop (SCL-12).
+services:
+  cjis-api:
+    build: { context: ., dockerfile: infra/node/Dockerfile, args: { APP: services/cjis-api } }
+    image: common-ground/cjis-api:local
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PRODUCT_NAME: ${PRODUCT_NAME:?run scripts/init-env.sh first}
+      DATA_CLASSIFICATION_MODE: synthetic
+      PORT: '8080'
+      CJIS_DATABASE_URL: postgres://cjis_app:${CJIS_APP_PASSWORD:?}@cjis-db:5432/cjis
+      CJIS_OPENBAO_ADDR: http://cjis-keys:8200
+    depends_on:
+      cjis-db: { condition: service_healthy }
+      cjis-keys-init: { condition: service_completed_successfully }
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/health/ready']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    networks: [cjis]
+
+  cjis-db:
+    image: postgis/postgis:16-3.4-alpine
+    environment:
+      POSTGRES_PASSWORD: ${CJIS_POSTGRES_PASSWORD:?}
+      CJIS_APP_PASSWORD: ${CJIS_APP_PASSWORD:?}
+    volumes:
+      - cjis_db_data:/var/lib/postgresql/data
+      - ./infra/cjis-postgres/init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U postgres -d cjis']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [cjis]
+
+  cjis-keys:
+    image: openbao/openbao:2.1.0
+    command: ['server', '-config=/etc/openbao/cg.hcl']
+    volumes:
+      - ./infra/openbao/config.hcl:/etc/openbao/cg.hcl:ro
+      - cjis_keys_data:/openbao/file
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8200/v1/sys/seal-status']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [cjis]
+
+  cjis-keys-init:
+    image: openbao/openbao:2.1.0
+    entrypoint: ['/bin/sh', '/init.sh']
+    environment:
+      BAO_ADDR: http://cjis-keys:8200
+    volumes:
+      - ./infra/openbao/init.sh:/init.sh:ro
+      - cjis_keys_init:/bao-init
+    depends_on:
+      cjis-keys: { condition: service_healthy }
+    restart: 'no'
+    networks: [cjis]
+
+networks:
+  cjis:
+    name: cg_cjis
+    internal: true
+
+volumes:
+  cjis_db_data:
+  cjis_keys_data:
+  cjis_keys_init:

@@ -1,0 +1,11 @@
+# Source-of-truth requirement exports and mockups are kept exactly as delivered.
+docs/0*-*
+docs/HANDOFF_README.md
+docs/requirements-index.md
+mockups/
+CLAUDE.md
+KICKOFF_PROMPT.md
+pnpm-lock.yaml
+**/dist/
+tools/seed/out/
+tools/reqindex/requirements.json

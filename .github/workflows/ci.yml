@@ -1,0 +1,113 @@
+name: CI
+
+# SEC-15: lint, typecheck, unit tests, accessibility, SAST, dependency and
+# container scanning, SBOM. Third-party actions are pinned to commit SHAs
+# (ADR-0019). All data in CI is synthetic (SCL-12).
+
+on:
+  push:
+    branches: [main, 'claude/**']
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write
+
+env:
+  PRODUCT_NAME: Common Ground
+
+jobs:
+  checks:
+    name: Lint, typecheck, unit tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm check:product-name
+      - run: pnpm test
+      - name: Requirements index is up to date
+        run: pnpm reqindex && git diff --exit-code -- docs/requirements-index.md
+
+  stack:
+    name: Compose stack, integration and accessibility tests
+    runs-on: ubuntu-24.04
+    needs: checks
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: scripts/init-env.sh
+      - run: docker compose build
+      - run: docker compose up -d --wait --wait-timeout 600
+      - name: Show status on failure
+        if: failure()
+        run: docker compose ps -a && docker compose logs --no-color | tail -n 300
+      - run: pnpm test:integration
+      - run: npx playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 7
+      - run: docker compose down -v
+        if: always()
+
+  sast:
+    name: Semgrep (SAST)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+      - run: pip install semgrep==1.178.0
+      - run: semgrep scan --config p/default --config p/typescript --config p/owasp-top-ten --error --exclude docs --exclude mockups
+
+  supply-chain:
+    name: Dependency, secret and container scans; SBOM
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - name: Trivy filesystem scan (dependencies, secrets, IaC)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          scan-type: fs
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+      - run: scripts/init-env.sh
+      - run: docker compose build api web
+      - name: Trivy image scan (api)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          image-ref: common-ground/api:local
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+      - name: Trivy image scan (web)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          image-ref: common-ground/web:local
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+      - name: SBOM (SPDX) per image
+        uses: anchore/sbom-action@7b36ad622f042cab6f59a75c2ac24ccb256e9b45 # v0.20.4
+        with:
+          image: common-ground/api:local
+          artifact-name: sbom-api.spdx.json

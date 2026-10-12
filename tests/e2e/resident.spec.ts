@@ -12,6 +12,9 @@ const WCAG = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const MAIL = process.env['MAILPIT_URL'] ?? 'http://localhost:8025';
 const CODE = /[A-HJKMNP-Z]{4}-[2-9]{4}/;
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
+// A real 1×1 PNG: the smallest picture the photo step will accept.
+const PNG_1X1 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
 async function expectNoViolations(page: Page) {
   const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
@@ -47,11 +50,16 @@ async function mailFor(address: string, subjectPart: string, attempts = 60): Pro
 }
 
 /** Answers whatever screen is showing with the keyboard, until the review screen. */
-async function answerUntilReview(page: Page, email: string, seen: Set<string>) {
+async function answerUntilReview(
+  page: Page,
+  email: string,
+  seen: Set<string>,
+  stopAt = 'Check your answers',
+) {
   for (let i = 0; i < 40; i++) {
     const heading =
       (await page.getByRole('heading', { level: 1 }).first().textContent())?.trim() ?? '';
-    if (heading === 'Check your answers') return;
+    if (heading.startsWith(stopAt)) return;
     if (!seen.has(heading)) {
       seen.add(heading);
       await expectNoViolations(page);
@@ -100,7 +108,7 @@ async function answerUntilReview(page: Page, email: string, seen: Set<string>) {
     }
     await pressButton(page, 'Continue');
   }
-  throw new Error('review screen not reached');
+  throw new Error(`${stopAt} not reached`);
 }
 
 test.describe('resident report', () => {
@@ -225,6 +233,39 @@ test.describe('resident report', () => {
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
     );
     expect(overflow).toBe(false);
+  });
+
+  test('photos: when the objects host cannot be reached, the photo goes through the gateway (SCL-04, SCL-06, PHO-05)', async ({
+    page,
+  }) => {
+    // A browser that does not trust the objects host's certificate, or a network that blocks it.
+    await page.route('https://objects.localhost/**', (route) => route.abort());
+    await page.goto('/county/westwind');
+    await pressButton(page, 'Start');
+    await answerUntilReview(
+      page,
+      `photo-${Date.now().toString(36)}@example.org`,
+      new Set(),
+      'Photos of the damage',
+    );
+    await page.getByLabel('Choose from my photos').setInputFiles({
+      name: 'roof.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(PNG_1X1, 'base64'),
+    });
+    const keep = page.getByRole('button', { name: 'Keep this photo' });
+    if (
+      await keep.waitFor({ state: 'visible', timeout: 5_000 }).then(
+        () => true,
+        () => false,
+      )
+    ) {
+      await keep.click();
+    }
+    await expect(page.getByRole('status').filter({ hasText: '1 photo added' })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(page.getByText('You are offline')).toHaveCount(0);
   });
 
   test('pause and resume with a code (INT-20)', async ({ page }) => {

@@ -193,6 +193,36 @@ export async function putObject(ticket: UploadTicket, blob: Blob): Promise<void>
     });
 }
 
+/**
+ * The same bytes through the gateway when the objects host cannot be reached from this
+ * browser (its name, its certificate or a strict network); the API stores them under the
+ * ticket's key (SCL-04 fallback, SCL-06).
+ */
+export async function putObjectViaApi(
+  tenant: string,
+  photoId: string,
+  executionId: string,
+  blob: Blob,
+  contentType: string,
+): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(
+      `/api/public/intake/${tenant}/photos/${photoId}/content?executionId=${encodeURIComponent(executionId)}`,
+      { method: 'PUT', headers: { 'content-type': contentType }, body: blob },
+    );
+  } catch {
+    throw new Offline();
+  }
+  if (!res.ok)
+    throw new ApiFailure(res.status, {
+      code: 'upload_failed',
+      message: 'The photo did not upload.',
+      fields: [],
+      retryable: res.status >= 500,
+    });
+}
+
 export const completeUpload = (tenant: string, photoId: string, executionId: string) =>
   call<{ photoId: string; status: string }>(`/intake/${tenant}/photos/${photoId}/complete`, {
     body: { executionId },

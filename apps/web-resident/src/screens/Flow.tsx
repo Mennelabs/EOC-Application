@@ -25,6 +25,7 @@ import {
   completeUpload,
   extract,
   putObject,
+  putObjectViaApi,
   requestUpload,
   saveDraft,
   type ExtractionCandidate,
@@ -1041,7 +1042,15 @@ function Photos({
         ...(hints.takenAt ? { takenAt: hints.takenAt } : {}),
       };
       update((s) => ({ ...s, photos: [...s.photos, rec] }));
-      await putObject(ticket, blob);
+      try {
+        await putObject(ticket, blob);
+      } catch (err) {
+        // The direct route to object storage fails where the API works when the objects
+        // host name, its certificate or a strict network is in the way; the same bytes
+        // then go through the gateway (SCL-04 fallback, SCL-06).
+        if (!(err instanceof Offline)) throw err;
+        await putObjectViaApi(state.tenant, ticket.photoId, state.executionId, blob, contentType);
+      }
       await completeUpload(state.tenant, ticket.photoId, state.executionId);
       update((s) => ({
         ...s,
@@ -1056,7 +1065,10 @@ function Photos({
         ...s,
         photos: s.photos.map((p) => (p.status === 'uploading' ? { ...p, status: 'failed' } : p)),
       }));
-      setFailed(err instanceof Offline ? t('offline.banner') : t('photos.failed'));
+      // "Offline" only when the device says so; a photo that cannot be stored while the
+      // network is up is a failed photo, and the report still goes (PHO-04).
+      const offline = err instanceof Offline && !navigator.onLine;
+      setFailed(offline ? t('offline.banner') : t('photos.failed'));
     } finally {
       setBusy(null);
     }

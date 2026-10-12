@@ -560,8 +560,8 @@
   ],
   "SCL-04": [
     "partial",
-    "direct presigned upload to object storage, asynchronous processing",
-    "services/worker/test/photos.test.ts, apps/web-resident/test/photos.test.ts, services/api/test/public.db.test.ts (honest answer when storage is down)",
+    "direct presigned upload to object storage, asynchronous processing; same-origin fallback through the gateway when the objects host is unreachable from the browser (routes.ts …/photos/:id/content)",
+    "services/worker/test/photos.test.ts, apps/web-resident/test/photos.test.ts, services/api/test/public.db.test.ts (honest answer when storage is down), tests/e2e/resident.spec.ts (objects host blocked → photo through the gateway)",
     "Resumable multipart is not needed at the 1.5 MB cap (ADR-0028)."
   ],
   "SCL-06": [

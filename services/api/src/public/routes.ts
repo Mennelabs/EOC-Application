@@ -629,6 +629,69 @@ export const publicRoutes =
       },
     );
 
+    // Same-origin fallback for the direct upload (SCL-04, SCL-06): a browser that cannot
+    // reach the objects host (another host name, its certificate, a strict network) sends
+    // the bytes through the gateway instead. The ticket's photo id and execution id are the
+    // credentials, the size cap is the same, and completion is the same call as before.
+    const uploadBodyLimit = (deps.objects?.maxBytes ?? 6 * 1024 * 1024) + 1024;
+    app.addContentTypeParser(
+      ['image/jpeg', 'image/png', 'image/webp', 'image/heic'],
+      { parseAs: 'buffer', bodyLimit: uploadBodyLimit },
+      (_req, body, done) => done(null, body),
+    );
+    app.put(
+      '/intake/:tenant/photos/:id/content',
+      {
+        bodyLimit: uploadBodyLimit,
+        schema: {
+          tags: ['public intake'],
+          params: tenantParam.extend({ id: z.uuid() }),
+          querystring: z.object({ executionId: z.uuid() }),
+        },
+      },
+      async (request) => {
+        const tenant = tenantOf(request);
+        await request.authorize('intake.upload', { type: 'photo', tenantId: tenant.id });
+        const objects = deps.objects;
+        if (!objects)
+          throw new ApiError(503, 'photos_unavailable', 'Photos cannot be uploaded right now.', {
+            retryable: true,
+          });
+        const body = request.body;
+        if (!Buffer.isBuffer(body) || body.length === 0)
+          throw new ApiError(
+            400,
+            'validation_failed',
+            'Send the photo itself as the request body.',
+          );
+        if (body.length > objects.maxBytes)
+          throw new ApiError(
+            413,
+            'photo_too_large',
+            `Photos must be under ${Math.round(objects.maxBytes / 1_048_576)} MB.`,
+          );
+        const row = await request.tx((trx) =>
+          trx
+            .selectFrom('cg.photo')
+            .select(['id', 'object_key_original', 'status', 'content_type'])
+            .where('id', '=', request.params.id)
+            .where('execution_id', '=', request.query.executionId)
+            .executeTakeFirst(),
+        );
+        if (!row) throw errors.notFound();
+        if (row.status !== 'uploading') return { photoId: row.id, status: row.status };
+        await objects.client.send(
+          new PutObjectCommand({
+            Bucket: objects.bucket,
+            Key: row.object_key_original,
+            Body: body,
+            ...(row.content_type ? { ContentType: row.content_type } : {}),
+          }),
+        );
+        return { photoId: row.id, status: 'stored' };
+      },
+    );
+
     app.post(
       '/intake/:tenant/photos/:id/complete',
       {

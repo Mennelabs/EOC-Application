@@ -54,3 +54,34 @@ export const FEMA_MATRIX: MatrixRow[] = [
 export function matrixColumn(homeType: string | null): 'conventional' | 'manufactured' {
   return homeType === 'mobile_home' ? 'manufactured' : 'conventional';
 }
+
+/**
+ * A reason drafted from the record for the reviewer to finish (BRD:FR-12.02,
+ * DCL:DEC-02): the matrix criteria for the degree they chose, what the
+ * resident reported about the damage, and the photos on file. Nothing here
+ * is computed by a model; the reviewer picks the degree and says what they
+ * checked (PHO-12: the severity suggestion stays off).
+ */
+export function draftDegreeReason(input: {
+  degree: string;
+  column: 'conventional' | 'manufactured';
+  facts: { prompt: string; answer: string }[];
+  photoCount: number;
+}): string {
+  const row = FEMA_MATRIX.find((r) => r.degree === input.degree);
+  const home = input.column === 'manufactured' ? 'manufactured home' : 'conventional home';
+  const first = row
+    ? `${row.title} by the FEMA matrix (${home}): ${row[input.column]}`
+    : input.degree === 'no_damage'
+      ? 'No damage: nothing reported or seen meets the lowest FEMA degree.'
+      : 'Cannot tell from the record: more evidence or a field visit is needed.';
+  const facts =
+    input.facts.length > 0
+      ? `Reported by the resident: ${input.facts.map((f) => `${f.prompt} ${f.answer}.`).join(' ')}`
+      : 'Reported by the resident: nothing about the damage itself.';
+  const photos =
+    input.photoCount === 0
+      ? 'Photos on file: none.'
+      : `Photos on file: ${input.photoCount} (reviewed in the photo panel).`;
+  return `${first}\n${facts}\n${photos}\nWhat I checked: `;
+}

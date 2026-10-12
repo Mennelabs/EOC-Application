@@ -107,7 +107,7 @@ export function ConfirmDialog({
   request,
   onDone,
 }: {
-  request: { action: string; description: string } | null;
+  request: { action: string; description: string; draft?: string | undefined } | null;
   onDone: (c: Confirmation) => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -117,7 +117,7 @@ export function ConfirmDialog({
     const d = ref.current;
     if (!d) return;
     if (request && !d.open) {
-      setReason('');
+      setReason(request.draft ?? '');
       setError(undefined);
       d.showModal();
     } else if (!request && d.open) d.close();
@@ -144,7 +144,11 @@ export function ConfirmDialog({
         <p>{request?.description}</p>
         <Field
           label="Reason"
-          hint="Recorded in the audit log with your name and the time."
+          hint={
+            request?.draft
+              ? 'Taken from the form. Recorded in the audit log with your name and the time; change it if it is not what you checked.'
+              : 'Recorded in the audit log with your name and the time.'
+          }
           {...(error ? { error } : {})}
         >
           {({ id, describedBy, invalid }) => (

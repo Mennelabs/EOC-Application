@@ -337,8 +337,10 @@ test.describe('console review (CON-02, CON-05, BRD:FR-12, DCL:DEC-02/03, AIG-01,
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole('heading', { name: 'Please confirm' })).toBeVisible();
+    // The reason written on the form seeds the dialog; the reviewer still confirms it.
+    await expect(dialog.getByLabel('Reason')).toHaveValue('Photos and answers agree.');
     await expectNoViolations(page);
-    await dialog.getByLabel('Reason').fill('Photos and answers agree.');
+    await dialog.getByLabel('Reason').fill('Photos and answers agree. Roof hole seen in photo 1.');
     await dialog.getByRole('button', { name: 'Confirm' }).click();
     await expect(page.getByRole('status').filter({ hasText: 'Done: approve' })).toBeVisible();
     await expect(page.getByText('Approved', { exact: true }).first()).toBeVisible();

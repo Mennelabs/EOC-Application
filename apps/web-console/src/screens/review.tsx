@@ -14,11 +14,12 @@ import {
   type QuestionGraph,
   type Answers,
   type SessionContext,
+  type SummarySection,
 } from '@cg/intake';
 import { api, describeFailure } from '../api/client.ts';
 import { DataTable, Field, Status, Toolbar, fmt } from '../ui/primitives.tsx';
 import { useList } from './admin.tsx';
-import { DEGREES, FEMA_MATRIX, matrixColumn } from './fema-matrix.ts';
+import { DEGREES, FEMA_MATRIX, draftDegreeReason, matrixColumn } from './fema-matrix.ts';
 
 interface Flag {
   kind: string;
@@ -716,7 +717,7 @@ export function ReportDetailScreen({
         )}
       </section>
 
-      <Decisions report={report} run={run} />
+      <Decisions report={report} run={run} sections={sections} photoCount={photos?.length ?? 0} />
 
       <section aria-labelledby="history-h">
         <h2 id="history-h">Decisions</h2>
@@ -749,12 +750,30 @@ export function ReportDetailScreen({
   );
 }
 
+/** The questions whose answers describe the damage itself, in the order a reviewer reads them. */
+const DAMAGE_FACTS = [
+  'home_type',
+  'cause',
+  'damage_types',
+  'roof_state',
+  'water_depth',
+  'habitable',
+  'tonight',
+  'utilities_out',
+  'access',
+  'pre_existing',
+];
+
 function Decisions({
   report,
   run,
+  sections,
+  photoCount,
 }: {
   report: Detail;
   run: (fn: () => Promise<unknown>, ok: string) => Promise<void>;
+  sections: SummarySection[];
+  photoCount: number;
 }) {
   const [decision, setDecision] = useState('approve');
   const [reason, setReason] = useState('');
@@ -974,18 +993,42 @@ function Decisions({
             </select>
           )}
         </Field>
-        <Field label="Why">
+        <Field
+          label="Why"
+          hint={
+            'Say what you checked. "Draft from the report" starts it with the matrix criteria, what the resident reported and the photos on file; the degree is yours to pick.'
+          }
+        >
           {({ id }) => (
-            <input
+            <textarea
               id={id}
               value={degreeReason}
               onChange={(e) => setDegreeReason(e.target.value)}
               required
               minLength={3}
+              rows={5}
             />
           )}
         </Field>
         <div className="toolbar">
+          <button
+            type="button"
+            onClick={() =>
+              setDegreeReason(
+                draftDegreeReason({
+                  degree,
+                  column,
+                  facts: sections
+                    .flatMap((sec) => sec.items)
+                    .filter((item) => DAMAGE_FACTS.includes(item.id))
+                    .map((item) => ({ prompt: item.prompt, answer: item.answer })),
+                  photoCount,
+                }),
+              )
+            }
+          >
+            Draft from the report
+          </button>
           <button type="submit">Set degree</button>
         </div>
       </form>

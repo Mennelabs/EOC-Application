@@ -32,7 +32,11 @@ export interface Confirmation {
 }
 
 /** Set by the app shell: shows the confirmation dialog and resolves with the answer. */
-let confirmHandler: (action: string, description: string) => Promise<Confirmation> = async () => ({
+let confirmHandler: (
+  action: string,
+  description: string,
+  draft?: string,
+) => Promise<Confirmation> = async () => ({
   confirmed: false,
   reason: '',
 });
@@ -79,7 +83,10 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   const envelope = json as Envelope;
   if (res.status === 428 && !options.confirmation) {
     const details = (envelope.details ?? {}) as { action?: string };
-    const confirmation = await confirmHandler(details.action ?? '', envelope.message);
+    // A reason already written on the form seeds the dialog; the person still confirms it.
+    const body = options.body as { reason?: unknown } | undefined;
+    const draft = typeof body?.reason === 'string' ? body.reason : undefined;
+    const confirmation = await confirmHandler(details.action ?? '', envelope.message, draft);
     if (!confirmation.confirmed)
       throw new ApiFailure(428, { ...envelope, code: 'cancelled', message: 'Cancelled.' });
     // Same Idempotency-Key semantics: the retried request is the same intent.

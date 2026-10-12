@@ -107,6 +107,7 @@ export function App({ config }: { config: RuntimeConfig }) {
   const [confirm, setConfirm] = useState<{
     action: string;
     description: string;
+    draft?: string | undefined;
     resolve: (c: Confirmation) => void;
   } | null>(null);
   const product = config.productName || 'Console';
@@ -117,8 +118,8 @@ export function App({ config }: { config: RuntimeConfig }) {
 
   useEffect(() => {
     setConfirmHandler(
-      (action, description) =>
-        new Promise((resolve) => setConfirm({ action, description, resolve })),
+      (action, description, draft) =>
+        new Promise((resolve) => setConfirm({ action, description, draft, resolve })),
     );
   }, []);
 
@@ -270,7 +271,11 @@ export function App({ config }: { config: RuntimeConfig }) {
         </main>
       </div>
       <ConfirmDialog
-        request={confirm ? { action: confirm.action, description: confirm.description } : null}
+        request={
+          confirm
+            ? { action: confirm.action, description: confirm.description, draft: confirm.draft }
+            : null
+        }
         onDone={(c) => {
           confirm?.resolve(c);
           setConfirm(null);

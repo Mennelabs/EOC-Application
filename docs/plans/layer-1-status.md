@@ -1,0 +1,44 @@
+# Layer 1 status
+
+The coordination record for layer 1 (foundations, SCL-14). Any session resumes from this file, not from chat. Update it in every commit that changes a task's state. Plan: [`layer-1.md`](layer-1.md). Decisions: [`../decisions.md`](../decisions.md).
+
+## Resume checklist
+
+1. `pnpm install && pnpm typecheck && pnpm test && pnpm lint && pnpm check:product-name` must be green before new work starts.
+2. Stack for integration work: `scripts/init-env.sh && docker compose up -d --wait`; migrations apply through the `migrate` service (or `DATABASE_MIGRATOR_URL=... node packages/db/src/migrate.ts` against the published port).
+3. Pick the first task below that is not `done`, finish it to green, commit with requirement IDs, update this file, push.
+
+## Tasks
+
+| # | Task | State | Commits | Verified by | Next / notes |
+| --- | --- | --- | --- | --- | --- |
+| A | Migrations 0002–0010: tenancy, events, identity, permissions, audit chain, data protection, execution rules, RLS, `cg_worker` role, provisioning status | done | `df544cf`, `8faa92e` | migrate from clean volumes; SQL smoke: cross-tenant reads = 0, writes without context refused, chain verifies, tamper detected (`first_bad_seq`), 308/308 columns classified | Later migrations: extend `packages/db/src/dictionary.ts` and call `loadDictionary()` |
+| B | `packages/authz`: engine, guardrails G1–G7, grants validation, templates, preview | done | `8faa92e` | 45 unit tests, one file per guardrail | Catalog grows per layer (`actions.ts`); templates gain grants per layer |
+| C | `packages/audit`: `recordAudit`, `verifyChain`, `chainHead`, `diffForAudit` | done | `8faa92e` | 4 unit tests (redaction) + DB-level tests in A | Anchors to object storage: worker job (G) |
+| D | API plugins: context (JWT per tenant realm, `tx`, `audit`), authorize (+confirmation), idempotency, versions, errors, OpenAPI | done | `8faa92e` | 9 unit tests incl. 401/403/428/400 paths | Real-token test needs Keycloak realm (F) → integration suite (I) |
+| D′ | `packages/crypto`: field encryption, OpenBao transit client, blind index | done | `8faa92e` | 7 unit tests | Wired into API in task E (personnel) |
+| E | Routes | in progress | `8faa92e` (me, tenants, agreements, config, events, accounts) | unit tests for me; others pending integration suite | Remaining: personnel, roles + permission changes + assignments, break-glass, audit, definitions + retention + legal holds |
+| F | Keycloak realm template (passkeys), tenant-claim mapper, dev realm for WESTWIND cast; seed loader into DB + realm | todo | | | Realm creation runs in the worker (`tenant.provision`) |
+| G | Worker jobs: outbox relay, `tenant.provision`, `account.invited`/`account.status` → IdP, `event.participant.add`, audit verify + anchor, retention deletion, break-glass expiry + notify | todo | | | Jobs run as `cg_worker`; every deletion batch audited |
+| H | Console: OIDC sign-in, administration workspace, role editor + preview, pending approvals, audit viewer, break-glass | todo | | | Against `/api/docs/json`; axe + manual checklist per screen |
+| I | Tests: RLS cross-tenant suite (every table, API + SQL), guardrail bypass suite, AC-00A–D, AC-01A–C, AC-08A–C, AC-18A/B, AC-C03/C05, e2e with virtual authenticator, backup/restore drill | todo | | | Promote the SQL smoke scripts from A into `tests/integration` |
+| J | `docs/traceability.md`, layer-1 report, GATE-01/04/05 evidence | todo | | | |
+
+## Known issues and deferred items
+
+- MinIO from-source image (`infra/minio/Dockerfile`) unverified in the build sandbox (Docker Hub rate limit on `alpine`); needs one `docker compose build objects` on Docker Desktop.
+- Geography scope in grants (SEC-06 "geography") is accepted in the type but not evaluated until layer 2 adds PostGIS record geometries; noted in `packages/authz/src/engine.ts`.
+- Email provider (Q-02) unresolved: invitations and break-glass notices go to Mailpit locally.
+- `event.participant.add` and tenant provisioning are applied by the worker (G); until G lands the API records the intent (audit + outbox) only.
+
+## Optional fan-out after E (not enabled)
+
+If parallel sessions are wanted, these slices are independent once E is merged. Each works on `claude/l1-<slice>` from this branch and merges back by PR; files outside its boundary are read-only for it.
+
+| Slice | Owns | Reads only |
+| --- | --- | --- |
+| F+G worker + identity | `services/worker/**`, `infra/keycloak/**`, `tools/seed/**` | API contracts, `packages/*` |
+| H console | `apps/web-console/**`, `packages/ui/**` | `/api/docs/json`, `packages/authz` templates |
+| I tests | `tests/**`, `scripts/backup.sh`, `scripts/restore.sh` | everything |
+
+Shared files (`services/api/src/routes/index.ts`, `packages/db/src/migrations/index.ts`, `packages/db/src/dictionary.ts`, `compose.yaml`) stay with the core session.

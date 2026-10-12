@@ -70,3 +70,11 @@ How to read them:
 - Small, reviewable commits that cite requirement IDs.
 - Keep `README.md` current: how to start the stack, seed data, run tests, and where things live.
 - When a requirement is ambiguous, pick the reading that best protects residents' privacy and safety, note it in the layer plan, and flag it in your report.
+
+## Resuming work (any session)
+
+1. Read `docs/plans/layer-N-status.md` for the current layer (layer 1 first). It lists what is done with commit SHAs, what is next, and the open issues. Chat history is not the record.
+2. Run `pnpm install && pnpm typecheck && pnpm test && pnpm lint && pnpm check:product-name`. Do not build on a red tree.
+3. Work one task at a time. A task ends with green checks, a commit that cites requirement IDs, an updated status file, and a push. Never leave more than one task's work uncommitted.
+4. Decisions from Adam go into `docs/decisions.md` with the date before the code that depends on them is written.
+5. New database columns go into `packages/db/src/dictionary.ts` in the same migration (SEC-11); the migration fails otherwise.

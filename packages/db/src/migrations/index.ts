@@ -8,6 +8,7 @@ import * as m0006 from './0006_audit.ts';
 import * as m0007 from './0007_data_protection.ts';
 import * as m0008 from './0008_execution.ts';
 import * as m0009 from './0009_data_dictionary_rows.ts';
+import * as m0010 from './0010_tenant_provisioning.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -20,4 +21,5 @@ export const migrations: Record<string, Migration> = {
   '0007_data_protection': m0007,
   '0008_execution': m0008,
   '0009_data_dictionary_rows': m0009,
+  '0010_tenant_provisioning': m0010,
 };

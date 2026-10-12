@@ -30,7 +30,10 @@ export const platformSchema = baseSchema.extend({
   KEYS_PROVIDER: z.enum(['openbao']).default('openbao'),
   OPENBAO_ADDR: url,
   OPENBAO_TOKEN_FILE: z.string().min(1),
-  IDP_ISSUER_URL: url,
+  /** Keycloak as the API reaches it (JWKS fetch), e.g. http://idp:8080/auth */
+  IDP_INTERNAL_BASE: url,
+  /** Keycloak as browsers see it; token issuers start with this, e.g. https://localhost/auth */
+  IDP_PUBLIC_BASE: url,
   IDP_HEALTH_URL: url,
   SMTP_URL: url,
 });

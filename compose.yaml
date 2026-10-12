@@ -22,7 +22,8 @@ x-node-env: &node-env
   KEYS_PROVIDER: openbao
   OPENBAO_ADDR: http://keys:8200
   OPENBAO_TOKEN_FILE: /bao-init/app-token
-  IDP_ISSUER_URL: https://${GATEWAY_HOST:-localhost}/auth/realms/westwind
+  IDP_INTERNAL_BASE: http://idp:8080/auth
+  IDP_PUBLIC_BASE: https://${GATEWAY_HOST:-localhost}/auth
   IDP_HEALTH_URL: http://idp:9000/auth/health/ready
   SMTP_URL: smtp://mail:1025
 

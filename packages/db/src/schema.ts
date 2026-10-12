@@ -5,6 +5,10 @@
 import type { ColumnType, Generated, JSONColumnType } from 'kysely';
 
 type Ts = ColumnType<Date, Date | string, Date | string>;
+/** Timestamp with a database default: optional on insert. (Generated<> must not wrap a ColumnType.) */
+type TsGen = ColumnType<Date, Date | string | undefined, Date | string>;
+/** JSON object with a database default: optional on insert, passed as JSON.stringify(value). */
+type JsonGen<T extends object> = ColumnType<T, string | undefined, string>;
 type TsNullable = ColumnType<Date | null, Date | string | null, Date | string | null>;
 type Uuid = string;
 /** Free-form JSON (any JSON value): inserts pass JSON.stringify(value). */
@@ -12,14 +16,14 @@ type JsonValue = ColumnType<unknown, string, string>;
 
 interface Stamped {
   version: Generated<number>;
-  created_at: Generated<Ts>;
+  created_at: TsGen;
   created_by: Uuid | null;
-  updated_at: Generated<Ts>;
+  updated_at: TsGen;
   updated_by: Uuid | null;
 }
 
 export type TenantKind = 'state' | 'region' | 'county' | 'city' | 'partner_org';
-export type TenantStatus = 'active' | 'suspended' | 'closed';
+export type TenantStatus = 'provisioning' | 'active' | 'suspended' | 'closed';
 
 export interface TenantTable extends Stamped {
   id: Generated<Uuid>;
@@ -32,7 +36,7 @@ export interface TenantTable extends Stamped {
   locales: Generated<string[]>;
   status: Generated<TenantStatus>;
   security_contact_email: string | null;
-  branding: Generated<JSONColumnType<Record<string, unknown>>>;
+  branding: JsonGen<Record<string, unknown>>;
 }
 
 export interface JurisdictionTable extends Stamped {
@@ -61,7 +65,7 @@ export interface DataSharingAgreementTable extends Stamped {
   scope: DsaScope;
   data_categories: Generated<string[]>;
   status: Generated<'draft' | 'signed' | 'revoked'>;
-  terms: Generated<JSONColumnType<Record<string, unknown>>>;
+  terms: JsonGen<Record<string, unknown>>;
   signed_at: TsNullable;
   signed_by: Uuid | null;
   revoked_at: TsNullable;
@@ -80,7 +84,7 @@ export interface TenantConfigHistoryTable {
   key: string;
   version: number;
   value: JsonValue;
-  changed_at: Generated<Ts>;
+  changed_at: TsGen;
   changed_by: Uuid | null;
   reason: string | null;
 }
@@ -90,7 +94,7 @@ export interface EventTemplateTable extends Stamped {
   tenant_id: Uuid;
   hazard_type: string;
   name: string;
-  config: Generated<JSONColumnType<Record<string, unknown>>>;
+  config: JsonGen<Record<string, unknown>>;
 }
 
 export type EventStatus = 'draft' | 'active' | 'closed';
@@ -114,7 +118,7 @@ export interface EventParticipantTable {
   event_id: Uuid;
   tenant_id: Uuid;
   role: Generated<string>;
-  added_at: Generated<Ts>;
+  added_at: TsGen;
   added_by: Uuid | null;
 }
 
@@ -127,7 +131,7 @@ export interface AccountTable extends Stamped {
   email: string;
   display_name: string;
   status: Generated<AccountStatus>;
-  invited_at: Generated<Ts>;
+  invited_at: TsGen;
   activated_at: TsNullable;
   suspended_at: TsNullable;
   deactivated_at: TsNullable;
@@ -142,7 +146,7 @@ export interface AccountLifecycleTable {
   to_status: AccountStatus;
   reason: string | null;
   actor_account_id: Uuid | null;
-  at: Generated<Ts>;
+  at: TsGen;
 }
 
 export interface PersonnelTable extends Stamped {
@@ -179,7 +183,7 @@ export interface RoleVersionTable {
   version: number;
   grants: JsonValue;
   change_reason: string | null;
-  created_at: Generated<Ts>;
+  created_at: TsGen;
   created_by: Uuid | null;
 }
 
@@ -188,8 +192,8 @@ export interface RoleAssignmentTable extends Stamped {
   tenant_id: Uuid;
   account_id: Uuid;
   role_id: Uuid;
-  scope: Generated<JSONColumnType<Record<string, unknown>>>;
-  valid_from: Generated<Ts>;
+  scope: JsonGen<Record<string, unknown>>;
+  valid_from: TsGen;
   valid_to: TsNullable;
   status: Generated<'active' | 'revoked'>;
   granted_by: Uuid;
@@ -209,13 +213,13 @@ export interface PermissionChangeRequestTable extends Stamped {
   kind: 'assign_role' | 'revoke_role' | 'publish_role_version';
   payload: JSONColumnType<Record<string, unknown>>;
   requested_by: Uuid;
-  requested_at: Generated<Ts>;
+  requested_at: TsGen;
   status: Generated<ChangeRequestStatus>;
   decided_by: Uuid | null;
   decided_at: TsNullable;
   decision_reason: string | null;
   applied_at: TsNullable;
-  expires_at: Generated<Ts>;
+  expires_at: TsGen;
 }
 
 export interface BreakGlassSessionTable extends Stamped {
@@ -223,7 +227,7 @@ export interface BreakGlassSessionTable extends Stamped {
   tenant_id: Uuid;
   account_id: Uuid;
   reason: string;
-  started_at: Generated<Ts>;
+  started_at: TsGen;
   expires_at: Ts;
   ended_at: TsNullable;
   ended_by: Uuid | null;
@@ -236,8 +240,8 @@ export type ActorKind = 'account' | 'break_glass' | 'public' | 'system';
 export interface AuditEventTable {
   seq: Generated<number>;
   tenant_id: Uuid;
-  occurred_at: Generated<Ts>;
-  recorded_at: Generated<Ts>;
+  occurred_at: TsGen;
+  recorded_at: TsGen;
   actor_account_id: Uuid | null;
   actor_kind: ActorKind;
   action: string;
@@ -258,7 +262,7 @@ export interface AuditAnchorTable {
   tenant_id: Uuid;
   through_seq: number;
   hash: Buffer;
-  anchored_at: Generated<Ts>;
+  anchored_at: TsGen;
   object_key: string | null;
 }
 
@@ -276,7 +280,7 @@ export interface TenantKeyTable {
   kek_name: string;
   wrapped_dek: string;
   status: Generated<'active' | 'retired'>;
-  created_at: Generated<Ts>;
+  created_at: TsGen;
   retired_at: TsNullable;
 }
 
@@ -294,7 +298,7 @@ export interface LegalHoldTable extends Stamped {
   scope: JSONColumnType<Record<string, unknown>>;
   reason: string;
   placed_by: Uuid;
-  placed_at: Generated<Ts>;
+  placed_at: TsGen;
   released_by: Uuid | null;
   released_at: TsNullable;
 }
@@ -307,7 +311,7 @@ export interface DeletionLogTable {
   deleted_count: number;
   oldest: TsNullable;
   newest: TsNullable;
-  ran_at: Generated<Ts>;
+  ran_at: TsGen;
   execution_id: Uuid;
 }
 
@@ -319,8 +323,8 @@ export interface IdempotencyKeyTable {
   status: Generated<'in_progress' | 'completed'>;
   response_status: number | null;
   response_body: JsonValue | null;
-  created_at: Generated<Ts>;
-  expires_at: Generated<Ts>;
+  created_at: TsGen;
+  expires_at: TsGen;
 }
 
 export interface GovernedDefinitionTable {
@@ -329,8 +333,8 @@ export interface GovernedDefinitionTable {
   version: number;
   value: JsonValue;
   reason: string | null;
-  effective_from: Generated<Ts>;
-  created_at: Generated<Ts>;
+  effective_from: TsGen;
+  created_at: TsGen;
   created_by: Uuid | null;
 }
 
@@ -340,7 +344,7 @@ export interface OutboxTable {
   topic: string;
   payload: JsonValue;
   execution_id: Uuid | null;
-  created_at: Generated<Ts>;
+  created_at: TsGen;
   published_at: TsNullable;
   attempts: Generated<number>;
   last_error: string | null;

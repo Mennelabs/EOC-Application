@@ -21,7 +21,13 @@ Automated axe checks (`pnpm test:e2e`) catch roughly a third of WCAG 2.2 AA fail
 
 ## Screens released so far
 
-| Screen                   | Layer    | Automated | Manual                                           | Record |
-| ------------------------ | -------- | --------- | ------------------------------------------------ | ------ |
-| Resident welcome (EN/ES) | scaffold | pass      | not yet (manual pass is done at layer-2 release) | —      |
-| Console shell            | scaffold | pass      | not yet                                          | —      |
+| Screen                                                                                                       | Layer    | Automated (axe, WCAG 2.2 AA)                                       | Manual                                                | Record                                         |
+| ------------------------------------------------------------------------------------------------------------ | -------- | ------------------------------------------------------------------ | ----------------------------------------------------- | ---------------------------------------------- |
+| Resident welcome (EN/ES)                                                                                     | scaffold | pass (desktop + phone)                                             | pending; done at layer-2 release with the intake flow | —                                              |
+| Console sign-in                                                                                              | 1        | pass                                                               | pending (keyboard, NVDA, 200% zoom)                   | —                                              |
+| Console home                                                                                                 | 1        | pass                                                               | pending                                               | —                                              |
+| Console personnel                                                                                            | 1        | pass                                                               | pending                                               | —                                              |
+| Console events, organizations, staff accounts, roles, permission changes, audit, emergency access, retention | 1        | not yet: needs an admin journey in `tests/e2e/console.spec.ts`     | pending                                               | —                                              |
+| Keycloak login and passkey pages                                                                             | 1        | not scanned (Keycloak theme); keyboard-operable in the e2e journey | pending                                               | Keycloak's own accessibility statement applies |
+
+Manual passes are recorded in `docs/a11y/screens/<screen>.md` (date, tester, assistive technology, findings). None exist yet: the layer-1 report lists this as open before GATE-03 can be claimed for staff screens.

@@ -9,6 +9,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
+import { migrations } from '../../packages/db/src/migrations/index.ts';
 
 const BASE = process.env['STACK_URL'] ?? 'https://localhost';
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0'; // Caddy local CA in development only.
@@ -127,7 +128,7 @@ describe('database least privilege (ADR-0005)', () => {
       '-c',
       `PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U postgres -d cg -tAc 'select count(*) from kysely_migration'`,
     );
-    expect(out.trim()).toBe('1');
+    expect(out.trim()).toBe(String(Object.keys(migrations).length));
   });
 });
 

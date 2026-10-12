@@ -19,8 +19,8 @@ python3 tools/reqindex/extract.py && python3 tools/reqindex/build_index.py
 
 | Layer | IDs |
 | --- | ---: |
-| 1 | 72 |
-| 2 | 128 |
+| 1 | 71 |
+| 2 | 129 |
 | 3 | 67 |
 | 4 | 146 |
 | 5 | 1 |
@@ -162,7 +162,6 @@ These say the same thing in more than one place. One implementation and one test
 | SEC-06 | 01:201 | Must | Role- and attribute-based access: role, organization, event, geography and data category all gate access. Default deny. |  |
 | SEC-07 | 01:202 | Must | Staff sign-in via tenant SSO (SAML/OIDC) with phishing-resistant MFA (FIDO2/passkeys preferred); no shared accounts. |  |
 | SEC-08 | 01:203 | Must | Break-glass access for emergencies is time-boxed, justified, and alerts the tenant security contact. |  |
-| SEC-09 | 01:204 | Must | Residents never need an account; report lookup uses reference code plus a one-time code to the contact they gave (ACC-43). |  |
 | SEC-10 | 01:208 | Must | Encrypt in transit (TLS 1.2+, HSTS) and at rest (AES-256) with per-tenant keys in a managed KMS; field-level encryption for contact details, medical… |  |
 | SEC-11 | 01:209 | Must | Data classification on every field (public, internal, sensitive, restricted) drives storage, export, logging and AI-context rules. |  |
 | SEC-13 | 01:211 | Must | Tenant-configurable retention per data category with automated deletion. When a tenant sets none, photos, free text and other records are kept 7 year… |  |
@@ -282,6 +281,7 @@ These say the same thing in more than one place. One implementation and one test
 | EQ-09 | 01:177 | Must | Right-to-left layout for Arabic and any other RTL language enabled. |  |
 | EQ-10 | 01:178 | Should | Language is detected from the device and from a first-screen picker showing each language in its own script; SMS keywords exist in each language. |  |
 | EQ-13 | 01:184 | Must | Demographic questions are optional, asked after submission, and used only in aggregate (minimum cell size 11) for equity reporting. |  |
+| SEC-09 | 01:204 | Must | Residents never need an account; report lookup uses reference code plus a one-time code to the contact they gave (ACC-43). | Resident lookup by reference code + one-time code arrives with intake. |
 | SEC-17 | 01:218 | Must | Abuse protection without CAPTCHAs that block disabled users (ACC-44): rate limits, risk scoring, SMS verification only when risk is high. |  |
 | AIG-01 | 01:226 | Must | Maintain an AI use register: each AI feature, model and version, provider, data sent, decision it informs, human checkpoint, and owner. | Register starts with intake extraction (first AI use). |
 | AIG-02 | 01:227 | Must | Resident free text, photos, and partner notes are untrusted data. They are passed to models in delimited data fields and can never change system inst… | Applies from the first AI use (intake extraction, fake provider). |

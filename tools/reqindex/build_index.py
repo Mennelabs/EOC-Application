@@ -56,6 +56,7 @@ EXACT: dict[str, tuple[str, str]] = {
     "SEC-01": ("1", "Controls designed in from layer 1; SSP + continuous monitoring evidenced in Process."),
     "SEC-02": ("Process", "3PAO / SOC 2 engagement."), "SEC-03": ("Process", "Legal mapping; Missouri first."),
     "SEC-04": ("1", "Field-level protection of medical fields; BAA-capable providers recorded per adapter."),
+    "SEC-09": ("2", "Resident lookup by reference code + one-time code arrives with intake."),
     "SEC-12": ("5", ""), "SEC-16": ("Process", "Pen test + VDP; VDP page shipped with layer 3 public site."),
     "SEC-17": ("2", ""), "SEC-19": ("Process", "IR plan; tenant-notification hooks built in layer 1 audit/alerting."),
     "AIG-01": ("2", "Register starts with intake extraction (first AI use)."),

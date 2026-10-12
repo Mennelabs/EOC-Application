@@ -1,0 +1,300 @@
+/**
+ * Shipped role templates (ADM-04): built from the WESTWIND cast (docs/02), the
+ * field and frontline roles (docs/03, docs/04) and the original A7 personas.
+ * A county copies and edits these; it cannot grant the template-protected
+ * categories (ADM-05 guardrail 7) — those come only from the template key.
+ * Grants here cover layer-1 actions; each layer adds its own.
+ */
+import type { DataCategory, Grant } from './types.ts';
+
+export interface RoleTemplate {
+  key: string;
+  name: string;
+  description: string;
+  source: 'cast' | 'field' | 'frontline' | 'original_a7' | 'platform';
+  grants: Grant[];
+}
+
+/** Which templates may see each protected category (RULE-16, FL:FR-15/16/23/25). */
+export const CATEGORY_TEMPLATES: Partial<Record<DataCategory, string[]>> = {
+  health: ['shelter_nurse'],
+  counseling: ['crisis_counselor'],
+  legal: ['legal_aid_attorney'],
+  access_needs: ['afn_coordinator', 'shelter_nurse', 'disability_advocate'],
+};
+
+const g = (action: string, dataCategories?: DataCategory[]): Grant =>
+  dataCategories ? { action, dataCategories } : { action };
+
+export const roleTemplates: readonly RoleTemplate[] = [
+  {
+    key: 'tenant_admin',
+    name: 'Tenant administrator',
+    description:
+      'Runs the tenant: users, roles, partners, events, configuration. Cannot see protected fields.',
+    source: 'platform',
+    grants: [{ action: '*', dataCategories: ['contact'] }],
+  },
+  {
+    key: 'security_admin',
+    name: 'Security administrator',
+    description: 'Second administrator for permission changes; audit, break-glass and retention.',
+    source: 'platform',
+    grants: [
+      g('me.read'),
+      g('tenant.read'),
+      g('account.*', ['contact']),
+      g('role.*'),
+      g('permission_change.*'),
+      g('role_assignment.*'),
+      g('break_glass.*'),
+      g('audit.*'),
+      g('retention.*'),
+      g('legal_hold.*'),
+    ],
+  },
+  {
+    key: 'county_em_director',
+    name: 'County EM Director',
+    description: 'Dana in WESTWIND: how bad is it, where, do we need state and federal help.',
+    source: 'cast',
+    grants: [
+      g('me.read'),
+      g('tenant.read'),
+      g('tenant.config.read'),
+      g('license.read'),
+      g('dsa.*'),
+      g('event.*'),
+      g('account.read'),
+      g('personnel.read', ['contact']),
+      g('audit.read'),
+      g('definition.*'),
+      g('break_glass.start'),
+      g('break_glass.end'),
+      g('break_glass.read'),
+    ],
+  },
+  {
+    key: 'planning_gis_lead',
+    name: 'Planning / GIS lead',
+    description:
+      'Marcus: impact footprint and what changed since the last briefing. Locations, no contact details.',
+    source: 'cast',
+    grants: [
+      g('me.read'),
+      g('tenant.read'),
+      g('event.read', ['location_exact']),
+      g('event.update', ['location_exact']),
+      g('definition.read'),
+      g('personnel.read'),
+    ],
+  },
+  {
+    key: 'damage_assessment_coordinator',
+    name: 'Damage assessment coordinator',
+    description: 'Priya: which reports are verified and where field teams go next.',
+    source: 'cast',
+    grants: [
+      g('me.read'),
+      g('tenant.read'),
+      g('event.read', ['location_exact']),
+      g('personnel.read', ['contact']),
+      g('personnel.update'),
+    ],
+  },
+  {
+    key: 'mass_care_coordinator',
+    name: 'Mass care coordinator (ESF-6)',
+    description: 'Luis: where people sleep and eat tonight, and how many.',
+    source: 'cast',
+    grants: [
+      g('me.read'),
+      g('tenant.read'),
+      g('event.read', ['household']),
+      g('personnel.read'),
+      g('definition.read'),
+    ],
+  },
+  {
+    key: 'afn_coordinator',
+    name: 'Access and functional needs coordinator',
+    description:
+      'Keisha: who needs power for medical equipment, accessible transport or language help.',
+    source: 'cast',
+    grants: [
+      g('me.read'),
+      g('tenant.read'),
+      g('event.read', ['contact', 'household', 'location_exact']),
+      g('personnel.read'),
+    ],
+  },
+  {
+    key: 'coad_chair',
+    name: 'COAD / VOAD chair',
+    description:
+      'Jen: which volunteer groups take which jobs without doubling up. Consented fields only.',
+    source: 'cast',
+    grants: [g('me.read'), g('tenant.read'), g('event.read'), g('dsa.read'), g('dsa.sign')],
+  },
+  {
+    key: 'ngo_incident_commander',
+    name: 'NGO incident commander',
+    description: 'Captain Ruth: runs a partner organization tenant and its people.',
+    source: 'cast',
+    grants: [
+      g('me.read'),
+      g('tenant.read'),
+      g('tenant.config.read'),
+      g('event.read'),
+      g('dsa.read'),
+      g('dsa.sign'),
+      g('account.*', ['contact']),
+      g('personnel.*', ['contact']),
+      g('role.read'),
+    ],
+  },
+  {
+    key: 'public_information_officer',
+    name: 'Public information officer',
+    description:
+      'Tomás: what we tell people, in which languages, and where help is. No resident details.',
+    source: 'cast',
+    grants: [g('me.read'), g('tenant.read'), g('event.read'), g('definition.read')],
+  },
+  {
+    key: 'state_liaison',
+    name: 'State liaison (read-only declaration view)',
+    description:
+      'SEMA liaison and later FEMA validators: verified, de-identified data only, via agreements.',
+    source: 'cast',
+    grants: [g('me.read'), g('tenant.read'), { action: 'event.read', tenants: 'subtree' }],
+  },
+  {
+    key: 'dispatcher_call_taker',
+    name: 'Dispatcher / call taker',
+    description: 'Takes requests by phone and walk-in; coordinates volunteers and resources.',
+    source: 'original_a7',
+    grants: [g('me.read'), g('event.read'), g('personnel.read', ['contact'])],
+  },
+  {
+    key: 'personnel_coordinator',
+    name: 'Personnel / credential coordinator',
+    description: 'Maintains the roster, skills and credentials.',
+    source: 'original_a7',
+    grants: [g('me.read'), g('event.read'), g('personnel.*', ['contact']), g('account.read')],
+  },
+  {
+    key: 'assessment_reviewer',
+    name: 'Assessment reviewer / supervisor',
+    description: 'Sets the official degree of damage; never approves their own finding.',
+    source: 'original_a7',
+    grants: [g('me.read'), g('event.read', ['location_exact'])],
+  },
+  {
+    key: 'reporting_planning',
+    name: 'Reporting / planning staff',
+    description: 'Official reports from approved definitions and retained snapshots.',
+    source: 'original_a7',
+    grants: [g('me.read'), g('event.read'), g('definition.read')],
+  },
+  {
+    key: 'partner_coordinator',
+    name: 'Partner-agency coordinator',
+    description: 'Invites partner organizations and manages their agreements.',
+    source: 'original_a7',
+    grants: [
+      g('me.read'),
+      g('tenant.read'),
+      g('tenant.create_child'),
+      g('dsa.*'),
+      g('event.read'),
+      g('event.participant.add'),
+    ],
+  },
+  {
+    key: 'damage_assessor',
+    name: 'County damage assessor',
+    description: 'Field routes, parcel snap and street sweep.',
+    source: 'field',
+    grants: [
+      g('me.read'),
+      { action: 'event.read', events: 'assigned', dataCategories: ['location_exact'] },
+    ],
+  },
+  {
+    key: 'canvasser',
+    name: 'Canvasser / assisted-reporting volunteer',
+    description: 'Assisted intake on the resident’s behalf; door hangers; no-one-home logging.',
+    source: 'field',
+    grants: [g('me.read'), { action: 'event.read', events: 'assigned' }],
+  },
+  {
+    key: 'cleanup_crew_lead',
+    name: 'Cleanup crew lead',
+    description: 'Work orders, right-of-entry, before and after photos.',
+    source: 'frontline',
+    grants: [g('me.read'), { action: 'event.read', events: 'assigned' }],
+  },
+  {
+    key: 'shelter_worker',
+    name: 'Shelter worker',
+    description: 'Wristband scan, cot assignment, live census; no health details.',
+    source: 'frontline',
+    grants: [
+      g('me.read'),
+      { action: 'event.read', events: 'assigned', dataCategories: ['household'] },
+    ],
+  },
+  {
+    key: 'shelter_nurse',
+    name: 'Shelter nurse / Medical Reserve Corps',
+    description: 'The only template that sees the restricted health section (FL:FR-15).',
+    source: 'frontline',
+    grants: [
+      g('me.read'),
+      { action: 'event.read', events: 'assigned', dataCategories: ['contact'] },
+    ],
+  },
+  {
+    key: 'crisis_counselor',
+    name: 'Crisis counselor / chaplain',
+    description: 'Contact log only; no content recorded; scribe off (FL:FR-16).',
+    source: 'frontline',
+    grants: [g('me.read'), { action: 'event.read', events: 'assigned' }],
+  },
+  {
+    key: 'legal_aid_attorney',
+    name: 'Legal aid attorney',
+    description: 'Accepts referrals; notes stay outside the shared record (FL:FR-23).',
+    source: 'frontline',
+    grants: [g('me.read'), { action: 'event.read', events: 'assigned' }],
+  },
+  {
+    key: 'disability_advocate',
+    name: 'Disability and independent-living advocate',
+    description: 'Consented access-needs list; equipment loans; accessible transport (FL:FR-25).',
+    source: 'frontline',
+    grants: [
+      g('me.read'),
+      { action: 'event.read', events: 'assigned', dataCategories: ['contact'] },
+    ],
+  },
+  {
+    key: 'case_manager',
+    name: 'Caseworker / disaster case manager',
+    description: 'Shared survivor record, recovery plan, help received (FL:FR-18).',
+    source: 'frontline',
+    grants: [
+      g('me.read'),
+      {
+        action: 'event.read',
+        events: 'assigned',
+        dataCategories: ['contact', 'household', 'financial', 'free_text'],
+      },
+    ],
+  },
+];
+
+export const templateByKey: ReadonlyMap<string, RoleTemplate> = new Map(
+  roleTemplates.map((t) => [t.key, t]),
+);

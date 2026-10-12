@@ -9,6 +9,7 @@ const executablePath = process.env['PW_CHROMIUM_PATH'];
 
 export default defineConfig({
   testDir: 'tests/e2e',
+  globalSetup: './tests/e2e/global-setup.ts',
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: process.env['BASE_URL'] ?? 'https://localhost',

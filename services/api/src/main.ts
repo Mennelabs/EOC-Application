@@ -14,7 +14,11 @@ import {
   storageProbe,
   type QueueConnection,
 } from '@cg/adapters';
+import { createDb } from '@cg/db';
+import { FieldCrypto, OpenBaoKeyService, dbKeyStore } from '@cg/crypto';
 import { buildApp } from './app.ts';
+import { createSubjectLoader } from './auth/subject.ts';
+import { routes } from './routes/index.ts';
 
 const config = loadConfig(platformSchema);
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
@@ -22,6 +26,13 @@ const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url),
 };
 
 const pool = createPool(config.DATABASE_URL);
+const db = createDb(config.DATABASE_URL);
+// Key-service token is injected as a file by the keys-init container (ADR-0009).
+const keyToken = readFileSync(config.OPENBAO_TOKEN_FILE, 'utf8').trim();
+const fieldCrypto = new FieldCrypto(
+  new OpenBaoKeyService(config.OPENBAO_ADDR, keyToken),
+  dbKeyStore(db),
+);
 const s3 = createS3({
   endpoint: config.S3_ENDPOINT,
   region: config.S3_REGION,
@@ -31,11 +42,18 @@ const s3 = createS3({
 });
 let queue: QueueConnection | undefined;
 
-const app = buildApp({
+const app = await buildApp({
   productName: config.PRODUCT_NAME,
   version: pkg.version,
   dataMode: config.DATA_CLASSIFICATION_MODE,
   logLevel: config.LOG_LEVEL,
+  db,
+  fieldCrypto,
+  subjects: createSubjectLoader(db, {
+    internalBase: config.IDP_INTERNAL_BASE,
+    publicBase: config.IDP_PUBLIC_BASE,
+  }),
+  routes,
   probes: [
     postgresProbe('db', pool),
     queueProbe('queue', () => queue),
@@ -79,6 +97,7 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.once(signal, async () => {
     await app.close();
     await queue?.close();
+    await db.destroy();
     await pool.end();
     process.exit(0);
   });

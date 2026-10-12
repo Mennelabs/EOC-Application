@@ -5,6 +5,12 @@
   "type": "module",
   "scripts": {
     "generate": "node src/cli.ts",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p .",
+    "load": "node src/load.ts"
+  },
+  "dependencies": {
+    "@cg/db": "workspace:*",
+    "@cg/provisioning": "workspace:*",
+    "kysely": "0.29.6"
   }
 }

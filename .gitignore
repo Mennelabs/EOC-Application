@@ -9,3 +9,4 @@ tools/seed/out/
 test-results/
 playwright-report/
 .DS_Store
+backups/

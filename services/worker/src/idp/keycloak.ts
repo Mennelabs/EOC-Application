@@ -228,7 +228,7 @@ export class KeycloakAdmin {
         enabled: user.enabled,
         firstName: first ?? user.displayName,
         lastName: rest.join(' ') || '-',
-                // Dev seed users get no pending required action: Keycloak refuses
+        // Dev seed users get no pending required action: Keycloak refuses
         // direct-grant tokens otherwise. The browser flow still demands a
         // passkey, and registers one on first login when none exists.
         requiredActions: user.devPassword ? [] : ['UPDATE_PASSWORD', 'webauthn-register'],
@@ -239,6 +239,13 @@ export class KeycloakAdmin {
       const location = created.headers.get('location') ?? '';
       id = location.split('/').pop() ?? '';
       if (!id) throw new Error('keycloak did not return the new user id');
+      if (user.devPassword) {
+        // The realm adds webauthn-register as a default required action to
+        // every new user; a pending action blocks direct-grant tokens, which
+        // the dev test client needs. Clear it for seeded dev users only; the
+        // browser flow still requires a passkey on interactive login.
+        await this.ok('PUT', `/${slug}/users/${id}`, { requiredActions: [] });
+      }
     }
     return id;
   }

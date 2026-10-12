@@ -81,7 +81,9 @@ services:
   worker:
     build: { context: ., dockerfile: infra/node/Dockerfile, args: { APP: services/worker } }
     image: common-ground/worker:local
-    environment: *node-env
+    environment:
+      <<: *node-env
+      DATABASE_URL: postgres://cg_worker:${CG_WORKER_PASSWORD:?}@db:5432/cg
     volumes:
       - keys_init:/bao-init:ro
     depends_on:
@@ -118,6 +120,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
       CG_MIGRATOR_PASSWORD: ${CG_MIGRATOR_PASSWORD:?}
       CG_APP_PASSWORD: ${CG_APP_PASSWORD:?}
+      CG_WORKER_PASSWORD: ${CG_WORKER_PASSWORD:?}
       KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?}
     volumes:
       - db_data:/var/lib/postgresql/data

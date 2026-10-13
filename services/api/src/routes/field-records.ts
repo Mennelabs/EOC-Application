@@ -102,7 +102,12 @@ interface Spec {
     out: Record<string, unknown>,
     request: FastifyRequest,
     instance: import('fastify').FastifyInstance,
-  ) => Promise<Record<string, unknown>>;
+  ) => Promise<FollowUp>;
+}
+
+/** What a follow-up may add to the answer: a named status, never fields copied from the request. */
+interface FollowUp {
+  residentMessage?: string;
 }
 
 /**
@@ -1197,7 +1202,8 @@ export const fieldRecordRoutes =
         });
         if (created && spec.afterCommit) {
           try {
-            Object.assign(extra, await spec.afterCommit(b, out, request, instance));
+            const follow = await spec.afterCommit(b, out, request, instance);
+            if (follow.residentMessage) extra['residentMessage'] = follow.residentMessage;
           } catch (err) {
             request.log.warn({ err }, 'a follow-up after a field record did not run');
           }

@@ -539,13 +539,18 @@ describe.skipIf(!appUrl || !workerUrl)('frontline role records (database-backed)
   });
 
   it('FL:FR-20, PER-01, BDG-01: a walk-up volunteer is registered in one step, once; skills stay unverified; the badge code is shown once', async () => {
-    const team = await dbWorker
-      .selectFrom('cg.team')
-      .select('id')
-      .where('tenant_id', '=', county)
-      .where('key', '=', 'da-2')
-      .executeTakeFirstOrThrow();
     const clientUuid = randomUUID();
+    // A team of its own, so the seeded rosters other suites check stay as seeded.
+    const team = await dbWorker
+      .insertInto('cg.team')
+      .values({
+        tenant_id: county,
+        event_id: eventId,
+        key: `walkup-${clientUuid.slice(0, 8)}`,
+        name: `Exercise walk-up team ${clientUuid.slice(0, 4)}`,
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
     const body = {
       clientUuid,
       eventId,

@@ -507,8 +507,8 @@ const SPECS: Record<string, Spec> = {
       signerName: z.string().min(1).max(200),
       scope: z.string().min(3).max(1000),
       landlordConsent: z.boolean().default(false),
-      /** The drawn signature as SVG path data (encrypted at rest). */
-      signatureSvg: z.string().min(10).max(SIGNATURE_MAX),
+      /** The drawn signature as SVG path data, or `typed:<name>` when signed by typing (WCAG 2.1.1); encrypted at rest. */
+      signatureSvg: z.string().min(8).max(SIGNATURE_MAX),
     }),
     async values(b, ctx) {
       // A renter can let a crew in, but work on the structure needs the owner's consent (FR-19).
@@ -1518,7 +1518,7 @@ export const fieldRecordRoutes =
         schema: {
           tags: ['field'],
           params: uuidParam,
-          body: z.object({ signatureSvg: z.string().min(10).max(SIGNATURE_MAX) }),
+          body: z.object({ signatureSvg: z.string().min(8).max(SIGNATURE_MAX) }),
           response: { 200: outAny },
         },
       },

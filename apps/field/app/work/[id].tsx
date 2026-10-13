@@ -92,6 +92,13 @@ export default function Work() {
           />
         </>
       ) : null}
+      {m && f.can('mission.person.edit') ? (
+        <Button
+          kind="secondary"
+          label={t('people.heading')}
+          onPress={() => router.push({ pathname: '/people/[id]', params: { id: m.id } })}
+        />
+      ) : null}
       <NavBar current="home" />
     </Page>
   );

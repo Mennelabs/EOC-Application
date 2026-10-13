@@ -12,6 +12,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, withTenant, type Database } from '@cg/db';
+import { roleTemplates } from '@cg/authz';
 import { sql, type Kysely } from 'kysely';
 import { loadSeed } from '../../../tools/seed/src/load.ts';
 import { teams as teamSpecs } from '../../../tools/seed/src/county.ts';
@@ -249,5 +250,152 @@ describe.skipIf(!appUrl || !workerUrl)('field roster schema and seed (database-b
       .returning('hours')
       .executeTakeFirstOrThrow();
     expect(Number(ended.hours)).toBeCloseTo(2.5, 2);
+  });
+
+  it('missions (task B): references are unique under concurrent creation and never reused; the seed assigns without inferring dispatch or arrival (FR-02.04, AC-02A, AC-06B, RULE-03, AC-07C)', async () => {
+    const countyId = tenants['county']!;
+    // Two connections take a reference at the same time: distinct, sequential, never repeated.
+    const takes = await Promise.all(
+      [1, 2, 3].map(() =>
+        sql<{ r: string }>`select cg.next_mission_reference(${countyId}::uuid) as r`.execute(
+          dbWorker,
+        ),
+      ),
+    );
+    const refs = takes.map((t) => t.rows[0]!.r);
+    expect(new Set(refs).size).toBe(3);
+    for (const r of refs) expect(r).toMatch(/^M-\d{5}$/);
+    const numbers = refs.map((r) => Number(r.slice(2))).sort((a, b) => a - b);
+    expect(numbers[2]! - numbers[0]!).toBe(2);
+    const missions = await dbWorker
+      .selectFrom('cg.mission')
+      .select(['id', 'reference', 'kind', 'state', 'source', 'owning_tenant_id', 'caller_enc'])
+      .where('tenant_id', '=', countyId)
+      .orderBy('reference')
+      .execute();
+    expect(missions.length).toBeGreaterThanOrEqual(8);
+    expect(new Set(missions.map((m) => m.reference)).size).toBe(missions.length);
+    expect(
+      missions.filter((m) => m.kind === 'verification_route' && m.state === 'open'),
+    ).toHaveLength(4);
+    expect(missions.find((m) => m.kind === 'cleanup_work_order')?.owning_tenant_id).toBe(
+      tenants['cleanup'],
+    );
+    expect(missions.find((m) => m.source === 'call')?.caller_enc).toBeNull();
+    const assignments = await dbWorker
+      .selectFrom('cg.assignment')
+      .innerJoin('cg.mission', 'cg.mission.id', 'cg.assignment.mission_id')
+      .select([
+        'cg.assignment.id as id',
+        'cg.assignment.state as state',
+        'cg.assignment.dispatched_at as dispatched_at',
+        'cg.assignment.dispatch_method as dispatch_method',
+        'cg.assignment.delivered_at as delivered_at',
+        'cg.assignment.acknowledged_at as acknowledged_at',
+        'cg.assignment.on_scene_at as on_scene_at',
+        'cg.mission.kind as kind',
+        'cg.assignment.mission_id as mission_id',
+        'cg.assignment.team_id as team_id',
+      ])
+      .where('cg.assignment.tenant_id', '=', countyId)
+      .execute();
+    const routes = assignments.filter((a) => a.kind === 'verification_route');
+    expect(routes).toHaveLength(4);
+    for (const a of routes) {
+      expect(a.state).toBe('assigned');
+      expect(a.dispatched_at).toBeNull();
+      expect(a.on_scene_at).toBeNull();
+    }
+    const traffic = assignments.find((a) => a.kind === 'traffic_control')!;
+    expect(traffic.state).toBe('dispatched');
+    expect(traffic.dispatch_method).toBe('radio');
+    expect(traffic.delivered_at).toBeNull(); // the method is not the proof (FR-06.06)
+    expect(traffic.acknowledged_at).toBeNull();
+    // One active assignment per team and mission (RULE-06).
+    await expect(
+      dbWorker
+        .insertInto('cg.assignment')
+        .values({
+          tenant_id: countyId,
+          mission_id: routes[0]!.mission_id,
+          resource_kind: 'team',
+          team_id: routes[0]!.team_id,
+        })
+        .execute(),
+    ).rejects.toThrow(/assignment_active_team_idx/);
+    // A mission cannot close without a disposition (AC-07C), and a dispatch needs its method.
+    await expect(
+      dbWorker
+        .updateTable('cg.mission')
+        .set({ state: 'closed', closed_at: new Date() })
+        .where('id', '=', missions[0]!.id)
+        .execute(),
+    ).rejects.toThrow(/mission_check|check constraint/);
+    await expect(
+      dbWorker
+        .updateTable('cg.assignment')
+        .set({ dispatched_at: new Date() })
+        .where('id', '=', routes[0]!.id)
+        .execute(),
+    ).rejects.toThrow(/assignment_check|check constraint/);
+    // The partner that owns the work order does not see the county's other missions through RLS.
+    const partnerView = await withTenant(dbApp, { tenantId: tenants['cleanup']! }, (trx) =>
+      trx.selectFrom('cg.mission').select('id').execute(),
+    );
+    expect(partnerView).toHaveLength(0);
+    // Hazard, reminder (F09) and the logs came with the seed; the ledger is now notice_log.
+    const hazard = await dbWorker
+      .selectFrom('cg.hazard')
+      .select(['state', 'severity', 'ai_suggested'])
+      .where('tenant_id', '=', countyId)
+      .executeTakeFirstOrThrow();
+    expect(hazard).toEqual({ state: 'reported', severity: 'danger', ai_suggested: false });
+    const reminder = await dbWorker
+      .selectFrom('cg.reminder')
+      .select(['state', 'kind', 'escalate_to_role'])
+      .where('tenant_id', '=', countyId)
+      .where('kind', '=', 'call_back')
+      .executeTakeFirstOrThrow();
+    expect(reminder).toEqual({
+      state: 'active',
+      kind: 'call_back',
+      escalate_to_role: 'field_coordinator',
+    });
+    const activity = await dbWorker
+      .selectFrom('cg.activity_entry')
+      .select((eb) => eb.fn.countAll<string>().as('n'))
+      .where('tenant_id', '=', countyId)
+      .executeTakeFirstOrThrow();
+    expect(Number(activity.n)).toBeGreaterThanOrEqual(5);
+    const ledger = await sql<{ n: string }>`
+      select count(*)::text as n from information_schema.tables
+      where table_schema = 'cg' and table_name in ('notice_log', 'reminder', 'reminder_event')`.execute(
+      dbWorker,
+    );
+    expect(ledger.rows[0]?.n).toBe('3');
+    // Retention categories of the layer (SEC-13) and the job aids as exercise drafts (FL-15).
+    const categories = await dbWorker
+      .selectFrom('cg.retention_policy')
+      .select('data_category')
+      .where('tenant_id', '=', countyId)
+      .execute();
+    expect(categories.map((c) => c.data_category)).toEqual(
+      expect.arrayContaining(['field_records', 'safety', 'comms', 'badges', 'child_records']),
+    );
+    const aids = await dbWorker
+      .selectFrom('cg.job_aid')
+      .select(['lang', 'status'])
+      .where('tenant_id', '=', countyId)
+      .execute();
+    expect(aids).toHaveLength(6);
+    expect(aids.every((a) => a.status === 'exercise_draft')).toBe(true);
+    // Every shipped template exists as a role in the county (ADM-04), the new ones included.
+    const roles = await dbWorker
+      .selectFrom('cg.role')
+      .select('template_key')
+      .where('tenant_id', '=', countyId)
+      .execute();
+    const keys = new Set(roles.map((r) => r.template_key));
+    for (const t of roleTemplates) expect(keys.has(t.key), t.key).toBe(true);
   });
 });

@@ -769,7 +769,7 @@ export interface ResourceTextTable extends Stamped {
   reviewed_at: TsNullable;
 }
 
-export type ReminderKind =
+export type NoticeKind =
   | 'site_reconfirm'
   | 'site_hidden'
   | 'resource_review'
@@ -779,11 +779,11 @@ export type ReminderKind =
   | 'publication'
   | 'publication_withdrawn';
 
-/** F09, REM-01: one row per subject and cycle; a reminder is sent once (BRD:FR-00.06). */
-export interface ReminderTable {
+/** Layer 3's send-once ledger (notices and reminders sent): one row per subject and cycle (BRD:FR-00.06). */
+export interface NoticeLogTable {
   id: Generated<Uuid>;
   tenant_id: Uuid;
-  kind: ReminderKind;
+  kind: NoticeKind;
   subject_kind: 'site' | 'resource' | 'partner_contact' | 'publication' | 'tenant';
   subject_id: Uuid;
   cycle_key: string;
@@ -964,6 +964,1061 @@ export interface ParcelTable extends Stamped {
   area_key: string | null;
   source: Generated<string>;
   loaded_at: TsGen;
+}
+
+// Layer 4 task B: missions, assignments, hazards, messages, safety, logs, reminders (F09),
+// badges, field records and sync. Generated from the DDL of migrations 0030–0034.
+
+export interface MissionCounterTable {
+  tenant_id: Generated<Uuid>;
+  next_value: Generated<number>;
+}
+
+export interface MissionTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  reference: string;
+  kind:
+    | 'welfare_check'
+    | 'verification_route'
+    | 'cleanup_work_order'
+    | 'delivery'
+    | 'outreach_sweep'
+    | 'site_staffing'
+    | 'search'
+    | 'road_clearance'
+    | 'traffic_control'
+    | 'debris'
+    | 'other';
+  subcategory: string | null;
+  state: Generated<'draft' | 'open' | 'en_route' | 'on_scene' | 'cleared' | 'closed' | 'canceled'>;
+  priority: Generated<'low' | 'normal' | 'high' | 'urgent'>;
+  urgency: Generated<'routine' | 'soon' | 'now'>;
+  source: 'need' | 'report' | 'call' | 'walk_in' | 'field' | 'staff' | 'board';
+  summary: string | null;
+  conditions: string | null;
+  caller_enc: Buffer | null;
+  caller_language: string | null;
+  interpreter_needed: Generated<boolean>;
+  location_id: Uuid | null;
+  location_state: Generated<'verified' | 'approximate' | 'manual' | 'unknown'>;
+  need_id: Uuid | null;
+  report_id: Uuid | null;
+  site_id: Uuid | null;
+  route: JsonValue | null;
+  owning_tenant_id: Uuid | null;
+  required_credentials: Generated<string[]>;
+  lock_by: Uuid | null;
+  lock_at: TsNullable;
+  lock_reason: string | null;
+  disposition:
+    | 'completed'
+    | 'referred'
+    | 'no_action_needed'
+    | 'unable_to_locate'
+    | 'canceled'
+    | 'duplicate'
+    | 'transferred'
+    | 'other'
+    | null;
+  disposition_note: string | null;
+  case_reference: string | null;
+  report_required: Generated<boolean>;
+  report_generated: Generated<boolean>;
+  reviewed_by: Uuid | null;
+  reviewed_at: TsNullable;
+  opened_at: TsNullable;
+  cleared_at: TsNullable;
+  closed_at: TsNullable;
+  closed_reason: string | null;
+  reopened_count: Generated<number>;
+  execution_id: Uuid | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface MissionEventTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  mission_id: Uuid;
+  kind:
+    | 'created'
+    | 'updated'
+    | 'state_changed'
+    | 'priority_changed'
+    | 'locked'
+    | 'unlocked'
+    | 'narrative'
+    | 'amendment'
+    | 'disposition'
+    | 'person_added'
+    | 'person_updated'
+    | 'person_removed'
+    | 'media_added'
+    | 'media_removed'
+    | 'assignment'
+    | 'reopened'
+    | 'canceled'
+    | 'hazard'
+    | 'reminder';
+  narrative_role:
+    'call_taker' | 'dispatcher' | 'responder' | 'supervisor' | 'follow_up' | 'system' | null;
+  from_state: string | null;
+  to_state: string | null;
+  actor_account_id: Uuid | null;
+  actor_personnel_id: Uuid | null;
+  reason: string | null;
+  body: string | null;
+  amends_event_id: Uuid | null;
+  detail: JsonGen<Record<string, unknown>>;
+  client_command_id: Uuid | null;
+  occurred_at: TsGen;
+  created_at: TsGen;
+}
+
+export interface MissionPersonTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  mission_id: Uuid;
+  role:
+    | 'survivor'
+    | 'reporting_party'
+    | 'witness'
+    | 'subject'
+    | 'victim'
+    | 'caregiver'
+    | 'property_owner'
+    | 'other'
+    | 'enclave_reference';
+  display_label: string | null;
+  details_enc: Buffer | null;
+  injury: 'none' | 'minor' | 'serious' | 'critical' | 'deceased' | 'unknown' | null;
+  injury_detail_enc: Buffer | null;
+  transport: 'none' | 'ems' | 'own' | 'shelter_transport' | 'other' | 'unknown' | null;
+  transport_destination: string | null;
+  transport_started_at: TsNullable;
+  transport_ended_at: TsNullable;
+  behavioral_health_enc: Buffer | null;
+  party_id: Uuid | null;
+  enclave_reference: string | null;
+  status: Generated<'active' | 'removed'>;
+  removed_reason: string | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface MissionMediaTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  mission_id: Uuid;
+  kind: 'photo' | 'document' | 'audio' | 'video' | 'bodycam_reference' | 'live_feed_reference';
+  photo_id: Uuid | null;
+  object_key: string | null;
+  original_name: string | null;
+  content_type: string | null;
+  bytes: number | null;
+  sha256: Buffer | null;
+  description: string | null;
+  source: Generated<'field' | 'console' | 'resident' | 'partner' | 'external'>;
+  access_class: Generated<'internal' | 'restricted'>;
+  retention_category: Generated<string>;
+  uploaded_by: Uuid | null;
+  uploaded_at: TsGen;
+  removed_at: TsNullable;
+  removed_by: Uuid | null;
+  removed_reason: string | null;
+  created_at: TsGen;
+}
+
+export interface AssignmentTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  mission_id: Uuid;
+  resource_kind: 'person' | 'team';
+  personnel_id: Uuid | null;
+  team_id: Uuid | null;
+  state: Generated<
+    | 'assigned'
+    | 'dispatched'
+    | 'acknowledged'
+    | 'declined'
+    | 'en_route'
+    | 'on_scene'
+    | 'cleared'
+    | 'released'
+  >;
+  assigned_at: TsGen;
+  assigned_by: Uuid | null;
+  suggested: Generated<boolean>;
+  suggestion_reasons: Generated<string[]>;
+  conflicts: JsonGen<Record<string, unknown>>;
+  override_reason: string | null;
+  override_by: Uuid | null;
+  dispatched_at: TsNullable;
+  dispatched_by: Uuid | null;
+  dispatch_method: 'app' | 'text' | 'radio' | 'phone' | 'in_person' | null;
+  delivered_at: TsNullable;
+  delivery_evidence: JsonValue | null;
+  acknowledged_at: TsNullable;
+  acknowledged_by: Uuid | null;
+  declined_at: TsNullable;
+  declined_reason: string | null;
+  en_route_at: TsNullable;
+  on_scene_at: TsNullable;
+  on_scene_confirmed_by: Uuid | null;
+  cleared_at: TsNullable;
+  released_at: TsNullable;
+  released_by: Uuid | null;
+  release_reason: string | null;
+  execution_id: Uuid | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface AssignmentEventTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  assignment_id: Uuid;
+  kind:
+    | 'assigned'
+    | 'dispatched'
+    | 'delivered'
+    | 'acknowledged'
+    | 'declined'
+    | 'en_route'
+    | 'on_scene'
+    | 'cleared'
+    | 'released'
+    | 'reopened'
+    | 'override'
+    | 'suggested_status';
+  from_state: string | null;
+  to_state: string | null;
+  actor_account_id: Uuid | null;
+  actor_personnel_id: Uuid | null;
+  method: string | null;
+  evidence: JsonValue | null;
+  reason: string | null;
+  client_command_id: Uuid | null;
+  occurred_at: TsGen;
+  created_at: TsGen;
+}
+
+export interface HazardTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  mission_id: Uuid | null;
+  kind:
+    | 'downed_line'
+    | 'gas_leak'
+    | 'blocked_road'
+    | 'unsafe_structure'
+    | 'flooding'
+    | 'debris'
+    | 'weapons'
+    | 'hazmat'
+    | 'medical_emergency'
+    | 'mental_health_crisis'
+    | 'violence'
+    | 'child_or_elder_involved'
+    | 'language_barrier'
+    | 'utility_risk'
+    | 'weather'
+    | 'public_health'
+    | 'animal'
+    | 'missing_person_concern'
+    | 'other';
+  state: Generated<'reported' | 'confirmed' | 'corrected' | 'cleared'>;
+  severity: Generated<'info' | 'caution' | 'danger' | 'critical'>;
+  summary: string | null;
+  restricted: Generated<boolean>;
+  details_enc: Buffer | null;
+  geom: ColumnType<unknown, unknown, unknown> | null;
+  radius_m: number | null;
+  location_id: Uuid | null;
+  source: 'field' | 'console' | 'call' | 'net_control' | 'resident_report' | 'ai_suggested';
+  ai_suggested: Generated<boolean>;
+  accepted_by: Uuid | null;
+  accepted_at: TsNullable;
+  reported_by: Uuid | null;
+  reported_personnel_id: Uuid | null;
+  reported_at: TsGen;
+  confirmed_at: TsNullable;
+  confirmed_by: Uuid | null;
+  cleared_at: TsNullable;
+  cleared_by: Uuid | null;
+  cleared_reason: string | null;
+  photo_id: Uuid | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface HazardEventTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  hazard_id: Uuid;
+  kind: 'reported' | 'confirmed' | 'corrected' | 'cleared' | 'accepted' | 'reopened' | 'warned';
+  from_state: string | null;
+  to_state: string | null;
+  actor_account_id: Uuid | null;
+  actor_personnel_id: Uuid | null;
+  reason: string | null;
+  detail: JsonGen<Record<string, unknown>>;
+  occurred_at: TsGen;
+  created_at: TsGen;
+}
+
+export interface FieldMessageTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  kind: Generated<
+    'message' | 'assignment_notice' | 'safety_warning' | 'hazard_warning' | 'broadcast' | 'timer'
+  >;
+  template: string | null;
+  body: string;
+  lang: Generated<string>;
+  priority: Generated<'normal' | 'high' | 'urgent'>;
+  audience_kind: 'person' | 'team' | 'agency' | 'area' | 'event';
+  audience_personnel_id: Uuid | null;
+  audience_team_id: Uuid | null;
+  audience_tenant_id: Uuid | null;
+  audience_geom: ColumnType<unknown, unknown, unknown> | null;
+  mission_id: Uuid | null;
+  hazard_id: Uuid | null;
+  requires_ack: Generated<boolean>;
+  sent_by: Uuid | null;
+  sent_at: TsGen;
+  expires_at: TsNullable;
+  recipient_count: Generated<number>;
+  created_at: TsGen;
+}
+
+export interface FieldMessageReceiptTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  message_id: Uuid;
+  personnel_id: Uuid;
+  account_id: Uuid | null;
+  device_id: Uuid | null;
+  channel: Generated<'app' | 'sms' | 'radio' | 'in_person'>;
+  sms_message_id: Uuid | null;
+  delivered_at: TsNullable;
+  read_at: TsNullable;
+  acknowledged_at: TsNullable;
+  created_at: TsGen;
+}
+
+export interface SafetyAlertTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  kind:
+    | 'help_button'
+    | 'missed_check_in'
+    | 'unacknowledged_assignment'
+    | 'hazard_entry'
+    | 'device_lost';
+  personnel_id: Uuid | null;
+  team_id: Uuid | null;
+  check_in_id: Uuid | null;
+  assignment_id: Uuid | null;
+  hazard_id: Uuid | null;
+  geom: ColumnType<unknown, unknown, unknown> | null;
+  accuracy_m: number | null;
+  position_at: TsNullable;
+  note: string | null;
+  state: Generated<'open' | 'acknowledged' | 'escalated' | 'resolved' | 'false_alarm'>;
+  raised_at: TsGen;
+  raised_by: Uuid | null;
+  client_uuid: Uuid | null;
+  acknowledged_at: TsNullable;
+  acknowledged_by: Uuid | null;
+  escalated_at: TsNullable;
+  escalated_to_role: string | null;
+  resolved_at: TsNullable;
+  resolved_by: Uuid | null;
+  resolution: string | null;
+  detail: JsonGen<Record<string, unknown>>;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface CommsLogTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  net: string;
+  entry_at: TsGen;
+  from_station: string | null;
+  to_station: string | null;
+  team_id: Uuid | null;
+  kind:
+    | 'status_heard'
+    | 'position_heard'
+    | 'message'
+    | 'check_in'
+    | 'check_out'
+    | 'traffic'
+    | 'net_open'
+    | 'net_close';
+  message: string | null;
+  operator_account_id: Uuid | null;
+  team_status_id: Uuid | null;
+  position_id: Uuid | null;
+  position_recorded_at: TsNullable;
+  check_in_id: Uuid | null;
+  created_at: TsGen;
+}
+
+export interface ActivityEntryTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  personnel_id: Uuid | null;
+  team_id: Uuid | null;
+  occurred_at: TsGen;
+  kind:
+    | 'check_in'
+    | 'check_out'
+    | 'assigned'
+    | 'dispatched'
+    | 'acknowledged'
+    | 'en_route'
+    | 'on_scene'
+    | 'cleared'
+    | 'released'
+    | 'status'
+    | 'message'
+    | 'alert'
+    | 'service'
+    | 'hazard'
+    | 'note';
+  summary: string;
+  ref_kind: string | null;
+  ref_id: Uuid | null;
+  actor_account_id: Uuid | null;
+  created_at: TsGen;
+}
+
+export interface SignificantEventTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  occurred_at: TsGen;
+  kind:
+    | 'mission_opened'
+    | 'mission_closed'
+    | 'mission_priority'
+    | 'dispatch'
+    | 'arrival'
+    | 'hazard'
+    | 'safety_alert'
+    | 'site'
+    | 'message'
+    | 'check_in'
+    | 'briefing'
+    | 'note';
+  summary: string;
+  mission_id: Uuid | null;
+  team_id: Uuid | null;
+  ref_kind: string | null;
+  ref_id: Uuid | null;
+  actor_account_id: Uuid | null;
+  created_at: TsGen;
+}
+
+export interface ReminderTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid | null;
+  kind:
+    | 'call_back'
+    | 'site_reconfirm'
+    | 'renew_agreement'
+    | 'revisit'
+    | 'follow_up'
+    | 'check_in_timer'
+    | 'custom';
+  title: string;
+  note: string | null;
+  owner_account_id: Uuid | null;
+  owner_team_id: Uuid | null;
+  mission_id: Uuid | null;
+  subject_kind: string | null;
+  subject_id: Uuid | null;
+  due_at: Ts;
+  recurrence: 'daily' | 'weekly' | null;
+  recurrence_approved_by: Uuid | null;
+  state: Generated<'active' | 'overdue' | 'acknowledged' | 'completed' | 'canceled'>;
+  snoozed_until: TsNullable;
+  acknowledged_at: TsNullable;
+  acknowledged_by: Uuid | null;
+  completed_at: TsNullable;
+  completed_by: Uuid | null;
+  completion_ref_kind: string | null;
+  completion_ref_id: Uuid | null;
+  canceled_at: TsNullable;
+  canceled_by: Uuid | null;
+  cancel_reason: string | null;
+  escalate_to_role: string | null;
+  escalate_after_minutes: number | null;
+  escalated_at: TsNullable;
+  quiet_from: string | null;
+  quiet_to: string | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface ReminderEventTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  reminder_id: Uuid;
+  kind:
+    | 'created'
+    | 'snoozed'
+    | 'reset'
+    | 'acknowledged'
+    | 'completed'
+    | 'canceled'
+    | 'overdue'
+    | 'escalated'
+    | 'recurred';
+  actor_account_id: Uuid | null;
+  detail: JsonGen<Record<string, unknown>>;
+  occurred_at: TsGen;
+  created_at: TsGen;
+}
+
+export interface BadgeTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  personnel_id: Uuid;
+  event_id: Uuid | null;
+  template: Generated<string>;
+  display_name: string;
+  agency: string | null;
+  role_label: string | null;
+  access_label: string | null;
+  photo_key: string | null;
+  credentials_snapshot: JsonGen<Record<string, unknown>>;
+  valid_from: TsGen;
+  valid_to: Ts;
+  state: Generated<
+    | 'generated'
+    | 'print_requested'
+    | 'print_confirmed'
+    | 'print_failed'
+    | 'handed_out'
+    | 'revoked'
+    | 'expired'
+    | 'replaced'
+  >;
+  code_hash: Buffer;
+  replaces_badge_id: Uuid | null;
+  print_requested_at: TsNullable;
+  print_confirmed_at: TsNullable;
+  print_confirmed_by: Uuid | null;
+  print_failed_reason: string | null;
+  handed_out_at: TsNullable;
+  revoked_at: TsNullable;
+  revoked_by: Uuid | null;
+  revoke_reason: string | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface BadgeEventTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  badge_id: Uuid;
+  kind:
+    | 'generated'
+    | 'print_requested'
+    | 'print_confirmed'
+    | 'print_failed'
+    | 'handed_out'
+    | 'revoked'
+    | 'expired'
+    | 'replaced'
+    | 'verified';
+  actor_account_id: Uuid | null;
+  detail: JsonGen<Record<string, unknown>>;
+  occurred_at: TsGen;
+  created_at: TsGen;
+}
+
+export interface ServiceLogTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  client_uuid: Uuid;
+  kind:
+    | 'meal'
+    | 'water_case'
+    | 'tarp'
+    | 'voucher'
+    | 'cot'
+    | 'ride'
+    | 'car_served'
+    | 'person_served'
+    | 'supplies_per_car'
+    | 'pet_food'
+    | 'other';
+  count: Generated<number>;
+  site_id: Uuid | null;
+  mission_id: Uuid | null;
+  team_id: Uuid | null;
+  personnel_id: Uuid | null;
+  note: string | null;
+  occurred_at: TsGen;
+  created_by: Uuid | null;
+  created_at: TsGen;
+}
+
+export interface StockMovementTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  stock_item_id: Uuid;
+  kind: 'received' | 'issued' | 'counted' | 'transferred' | 'adjusted' | 'requested';
+  quantity: string;
+  to_site_id: Uuid | null;
+  mission_id: Uuid | null;
+  client_uuid: Uuid;
+  occurred_at: TsGen;
+  actor_account_id: Uuid | null;
+  note: string | null;
+  created_at: TsGen;
+}
+
+export interface ShelterIncidentTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  site_id: Uuid;
+  occurred_at: TsGen;
+  kind: 'medical' | 'behavioral' | 'safety' | 'security' | 'facility' | 'other';
+  summary_enc: Buffer;
+  reported_by: Uuid | null;
+  client_uuid: Uuid | null;
+  created_at: TsGen;
+}
+
+export interface JobAidTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  key: string;
+  role_key: string | null;
+  lang: Generated<string>;
+  kind: 'checklist' | 'matrix' | 'standard' | 'briefing' | 'guidance';
+  title: string;
+  body_html: string;
+  status: Generated<'draft' | 'exercise_draft' | 'approved' | 'retired'>;
+  approved_by: Uuid | null;
+  approved_at: TsNullable;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface SearchMarkTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  mission_id: Uuid | null;
+  location_id: Uuid | null;
+  parcel_id: string | null;
+  team_id: Uuid | null;
+  personnel_id: Uuid | null;
+  searched_at: TsGen;
+  entry_type: Generated<'primary' | 'secondary' | 'exterior_only'>;
+  occupants_found: Generated<number>;
+  occupants_removed: Generated<number>;
+  victims_count: Generated<number>;
+  hazards: Generated<string[]>;
+  mark_code: string | null;
+  note: string | null;
+  photo_id: Uuid | null;
+  usng: string | null;
+  client_uuid: Uuid | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface PlacardTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  location_id: Uuid | null;
+  parcel_id: string | null;
+  report_id: Uuid | null;
+  kind: 'inspected' | 'restricted_use' | 'unsafe';
+  posted_at: TsGen;
+  inspector_personnel_id: Uuid | null;
+  photo_id: Uuid | null;
+  note: string | null;
+  resident_message_id: Uuid | null;
+  client_uuid: Uuid | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface RoadStatusTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  name: string;
+  geom: ColumnType<unknown, unknown, unknown> | null;
+  status: 'open' | 'closed' | 'one_lane' | 'impassable' | 'cleared';
+  reason: string | null;
+  reported_by: Uuid | null;
+  reported_personnel_id: Uuid | null;
+  reported_at: TsGen;
+  cleared_at: TsNullable;
+  exported_at: TsNullable;
+  client_uuid: Uuid | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface DebrisTicketTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  ticket_number: string;
+  load_location_id: Uuid | null;
+  disposal_site: string | null;
+  truck_id: string | null;
+  truck_capacity_cy: string | null;
+  load_percent: number | null;
+  cubic_yards: string | null;
+  debris_type:
+    'vegetative' | 'construction' | 'mixed' | 'white_goods' | 'hazardous' | 'electronic' | 'other';
+  loaded_at: TsGen;
+  unloaded_at: TsNullable;
+  monitor_personnel_id: Uuid | null;
+  photo_id: Uuid | null;
+  client_uuid: Uuid | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface InspectionTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  site_id: Uuid | null;
+  kind: 'shelter' | 'feeding_site' | 'pod' | 'warehouse' | 'other';
+  checklist: JsonGen<Record<string, unknown>>;
+  result: Generated<'pass' | 'corrective' | 'fail'>;
+  illness_count: number | null;
+  inspector_personnel_id: Uuid | null;
+  inspected_at: TsGen;
+  note: string | null;
+  client_uuid: Uuid | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface PetIntakeTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  site_id: Uuid | null;
+  owner_reference_code: string | null;
+  species: string;
+  description: string | null;
+  photo_id: Uuid | null;
+  status: Generated<
+    'sheltered' | 'reunited' | 'transferred' | 'lost_report' | 'found_report' | 'deceased'
+  >;
+  intake_at: TsGen;
+  released_at: TsNullable;
+  client_uuid: Uuid | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface SiteWalkthroughTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  site_id: Uuid;
+  phase: 'before' | 'after';
+  walked_at: TsGen;
+  photo_ids: Generated<string[]>;
+  key_holders: string | null;
+  issues: string | null;
+  personnel_id: Uuid | null;
+  client_uuid: Uuid | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface RightOfEntryTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  mission_id: Uuid | null;
+  need_id: Uuid | null;
+  report_id: Uuid | null;
+  location_id: Uuid | null;
+  signer_role: 'owner' | 'landlord' | 'tenant' | 'agent';
+  signer_name_enc: Buffer | null;
+  signature_key: string | null;
+  scope: string;
+  landlord_consent: Generated<boolean>;
+  signed_at: TsGen;
+  release_signed_at: TsNullable;
+  release_signature_key: string | null;
+  witness_personnel_id: Uuid | null;
+  client_uuid: Uuid | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface VolunteerRegistrationTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  personnel_id: Uuid;
+  waiver_signed_at: TsNullable;
+  waiver_version: string | null;
+  skills: Generated<string[]>;
+  background_check_status: Generated<
+    'not_required' | 'pending' | 'cleared' | 'not_cleared' | 'expired'
+  >;
+  background_check_checked_at: TsNullable;
+  assigned_team_id: Uuid | null;
+  badge_id: Uuid | null;
+  registered_by: Uuid | null;
+  registered_at: TsGen;
+  client_uuid: Uuid | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface StockItemTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  site_id: Uuid;
+  sku: string;
+  name: string;
+  unit: Generated<string>;
+  quantity: Generated<string>;
+  barcode: string | null;
+  photo_id: Uuid | null;
+  reorder_at: string | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface InterpreterRequestTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  language: string;
+  mode: Generated<'in_person' | 'phone' | 'video'>;
+  site_id: Uuid | null;
+  mission_id: Uuid | null;
+  requested_by: Uuid | null;
+  requested_personnel_id: Uuid | null;
+  requested_at: TsGen;
+  state: Generated<'open' | 'accepted' | 'in_progress' | 'done' | 'canceled'>;
+  interpreter_personnel_id: Uuid | null;
+  accepted_at: TsNullable;
+  done_at: TsNullable;
+  minutes: number | null;
+  note: string | null;
+  client_uuid: Uuid | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface ChildCheckInTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  site_id: Uuid;
+  child_enc: Buffer;
+  age_band: '0-2' | '3-5' | '6-9' | '10-13' | '14-17';
+  guardian_enc: Buffer;
+  pickup_code_hash: Buffer;
+  needs_enc: Buffer | null;
+  checked_in_at: TsGen;
+  checked_out_at: TsNullable;
+  checked_out_to_enc: Buffer | null;
+  staff_personnel_id: Uuid | null;
+  client_uuid: Uuid | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface CanvassVisitTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  mission_id: Uuid | null;
+  location_id: Uuid | null;
+  parcel_id: string | null;
+  team_id: Uuid | null;
+  personnel_id: Uuid | null;
+  outcome:
+    | 'spoke_with_resident'
+    | 'assisted_report'
+    | 'no_one_home'
+    | 'refused'
+    | 'vacant'
+    | 'unsafe'
+    | 'referred';
+  report_id: Uuid | null;
+  door_hanger_left: Generated<boolean>;
+  language: string | null;
+  revisit_at: TsNullable;
+  reminder_id: Uuid | null;
+  visited_at: TsGen;
+  note: string | null;
+  client_uuid: Uuid | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface ShelterStayTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  site_id: Uuid;
+  event_id: Uuid;
+  household_party_id: Uuid | null;
+  household_enc: Buffer | null;
+  wristband_code_hash: Buffer | null;
+  household_size: Generated<number>;
+  adults: Generated<number>;
+  children: Generated<number>;
+  cots: Generated<string[]>;
+  dietary_needs: string | null;
+  access_needs_enc: Buffer | null;
+  pets: Generated<number>;
+  language: string | null;
+  checked_in_at: TsGen;
+  checked_out_at: TsNullable;
+  checked_out_reason: string | null;
+  registered_by: Uuid | null;
+  client_uuid: Uuid | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface HealthNoteTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  site_id: Uuid | null;
+  shelter_stay_id: Uuid | null;
+  subject_party_id: Uuid | null;
+  kind: 'medication_request' | 'equipment_replacement' | 'assessment' | 'follow_up' | 'other';
+  note_enc: Buffer;
+  request_status: 'open' | 'ordered' | 'delivered' | 'closed' | null;
+  author_personnel_id: Uuid | null;
+  client_uuid: Uuid | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface ChangeFeedTable {
+  seq: Generated<number>;
+  tenant_id: Uuid;
+  scope_kind: 'person' | 'team' | 'area' | 'event' | 'tenant';
+  scope_id: Uuid | null;
+  record_type: string;
+  record_id: Uuid;
+  record_version: number | null;
+  op: 'upsert' | 'delete';
+  created_at: TsGen;
+}
+
+export interface ClientCommandTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  device_id: Uuid | null;
+  account_id: Uuid | null;
+  personnel_id: Uuid | null;
+  kind: string;
+  payload: JsonGen<Record<string, unknown>>;
+  client_at: TsNullable;
+  received_at: TsGen;
+  applied_at: TsNullable;
+  result: Generated<'received' | 'applied' | 'duplicate' | 'conflict' | 'rejected'>;
+  result_detail: JsonGen<Record<string, unknown>>;
+  record_type: string | null;
+  record_id: Uuid | null;
+  record_version: number | null;
+  created_at: TsGen;
 }
 
 export interface PublicationTable {
@@ -1181,7 +2236,7 @@ export interface Database {
   'cg.resource': ResourceTable;
   'cg.resource_text': ResourceTextTable;
   'cg.publication': PublicationTable;
-  'cg.reminder': ReminderTable;
+  'cg.notice_log': NoticeLogTable;
   'cg.credential': CredentialTable;
   'cg.team': TeamTable;
   'cg.team_member': TeamMemberTable;
@@ -1190,4 +2245,44 @@ export interface Database {
   'cg.check_in': CheckInTable;
   'cg.position': PositionTable;
   'cg.parcel': ParcelTable;
+  'cg.mission_counter': MissionCounterTable;
+  'cg.mission': MissionTable;
+  'cg.mission_event': MissionEventTable;
+  'cg.mission_person': MissionPersonTable;
+  'cg.mission_media': MissionMediaTable;
+  'cg.assignment': AssignmentTable;
+  'cg.assignment_event': AssignmentEventTable;
+  'cg.hazard': HazardTable;
+  'cg.hazard_event': HazardEventTable;
+  'cg.field_message': FieldMessageTable;
+  'cg.field_message_receipt': FieldMessageReceiptTable;
+  'cg.safety_alert': SafetyAlertTable;
+  'cg.comms_log': CommsLogTable;
+  'cg.activity_entry': ActivityEntryTable;
+  'cg.significant_event': SignificantEventTable;
+  'cg.reminder': ReminderTable;
+  'cg.reminder_event': ReminderEventTable;
+  'cg.badge': BadgeTable;
+  'cg.badge_event': BadgeEventTable;
+  'cg.service_log': ServiceLogTable;
+  'cg.stock_movement': StockMovementTable;
+  'cg.shelter_incident': ShelterIncidentTable;
+  'cg.job_aid': JobAidTable;
+  'cg.search_mark': SearchMarkTable;
+  'cg.placard': PlacardTable;
+  'cg.road_status': RoadStatusTable;
+  'cg.debris_ticket': DebrisTicketTable;
+  'cg.inspection': InspectionTable;
+  'cg.pet_intake': PetIntakeTable;
+  'cg.site_walkthrough': SiteWalkthroughTable;
+  'cg.right_of_entry': RightOfEntryTable;
+  'cg.volunteer_registration': VolunteerRegistrationTable;
+  'cg.stock_item': StockItemTable;
+  'cg.interpreter_request': InterpreterRequestTable;
+  'cg.child_check_in': ChildCheckInTable;
+  'cg.canvass_visit': CanvassVisitTable;
+  'cg.shelter_stay': ShelterStayTable;
+  'cg.health_note': HealthNoteTable;
+  'cg.change_feed': ChangeFeedTable;
+  'cg.client_command': ClientCommandTable;
 }

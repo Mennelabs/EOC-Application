@@ -9,13 +9,13 @@
  *   for re-verification (F17, CNT-01);
  * - the people who carry publications onward (the PIO and the publishers)
  *   hear once per publication and once per withdrawal (PUB-06).
- * One cg.reminder row per subject and cycle keeps every reminder to one
+ * One cg.notice_log row per subject and cycle keeps every reminder to one
  * sending whatever the schedule's pace or restarts (BRD:FR-00.06). Reminders
  * go out as messages, so delivery states and evidence are kept (FR-17.05).
  * The full F09 model (owner, snooze, acknowledge, escalation) arrives with
  * missions in layer 4.
  */
-import type { Database, ReminderKind } from '@cg/db';
+import type { Database, NoticeKind } from '@cg/db';
 import type { Transaction } from 'kysely';
 import { allTenantIds, asSystem, enqueueOutbox, systemAudit } from '../system.ts';
 import { accountEmails, staffRecipients } from './recipients.ts';
@@ -35,7 +35,7 @@ const dateOnly = (d: Date | string): string =>
   (d instanceof Date ? d.toISOString() : String(d)).slice(0, 10);
 
 interface ReminderSpec {
-  kind: ReminderKind;
+  kind: NoticeKind;
   subjectKind: 'site' | 'resource' | 'partner_contact' | 'publication' | 'tenant';
   subjectId: string;
   cycleKey: string;
@@ -46,7 +46,7 @@ interface ReminderSpec {
 /** Inserts the reminder for this subject and cycle; null when it exists already (sent or pending). */
 async function claimReminder(trx: Trx, tenantId: string, r: ReminderSpec): Promise<string | null> {
   const row = await trx
-    .insertInto('cg.reminder')
+    .insertInto('cg.notice_log')
     .values({
       tenant_id: tenantId,
       kind: r.kind,
@@ -83,7 +83,7 @@ async function sendReminder(
     });
   }
   await trx
-    .updateTable('cg.reminder')
+    .updateTable('cg.notice_log')
     .set({ state: 'sent', sent_at: nowOf(ctx), recipient_count: unique.length })
     .where('id', '=', reminderId)
     .execute();
@@ -152,7 +152,7 @@ export async function remindSiteConfirmations(ctx: JobContext): Promise<void> {
         const windowMs = s.confirm_every_hours * HOUR;
         const dueMs = baseMs + windowMs;
         const noticeMs = Math.max(Math.min(HOUR, windowMs / 2), windowMs / 4);
-        const kind: ReminderKind | null =
+        const kind: NoticeKind | null =
           now.getTime() >= dueMs
             ? 'site_hidden'
             : now.getTime() >= dueMs - noticeMs
@@ -477,7 +477,7 @@ export async function noticePublications(ctx: JobContext): Promise<void> {
       for (const p of rows) {
         const snap = (p.snapshot ?? {}) as { name?: unknown; title?: unknown; slug?: unknown };
         const title = String(snap.name ?? snap.title ?? snap.slug ?? p.subject_kind);
-        const events: { kind: ReminderKind; at: Date; what: string; by: string | null }[] = [
+        const events: { kind: NoticeKind; at: Date; what: string; by: string | null }[] = [
           {
             kind: 'publication',
             at: new Date(p.approved_at),

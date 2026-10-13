@@ -28,6 +28,11 @@ import * as m0026 from './0026_message_direction.ts';
 import * as m0027 from './0027_reminders.ts';
 import * as m0028 from './0028_field_roster.ts';
 import * as m0029 from './0029_positions_parcels.ts';
+import * as m0030 from './0030_missions.ts';
+import * as m0031 from './0031_hazards_safety_comms.ts';
+import * as m0032 from './0032_reminders_badges.ts';
+import * as m0033 from './0033_field_records.ts';
+import * as m0034 from './0034_sync.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -60,4 +65,9 @@ export const migrations: Record<string, Migration> = {
   '0027_reminders': m0027,
   '0028_field_roster': m0028,
   '0029_positions_parcels': m0029,
+  '0030_missions': m0030,
+  '0031_hazards_safety_comms': m0031,
+  '0032_reminders_badges': m0032,
+  '0033_field_records': m0033,
+  '0034_sync': m0034,
 };

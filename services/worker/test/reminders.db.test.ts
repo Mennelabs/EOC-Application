@@ -75,7 +75,7 @@ describe.skipIf(!workerUrl)('worker reminders (database-backed)', () => {
 
   async function reminders(kind: string, subjectId: string) {
     return db
-      .selectFrom('cg.reminder')
+      .selectFrom('cg.notice_log')
       .select(['id', 'kind', 'state', 'recipient_count', 'cycle_key'])
       .where('tenant_id', '=', tenantId)
       .where('kind', '=', kind as never)
@@ -344,7 +344,7 @@ describe.skipIf(!workerUrl)('worker reminders (database-backed)', () => {
     const agency = `Reminder Test Agency ${tag}`;
     contactId = await tx(async (trx) => {
       await trx
-        .deleteFrom('cg.reminder')
+        .deleteFrom('cg.notice_log')
         .where('tenant_id', '=', tenantId)
         .where('kind', '=', 'contact_reverify')
         .execute(); // a previous run this week

@@ -12,7 +12,9 @@
  */
 import { randomUUID } from 'node:crypto';
 import { sql } from 'kysely';
-import { createDb, withTenant, type Database } from '@cg/db';
+import { createDb, withTenant, type Database, type MissionTable } from '@cg/db';
+
+type MissionKind = MissionTable['kind'];
 import { evaluateProvider, fakeProvider } from '@cg/ai';
 import { westwindGraph } from '@cg/intake';
 import {
@@ -630,6 +632,431 @@ async function ensureParcels(trx: Transaction<Database>, tenantId: string): Prom
   }
 }
 
+/**
+ * Exercise missions (layer 4 task B; MIS-01–04, RULE-03, CALL-01, DSP-02/10/11):
+ * four verification routes assigned to the damage assessment teams (assigned only:
+ * no dispatch, no arrival is inferred, AC-06B), a traffic-control mission dispatched
+ * to the Guard unit by radio without proof of delivery yet, a site-staffing mission
+ * and a cleanup work order in the queue, and a welfare check from a call. The seed
+ * holds no keys, so the caller block stays empty; the console fills it. Job aids
+ * are exercise drafts until the county approves them (FL-15). Loaded once.
+ */
+async function ensureMissions(
+  trx: Transaction<Database>,
+  tenantId: string,
+  tenantIds: Record<string, string>,
+  accountIds: Record<string, string>,
+): Promise<void> {
+  const event = await trx
+    .selectFrom('cg.event')
+    .select('id')
+    .where('tenant_id', '=', tenantId)
+    .where('intake_slug', '=', 'westwind')
+    .executeTakeFirst();
+  if (!event) return;
+  const existing = await trx
+    .selectFrom('cg.mission')
+    .select('id')
+    .where('tenant_id', '=', tenantId)
+    .where('event_id', '=', event.id)
+    .limit(1)
+    .executeTakeFirst();
+  if (existing) return;
+  const teams = await trx
+    .selectFrom('cg.team')
+    .select(['id', 'key', 'lead_personnel_id'])
+    .where('tenant_id', '=', tenantId)
+    .execute();
+  const teamByKey = new Map(teams.map((t) => [t.key, t]));
+  const gym = await trx
+    .selectFrom('cg.site')
+    .select('id')
+    .where('tenant_id', '=', tenantId)
+    .where('slug', '=', 'harmon-high-gym')
+    .executeTakeFirst();
+  const dispatcher = accountIds['priya.assessment@example.org'] ?? null;
+  const now = Date.now();
+
+  const create = async (spec: {
+    kind: MissionKind;
+    state: 'draft' | 'open';
+    priority: 'low' | 'normal' | 'high' | 'urgent';
+    urgency: 'routine' | 'soon' | 'now';
+    source: 'need' | 'report' | 'call' | 'walk_in' | 'field' | 'staff' | 'board';
+    summary: string;
+    siteId?: string | null;
+    owningTenantId?: string | null;
+    requiredCredentials?: string[];
+    route?: unknown;
+    interpreter?: boolean;
+    language?: string | null;
+    location?: { area: string; lon: number; lat: number } | null;
+  }) => {
+    const ref = await sql<{
+      r: string;
+    }>`select cg.next_mission_reference(${tenantId}::uuid) as r`.execute(trx);
+    let locationId: string | null = null;
+    if (spec.location) {
+      const loc = await trx
+        .insertInto('cg.location')
+        .values({
+          tenant_id: tenantId,
+          landmark: spec.location.area,
+          geom: sql`ST_SetSRID(ST_MakePoint(${spec.location.lon}, ${spec.location.lat}), 4326)`,
+          precision: 'area',
+          source: 'reviewer',
+          created_by: SEED_ACTOR_A,
+          updated_by: SEED_ACTOR_A,
+        })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      locationId = loc.id;
+    }
+    const mission = await trx
+      .insertInto('cg.mission')
+      .values({
+        tenant_id: tenantId,
+        event_id: event.id,
+        reference: ref.rows[0]!.r,
+        kind: spec.kind,
+        state: spec.state,
+        priority: spec.priority,
+        urgency: spec.urgency,
+        source: spec.source,
+        summary: spec.summary,
+        caller_language: spec.language ?? null,
+        interpreter_needed: spec.interpreter ?? false,
+        location_id: locationId,
+        location_state: locationId ? 'approximate' : 'unknown',
+        site_id: spec.siteId ?? null,
+        owning_tenant_id: spec.owningTenantId ?? tenantId,
+        required_credentials: spec.requiredCredentials ?? [],
+        route: spec.route === undefined ? null : JSON.stringify(spec.route),
+        opened_at: spec.state === 'open' ? new Date(now) : null,
+        created_by: dispatcher,
+        updated_by: dispatcher,
+      })
+      .returning(['id', 'reference'])
+      .executeTakeFirstOrThrow();
+    await trx
+      .insertInto('cg.mission_event')
+      .values([
+        {
+          tenant_id: tenantId,
+          mission_id: mission.id,
+          kind: 'created',
+          narrative_role: 'dispatcher',
+          to_state: 'draft',
+          actor_account_id: dispatcher,
+          body: 'Created by the exercise seed (synthetic, SCL-12).',
+        },
+        ...(spec.state === 'open'
+          ? [
+              {
+                tenant_id: tenantId,
+                mission_id: mission.id,
+                kind: 'state_changed' as const,
+                narrative_role: 'dispatcher' as const,
+                from_state: 'draft',
+                to_state: 'open',
+                actor_account_id: dispatcher,
+                reason: 'Dispatch prerequisites met',
+              },
+            ]
+          : []),
+      ])
+      .execute();
+    if (spec.state === 'open') {
+      await trx
+        .insertInto('cg.significant_event')
+        .values({
+          tenant_id: tenantId,
+          event_id: event.id,
+          kind: 'mission_opened',
+          summary: `${mission.reference} opened: ${spec.summary}`,
+          mission_id: mission.id,
+          actor_account_id: dispatcher,
+        })
+        .execute();
+    }
+    return mission;
+  };
+
+  const assignTeam = async (
+    missionId: string,
+    teamKey: string,
+    dispatch?: { method: 'app' | 'text' | 'radio' | 'phone' | 'in_person' },
+  ) => {
+    const team = teamByKey.get(teamKey);
+    if (!team) return;
+    const assignment = await trx
+      .insertInto('cg.assignment')
+      .values({
+        tenant_id: tenantId,
+        mission_id: missionId,
+        resource_kind: 'team',
+        team_id: team.id,
+        state: dispatch ? 'dispatched' : 'assigned',
+        assigned_by: dispatcher,
+        dispatched_at: dispatch ? new Date(now) : null,
+        dispatched_by: dispatch ? dispatcher : null,
+        dispatch_method: dispatch?.method ?? null,
+        created_by: dispatcher,
+        updated_by: dispatcher,
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    await trx
+      .insertInto('cg.assignment_event')
+      .values([
+        {
+          tenant_id: tenantId,
+          assignment_id: assignment.id,
+          kind: 'assigned',
+          to_state: 'assigned',
+          actor_account_id: dispatcher,
+        },
+        ...(dispatch
+          ? [
+              {
+                tenant_id: tenantId,
+                assignment_id: assignment.id,
+                kind: 'dispatched' as const,
+                from_state: 'assigned',
+                to_state: 'dispatched',
+                method: dispatch.method,
+                actor_account_id: dispatcher,
+              },
+            ]
+          : []),
+      ])
+      .execute();
+    await trx
+      .insertInto('cg.activity_entry')
+      .values({
+        tenant_id: tenantId,
+        event_id: event.id,
+        team_id: team.id,
+        kind: dispatch ? 'dispatched' : 'assigned',
+        summary: dispatch
+          ? `Dispatched by ${dispatch.method}; awaiting acknowledgement`
+          : 'Assigned; not yet dispatched',
+        ref_kind: 'assignment',
+        ref_id: assignment.id,
+        actor_account_id: dispatcher,
+      })
+      .execute();
+  };
+
+  const areas: Record<string, { lon: number; lat: number }> = {
+    'willow-bend': { lon: -90.905, lat: 38.79 },
+    'cedar-ridge': { lon: -90.87, lat: 38.795 },
+    'prairie-lakes': { lon: -90.835, lat: 38.8 },
+    'oak-hollow': { lon: -90.815, lat: 38.805 },
+  };
+  let n = 0;
+  for (const area of Object.keys(areas)) {
+    n += 1;
+    const m = await create({
+      kind: 'verification_route',
+      state: 'open',
+      priority: area === 'willow-bend' || area === 'cedar-ridge' ? 'high' : 'normal',
+      urgency: 'soon',
+      source: 'staff',
+      summary: `Verification route ${n}: ${area.replace('-', ' ')} (no-photo reports first)`,
+      requiredCredentials: ['damage_assessor'],
+      route: { area, order: 'no_photo_first', stops: [] },
+      location: { area, ...areas[area]! },
+    });
+    await assignTeam(m.id, `da-${n}`);
+  }
+  const traffic = await create({
+    kind: 'traffic_control',
+    state: 'open',
+    priority: 'high',
+    urgency: 'now',
+    source: 'board',
+    summary: 'Traffic control at Route 94 and Willow Bend entrance; closed road ahead',
+    requiredCredentials: ['driver_cdl'],
+    location: { area: 'willow-bend', ...areas['willow-bend']! },
+  });
+  await assignTeam(traffic.id, 'guard-tc-1', { method: 'radio' });
+  await trx
+    .insertInto('cg.comms_log')
+    .values({
+      tenant_id: tenantId,
+      event_id: event.id,
+      net: 'County ARES net',
+      from_station: 'NET',
+      to_station: 'TC-1',
+      team_id: teamByKey.get('guard-tc-1')?.id ?? null,
+      kind: 'traffic',
+      message: `${traffic.reference} passed to TC-1 by radio; acknowledgement pending`,
+      operator_account_id: dispatcher,
+    })
+    .execute();
+  await create({
+    kind: 'site_staffing',
+    state: 'open',
+    priority: 'normal',
+    urgency: 'soon',
+    source: 'staff',
+    summary: 'Harmon High School gym: two more shelter workers for the night shift',
+    siteId: gym?.id ?? null,
+    requiredCredentials: ['shelter_management'],
+  });
+  await create({
+    kind: 'cleanup_work_order',
+    state: 'draft',
+    priority: 'normal',
+    urgency: 'routine',
+    source: 'need',
+    summary: 'Tree on a driveway in Oak Hollow; right of entry still to be signed',
+    owningTenantId: tenantIds['cleanup'] ?? null,
+    requiredCredentials: ['chainsaw'],
+    location: { area: 'oak-hollow', ...areas['oak-hollow']! },
+  });
+  const welfare = await create({
+    kind: 'welfare_check',
+    state: 'open',
+    priority: 'urgent',
+    urgency: 'now',
+    source: 'call',
+    summary: 'Caller asks for a check on a neighbour who depends on powered medical equipment',
+    interpreter: true,
+    language: 'es',
+    location: { area: 'cedar-ridge', ...areas['cedar-ridge']! },
+  });
+  const hazard = await trx
+    .insertInto('cg.hazard')
+    .values({
+      tenant_id: tenantId,
+      event_id: event.id,
+      mission_id: welfare.id,
+      kind: 'downed_line',
+      state: 'reported',
+      severity: 'danger',
+      summary: 'Downed line reported across the entrance road (unconfirmed)',
+      geom: sql`ST_SetSRID(ST_MakePoint(-90.871, 38.7955), 4326)`,
+      radius_m: 50,
+      source: 'call',
+      reported_by: dispatcher,
+      created_by: dispatcher,
+      updated_by: dispatcher,
+    })
+    .returning('id')
+    .executeTakeFirstOrThrow();
+  await trx
+    .insertInto('cg.hazard_event')
+    .values({
+      tenant_id: tenantId,
+      hazard_id: hazard.id,
+      kind: 'reported',
+      to_state: 'reported',
+      actor_account_id: dispatcher,
+    })
+    .execute();
+  const reminder = await trx
+    .insertInto('cg.reminder')
+    .values({
+      tenant_id: tenantId,
+      event_id: event.id,
+      kind: 'call_back',
+      title: `Call the caller back about ${welfare.reference}`,
+      owner_account_id: dispatcher,
+      mission_id: welfare.id,
+      subject_kind: 'mission',
+      subject_id: welfare.id,
+      due_at: new Date(now + 2 * 3_600_000),
+      escalate_to_role: 'field_coordinator',
+      escalate_after_minutes: 30,
+      created_by: dispatcher,
+      updated_by: dispatcher,
+    })
+    .returning('id')
+    .executeTakeFirstOrThrow();
+  await trx
+    .insertInto('cg.reminder_event')
+    .values({
+      tenant_id: tenantId,
+      reminder_id: reminder.id,
+      kind: 'created',
+      actor_account_id: dispatcher,
+    })
+    .execute();
+}
+
+/** Job aids per role and language, marked as exercise drafts until the county approves them (FL-15). */
+async function ensureJobAids(trx: Transaction<Database>, tenantId: string): Promise<void> {
+  const aids = [
+    {
+      key: 'fema-damage-matrix',
+      roleKey: 'damage_assessor',
+      kind: 'matrix' as const,
+      text: {
+        en: {
+          title: 'FEMA degree of damage: what to look for',
+          body: '<h2>Pick from pictures and short descriptions</h2><ul><li><strong>Affected:</strong> cosmetic damage; the home is livable.</li><li><strong>Minor:</strong> repairable damage; livable with repairs.</li><li><strong>Major:</strong> structural damage; not livable without extensive repairs.</li><li><strong>Destroyed:</strong> total loss or not repairable.</li></ul><p>Choose from the pictures for the home type, never from these words alone.</p>',
+        },
+        es: {
+          title: 'Grado de daño de FEMA: qué observar',
+          body: '<h2>Elija a partir de fotos y descripciones cortas</h2><ul><li><strong>Afectada:</strong> daño cosmético; la vivienda es habitable.</li><li><strong>Menor:</strong> daño reparable; habitable con reparaciones.</li><li><strong>Mayor:</strong> daño estructural; no habitable sin reparaciones extensas.</li><li><strong>Destruida:</strong> pérdida total o no reparable.</li></ul><p>Elija a partir de las fotos del tipo de vivienda, nunca solo con estas palabras.</p>',
+        },
+      },
+    },
+    {
+      key: 'shelter-standards',
+      roleKey: 'shelter_worker',
+      kind: 'standard' as const,
+      text: {
+        en: {
+          title: 'Shelter standards checklist',
+          body: '<ul><li>40 square feet per person; clear aisles.</li><li>Accessible cots and a quiet area.</li><li>Pets in a separate, ventilated space.</li><li>Dietary and access needs recorded at the door, never on a public list.</li></ul>',
+        },
+        es: {
+          title: 'Lista de normas del albergue',
+          body: '<ul><li>40 pies cuadrados por persona; pasillos despejados.</li><li>Catres accesibles y una zona tranquila.</li><li>Mascotas en un espacio separado y ventilado.</li><li>Necesidades dietéticas y de acceso registradas en la entrada, nunca en una lista pública.</li></ul>',
+        },
+      },
+    },
+    {
+      key: 'safety-briefing',
+      roleKey: null,
+      kind: 'briefing' as const,
+      text: {
+        en: {
+          title: 'Field safety briefing',
+          body: '<ul><li>Check in before you start; your lead answers the timer every hour.</li><li>Downed lines are live until the utility says otherwise.</li><li>Do not enter a structure marked unsafe.</li><li>The help button sends your position to dispatch at once.</li><li>If this is an emergency, call 911.</li></ul>',
+        },
+        es: {
+          title: 'Instrucciones de seguridad en campo',
+          body: '<ul><li>Regístrese antes de empezar; su líder responde al temporizador cada hora.</li><li>Los cables caídos tienen corriente hasta que la compañía diga lo contrario.</li><li>No entre en una estructura marcada como insegura.</li><li>El botón de ayuda envía su posición al despacho de inmediato.</li><li>Si es una emergencia, llame al 911.</li></ul>',
+        },
+      },
+    },
+  ];
+  for (const aid of aids) {
+    for (const lang of ['en', 'es'] as const) {
+      await trx
+        .insertInto('cg.job_aid')
+        .values({
+          tenant_id: tenantId,
+          key: aid.key,
+          role_key: aid.roleKey,
+          lang,
+          kind: aid.kind,
+          title: aid.text[lang].title,
+          body_html: aid.text[lang].body,
+          status: 'exercise_draft',
+          created_by: SEED_ACTOR_A,
+          updated_by: SEED_ACTOR_A,
+        })
+        .onConflict((oc) => oc.columns(['tenant_id', 'key', 'lang']).doNothing())
+        .execute();
+    }
+  }
+}
+
 export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
   const tenantIds: Record<string, string> = {};
   const evaluation = await evaluateProvider(fakeProvider);
@@ -694,9 +1121,11 @@ export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
   }
   const countyId = tenantIds['county'];
   if (countyId) {
-    await withTenant(db, { tenantId: countyId }, (trx) =>
-      ensureAgreements(trx, countyId, tenantIds),
-    );
+    await withTenant(db, { tenantId: countyId }, async (trx) => {
+      await ensureAgreements(trx, countyId, tenantIds);
+      await ensureJobAids(trx, countyId);
+      await ensureMissions(trx, countyId, tenantIds, accountIds);
+    });
   }
   return { tenants: tenantIds, accounts: accountIds };
 }

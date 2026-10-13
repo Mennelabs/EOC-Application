@@ -522,7 +522,8 @@ describe.skipIf(!appUrl || !workerUrl)('missions and assignments (database-backe
     expect(added.status, added.body).toBe(201);
     const coordinatorRead = await call('priya', 'GET', `/api/v1/missions/${mission.id}/people`);
     expect(coordinatorRead.status, coordinatorRead.body).toBe(200);
-    const asCoordinator = coordinatorRead.json<{ details?: unknown; behavioralHealth?: string }[]>();
+    const asCoordinator =
+      coordinatorRead.json<{ details?: unknown; behavioralHealth?: string }[]>();
     expect(asCoordinator[0]!.details).toEqual({ name: 'R. Example', phone: '+13145550188' });
     expect(asCoordinator[0]!.behavioralHealth).toBeUndefined();
     const asCounselor = (

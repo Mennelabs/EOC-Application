@@ -22,6 +22,18 @@
 		file_server
 	}
 
+	# Public "Find help" (PUB-07): /<county>/help opens the page; its assets live under /help/.
+	handle_path /help/* {
+		root * /srv/help
+		try_files {path} /index.html
+		file_server
+	}
+	handle /*/help {
+		root * /srv/help
+		rewrite * /index.html
+		file_server
+	}
+
 	handle {
 		root * /srv/resident
 		try_files {path} /index.html

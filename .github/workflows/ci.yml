@@ -32,6 +32,8 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm check:product-name
       - run: pnpm test
+      - name: Public help page builds inside its first-load budget (PUB-07)
+        run: pnpm --filter @cg/web-help build && pnpm --filter @cg/web-help check:size
       - name: Requirements index is up to date
         run: pnpm reqindex && git diff --exit-code -- docs/requirements-index.md
 

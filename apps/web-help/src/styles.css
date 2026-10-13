@@ -42,6 +42,8 @@ body {
   margin-inline: auto;
   color: var(--ink);
   background: var(--paper);
+  /* ACC-07: a long word or address never widens the page at 320 px. */
+  overflow-wrap: anywhere;
 }
 .skip {
   position: absolute;
@@ -114,6 +116,7 @@ header nav {
   border-radius: 0.5rem;
   padding: 1rem;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.5rem;
 }
 .search label {
@@ -163,9 +166,11 @@ button.secondary {
 }
 .sites {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
 }
 .site {
+  min-width: 0;
   border: 1px solid var(--line);
   border-left: 0.5rem solid var(--closed);
   border-radius: 0.5rem;
@@ -216,7 +221,7 @@ dl {
 }
 dl .row {
   display: grid;
-  grid-template-columns: minmax(7rem, 11rem) 1fr;
+  grid-template-columns: minmax(7rem, 11rem) minmax(0, 1fr);
   gap: 0.25rem 1rem;
   padding: 0.2rem 0;
   border-top: 1px solid var(--line);
@@ -295,7 +300,7 @@ footer {
 }
 @media (max-width: 420px) {
   dl .row {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   header nav {
     margin-left: 0;

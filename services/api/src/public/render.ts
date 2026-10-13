@@ -27,6 +27,7 @@ export const T = {
     media: 'Media sheet',
     updated: 'Last updated',
     generated: 'Page generated',
+    reload: 'Reload this page for the latest numbers; it does not refresh on its own.',
     accessibility:
       'We aim to meet WCAG 2.2 AA. If something on this page does not work for you, tell us and we will help another way.',
     support: 'Help line',
@@ -71,6 +72,7 @@ export const T = {
     media: 'Hoja para medios',
     updated: 'Última actualización',
     generated: 'Página generada',
+    reload: 'Vuelva a cargar esta página para ver los datos más recientes; no se actualiza sola.',
     accessibility:
       'Buscamos cumplir WCAG 2.2 AA. Si algo en esta página no le funciona, díganos y le ayudaremos de otra manera.',
     support: 'Línea de ayuda',
@@ -233,6 +235,8 @@ export function mediaPage(i: MediaPageInput): string {
       `${t.updated}: ${latest ? stamp(latest) : '—'} · ${t.generated}: ${stamp(i.generatedAt)}`,
       'muted',
     ) +
+    // No timed refresh (WCAG 2.2.1, 3.2.5): a reload is the reader's choice.
+    p(t.reload, 'muted') +
     `<h2>${escapeHtml(t.sites)}</h2>` +
     (i.sites.length
       ? `<table><thead><tr>${header}</tr></thead><tbody>${rows}</tbody></table>`
@@ -247,6 +251,5 @@ export function mediaPage(i: MediaPageInput): string {
     title: `${t.media}: ${t.help}`,
     tenantName: i.tenantName,
     body,
-    refreshSeconds: 300,
   });
 }

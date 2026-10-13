@@ -304,7 +304,9 @@ describe.skipIf(!appUrl || !workerUrl)('public information (database-backed)', (
     expect(media.body).toContain('Media sheet');
     expect(media.body).toContain('Last updated');
     expect(media.body).toContain('Harmon High School gym');
-    expect(media.body).toContain('http-equiv="refresh"');
+    // No timed refresh: it would move the reader's place (WCAG 2.2.1/3.2.5); the sheet says to reload.
+    expect(media.body).not.toContain('http-equiv');
+    expect(media.body).toContain('Reload this page');
     expect(media.body).not.toContain('Safe Harbor');
   });
 

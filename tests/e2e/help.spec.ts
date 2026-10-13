@@ -54,10 +54,13 @@ test.describe('find help', () => {
     await page.getByLabel('Your ZIP code, address or a landmark').fill('63002');
     await page.keyboard.press('Enter');
     await expect(page.getByText('Nearest to Cedar Ridge (63002)')).toBeVisible();
-    const toggle = page.getByRole('button', { name: 'Show map' });
+    // The toggle renames itself to "Hide map" once open, so it is found by what it controls.
+    const toggle = page.locator('button[aria-controls="map"]');
+    await expect(toggle).toHaveText('Show map');
     await toggle.focus();
     await page.keyboard.press('Enter');
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(toggle).toHaveText('Hide map');
     await expect(page.getByRole('heading', { name: 'Open sites' })).toBeVisible(); // the list stays
     await expect(page.getByRole('button', { name: 'Print a poster' })).toBeVisible();
   });

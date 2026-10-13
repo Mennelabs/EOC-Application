@@ -93,8 +93,6 @@ export interface PageOptions {
   /** Already-safe HTML for <main>. */
   body: string;
   tenantName: string;
-  /** Seconds between automatic refreshes (media sheet); none when absent. */
-  refreshSeconds?: number;
   footer?: string;
 }
 
@@ -116,7 +114,6 @@ export function page(o: PageOptions): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-${o.refreshSeconds ? `<meta http-equiv="refresh" content="${o.refreshSeconds}">` : ''}
 <title>${escapeHtml(o.title)} · ${escapeHtml(o.tenantName)}</title>
 <style>
 :root{color-scheme:light dark;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:1.125rem;line-height:1.5}

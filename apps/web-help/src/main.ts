@@ -152,8 +152,8 @@ function siteCard(s: Site, t: Strings): HTMLElement {
     facts.append(el('div', { class: 'row' }, el('dt', {}, label), el('dd', {}, value)));
   };
   row(t.hours, hoursText(s.hours, t));
-  row(t.services, s.services.join(', '));
-  row(t.pets[s.pets] ? '' : '', null);
+  // Keys such as pet_area_outside read as words and wrap at 320 px (ACC-07).
+  row(t.services, s.services.map((k) => k.replace(/_/g, ' ')).join(', ') || null);
   const access = Object.entries(s.accessibility)
     .filter(([, v]) => v === true)
     .map(([k]) => k.replace(/_/g, ' '))

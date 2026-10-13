@@ -191,26 +191,46 @@ export async function onboard(
   }
   await page.waitForURL((u) => /^\/console\/?/.test(u.pathname), { timeout: 30_000 });
 
-  // Sign in to the console: organization, then Keycloak (password + passkey) unless SSO carries over.
+  // Sign in to the console: the organization form, then Keycloak (password,
+  // then the passkey) unless the SSO session from the invitation carries over.
+  // The runner's pace decides which of these pages appear and in what order,
+  // so the loop acts on whatever is on screen until the console shows home.
+  const welcome = page.getByRole('heading', { name: 'Welcome' });
   const org = page.getByLabel('Organization');
-  if (await appears(org, 10_000)) {
-    await org.fill('county');
-    await page.getByRole('button', { name: 'Continue' }).click();
-    // Either Keycloak asks for credentials, or an SSO session lands us home.
-    await Promise.any([
-      page.waitForURL((u) => u.pathname.startsWith('/auth/realms/'), { timeout: 20_000 }),
-      page.getByRole('heading', { name: 'Welcome' }).waitFor({ timeout: 20_000 }),
-    ]);
-    if (page.url().includes('/auth/realms/')) {
-      await page.getByRole('textbox', { name: /username or email/i }).fill(email);
+  const username = page.getByRole('textbox', { name: /username or email/i });
+  const useKey = page.getByRole('button', {
+    name: /sign in with (security key|passkey)|authenticate/i,
+  });
+  let orgSent = false;
+  let passwordSent = false;
+  let keyUsed = false;
+  const signInDeadline = Date.now() + 90_000;
+  while (!(await welcome.isVisible()) && Date.now() < signInDeadline) {
+    if (!orgSent && (await org.isVisible())) {
+      orgSent = true;
+      await org.fill('county');
+      await page.getByRole('button', { name: 'Continue' }).click();
+    } else if (!passwordSent && (await username.isVisible())) {
+      passwordSent = true;
+      await username.fill(email);
       await page.getByRole('textbox', { name: 'Password', exact: true }).fill(PASSWORD);
       await page.getByRole('button', { name: /sign in/i }).click();
-      const useKey = page.getByRole('button', {
-        name: /sign in with (security key|passkey)|authenticate/i,
-      });
-      if (await appears(useKey, 10_000)) await useKey.click();
+    } else if (!keyUsed && (await useKey.isVisible())) {
+      keyUsed = true;
+      await useKey.click();
     }
+    await page.waitForTimeout(500);
   }
-  await expect(page.getByRole('heading', { name: 'Welcome' })).toBeVisible({ timeout: 30_000 });
+  if (!(await welcome.isVisible())) {
+    const h1 = await page
+      .locator('h1')
+      .first()
+      .textContent()
+      .catch(() => null);
+    throw new Error(
+      `console home did not appear after sign-in (url ${page.url()}, heading ${JSON.stringify(h1)}, ` +
+        `organization ${orgSent}, password ${passwordSent}, passkey ${keyUsed})`,
+    );
+  }
   return email;
 }

@@ -891,7 +891,29 @@ const teamShapes: TeamShape[] = [
     everyone: ['background_check'],
     some: ['spanish_speaker', 'chaplain'],
   },
+  // The stack and browser suites sign in as this team's lead (FIELD_ACCOUNTS); kept apart so
+  // their check-ins, positions and timers never touch the rosters the other suites check.
+  {
+    key: 'field-exercise',
+    tenant: 'county',
+    name: 'Field Exercise Team',
+    kind: 'team',
+    callsign: 'FX-1',
+    skills: ['cert'],
+    equipment: ['radio'],
+    size: 2,
+    operationalRole: 'canvasser',
+    everyone: ['cert'],
+  },
 ];
+
+/**
+ * Field accounts (layer 4 task L): a sign-in for a roster person, so the field app and the
+ * stack suite act as a real team member. Synthetic like everything here (SCL-12).
+ */
+export const FIELD_ACCOUNTS = [
+  { email: 'rowan.field@example.org', team: 'field-exercise', member: 'lead' },
+] as const;
 
 function rosterTeams(rng: Rng): TeamSpec[] {
   const usedNames = new Set<string>();

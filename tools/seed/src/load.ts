@@ -33,6 +33,7 @@ import {
   zipCentroids,
   buildCounty,
   EXERCISE_CHECK_IN_CODE,
+  FIELD_ACCOUNTS,
   type TeamSpec,
 } from './county.ts';
 
@@ -100,6 +101,20 @@ export const cast = [
     tenant: 'state',
   },
   { email: 'nurse@example.org', name: 'Mei Delgado', role: 'shelter_nurse', tenant: 'shelter-ngo' },
+  // Layer 4: the field side of the exercise (DSP-09, DSP-10, FLD-03).
+  { email: 'rowan.field@example.org', name: 'Rowan Achebe', role: 'team_lead', tenant: 'county' },
+  {
+    email: 'pat.netcontrol@example.org',
+    name: 'Pat Iverson',
+    role: 'net_control',
+    tenant: 'county',
+  },
+  {
+    email: 'dispatch.cleanup@example.org',
+    name: 'Cleanup dispatcher',
+    role: 'agency_dispatcher',
+    tenant: 'cleanup',
+  },
   // Partner organizations run their own accounts (ADM-02, decision 2026-10-13). Each gets
   // a tenant administrator and a security administrator, because granting a role needs a
   // second administrator inside the same organization (ADM-05 G6).
@@ -1117,6 +1132,29 @@ export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
         .executeTakeFirstOrThrow();
       const { id } = await ensureAccount(trx, tenantId, member, role.id);
       accountIds[member.email] = id;
+    });
+  }
+  // A field account is the roster person it names (FLD-03): its check-in is that person's.
+  for (const link of FIELD_ACCOUNTS) {
+    const accountId = accountIds[link.email];
+    const spec = teamSpecs.find((t) => t.key === link.team);
+    const tenantId = spec ? tenantIds[spec.tenant] : undefined;
+    if (!accountId || !spec || !tenantId) continue;
+    await withTenant(db, { tenantId }, async (trx) => {
+      const person = await trx
+        .selectFrom('cg.team_member as m')
+        .innerJoin('cg.team as t', 't.id', 'm.team_id')
+        .innerJoin('cg.personnel as p', 'p.id', 'm.personnel_id')
+        .select(['p.id', 'p.account_id'])
+        .where('t.key', '=', link.team)
+        .where('m.role', '=', link.member)
+        .executeTakeFirst();
+      if (person && !person.account_id)
+        await trx
+          .updateTable('cg.personnel')
+          .set({ account_id: accountId, updated_by: SEED_ACTOR_A })
+          .where('id', '=', person.id)
+          .execute();
     });
   }
   const countyId = tenantIds['county'];

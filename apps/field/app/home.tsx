@@ -6,6 +6,7 @@
  * "Got it", the latest message from dispatch, and how many records are
  * still on the phone. The help button is on every screen (ui.tsx).
  */
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { timerLabel, timerPhase } from '@cg/field-core';
@@ -104,6 +105,50 @@ export default function Home() {
         </Body>
       ) : null}
 
+      <Card label={t('home.tools')}>
+        <Heading level={2}>{t('home.tools')}</Heading>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {f.can('assessment.record') ? (
+            <Button label={t('work.newProperty')} onPress={() => router.push('/locate')} />
+          ) : null}
+          {f.can('hazard.report') ? (
+            <Button
+              kind="secondary"
+              label={t('report.heading')}
+              onPress={() => router.push('/report')}
+            />
+          ) : null}
+          {f.can('service_log.write') ? (
+            <Button
+              kind="secondary"
+              label={t('counters.heading')}
+              onPress={() => router.push('/counters')}
+            />
+          ) : null}
+          {f.can('site.confirm') ? (
+            <Button
+              kind="secondary"
+              label={t('census.heading')}
+              onPress={() => router.push('/census')}
+            />
+          ) : null}
+          {f.can('need.done') ? (
+            <Button
+              kind="secondary"
+              label={t('needs.heading')}
+              onPress={() => router.push('/needs')}
+            />
+          ) : null}
+          {f.can('job_aid.read') ? (
+            <Button
+              kind="secondary"
+              label={t('aids.heading')}
+              onPress={() => router.push('/job-aids')}
+            />
+          ) : null}
+        </View>
+      </Card>
+
       <Card label={t('home.route')}>
         <Heading level={2}>{t('home.route')}</Heading>
         {assignments.length === 0 ? <Body muted>{t('home.noWork')}</Body> : null}
@@ -130,6 +175,11 @@ export default function Home() {
                 onPress={() => void f.acknowledgeAssignment(a.id)}
               />
             ) : null}
+            <Button
+              kind="secondary"
+              label={t('home.open')}
+              onPress={() => router.push({ pathname: '/work/[id]', params: { id: a.id } })}
+            />
           </View>
         ))}
       </Card>

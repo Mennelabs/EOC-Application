@@ -135,6 +135,39 @@ interface FieldActions {
   updateSettings(patch: Partial<Settings>): Promise<void>;
   setSharing(on: boolean): Promise<void>;
   clearNotice(): void;
+  /** Read a local collection (parcels, sites, job aids, assessments…). */
+  list<T extends object>(collection: string): Promise<T[]>;
+  /** Keep a small piece of screen state on the phone (a sweep in progress). */
+  saveDoc(collection: string, doc: { id: string; [k: string]: unknown }): Promise<void>;
+  setAssignmentStatus(id: string, to: 'en_route' | 'on_scene' | 'cleared'): Promise<void>;
+  recordAssessment(input: AssessmentInput): Promise<string>;
+  /** Sweep undo: removes a record that has not left the phone; false once it was sent. */
+  withdraw(commandId: string): Promise<boolean>;
+  quickReport(input: {
+    kind: string;
+    severity: string;
+    summary?: string;
+    position?: { lat: number; lon: number; accuracyM?: number };
+  }): Promise<void>;
+  logService(kind: string, count: number, siteId?: string): Promise<void>;
+  census(siteId: string, occupancy: number, status?: string): Promise<void>;
+  needDone(needId: string, note: string): Promise<void>;
+  /** Online lists the phone does not keep (needs held by the crew's organization). */
+  online<T>(path: string): Promise<T>;
+}
+
+export interface AssessmentInput {
+  mode: 'sweep' | 'detailed' | 'validation';
+  parcelId?: string;
+  address?: string | null;
+  position?: { lat: number; lon: number; accuracyM?: number };
+  landmark?: string;
+  structure: string;
+  degree: string;
+  observations?: Record<string, string | number | boolean>;
+  note?: string;
+  missionId?: string;
+  assignmentId?: string;
 }
 
 const Ctx = createContext<(FieldState & FieldActions) | null>(null);
@@ -595,6 +628,103 @@ export function FieldProvider({ children }: { children: ReactNode }) {
       setCheckIn(next);
     },
     clearNotice: () => setNotice(null),
+    async list<T extends object>(collection: string) {
+      return (await store.current?.list<T>(collection)) ?? [];
+    },
+    async saveDoc(collection, doc) {
+      await store.current?.put(collection, doc);
+    },
+    async setAssignmentStatus(id, to) {
+      const s = store.current;
+      const a = s ? await s.get<Assignment>('assignments', id) : null;
+      if (!s || !a) return;
+      await s.put('assignments', { ...a, state: to, syncState: 'on_this_phone' });
+      // RULE-03, DSP-05: each fact on its own, confirmed by the person; never inferred from location.
+      await enqueue({
+        kind: 'assignment.status',
+        targetId: id,
+        version: a.version,
+        body: { to, at: new Date().toISOString() },
+        localRef: { collection: 'assignments', id },
+      });
+    },
+    async recordAssessment(input) {
+      const s = store.current;
+      if (!s) throw new Error('locked');
+      const id = globalThis.crypto.randomUUID();
+      const body: Record<string, unknown> = {
+        mode: input.mode,
+        structure: input.structure,
+        degree: input.degree,
+        ...(input.parcelId ? { parcelId: input.parcelId } : {}),
+        ...(input.position ? { position: input.position } : {}),
+        ...(input.landmark ? { landmark: input.landmark } : {}),
+        ...(input.observations ? { observations: input.observations } : {}),
+        ...(input.note ? { note: input.note } : {}),
+        ...(input.missionId ? { missionId: input.missionId } : {}),
+        ...(input.assignmentId ? { assignmentId: input.assignmentId } : {}),
+        ...(checkIn?.eventId ? { eventId: checkIn.eventId } : {}),
+      };
+      // The local record keeps only what the volunteer needs to see; no resident details are asked for (FLD-14).
+      await s.put('assessments', {
+        id,
+        parcelId: input.parcelId ?? null,
+        address: input.address ?? null,
+        landmark: input.landmark ?? null,
+        degree: input.degree,
+        structure: input.structure,
+        mode: input.mode,
+        at: new Date().toISOString(),
+        syncState: 'on_this_phone',
+      });
+      await enqueue({
+        id,
+        kind: 'assessment.record',
+        body,
+        localRef: { collection: 'assessments', id },
+      });
+      return id;
+    },
+    async withdraw(commandId) {
+      const s = store.current;
+      const cmd = await loop.current?.outbox.get(commandId);
+      if (!s || !cmd || cmd.status !== 'on_this_phone') return false;
+      await loop.current!.outbox.resolve(commandId);
+      if (cmd.localRef) await s.delete(cmd.localRef.collection, cmd.localRef.id);
+      await refresh();
+      return true;
+    },
+    async quickReport(input) {
+      if (!checkIn?.eventId) return;
+      await enqueue({
+        kind: 'hazard.report',
+        body: {
+          eventId: checkIn.eventId,
+          kind: input.kind,
+          severity: input.severity,
+          source: 'field',
+          ...(input.summary ? { summary: input.summary } : {}),
+          ...(input.position ? { position: input.position } : {}),
+        },
+      });
+    },
+    async logService(kind, count, siteId) {
+      await enqueue({
+        kind: 'service_log.record',
+        body: { kind, count, ...(siteId ? { siteId } : {}), occurredAt: new Date().toISOString() },
+      });
+    },
+    async census(siteId, occupancy, status) {
+      await enqueue({
+        kind: 'site.census',
+        targetId: siteId,
+        body: { occupancy, ...(status ? { status } : {}) },
+      });
+    },
+    async needDone(needId, note) {
+      await enqueue({ kind: 'need.done', targetId: needId, body: { note } });
+    },
+    online: <T,>(path: string) => api.current.call<T>('GET', path),
   };
 
   const value: FieldState & FieldActions = {

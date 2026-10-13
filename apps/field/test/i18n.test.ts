@@ -5,7 +5,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import { allKeys, catalogFor, translate } from '../src/i18n.ts';
-import { duration, words } from '../src/format.ts';
+import { duration, htmlToLines, words } from '../src/format.ts';
+import { DEGREES, STRUCTURES, describe as describeDegree, picture } from '../src/assessment.ts';
 import { label, vocabularyGroups } from '../src/vocab.ts';
 
 const placeholders = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
@@ -44,5 +45,33 @@ describe('field app strings', () => {
       }
     expect(label('es', 'hazardKinds', 'downed_line')).toBe('cable eléctrico caído');
     expect(label('es', 'hazardKinds', 'something_new')).toBe('something new');
+  });
+});
+
+describe('assessment pictures and job aids (FLD-08, FL-15)', () => {
+  it('every home type and degree has a description in both languages, and the pictures get worse with the degree', () => {
+    for (const s of STRUCTURES)
+      for (const d of DEGREES) {
+        expect(describeDegree('en', s, d), `${s}/${d}`).toBeTruthy();
+        expect(describeDegree('es', s, d), `${s}/${d}`).toBeTruthy();
+      }
+    const order = ['no_damage', 'affected', 'minor', 'major', 'destroyed'] as const;
+    for (const s of ['single_family', 'manufactured'] as const)
+      for (let i = 1; i < order.length; i += 1) {
+        expect(picture(s, order[i]!).water).toBeGreaterThan(picture(s, order[i - 1]!).water);
+        expect(picture(s, order[i]!).roofLoss).toBeGreaterThan(picture(s, order[i - 1]!).roofLoss);
+      }
+    expect(describeDegree('en', 'manufactured', 'minor')).toMatch(/floor system/);
+  });
+  it('job aid markup becomes plain lines; scripts and tags never survive', () => {
+    const lines = htmlToLines(
+      '<h3>Safety</h3><ul><li>Check in &amp; stay with your team.</li><li>Downed lines are live.</li></ul><script>alert(1)</script><p onclick="x()">Call 911.</p>',
+    );
+    expect(lines).toEqual([
+      'Safety',
+      '• Check in & stay with your team.',
+      '• Downed lines are live.',
+      'Call 911.',
+    ]);
   });
 });

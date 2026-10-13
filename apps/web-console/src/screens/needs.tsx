@@ -174,7 +174,16 @@ export function NeedsBoardScreen({ me }: { me: { tenantId: string; tenantKind?: 
     const warn = r.warnings.length
       ? ` Warning: ${r.warnings.map((w) => `${label(w.kind)} (${label(w.category)}${w.claimedByTenantName ? `, ${w.claimedByTenantName}` : ''})`).join('; ')}.`
       : '';
-    setNotice(`${label(r.need.category)} ${verb === 'done' ? 'marked done' : verb + 'ed'}.${warn}`);
+    const past: Record<string, string> = {
+      claim: 'claimed',
+      assign: 'assigned',
+      release: 'released',
+      done: 'marked done',
+      reopen: 'reopened',
+    };
+    setNotice(`${label(r.need.category)} ${past[verb] ?? verb}.${warn}`);
+    // The action is done: close its panel; the status line announces the result (CON-08).
+    setOpen(null);
     reload();
   };
   const exportCsv = () => {

@@ -76,7 +76,9 @@ export function DataTable<T>({
 }) {
   if (rows.length === 0) return <p className="empty">{empty}</p>;
   return (
-    <div className="table-wrap">
+    // A wide table scrolls sideways on a phone; the region takes keyboard focus so the
+    // arrow keys can scroll it, and is named after its caption (ACC-07, ACC-10, WCAG 2.1.1).
+    <div className="table-wrap" role="region" aria-label={caption} tabIndex={0}>
       <table>
         <caption>{caption}</caption>
         <thead>

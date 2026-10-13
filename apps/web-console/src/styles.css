@@ -98,6 +98,8 @@ nav a:hover {
 }
 main {
   flex: 1 1 20rem;
+  /* ACC-07: a wide table scrolls inside its .table-wrap instead of widening the page on a phone. */
+  min-inline-size: 0;
   padding: 1rem 1.5rem 3rem;
   max-inline-size: 72rem;
 }
@@ -214,6 +216,10 @@ button.link {
 }
 .table-wrap {
   overflow-x: auto;
+}
+.table-wrap:focus-visible {
+  outline: 3px solid var(--brand);
+  outline-offset: 2px;
 }
 table {
   border-collapse: collapse;

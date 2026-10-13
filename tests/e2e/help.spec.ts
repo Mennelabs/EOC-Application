@@ -80,7 +80,11 @@ test.describe('find help', () => {
   }) => {
     await page.goto('/county/help');
     await expect(page.getByRole('heading', { name: 'Open sites' })).toBeVisible();
-    // Headless Chromium answers window.print() without a dialog; the poster stays in the page.
+    // Headless Chromium returns from window.print() at once and fires afterprint, which removes the
+    // poster; the print call is replaced so the poster stays in the page for the checks.
+    await page.evaluate(() => {
+      window.print = () => undefined;
+    });
     await page.getByRole('button', { name: 'Print a poster' }).click();
     const poster = page.locator('#poster');
     await expect(poster).toBeAttached();

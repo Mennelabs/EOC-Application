@@ -119,9 +119,13 @@ export function SitesScreen() {
     setMsg(null);
     try {
       await api(`/sites/${site.id}/${verb}`, { body });
-      setMsg(
-        `${site.name}: ${verb === 'publish' ? 'published on every channel' : verb === 'unpublish' ? 'taken off every channel' : verb + 'ed'}.`,
-      );
+      const past: Record<string, string> = {
+        publish: 'published on every channel',
+        unpublish: 'taken off every channel',
+        confirm: 'confirmed',
+        close: 'closed',
+      };
+      setMsg(`${site.name}: ${past[verb] ?? verb}.`);
       reload();
     } catch (err) {
       setMsg(describeFailure(err));

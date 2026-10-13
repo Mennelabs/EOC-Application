@@ -154,6 +154,12 @@ importers:
       '@cg/intake':
         specifier: workspace:*
         version: link:../../packages/intake
+      maplibre-gl:
+        specifier: 6.12.0
+        version: 6.12.0
+      pmtiles:
+        specifier: 4.5.0
+        version: 4.5.0
       qrcode:
         specifier: 1.5.4
         version: 1.5.4

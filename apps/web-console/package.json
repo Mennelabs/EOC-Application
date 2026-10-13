@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@cg/intake": "workspace:*",
+    "maplibre-gl": "6.12.0",
+    "pmtiles": "4.5.0",
     "qrcode": "1.5.4",
     "react": "19.3.0",
     "react-dom": "19.3.0"

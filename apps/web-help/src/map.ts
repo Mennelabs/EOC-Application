@@ -6,6 +6,7 @@
  */
 import {
   addProtocol,
+  setWorkerUrl,
   LngLatBounds,
   Map as MapLibreMap,
   Marker,
@@ -14,6 +15,8 @@ import {
   type StyleSpecification,
 } from 'maplibre-gl';
 import { Protocol } from 'pmtiles';
+// MapLibre 6 loads its worker from beside its own bundle; Vite bundles the worker and gives its URL.
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import type { Site } from './main.ts';
 import { strings, type Lang } from './i18n.ts';
 
@@ -88,6 +91,7 @@ const STYLE = (tiles: string): StyleSpecification => ({
 export async function showMap(container: HTMLElement, sites: Site[], lang: Lang): Promise<void> {
   const t = strings(lang);
   if (!protocolAdded) {
+    setWorkerUrl(workerUrl);
     addProtocol('pmtiles', new Protocol().tile);
     protocolAdded = true;
   }

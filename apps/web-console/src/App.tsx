@@ -12,6 +12,8 @@ import {
 } from './screens/permissions.tsx';
 import { AiRegisterScreen, AssistedScreen, IntakeSetupScreen } from './screens/intake.tsx';
 import { ContactsScreen } from './screens/contacts.tsx';
+import { DispatchScreen, ReplayScreen } from './screens/dispatch.tsx';
+import { MissionDetailScreen, MissionsScreen } from './screens/missions.tsx';
 import { KeyCounts, NeedsBoardScreen, PartnerScreen } from './screens/needs.tsx';
 import { PartnersScreen } from './screens/partners.tsx';
 import { ResourcesScreen } from './screens/resources.tsx';
@@ -37,6 +39,9 @@ const routes = [
   { path: '/console/publications', label: 'Publication log', layer: 3 },
   { path: '/console/contacts', label: 'Contacts', layer: 3 },
   { path: '/console/partners', label: 'Partner agreements', layer: 3 },
+  { path: '/console/dispatch', label: 'Dispatch board', layer: 4 },
+  { path: '/console/missions', label: 'Missions', layer: 4 },
+  { path: '/console/replay', label: 'Board replay', layer: 4 },
   { path: '/console/events', label: 'Events', layer: 1 },
   { path: '/console/tenants', label: 'Organizations', layer: 1 },
   { path: '/console/accounts', label: 'Staff accounts', layer: 1 },
@@ -183,9 +188,17 @@ export function App({ config }: { config: RuntimeConfig }) {
   }
 
   const screen = (() => {
+    if (path.startsWith('/console/missions/'))
+      return <MissionDetailScreen id={path.slice('/console/missions/'.length)} />;
     if (path.startsWith('/console/reports/'))
       return <ReportDetailScreen id={path.slice('/console/reports/'.length)} navigate={navigate} />;
     switch (path) {
+      case '/console/dispatch':
+        return <DispatchScreen />;
+      case '/console/missions':
+        return <MissionsScreen navigate={navigate} />;
+      case '/console/replay':
+        return <ReplayScreen />;
       case '/console/reports':
         return <ReviewQueueScreen navigate={navigate} />;
       case '/console/assist':

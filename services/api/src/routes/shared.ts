@@ -91,19 +91,33 @@ export const sharedRoutes: FastifyPluginAsync = async (instance) => {
       tenantId: grants[0]!.to_tenant_id,
       fields,
     });
+    // Only the known projection keys are copied, never whatever the stored JSON holds (OWASP A08).
+    const CLEAR_KEYS = [
+      'referenceCode',
+      'contactPreference',
+      'address',
+      'area',
+      'householdBand',
+      'needs',
+    ];
+    const RESTRICTED_KEYS = ['name', 'contact', 'accessNeeds'];
+    const copy = (from: Record<string, unknown>, keys: string[], into: Record<string, unknown>) => {
+      for (const key of keys) if (from[key] !== undefined) into[key] = from[key];
+    };
     const clear: Record<string, unknown> = {};
     const restricted: Record<string, unknown> = {};
     let unreadable = false;
     for (const g of grants) {
-      Object.assign(clear, g.projection);
+      copy(g.projection as Record<string, unknown>, CLEAR_KEYS, clear);
       if (!g.projection_enc) continue;
       try {
-        Object.assign(
-          restricted,
+        copy(
           JSON.parse(await app.fieldCrypto.decrypt(g.tenant_id, g.projection_enc)) as Record<
             string,
             unknown
           >,
+          RESTRICTED_KEYS,
+          restricted,
         );
       } catch (err) {
         // A key problem on one record is an incident for operators, not an outage for the board:

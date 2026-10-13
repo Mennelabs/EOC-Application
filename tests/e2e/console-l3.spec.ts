@@ -172,7 +172,7 @@ test.describe('partner workspace (ADM-02, NED-04, FL-03, AC-17C)', () => {
     await expect(page.getByRole('heading', { name: 'Partner workspace' })).toBeVisible();
     const shared = page.getByRole('row').filter({ hasText: code });
     await expect(shared).toBeVisible({ timeout: 90_000 }); // once the worker filed it and derived the grant
-    await expect(shared).toContainText('Westwind 63002'); // the feeding service sees the area
+    await expect(shared).toContainText(/Westwind,? 63002/); // the feeding service sees the area, not the address
     await expect(shared).not.toContainText('Rosa Delgado'); // never the name (NED-04)
     await expect(shared).not.toContainText('Partner Pl'); // nor the exact address
     await expectNoViolations(page);

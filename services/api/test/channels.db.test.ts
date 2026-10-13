@@ -284,11 +284,47 @@ describe.skipIf(!appUrl || !workerUrl)('text and voice intake (database-backed)'
     expect(after[1]).toContain('Is anyone in danger'); // any text starts fresh in the county default language
   });
 
-  it('SHELTER answers with the help line until layer 3 publishes resources; a closed county has no texting', async () => {
-    const reply = await text(`+1314557${run.slice(-4)}`, 'shelter');
-    expect(reply[0]).toContain('(314) 555-0142');
-    expect(reply[0]).toContain('https://localhost/county/help');
-    expect(reply[0]).toContain('911');
+  it('SHELTER with a ZIP answers with the three nearest open sites; REFUGIO in Spanish; without a place it says how to ask (PUB-08)', async () => {
+    const near = await text(`+1314557${run.slice(-4)}`, 'shelter 63005');
+    expect(near[0]).toContain('Open sites nearest Harmon City (63005):');
+    expect(near[0]).toContain('Harmon High School gym (shelter) (0 km away)');
+    expect(near[0]).toContain('400 Schoolhouse Rd');
+    expect(near[0]).toContain('Open 24 hours');
+    expect(near[0]).toContain('service animals only');
+    expect(near[0]).not.toContain('Safe Harbor');
+    expect(near[0]!.split('\n').length - 1).toBeLessThanOrEqual(3);
+    expect(near[1]).toContain('https://localhost/county/help');
+    expect(near[1]).toContain('911');
+    const es = await text(`+1314557${run.slice(-4)}`, 'REFUGIO 63002');
+    expect(es[0]).toContain('Sitios abiertos cerca de Cedar Ridge (63002):');
+    expect(es[0]).toContain('Iglesia Nueva Esperanza fellowship hall (comida)');
+    expect(es[1]).toContain('ALTO');
+    const bare = await text(`+1314557${run.slice(-4)}`, 'shelter');
+    expect(bare[0]).toContain('Open sites:');
+    expect(bare[1]).toContain('Text SHELTER and your ZIP code');
+  });
+
+  it('a call: press 3, enter a ZIP, hear the nearest open sites, then report damage (PUB-09)', async () => {
+    const caller = `+1314559${run.slice(-4)}`;
+    const start = await voice(caller, 'start');
+    expect(start.say.join(' ')).toContain('press 3');
+    expect(start.say.join(' ')).toContain('oprima el 4');
+    const ask = await voice(caller, 'language', { digits: '3' });
+    expect(ask.say[0]).toContain('five digits of your ZIP code');
+    expect(ask.twiml).toContain('numDigits="5"');
+    expect(ask.nextStep).toBe('sites_en');
+    const list = await voice(caller, 'sites_en', { digits: '63005' });
+    const spoken = list.say.join(' ');
+    expect(spoken).toContain('Harmon High School gym, a shelter');
+    expect(spoken).toContain('400 Schoolhouse Rd');
+    expect(spoken).toContain('To hear this again, press 1');
+    expect(list.nextStep).toBe('sites_menu_en');
+    const es = await voice(caller, 'sites_es', { digits: '63002' });
+    expect(es.say.join(' ')).toContain('Iglesia Nueva Esperanza fellowship hall, comida');
+    const report = await voice(caller, 'sites_menu_en', { digits: '2' });
+    expect(report.say.join(' ')).toContain('Is anyone in danger right now?');
+    const bye = await voice(caller, 'sites_menu_en', { digits: '9' });
+    expect(bye.hangup).toBe(true);
   });
 
   it('a call: greeting and language choice, questions by keypad and speech, agent transfer, send with a texted code (CHN-05)', async () => {

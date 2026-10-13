@@ -24,11 +24,17 @@ const sms: DialogueOptions = {
 const voice: DialogueOptions = { ...sms, channel: 'voice' };
 
 describe('keywords (docs/06, CHN-03)', () => {
+  it('SHELTER or REFUGIO with a ZIP carries the place (PUB-08)', () => {
+    expect(command('shelter 63001')).toEqual({ kind: 'shelter', locale: 'en', query: '63001' });
+    expect(command('Refugio 63002')).toEqual({ kind: 'shelter', locale: 'es', query: '63002' });
+    expect(command('shelters')).toEqual({ kind: 'none' });
+  });
+
   it('start, shelter, help, stop, back and skip work in both languages, any case, with or without accents', () => {
     expect(command('damage')).toEqual({ kind: 'start', locale: 'en' });
     expect(command(' DAÑOS ')).toEqual({ kind: 'start', locale: 'es' });
     expect(command('Danos')).toEqual({ kind: 'start', locale: 'es' });
-    expect(command('refugio')).toEqual({ kind: 'shelter', locale: 'es' });
+    expect(command('refugio')).toEqual({ kind: 'shelter', locale: 'es', query: null });
     expect(command('AYUDA')).toEqual({ kind: 'help' });
     expect(command('Alto')).toEqual({ kind: 'stop' });
     expect(command('unsubscribe')).toEqual({ kind: 'stop' });

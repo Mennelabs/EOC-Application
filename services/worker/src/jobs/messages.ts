@@ -22,6 +22,8 @@ export const messagePayloadSchema = z.object({
   partyId: z.uuid().optional(),
   /** A recall notice names the grant it recalls; the grant records the message (NED-05). */
   shareGrantId: z.uuid().optional(),
+  /** A referral notice names its referral so a redelivery finds it (FL-10). */
+  referralId: z.uuid().optional(),
   variables: z.record(z.string(), z.string()).default({}),
 });
 

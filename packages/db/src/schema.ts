@@ -857,6 +857,8 @@ export interface MessageTable extends Stamped {
   sent_at: TsNullable;
   delivered_at: TsNullable;
   failed_at: TsNullable;
+  /** Outbound to the resident, or the resident's reply (FL-11). */
+  direction: Generated<'outbound' | 'inbound'>;
 }
 
 export interface AbuseSignalTable {

@@ -15,6 +15,7 @@ import { sql } from 'kysely';
 import { allTenantIds, asSystem, systemAudit } from '../system.ts';
 import { messageSend } from './messages.ts';
 import { photoProcess } from './photos.ts';
+import { referralCreated } from './referrals.ts';
 import {
   consentChanged,
   correctionRequested,
@@ -246,6 +247,7 @@ export const topicHandlers: Record<string, TopicHandler> = {
   'report.withdrawn': reportWithdrawn,
   'report.corrected': reportCorrected,
   'consent.changed': consentChanged,
+  'referral.created': referralCreated,
 };
 
 // ---- schedules --------------------------------------------------------------

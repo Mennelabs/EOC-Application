@@ -798,6 +798,7 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     sent_at: { c: 'internal' },
     delivered_at: { c: 'internal' },
     failed_at: { c: 'internal' },
+    direction: { c: 'internal', d: "outbound to the resident, or the resident's reply (FL-11)" },
   }),
   abuse_signal: table(
     {

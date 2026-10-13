@@ -12,7 +12,9 @@ export type TemplateName =
   | 'correction_request'
   | 'withdrawn'
   | 'sharing_recall'
-  | 'needs_confirmation';
+  | 'needs_confirmation'
+  | 'staff_update'
+  | 'referral_notice';
 
 export const TEMPLATE_NAMES: readonly TemplateName[] = [
   'confirmation',
@@ -22,6 +24,8 @@ export const TEMPLATE_NAMES: readonly TemplateName[] = [
   'withdrawn',
   'sharing_recall',
   'needs_confirmation',
+  'staff_update',
+  'referral_notice',
 ];
 
 export interface TemplateVars {
@@ -39,6 +43,11 @@ export interface TemplateVars {
   sections?: string;
   sharedSince?: string;
   why?: string;
+  /** A staff update to the resident (FL-11): the plain text and who sent it. */
+  text?: string;
+  sender?: string;
+  /** A referral notice to a partner organization (FL-10). */
+  purpose?: string;
 }
 
 export interface Rendered {
@@ -63,6 +72,10 @@ const EN = {
       `${v.county} Emergency Mgmt: Record ${v.referenceCode} shared with ${v.partner ?? 'your organization'} is recalled (${v.why ?? 'consent withdrawn'}). Delete what you hold of it, as your agreement requires.`,
     needs_confirmation: (v: TemplateVars) =>
       `${v.county} Emergency Mgmt: Thanks for telling us what you need. Your reference number is ${v.referenceCode}. This does not send emergency help. In danger now? Call 911. Reply STOP to opt out.`,
+    staff_update: (v: TemplateVars) =>
+      `${v.county} Emergency Mgmt (${v.sender ?? v.county}) about report ${v.referenceCode}: ${v.text ?? ''} Reply to this text to answer. In danger now? Call 911. Reply STOP to opt out.`,
+    referral_notice: (v: TemplateVars) =>
+      `${v.county} Emergency Mgmt: a referral for record ${v.referenceCode} was sent to ${v.partner ?? 'your organization'}: ${v.purpose ?? ''}. Open your workspace to accept it.`,
   },
   email: {
     confirmation: (v: TemplateVars) => ({
@@ -106,6 +119,20 @@ const EN = {
         (v.helpPhone ? ` Questions? Call ${v.helpPhone}.` : '') +
         '\n',
     }),
+    staff_update: (v: TemplateVars) => ({
+      subject: `${v.county}: an update about your report ${v.referenceCode}`,
+      body:
+        `${v.sender ?? v.county} sent you an update about report ${v.referenceCode}:\n\n${v.text ?? ''}\n\n` +
+        `Reply to this email to answer. This message does not send emergency help. If you are in danger now, call 911.\n` +
+        (v.helpPhone ? `Questions? Call ${v.helpPhone}.\n` : ''),
+    }),
+    referral_notice: (v: TemplateVars) => ({
+      subject: `${v.county}: a referral for record ${v.referenceCode}`,
+      body:
+        `${v.county} Emergency Management sent ${v.partner ?? 'your organization'} a referral for record ${v.referenceCode}.\n\n` +
+        `Purpose: ${v.purpose ?? ''}\n\n` +
+        `Open your partner workspace to accept or decline it. Only the sections the resident agreed to share are visible, and the referral rides on that consent.\n`,
+    }),
     needs_confirmation: (v: TemplateVars) => ({
       subject: `${v.county}: your request for help ${v.referenceCode}`,
       body:
@@ -133,6 +160,10 @@ const ES: typeof EN = {
       `${v.county} Manejo de Emergencias: El registro ${v.referenceCode} compartido con ${v.partner ?? 'su organización'} fue retirado (${v.why ?? 'consentimiento retirado'}). Borre lo que tenga de él, como exige su acuerdo.`,
     needs_confirmation: (v) =>
       `${v.county} Manejo de Emergencias: Gracias por decirnos qué necesita. Referencia: ${v.referenceCode}. No envía ayuda de emergencia. ¿En peligro? Llame al 911. Responda ALTO para cancelar.`,
+    staff_update: (v) =>
+      `${v.county} (${v.sender ?? v.county}) sobre el reporte ${v.referenceCode}: ${v.text ?? ''} Responda a este texto. ¿En peligro? Llame al 911. Responda ALTO para cancelar.`,
+    referral_notice: (v) =>
+      `${v.county}: se envió una referencia del registro ${v.referenceCode} a ${v.partner ?? 'su organización'}: ${v.purpose ?? ''}. Abra su espacio de trabajo para aceptarla.`,
   },
   email: {
     confirmation: (v) => ({
@@ -175,6 +206,20 @@ const ES: typeof EN = {
         `Su organización ya no puede ver el registro. Su acuerdo de intercambio de datos le obliga a borrar cualquier copia o exportación y a no contactar al residente sobre él.` +
         (v.helpPhone ? ` ¿Preguntas? Llame al ${v.helpPhone}.` : '') +
         '\n',
+    }),
+    staff_update: (v) => ({
+      subject: `${v.county}: una novedad sobre su reporte ${v.referenceCode}`,
+      body:
+        `${v.sender ?? v.county} le envió una novedad sobre el reporte ${v.referenceCode}:\n\n${v.text ?? ''}\n\n` +
+        `Responda a este correo para contestar. Este mensaje no envía ayuda de emergencia. Si está en peligro ahora, llame al 911.\n` +
+        (v.helpPhone ? `¿Preguntas? Llame al ${v.helpPhone}.\n` : ''),
+    }),
+    referral_notice: (v) => ({
+      subject: `${v.county}: una referencia del registro ${v.referenceCode}`,
+      body:
+        `Manejo de Emergencias de ${v.county} envió a ${v.partner ?? 'su organización'} una referencia del registro ${v.referenceCode}.\n\n` +
+        `Propósito: ${v.purpose ?? ''}\n\n` +
+        `Abra su espacio de trabajo para aceptarla o rechazarla. Solo se ven las secciones que el residente aceptó compartir.\n`,
     }),
     needs_confirmation: (v) => ({
       subject: `${v.county}: su solicitud de ayuda ${v.referenceCode}`,

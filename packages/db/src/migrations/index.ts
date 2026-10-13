@@ -24,6 +24,7 @@ import * as m0022 from './0022_sharing.ts';
 import * as m0023 from './0023_sites.ts';
 import * as m0024 from './0024_resources.ts';
 import * as m0025 from './0025_publication.ts';
+import * as m0026 from './0026_message_direction.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -52,4 +53,5 @@ export const migrations: Record<string, Migration> = {
   '0023_sites': m0023,
   '0024_resources': m0024,
   '0025_publication': m0025,
+  '0026_message_direction': m0026,
 };

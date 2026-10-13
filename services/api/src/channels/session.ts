@@ -38,6 +38,7 @@ import {
   type SubmitResult,
 } from '../public/submit.ts';
 import { enqueueOutbox } from '../routes/helpers.ts';
+import { nearestOpenSites, siteLine, siteSpoken } from './sites-text.ts';
 import { isAllowedImage, type MediaFetcher } from './media.ts';
 import { element, gather, say, sayCode } from './twilio.ts';
 
@@ -57,7 +58,15 @@ export interface InboundText {
 
 export interface VoiceStep {
   from: string;
-  step: 'start' | 'language' | 'answer' | 'repeat';
+  step:
+    | 'start'
+    | 'language'
+    | 'answer'
+    | 'repeat'
+    | 'sites_en'
+    | 'sites_es'
+    | 'sites_menu_en'
+    | 'sites_menu_es';
   digits?: string | undefined;
   speech?: string | undefined;
   /** The voice webhook path; Gather actions append ?step=. */
@@ -165,11 +174,25 @@ export class ChannelSessions {
         return { texts: [S.help(tenant.name, helpPhone)] };
       if (cmd.kind === 'shelter') {
         const url = this.deps.publicBase ? `${this.deps.publicBase}/${tenant.slug}/help` : null;
-        return { texts: [strings(cmd.locale).shelter(tenant.name, helpPhone, url)] };
+        const Sx = strings(cmd.locale);
+        const found = await nearestOpenSites(trx, tenant.id, cmd.query);
+        if (found.sites.length === 0) return { texts: [Sx.sitesNone(tenant.name, helpPhone, url)] };
+        const lines = found.sites.map((site) => siteLine(site, cmd.locale));
+        const place = found.near?.resolved ? (found.near.label ?? found.near.query) : null;
+        return {
+          texts: [
+            [Sx.sitesIntro(tenant.name, place), ...lines].join('\n'),
+            [...(found.near?.resolved ? [] : [Sx.sitesAskZip]), Sx.sitesOutro(url)].join(' '),
+          ],
+        };
       }
       if (cmd.kind === 'noshare')
         return { texts: [await this.withdrawSharing(req, trx, tenant, bidx, cmd.code, S)] };
 
+      if (!session && cmd.kind === 'none') {
+        const saved = await this.saveReply(req, trx, tenant, bidx, phone, inbound.body, helpPhone);
+        if (saved) return { texts: [saved] };
+      }
       if (cmd.kind === 'start' || !session) {
         const lang = cmd.kind === 'start' ? cmd.locale : locale;
         const event = await this.findEvent(trx, cmd.kind === 'start' ? inbound.body : null);
@@ -235,9 +258,17 @@ export class ChannelSessions {
       const en = strings('en');
       return gather(
         { action: action('language'), locale: 'en', input: 'dtmf', numDigits: 1 },
-        say(en.greeting(tenant.name), 'en') + say(en.chooseLanguage, 'en'),
+        say(en.greeting(tenant.name), 'en') +
+          say(en.chooseLanguage, 'en') +
+          say(en.sitesOption, 'en'),
       );
     };
+    /** PUB-09: ask for the ZIP, then read the nearest open sites in the caller's language. */
+    const askZip = (lang: 'en' | 'es') =>
+      gather(
+        { action: action(`sites_${lang}`), locale: lang, input: 'dtmf', numDigits: 5 },
+        say(strings(lang).sitesSpokenAskZip, lang),
+      );
     const prompt = (
       texts: string[],
       locale: string,
@@ -265,7 +296,45 @@ export class ChannelSessions {
       const helpPhone = (await configValue<string>(trx, 'intake.help_phone')) ?? null;
       let session = await this.loadActive(trx, tenant.id, 'voice', bidx);
       if (call.step === 'start') return { twiml: greeting() };
+      if (call.step === 'sites_en' || call.step === 'sites_es') {
+        const lang = call.step === 'sites_en' ? 'en' : 'es';
+        const S = strings(lang);
+        const zip = (call.digits ?? '').replace(/\D/g, '');
+        if (zip.length !== 5) return { twiml: askZip(lang) };
+        const found = await nearestOpenSites(trx, tenant.id, zip);
+        const url = this.deps.publicBase ? `${this.deps.publicBase}/${tenant.slug}/help` : null;
+        const spoken =
+          found.sites.length === 0
+            ? [S.sitesNone(tenant.name, helpPhone, url)]
+            : [
+                S.sitesIntro(tenant.name, found.near?.resolved ? (found.near.label ?? zip) : null),
+                ...found.sites.map((site) => siteSpoken(site, lang)),
+              ];
+        return {
+          twiml: gather(
+            { action: action(`sites_menu_${lang}`), locale: lang, input: 'dtmf', numDigits: 1 },
+            spoken.map((t) => say(t, lang)).join('') + say(S.sitesSpokenMenu, lang),
+          ),
+        };
+      }
+      if (call.step === 'sites_menu_en' || call.step === 'sites_menu_es') {
+        const lang = call.step === 'sites_menu_en' ? 'en' : 'es';
+        const S = strings(lang);
+        if (call.digits === '1') return { twiml: askZip(lang) };
+        if (call.digits === '0') {
+          const digits = helpPhone ? helpPhone.replace(/[^\d+]/g, '') : '';
+          return {
+            twiml: digits
+              ? say(S.agentTransfer, lang) + element('Dial', {}, digits)
+              : say(S.noAgent(helpPhone), lang) + element('Hangup'),
+          };
+        }
+        if (call.digits !== '2') return { twiml: say(S.goodbye, lang) + element('Hangup') };
+        call = { ...call, step: 'language', digits: lang === 'en' ? '1' : '2' };
+      }
       if (call.step === 'language') {
+        if (call.digits === '3') return { twiml: askZip('en') };
+        if (call.digits === '4') return { twiml: askZip('es') };
         const lang = call.digits === '2' ? 'es' : call.digits === '1' ? 'en' : null;
         if (!lang) return { twiml: greeting() };
         const S = strings(lang);
@@ -898,6 +967,72 @@ export class ChannelSessions {
       executionId,
     );
     return S.noshare(tenant.name, code);
+  }
+
+  /**
+   * FL-11: a plain text from a number that got a staff update in the last week is
+   * the resident's reply; it is stored on that report (inbound, restricted) and
+   * acknowledged. Anything else falls through to the report flow (CHN-03).
+   */
+  private async saveReply(
+    req: SubmitRequest,
+    trx: Transaction<Database>,
+    tenant: ChannelTenant,
+    bidx: Buffer,
+    phone: string,
+    body: string,
+    helpPhone: string | null,
+  ): Promise<string | null> {
+    const text = body.trim();
+    if (!text) return null;
+    const since = new Date(this.now().getTime() - 7 * 86_400_000);
+    const recent = await trx
+      .selectFrom('cg.message as m')
+      .innerJoin('cg.report as r', 'r.id', 'm.report_id')
+      .innerJoin('cg.party as p', 'p.id', 'r.reporter_party_id')
+      .select([
+        'r.id as report_id',
+        'r.reference_code as code',
+        'p.id as party_id',
+        'p.language as language',
+      ])
+      .where('m.direction', '=', 'outbound')
+      .where('m.template', '=', 'staff_update')
+      .where('m.created_at', '>', since)
+      .where('p.phone_bidx', '=', bidx)
+      .where('r.withdrawn_at', 'is', null)
+      .orderBy('m.created_at', 'desc')
+      .executeTakeFirst();
+    if (!recent) return null;
+    const row = await trx
+      .insertInto('cg.message')
+      .values({
+        tenant_id: tenant.id,
+        channel: 'sms',
+        direction: 'inbound',
+        to_bidx: bidx,
+        to_enc: await this.deps.crypto.encrypt(tenant.id, phone),
+        template: 'reply',
+        body_enc: await this.deps.crypto.encrypt(tenant.id, text.slice(0, 2000)),
+        state: 'delivered',
+        delivered_at: this.now(),
+        report_id: recent.report_id,
+        party_id: recent.party_id,
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    await req.audit(trx, {
+      action: 'message.received',
+      targetType: 'message',
+      targetId: row.id,
+      changes: {
+        fields: [
+          { name: 'report_id', to: recent.report_id },
+          { name: 'channel', to: 'sms' },
+        ],
+      },
+    });
+    return strings(recent.language).replySaved(tenant.name, recent.code, helpPhone);
   }
 
   private async phoneOf(trx: Transaction<Database>, session: Session): Promise<string> {

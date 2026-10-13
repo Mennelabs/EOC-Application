@@ -56,7 +56,18 @@ const twilioStatus = z
   .loose();
 
 const voiceStep = z.object({
-  step: z.enum(['start', 'language', 'answer', 'repeat']).default('start'),
+  step: z
+    .enum([
+      'start',
+      'language',
+      'answer',
+      'repeat',
+      'sites_en',
+      'sites_es',
+      'sites_menu_en',
+      'sites_menu_es',
+    ])
+    .default('start'),
 });
 
 export const VOICE_PATH = '/api/webhooks/twilio/voice';
@@ -254,7 +265,18 @@ export const webhookRoutes =
             from: z.string().min(3),
             to: z.string().optional(),
             tenant: z.string().optional(),
-            step: z.enum(['start', 'language', 'answer', 'repeat']).default('start'),
+            step: z
+              .enum([
+                'start',
+                'language',
+                'answer',
+                'repeat',
+                'sites_en',
+                'sites_es',
+                'sites_menu_en',
+                'sites_menu_es',
+              ])
+              .default('start'),
             digits: z.string().optional(),
             speech: z.string().optional(),
           }),

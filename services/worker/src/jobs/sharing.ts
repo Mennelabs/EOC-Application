@@ -117,8 +117,8 @@ async function facts(
   };
 }
 
-/** Who at the partner gets the recall notice: role holders who could read shared records, else the security contact. */
-async function recallRecipients(
+/** Who at a partner organization hears about its shared records: role holders who could read them, else the security contact. */
+export async function partnerRecipients(
   trx: Transaction<Database>,
   partnerTenantId: string,
 ): Promise<{ partnerName: string; emails: string[] }> {
@@ -399,7 +399,7 @@ export async function syncShareGrants(
       },
     });
     // Exports already taken cannot be pulled back, so the notice names what was shared and since when.
-    const { partnerName, emails } = await recallRecipients(trx, g.to_tenant_id);
+    const { partnerName, emails } = await partnerRecipients(trx, g.to_tenant_id);
     if (emails.length === 0) {
       await systemAudit(trx, tenantId, 'sharing.sync', {
         action: 'share_grant.recall_unsent',

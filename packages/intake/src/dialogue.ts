@@ -64,7 +64,7 @@ const NOSHARE = ['NOSHARE', 'NO SHARE', 'NOCOMPARTIR', 'NO COMPARTIR'];
 
 export type Command =
   | { kind: 'start'; locale: DialogueLocale }
-  | { kind: 'shelter'; locale: DialogueLocale }
+  | { kind: 'shelter'; locale: DialogueLocale; query: string | null }
   | { kind: 'help' }
   | { kind: 'stop' }
   | { kind: 'back' }
@@ -81,8 +81,13 @@ export function command(input: string): Command {
       return { kind: 'noshare', code: k.slice(word.length).trim() || null };
   if (START_EN.includes(k)) return { kind: 'start', locale: 'en' };
   if (START_ES.includes(k)) return { kind: 'start', locale: 'es' };
-  if (SHELTER_EN.includes(k)) return { kind: 'shelter', locale: 'en' };
-  if (SHELTER_ES.includes(k)) return { kind: 'shelter', locale: 'es' };
+  for (const [words, locale] of [
+    [SHELTER_EN, 'en'],
+    [SHELTER_ES, 'es'],
+  ] as const)
+    for (const word of words)
+      if (k === word || k.startsWith(`${word} `))
+        return { kind: 'shelter', locale, query: k.slice(word.length).trim() || null };
   if (HELP.includes(k)) return { kind: 'help' };
   if (STOP.includes(k)) return { kind: 'stop' };
   if (BACK.includes(k)) return { kind: 'back' };
@@ -125,6 +130,17 @@ interface Strings {
   noshare: (county: string, code: string) => string;
   noshareUnknown: (county: string) => string;
   shelter: (county: string, helpPhone: string | null, url: string | null) => string;
+  /** PUB-08: the nearest open sites after SHELTER/REFUGIO with a ZIP; the first line names the place understood. */
+  sitesIntro: (county: string, place: string | null) => string;
+  sitesNone: (county: string, helpPhone: string | null, url: string | null) => string;
+  sitesAskZip: string;
+  sitesOutro: (url: string | null) => string;
+  /** PUB-09: the greeting's extra option and the read-out's menu. */
+  sitesOption: string;
+  sitesSpokenAskZip: string;
+  sitesSpokenMenu: string;
+  /** FL-11: a reply to a staff update was added to the report. */
+  replySaved: (county: string, code: string, helpPhone: string | null) => string;
   confirmation: (county: string, code: string) => string;
   tooMany: string;
   noEvent: (county: string) => string;
@@ -178,6 +194,20 @@ const EN: Strings = {
     `${county} Emergency Mgmt: We found no report with that reference number from this phone. Text NOSHARE then your reference number, like NOSHARE ABCD-2345. Reply STOP to opt out.`,
   shelter: (county, phone, url) =>
     `${county} Emergency Mgmt: For open shelters and help sites,${phone ? ` call ${phone}` : ''}${phone && url ? ' or' : ''}${url ? ` visit ${url}` : ''}. In danger now, call 911. Reply STOP to opt out.`,
+  sitesIntro: (county, place) =>
+    `${county} Emergency Mgmt: Open sites${place ? ` nearest ${place}` : ''}:`,
+  sitesNone: (county, phone, url) =>
+    `${county} Emergency Mgmt: No sites are open right now.${phone ? ` Call ${phone}.` : ''}${url ? ` Updates: ${url}` : ''} In danger now, call 911.`,
+  sitesAskZip:
+    'Text SHELTER and your ZIP code for the nearest open sites, for example SHELTER 63001.',
+  sitesOutro: (url) =>
+    `${url ? `More: ${url}. ` : ''}In danger now, call 911. Reply STOP to opt out.`,
+  sitesOption:
+    'For the nearest open shelters and help sites, press 3. Para refugios y sitios de ayuda cercanos, oprima el 4.',
+  sitesSpokenAskZip: 'Enter the five digits of your ZIP code.',
+  sitesSpokenMenu: 'To hear this again, press 1. To report damage, press 2. For a person, press 0.',
+  replySaved: (county, code, phone) =>
+    `${county} Emergency Mgmt: Thanks, your message was added to report ${code}. A person will read it.${phone ? ` Urgent? Call ${phone}.` : ''} In danger now, call 911.`,
   confirmation: (county, code) =>
     `${county} Emergency Mgmt: Thanks for reporting damage. Your reference number is ${code}. This does not send emergency help. In danger now? Call 911. Reply STOP to opt out.`,
   tooMany: 'Too many messages right now. Please wait a few minutes.',
@@ -238,6 +268,20 @@ const ES: Strings = {
     `${county}: No encontramos un reporte con ese número desde este teléfono. Envíe NOSHARE y su número de referencia, como NOSHARE ABCD-2345. Responda ALTO para cancelar.`,
   shelter: (county, phone, url) =>
     `${county}: Para albergues y sitios de ayuda abiertos,${phone ? ` llame al ${phone}` : ''}${phone && url ? ' o' : ''}${url ? ` visite ${url}` : ''}. En peligro, llame al 911. Responda ALTO para cancelar.`,
+  sitesIntro: (county, place) => `${county}: Sitios abiertos${place ? ` cerca de ${place}` : ''}:`,
+  sitesNone: (county, phone, url) =>
+    `${county}: No hay sitios abiertos ahora.${phone ? ` Llame al ${phone}.` : ''}${url ? ` Novedades: ${url}` : ''} En peligro, llame al 911.`,
+  sitesAskZip:
+    'Envíe REFUGIO y su código postal para los sitios abiertos más cercanos, por ejemplo REFUGIO 63001.',
+  sitesOutro: (url) =>
+    `${url ? `Más: ${url}. ` : ''}En peligro, llame al 911. Responda ALTO para cancelar.`,
+  sitesOption:
+    'For the nearest open shelters and help sites, press 3. Para refugios y sitios de ayuda cercanos, oprima el 4.',
+  sitesSpokenAskZip: 'Marque los cinco dígitos de su código postal.',
+  sitesSpokenMenu:
+    'Para oírlo de nuevo, oprima el 1. Para reportar daños, oprima el 2. Para hablar con una persona, oprima el 0.',
+  replySaved: (county, code, phone) =>
+    `${county}: Gracias, su mensaje se añadió al reporte ${code}. Una persona lo leerá.${phone ? ` ¿Urgente? Llame al ${phone}.` : ''} En peligro, llame al 911.`,
   confirmation: (county, code) =>
     `${county} Manejo de Emergencias: Gracias por reportar daños. Su referencia es ${code}. No envía ayuda de emergencia. ¿En peligro ahora? Llame al 911. Responda ALTO para cancelar.`,
   tooMany: 'Demasiados mensajes ahora. Espere unos minutos.',

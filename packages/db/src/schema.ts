@@ -112,6 +112,8 @@ export interface EventTable extends Stamped {
   closed_at: TsNullable;
   close_reason: string | null;
   footprint: ColumnType<unknown, unknown, unknown> | null;
+  /** FLD-03: typed into the field app or carried by the QR at staging. */
+  check_in_code: string | null;
 }
 
 export interface EventParticipantTable {
@@ -163,6 +165,14 @@ export interface PersonnelTable extends Stamped {
   status: Generated<'active' | 'inactive' | 'archived'>;
   contact_enc: Buffer | null;
   phone_bidx: Buffer | null;
+  /** PER-02: hours per shift before an assignment warns (layer 4). */
+  hours_limit: number | null;
+  /** DSP-09: the agency when it runs its own tenant. */
+  home_tenant_id: Uuid | null;
+  /** FR-13.01: badge photo object key. */
+  photo_key: string | null;
+  archived_at: TsNullable;
+  archived_reason: string | null;
 }
 
 export interface RoleTable extends Stamped {
@@ -786,6 +796,176 @@ export interface ReminderTable {
   created_at: TsGen;
 }
 
+// Layer 4 (plan §2, task A): the field roster.
+
+export type CredentialKind =
+  | 'damage_assessor'
+  | 'chainsaw'
+  | 'spanish_speaker'
+  | 'chaplain'
+  | 'ham_operator'
+  | 'medical'
+  | 'cert'
+  | 'driver_cdl'
+  | 'heavy_equipment'
+  | 'shelter_management'
+  | 'food_safety'
+  | 'child_safeguarding'
+  | 'mental_health_first_aid'
+  | 'background_check'
+  | 'other';
+
+/** PER-01, FR-05.06: a recorded skill or certification; never inferred. */
+export interface CredentialTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  personnel_id: Uuid;
+  kind: CredentialKind;
+  label: string | null;
+  issuer: string | null;
+  issued_at: ColumnType<Date | null, Date | string | null, Date | string | null>;
+  expires_at: ColumnType<Date | null, Date | string | null, Date | string | null>;
+  status: Generated<'recorded' | 'verified' | 'expired' | 'revoked'>;
+  verified_by: Uuid | null;
+  verified_at: TsNullable;
+  evidence_key: string | null;
+  note: string | null;
+}
+
+export type TeamKind = 'team' | 'unit' | 'canteen' | 'crew' | 'strike_team' | 'net';
+export type TeamStatus =
+  'available' | 'en_route' | 'on_task' | 'break' | 'out_of_service' | 'overdue';
+
+/** DSP-02, FR-06.08: a team or unit with its agency, skills and equipment. */
+export interface TeamTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid | null;
+  key: string;
+  name: string;
+  kind: Generated<TeamKind>;
+  agency_tenant_id: Uuid | null;
+  agency: string | null;
+  callsign: string | null;
+  lead_personnel_id: Uuid | null;
+  skills: Generated<string[]>;
+  equipment: Generated<string[]>;
+  capacity: number | null;
+  check_in_interval_minutes: Generated<number>;
+  status: Generated<'active' | 'stood_down' | 'archived'>;
+  notes: string | null;
+}
+
+export interface TeamMemberTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  team_id: Uuid;
+  personnel_id: Uuid;
+  role: Generated<'lead' | 'member' | 'driver' | 'operator' | 'medic'>;
+  joined_at: TsGen;
+  left_at: TsNullable;
+  left_reason: string | null;
+  created_by: Uuid | null;
+}
+
+/** DSP-01, DSP-05, RULE-03: confirmed and suggested status kept apart. */
+export interface TeamStatusTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  team_id: Uuid;
+  status: TeamStatus;
+  fact: Generated<'confirmed' | 'suggested'>;
+  source: 'app' | 'console' | 'net_control' | 'timer' | 'location' | 'seed';
+  set_by_account_id: Uuid | null;
+  check_in_id: Uuid | null;
+  note: string | null;
+  detail: JsonGen<Record<string, unknown>>;
+  created_at: TsGen;
+}
+
+/** FLD-02: a registered app install; wipe touches only the app's data. */
+export interface FieldDeviceTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  account_id: Uuid;
+  install_id: string;
+  platform: 'ios' | 'android' | 'web';
+  managed: Generated<boolean>;
+  model: string | null;
+  app_version: string | null;
+  status: Generated<'active' | 'wipe_requested' | 'wiped' | 'revoked'>;
+  registered_at: TsGen;
+  last_contact_at: TsNullable;
+  wipe_requested_at: TsNullable;
+  wipe_requested_by: Uuid | null;
+  wipe_reason: string | null;
+  wipe_confirmed_at: TsNullable;
+}
+
+/** FLD-03, FL-17: a shift, with the credentials in force when it started. */
+export interface CheckInTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  personnel_id: Uuid;
+  event_id: Uuid;
+  team_id: Uuid | null;
+  agency_tenant_id: Uuid | null;
+  method: 'qr' | 'event_code' | 'net_control' | 'console';
+  credentials_snapshot: JsonGen<unknown[]>;
+  device_id: Uuid | null;
+  location_sharing: Generated<boolean>;
+  started_at: TsGen;
+  ended_at: TsNullable;
+  ended_by: Uuid | null;
+  end_reason: 'checked_out' | 'shift_end' | 'coordinator' | 'timeout' | 'wipe' | null;
+  /** Computed by the database from started_at and ended_at. */
+  hours: ColumnType<string | null, never, never>;
+  created_by: Uuid | null;
+}
+
+/** DSP-08: the live trail, in daily partitions dropped after the tenant's period. */
+export interface PositionTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  check_in_id: Uuid;
+  personnel_id: Uuid;
+  team_id: Uuid | null;
+  geom: ColumnType<unknown, unknown, unknown>;
+  accuracy_m: number | null;
+  speed_mps: number | null;
+  heading: number | null;
+  source: 'app' | 'net_control' | 'manual' | 'help_alert';
+  recorded_at: Ts;
+  received_at: TsGen;
+}
+
+export type ParcelStructure =
+  | 'single_family'
+  | 'manufactured'
+  | 'apartment_building'
+  | 'commercial'
+  | 'public'
+  | 'vacant'
+  | 'other';
+
+/** FLD-04: tenant parcel data the field app snaps a pin to. */
+export interface ParcelTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  parcel_id: string;
+  geom: ColumnType<unknown, unknown, unknown>;
+  /** Computed by the database from geom. */
+  centroid: ColumnType<unknown, never, never>;
+  line1: string | null;
+  city: string | null;
+  postal: string | null;
+  structure: Generated<ParcelStructure>;
+  unit_count: number | null;
+  area_key: string | null;
+  source: Generated<string>;
+  loaded_at: TsGen;
+}
+
 export interface PublicationTable {
   id: Generated<Uuid>;
   tenant_id: Uuid;
@@ -1002,4 +1182,12 @@ export interface Database {
   'cg.resource_text': ResourceTextTable;
   'cg.publication': PublicationTable;
   'cg.reminder': ReminderTable;
+  'cg.credential': CredentialTable;
+  'cg.team': TeamTable;
+  'cg.team_member': TeamMemberTable;
+  'cg.team_status': TeamStatusTable;
+  'cg.field_device': FieldDeviceTable;
+  'cg.check_in': CheckInTable;
+  'cg.position': PositionTable;
+  'cg.parcel': ParcelTable;
 }

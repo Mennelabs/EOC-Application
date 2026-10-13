@@ -709,3 +709,239 @@ export const agreements = [
   { partner: 'legal', orgType: 'relief_agencies', service: 'legal', categories: ['contact'] },
   { partner: 'coad', orgType: 'community_groups', service: 'coordination', categories: [] },
 ];
+
+/**
+ * Field roster for the exercise (layer 4 task A; DSP-02, PER-01, FL:FR-13):
+ * teams and units with members and recorded credentials. Every person is
+ * invented; names come from the fiction lists above with a seed of their own
+ * so the roster is stable whatever the report count.
+ */
+export type CredentialKind =
+  | 'damage_assessor'
+  | 'chainsaw'
+  | 'spanish_speaker'
+  | 'chaplain'
+  | 'ham_operator'
+  | 'medical'
+  | 'cert'
+  | 'driver_cdl'
+  | 'heavy_equipment'
+  | 'shelter_management'
+  | 'food_safety'
+  | 'child_safeguarding'
+  | 'mental_health_first_aid'
+  | 'background_check';
+
+export interface RosterMember {
+  key: string;
+  name: string;
+  role: 'lead' | 'member' | 'driver' | 'operator' | 'medic';
+  operationalRole: string;
+  credentials: CredentialKind[];
+  hoursLimit: number;
+}
+
+export interface TeamSpec {
+  key: string;
+  tenant: string;
+  name: string;
+  kind: 'team' | 'unit' | 'canteen' | 'crew' | 'strike_team' | 'net';
+  /** Agency name when the organization has no tenant of its own (DSP-09). */
+  agency?: string;
+  callsign?: string;
+  skills: CredentialKind[];
+  equipment: string[];
+  checkInIntervalMinutes: number;
+  members: RosterMember[];
+}
+
+interface TeamShape {
+  key: string;
+  tenant: string;
+  name: string;
+  kind: TeamSpec['kind'];
+  agency?: string;
+  callsign?: string;
+  skills: CredentialKind[];
+  equipment: string[];
+  checkInIntervalMinutes?: number;
+  size: number;
+  operationalRole: string;
+  /** Credentials every member holds, then extras for some members. */
+  everyone: CredentialKind[];
+  some?: CredentialKind[];
+}
+
+const teamShapes: TeamShape[] = [
+  ...[1, 2, 3, 4].map((n): TeamShape => ({
+    key: `da-${n}`,
+    tenant: 'county',
+    name: `Damage Assessment Team ${n}`,
+    kind: 'team',
+    callsign: `DA-${n}`,
+    skills: ['damage_assessor'],
+    equipment: ['tablet', 'laser measure'],
+    size: 3,
+    operationalRole: 'damage_assessor',
+    everyone: ['damage_assessor'],
+    some: ['spanish_speaker'],
+  })),
+  {
+    key: 'cert-canvass',
+    tenant: 'county',
+    name: 'CERT Canvass Team',
+    kind: 'team',
+    callsign: 'CERT-1',
+    skills: ['cert', 'spanish_speaker'],
+    equipment: ['tablets', 'door hangers'],
+    size: 4,
+    operationalRole: 'canvasser',
+    everyone: ['cert', 'background_check'],
+    some: ['spanish_speaker', 'mental_health_first_aid'],
+  },
+  {
+    key: 'guard-tc-1',
+    tenant: 'county',
+    name: 'Guard Traffic Control Unit 1',
+    kind: 'unit',
+    agency: 'Missouri National Guard (exercise)',
+    callsign: 'TC-1',
+    skills: ['driver_cdl'],
+    equipment: ['2 LMTVs', 'traffic cones', 'barricades'],
+    size: 6,
+    operationalRole: 'guard_unit',
+    everyone: ['driver_cdl'],
+    some: ['medical'],
+  },
+  {
+    key: 'ares-net',
+    tenant: 'county',
+    name: 'ARES net control',
+    kind: 'net',
+    agency: 'Westwind County ARES (exercise)',
+    callsign: 'NET',
+    skills: ['ham_operator'],
+    equipment: ['VHF base station', 'go-kit'],
+    checkInIntervalMinutes: 120,
+    size: 2,
+    operationalRole: 'net_control',
+    everyone: ['ham_operator'],
+  },
+  {
+    key: 'chainsaw-a',
+    tenant: 'cleanup',
+    name: 'Chainsaw Team A',
+    kind: 'crew',
+    callsign: 'SAW-A',
+    skills: ['chainsaw'],
+    equipment: ['3 chainsaws', 'pickup with trailer', 'chaps and helmets'],
+    size: 4,
+    operationalRole: 'cleanup_crew',
+    everyone: ['chainsaw', 'background_check'],
+    some: ['heavy_equipment', 'medical'],
+  },
+  {
+    key: 'chainsaw-b',
+    tenant: 'cleanup',
+    name: 'Chainsaw Team B',
+    kind: 'crew',
+    callsign: 'SAW-B',
+    skills: ['chainsaw'],
+    equipment: ['4 chainsaws', 'skid steer', 'chaps and helmets'],
+    size: 5,
+    operationalRole: 'cleanup_crew',
+    everyone: ['chainsaw', 'background_check'],
+    some: ['heavy_equipment', 'spanish_speaker'],
+  },
+  ...[1, 2].map((n): TeamShape => ({
+    key: `canteen-${n}`,
+    tenant: 'canteen',
+    name: `Canteen ${n}`,
+    kind: 'canteen',
+    callsign: `CANTEEN-${n}`,
+    skills: ['food_safety'],
+    equipment: ['canteen truck', 'cambro set', 'hand-wash station'],
+    size: 3,
+    operationalRole: 'canteen_staff',
+    everyone: ['food_safety', 'background_check'],
+    some: ['spanish_speaker', 'chaplain', 'driver_cdl'],
+  })),
+  {
+    key: 'shelter-gym-staff',
+    tenant: 'shelter-ngo',
+    name: 'Harmon gym shelter staff',
+    kind: 'team',
+    skills: ['shelter_management'],
+    equipment: ['registration tablets', 'wristband printer'],
+    checkInIntervalMinutes: 240,
+    size: 4,
+    operationalRole: 'shelter_worker',
+    everyone: ['shelter_management', 'background_check'],
+    some: ['child_safeguarding', 'spanish_speaker', 'medical'],
+  },
+  {
+    key: 'coad-outreach',
+    tenant: 'coad',
+    name: 'COAD outreach pair',
+    kind: 'team',
+    skills: ['spanish_speaker'],
+    equipment: ['resource cards'],
+    size: 2,
+    operationalRole: 'outreach',
+    everyone: ['background_check'],
+    some: ['spanish_speaker', 'chaplain'],
+  },
+];
+
+function rosterTeams(rng: Rng): TeamSpec[] {
+  const usedNames = new Set<string>();
+  const freshName = (): string => {
+    for (let i = 0; i < 200; i++) {
+      const name = fictionalName(rng);
+      if (!usedNames.has(name)) {
+        usedNames.add(name);
+        return name;
+      }
+    }
+    throw new Error('ran out of fictional names');
+  };
+  return teamShapes.map((shape) => {
+    const members: RosterMember[] = [];
+    for (let i = 0; i < shape.size; i++) {
+      const extras = (shape.some ?? []).filter((_, j) => (i + j) % 2 === 0);
+      members.push({
+        key: `${shape.key}-${i + 1}`,
+        name: freshName(),
+        role:
+          i === 0
+            ? 'lead'
+            : shape.kind === 'net'
+              ? 'operator'
+              : shape.everyone.includes('driver_cdl') && i === 1
+                ? 'driver'
+                : 'member',
+        operationalRole: shape.operationalRole,
+        credentials: [...new Set([...shape.everyone, ...extras])],
+        hoursLimit: shape.kind === 'net' ? 8 : 12,
+      });
+    }
+    return {
+      key: shape.key,
+      tenant: shape.tenant,
+      name: shape.name,
+      kind: shape.kind,
+      ...(shape.agency ? { agency: shape.agency } : {}),
+      ...(shape.callsign ? { callsign: shape.callsign } : {}),
+      skills: shape.skills,
+      equipment: shape.equipment,
+      checkInIntervalMinutes: shape.checkInIntervalMinutes ?? 60,
+      members,
+    };
+  });
+}
+
+/** The exercise roster: stable across runs (its own seed), every name fictional. */
+export const teams: TeamSpec[] = rosterTeams(new Rng(4040));
+
+/** FLD-03: the event code typed into the field app at check-in. */
+export const EXERCISE_CHECK_IN_CODE = 'WESTWIND';

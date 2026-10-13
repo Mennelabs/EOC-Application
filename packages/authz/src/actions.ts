@@ -14,6 +14,8 @@ export interface ActionMeta {
   public?: boolean;
   /** RULE-14: confirmation and reason required. */
   consequential?: boolean;
+  /** Never covered by a wildcard grant ('*' or 'family.*'): a role must name it (DSP-08). */
+  explicit?: boolean;
 }
 
 const a = (
@@ -254,6 +256,46 @@ export const actions = {
     'Enable or disable an AI feature for the tenant',
     { consequential: true },
   ),
+  // Layer 4 task A: the field roster (PER-01, DSP-02, DSP-08, DSP-09, FLD-02, FLD-03, FLD-04).
+  'credential.read': a('read', 'credential', 'Read recorded skills and credentials'),
+  'credential.record': a(
+    'write',
+    'credential',
+    'Record a credential for a person (never inferred)',
+  ),
+  'credential.verify': a(
+    'write',
+    'credential',
+    'Verify a recorded credential against its evidence',
+  ),
+  'credential.revoke': a('write', 'credential', 'Revoke a credential (history kept)', {
+    consequential: true,
+  }),
+  'team.read': a('read', 'team', 'Read teams and units, their members and status'),
+  'team.manage': a('write', 'team', 'Create a team or unit; add and remove members'),
+  'team.status': a('write', 'team', "Set or confirm a team's status"),
+  'team.archive': a('write', 'team', 'Stand down or archive a team', { consequential: true }),
+  'check_in.create': a('write', 'check_in', 'Check yourself in to an event by code or QR'),
+  'check_in.end': a('write', 'check_in', 'Check yourself out'),
+  'check_in.read': a('read', 'check_in', 'Read who is checked in, on which team, since when'),
+  'check_in.manage': a(
+    'write',
+    'check_in',
+    'Check another person in or out (staging, net control)',
+  ),
+  'device.register': a('write', 'field_device', 'Register this app install'),
+  'device.read': a('read', 'field_device', 'Read registered app installs'),
+  'device.wipe': a('admin', 'field_device', "Request a remote wipe of the app's data", {
+    consequential: true,
+  }),
+  'position.record': a('write', 'position', 'Report your position while checked in'),
+  'position.read': a('read', 'position', 'See live positions (dispatch and safety roles)', {
+    explicit: true,
+  }),
+  'parcel.read': a('read', 'parcel', 'Read parcel outlines and addresses of record'),
+  'parcel.import': a('admin', 'parcel', "Load or replace the tenant's parcel data", {
+    consequential: true,
+  }),
 } as const satisfies Record<string, ActionMeta>;
 
 export type ActionKey = keyof typeof actions;
@@ -264,12 +306,15 @@ export function isActionKey(key: string): key is ActionKey {
 
 /** Does a grant pattern cover an action? '*' and 'family.*' are the only wildcards. */
 export function actionMatches(pattern: string, action: string): boolean {
+  if (pattern === action) return true;
+  // An explicit action is granted only by name, never by a wildcard (DSP-08: positions).
+  if ((actions as Record<string, ActionMeta>)[action]?.explicit) return false;
   if (pattern === '*') return true;
   if (pattern.endsWith('.*')) {
     const family = pattern.slice(0, -1); // keep the trailing dot
     return action.startsWith(family);
   }
-  return pattern === action;
+  return false;
 }
 
 /** A7 / AC-12B: approving a finding the same person recorded. */

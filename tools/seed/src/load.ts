@@ -27,7 +27,11 @@ import {
   agreements as agreementSpecs,
   resources as resourceSpecs,
   sites as siteSpecs,
+  teams as teamSpecs,
   zipCentroids,
+  buildCounty,
+  EXERCISE_CHECK_IN_CODE,
+  type TeamSpec,
 } from './county.ts';
 
 export const DEV_PASSWORD = 'Westwind-Exercise-2026!';
@@ -214,7 +218,16 @@ async function ensureExerciseEvent(trx: Transaction<Database>, tenantId: string)
     .where('tenant_id', '=', tenantId)
     .where('intake_slug', '=', 'westwind')
     .executeTakeFirst();
-  if (existing) return;
+  if (existing) {
+    // Databases seeded before layer 4 get the check-in code (FLD-03).
+    await trx
+      .updateTable('cg.event')
+      .set({ check_in_code: EXERCISE_CHECK_IN_CODE })
+      .where('id', '=', existing.id)
+      .where('check_in_code', 'is', null)
+      .execute();
+    return;
+  }
   await trx
     .insertInto('cg.event')
     .values({
@@ -224,6 +237,7 @@ async function ensureExerciseEvent(trx: Transaction<Database>, tenantId: string)
       status: 'active',
       intake_slug: 'westwind',
       intake_keywords: ['DAMAGE', 'DANOS', 'DAÑOS'],
+      check_in_code: EXERCISE_CHECK_IN_CODE,
       opened_at: new Date(),
       created_by: SEED_ACTOR_A,
       updated_by: SEED_ACTOR_A,
@@ -459,6 +473,163 @@ async function ensureAgreements(
   }
 }
 
+/**
+ * The field roster (layer 4 task A; DSP-02, PER-01, FR-05.06, FL:FR-13): a team or
+ * unit with its members as personnel records (no contact details: the seed never
+ * invents a phone that could be dialled) and their credentials, recorded and verified
+ * by the seed actor; the team starts available. Re-runs skip teams that exist.
+ */
+async function ensureRoster(
+  trx: Transaction<Database>,
+  tenantId: string,
+  tenantName: string,
+  specs: TeamSpec[],
+): Promise<void> {
+  const event = await trx
+    .selectFrom('cg.event')
+    .select('id')
+    .where('tenant_id', '=', tenantId)
+    .where('intake_slug', '=', 'westwind')
+    .executeTakeFirst();
+  for (const spec of specs) {
+    const existing = await trx
+      .selectFrom('cg.team')
+      .select('id')
+      .where('tenant_id', '=', tenantId)
+      .where('key', '=', spec.key)
+      .executeTakeFirst();
+    if (existing) continue;
+    const team = await trx
+      .insertInto('cg.team')
+      .values({
+        tenant_id: tenantId,
+        event_id: event?.id ?? null,
+        key: spec.key,
+        name: spec.name,
+        kind: spec.kind,
+        agency_tenant_id: tenantId,
+        agency: spec.agency ?? tenantName,
+        callsign: spec.callsign ?? null,
+        skills: spec.skills,
+        equipment: spec.equipment,
+        capacity: spec.members.length,
+        check_in_interval_minutes: spec.checkInIntervalMinutes,
+        notes: 'Synthetic exercise roster (SCL-12)',
+        created_by: SEED_ACTOR_A,
+        updated_by: SEED_ACTOR_A,
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    let leadId: string | null = null;
+    for (const member of spec.members) {
+      const person = await trx
+        .insertInto('cg.personnel')
+        .values({
+          tenant_id: tenantId,
+          name: member.name,
+          agency: spec.agency ?? tenantName,
+          department: spec.name,
+          operational_role: member.operationalRole,
+          skills: member.credentials,
+          availability: 'available',
+          hours_limit: member.hoursLimit,
+          home_tenant_id: tenantId,
+          created_by: SEED_ACTOR_A,
+          updated_by: SEED_ACTOR_A,
+        })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      if (member.role === 'lead') leadId = person.id;
+      for (const kind of member.credentials) {
+        const expires = ['chainsaw', 'medical', 'background_check', 'food_safety'].includes(kind);
+        await trx
+          .insertInto('cg.credential')
+          .values({
+            tenant_id: tenantId,
+            personnel_id: person.id,
+            kind,
+            label: kind.replace(/_/g, ' '),
+            issuer: 'Exercise WESTWIND (synthetic)',
+            issued_at: '2026-01-15',
+            expires_at: expires ? '2028-01-15' : null,
+            status: 'verified',
+            verified_by: SEED_ACTOR_A,
+            verified_at: new Date(),
+            created_by: SEED_ACTOR_A,
+            updated_by: SEED_ACTOR_A,
+          })
+          .execute();
+      }
+      await trx
+        .insertInto('cg.team_member')
+        .values({
+          tenant_id: tenantId,
+          team_id: team.id,
+          personnel_id: person.id,
+          role: member.role,
+          created_by: SEED_ACTOR_A,
+        })
+        .execute();
+    }
+    if (leadId) {
+      await trx
+        .updateTable('cg.team')
+        .set({ lead_personnel_id: leadId, updated_by: SEED_ACTOR_A })
+        .where('id', '=', team.id)
+        .execute();
+    }
+    await trx
+      .insertInto('cg.team_status')
+      .values({
+        tenant_id: tenantId,
+        team_id: team.id,
+        status: 'available',
+        fact: 'confirmed',
+        source: 'seed',
+        note: 'Roster loaded',
+      })
+      .execute();
+  }
+}
+
+/** Tenant parcel data from the synthetic grid (FLD-04, SCL-12); loaded once per tenant. */
+async function ensureParcels(trx: Transaction<Database>, tenantId: string): Promise<void> {
+  const count = await trx
+    .selectFrom('cg.parcel')
+    .select((eb) => eb.fn.countAll<string>().as('n'))
+    .where('tenant_id', '=', tenantId)
+    .executeTakeFirstOrThrow();
+  if (Number(count.n) > 0) return;
+  const features = buildCounty(2026, 0).parcels.features;
+  const chunk = 100;
+  for (let i = 0; i < features.length; i += chunk) {
+    await trx
+      .insertInto('cg.parcel')
+      .values(
+        features.slice(i, i + chunk).map((f) => {
+          const [line1, city] = f.properties.address.split(', ');
+          return {
+            tenant_id: tenantId,
+            parcel_id: f.properties.parcelId,
+            geom: sql`ST_SetSRID(ST_GeomFromGeoJSON(${JSON.stringify(f.geometry)}), 4326)`,
+            line1: line1 ?? null,
+            city: city ?? null,
+            postal:
+              zipCentroids.find((z) => z.name.toLowerCase().replace(' ', '-') === f.properties.area)
+                ?.postal ?? null,
+            structure: f.properties.structure,
+            unit_count: f.properties.unitCount,
+            area_key: f.properties.area,
+            source: 'seed',
+            created_by: SEED_ACTOR_A,
+            updated_by: SEED_ACTOR_A,
+          };
+        }),
+      )
+      .execute();
+  }
+}
+
 export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
   const tenantIds: Record<string, string> = {};
   const evaluation = await evaluateProvider(fakeProvider);
@@ -480,7 +651,14 @@ export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
         await ensureZipCentroids(trx, id);
         await ensureSites(trx, id);
         await ensureResources(trx, id);
+        await ensureParcels(trx, id);
       }
+      await ensureRoster(
+        trx,
+        id,
+        spec.name,
+        teamSpecs.filter((t) => t.tenant === spec.key),
+      );
       if (created) {
         await trx
           .insertInto('cg.outbox')

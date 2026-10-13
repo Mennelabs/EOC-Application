@@ -165,7 +165,7 @@ pnpm seed                      # -> tools/seed/out/
 pnpm seed -- --seed 7 --reports 5000
 ```
 
-Everything it produces is invented and marked `synthetic: true`. Loading it into the database arrives with the layer-1 schema. **Only synthetic or exercise data ever goes into this stack (SCL-12).**
+Since layer 4 the loader also fills the field roster (`tools/seed/src/county.ts`, `teams`): damage assessment teams, the CERT canvass team, a Guard traffic-control unit and ARES net control for the county; chainsaw crews, canteens, shelter staff and an outreach pair for the partner organizations, each member with recorded, verified credentials (DSP-02, PER-01); the county's parcel grid (`cg.parcel`, FLD-04); and the exercise event's check-in code `WESTWIND` (FLD-03). Everything it produces is invented and marked `synthetic: true`. **Only synthetic or exercise data ever goes into this stack (SCL-12).**
 
 ## Run the checks
 

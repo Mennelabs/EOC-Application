@@ -413,13 +413,15 @@ describe.skipIf(!appUrl || !workerUrl)(
         'message.send',
         (p) => p['template'] === 'referral_notice' && p['referralId'] === ref.id,
       );
-      expect(notices).toHaveLength(1); // the legal tenant has no accounts: its security contact
+      // The legal tenant has no role holding shared.read: the notice goes to its administrator
+      // (seeded since 2026-10-13), ahead of the security contact.
+      expect(notices).toHaveLength(1);
       expect(
         await crypto.decrypt(
           tenants['county']!,
           Buffer.from(notices[0]!.payload['toEnc'] as string, 'base64'),
         ),
-      ).toBe('security+legal@example.org');
+      ).toBe('admin.legal@example.org');
 
       // Only the receiving organization responds; the county and the crew cannot.
       expect(

@@ -19,6 +19,11 @@ import * as m0017 from './0017_public_tenant_lookup.ts';
 import * as m0018 from './0018_report_flags.ts';
 import * as m0019 from './0019_channel_numbers.ts';
 import * as m0020 from './0020_after_answers.ts';
+import * as m0021 from './0021_needs_board.ts';
+import * as m0022 from './0022_sharing.ts';
+import * as m0023 from './0023_sites.ts';
+import * as m0024 from './0024_resources.ts';
+import * as m0025 from './0025_publication.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -42,4 +47,9 @@ export const migrations: Record<string, Migration> = {
   '0018_report_flags': m0018,
   '0019_channel_numbers': m0019,
   '0020_after_answers': m0020,
+  '0021_needs_board': m0021,
+  '0022_sharing': m0022,
+  '0023_sites': m0023,
+  '0024_resources': m0024,
+  '0025_publication': m0025,
 };

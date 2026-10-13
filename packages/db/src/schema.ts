@@ -563,6 +563,8 @@ export interface PhotoTable extends Stamped {
   processed_at: TsNullable;
 }
 
+export type NeedStatus = 'open' | 'claimed' | 'in_progress' | 'met' | 'closed' | 'withdrawn';
+
 export interface NeedTable extends Stamped {
   id: Generated<Uuid>;
   tenant_id: Uuid;
@@ -571,7 +573,206 @@ export interface NeedTable extends Stamped {
   event_id: Uuid | null;
   category: string;
   detail: string | null;
-  status: Generated<'open' | 'claimed' | 'met' | 'closed' | 'withdrawn'>;
+  status: Generated<NeedStatus>;
+  // Needs board (layer 3; CON-08, NED-02, NED-07)
+  claimed_by_tenant_id: Uuid | null;
+  claimed_by_account_id: Uuid | null;
+  claimed_at: TsNullable;
+  assigned_by_account_id: Uuid | null;
+  released_at: TsNullable;
+  done_at: TsNullable;
+  done_note: string | null;
+  source: Generated<'report' | 'standalone' | 'staff'>;
+  location_id: Uuid | null;
+  contact_party_id: Uuid | null;
+  reference_code: string | null;
+  execution_id: Uuid | null;
+}
+
+export type NeedEventKind =
+  | 'created'
+  | 'claimed'
+  | 'assigned'
+  | 'released'
+  | 'done'
+  | 'reopened'
+  | 'overlap_warned'
+  | 'exported'
+  | 'withdrawn';
+
+export interface NeedEventTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  need_id: Uuid;
+  kind: NeedEventKind;
+  actor_account_id: Uuid | null;
+  actor_tenant_id: Uuid | null;
+  note: string | null;
+  detail: JsonGen<Record<string, unknown>>;
+  created_at: TsGen;
+}
+
+export interface BoardVisibilityTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid | null;
+  scope: 'role' | 'agency' | 'person';
+  subject_key: string;
+  sees: 'own' | 'consented' | 'all';
+  reason: string;
+}
+
+/** Sharing with a partner organization: the only path a partner reads through (NED-04/05, AC-17C). */
+export interface ShareGrantTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  to_tenant_id: Uuid;
+  org_type: string;
+  report_id: Uuid | null;
+  need_id: Uuid | null;
+  party_id: Uuid | null;
+  consent_id: Uuid | null;
+  agreement_id: Uuid | null;
+  sections: Generated<string[]>;
+  projection: JsonGen<Record<string, unknown>>;
+  projection_enc: Buffer | null;
+  granted_at: TsGen;
+  revoked_at: TsNullable;
+  revoke_reason: string | null;
+  recall_notice_message_id: Uuid | null;
+}
+
+export interface ReferralTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  from_tenant_id: Uuid;
+  to_tenant_id: Uuid | null;
+  to_org_type: string | null;
+  report_id: Uuid | null;
+  need_id: Uuid | null;
+  party_id: Uuid | null;
+  share_grant_id: Uuid | null;
+  purpose: string;
+  status: Generated<'open' | 'accepted' | 'declined' | 'done'>;
+  opened_by: Uuid;
+  accepted_by: Uuid | null;
+  closed_at: TsNullable;
+  outcome: string | null;
+  attempts: JsonGen<unknown[]>;
+}
+
+export interface PartnerContactTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  org_tenant_id: Uuid | null;
+  agency: string;
+  name_enc: Buffer;
+  role: string | null;
+  methods_enc: Buffer;
+  type: Generated<'operations' | 'twenty_four_hour' | 'backup' | 'media' | 'liaison'>;
+  active: Generated<boolean>;
+  verified_at: TsNullable;
+  verify_by: Date | string | null;
+  backup_of: Uuid | null;
+  owner_account_id: Uuid | null;
+}
+
+export type SiteKind =
+  | 'shelter'
+  | 'feeding'
+  | 'pod'
+  | 'marc'
+  | 'cooling'
+  | 'warming'
+  | 'reporting'
+  | 'charging'
+  | 'other';
+export type SiteStatus = 'planned' | 'open' | 'limited' | 'full' | 'closed';
+
+export interface SiteTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid | null;
+  kind: SiteKind;
+  name: string;
+  slug: string;
+  location_id: Uuid | null;
+  status: Generated<SiteStatus>;
+  capacity: number | null;
+  occupancy: number | null;
+  hours: JsonGen<Record<string, unknown>>;
+  services: Generated<string[]>;
+  pets: Generated<'yes' | 'no' | 'service_animals' | 'unknown'>;
+  accessibility: JsonGen<Record<string, unknown>>;
+  medical_power: boolean | null;
+  languages: Generated<string[]>;
+  transit: string | null;
+  directions: string | null;
+  notes: string | null;
+  confidential: Generated<boolean>;
+  lead_contact_id: Uuid | null;
+  confirm_every_hours: Generated<number>;
+  last_confirmed_at: TsNullable;
+  last_confirmed_by: Uuid | null;
+  published_version: number | null;
+  published_at: TsNullable;
+  unpublished_at: TsNullable;
+  usng: string | null;
+}
+
+export interface ZipCentroidTable {
+  tenant_id: Uuid;
+  postal: string;
+  name: string | null;
+  geom: unknown;
+}
+
+export interface ResourceTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  slug: string;
+  type: 'hotline' | 'program' | 'deadline' | 'guidance' | 'link' | 'document';
+  category: Generated<string>;
+  ordering: Generated<number>;
+  owner_account_id: Uuid | null;
+  status: Generated<'draft' | 'published' | 'expired' | 'removed'>;
+  review_at: Date | string | null;
+  expires_at: TsNullable;
+  reference_url: string | null;
+  link_status: Generated<'unchecked' | 'ok' | 'broken'>;
+  link_checked_at: TsNullable;
+  targeting: JsonGen<Record<string, unknown>>;
+  published_version: number | null;
+  published_at: TsNullable;
+  unpublished_at: TsNullable;
+}
+
+export interface ResourceTextTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  resource_id: Uuid;
+  locale: string;
+  title: string;
+  summary: string | null;
+  body_html: Generated<string>;
+  human_reviewed_by: Uuid | null;
+  reviewed_at: TsNullable;
+}
+
+export interface PublicationTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  subject_kind: 'site' | 'resource' | 'alert_draft' | 'poster' | 'media_sheet';
+  subject_id: Uuid;
+  subject_version: number;
+  snapshot: JsonValue;
+  approved_by: Uuid;
+  approved_at: TsGen;
+  channels: Generated<string[]>;
+  reason: string;
+  unpublished_at: TsNullable;
+  unpublished_by: Uuid | null;
+  created_at: TsGen;
 }
 
 export interface ConsentTable extends Stamped {
@@ -761,4 +962,14 @@ export interface Database {
   'cg.ai_use_register': AiUseRegisterTable;
   'cg.extraction': ExtractionTable;
   'cg.channel_number': ChannelNumberTable;
+  'cg.need_event': NeedEventTable;
+  'cg.board_visibility': BoardVisibilityTable;
+  'cg.share_grant': ShareGrantTable;
+  'cg.referral': ReferralTable;
+  'cg.partner_contact': PartnerContactTable;
+  'cg.site': SiteTable;
+  'cg.zip_centroid': ZipCentroidTable;
+  'cg.resource': ResourceTable;
+  'cg.resource_text': ResourceTextTable;
+  'cg.publication': PublicationTable;
 }

@@ -136,6 +136,7 @@ const app = await buildApp({
       residentTokenSecret: config.RESIDENT_TOKEN_SECRET,
       defaultGraph: westwindGraph,
       ai,
+      publicBase: config.WEBHOOK_PUBLIC_BASE ?? config.IDP_PUBLIC_BASE.replace(/\/auth$/, ''),
     }),
   ],
   reportDeps: { objects, ai, submit: (req, input) => submitIntake(submitDeps, req, input) },

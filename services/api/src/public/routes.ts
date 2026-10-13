@@ -29,6 +29,7 @@ import {
   normaliseCode,
   type ReferenceCodeLeaser,
 } from './reference-codes.ts';
+import { helpRoutes } from './help.ts';
 import { signResidentToken, verifyResidentToken } from './resident-token.ts';
 import {
   answerValueSchema,
@@ -62,6 +63,8 @@ export interface PublicRouteDeps {
   /** Provider in force for a tenant (AIG-12); absent means no AI anywhere (INT-16). */
   ai?: { providerFor(tenantId: string, trx: Transaction<Database>): Promise<AiProvider> };
   now?: () => Date;
+  /** The public site's base URL, for links the help endpoints hand out. */
+  publicBase?: string | undefined;
 }
 
 const tenantParam = z.object({ tenant: z.string().min(2).max(60) });
@@ -133,6 +136,9 @@ export const publicRoutes =
           { retryable: true },
         );
     }
+
+    // Public "Find help": sites, resources, feeds, widget and media sheet (PUB-*), same tenant hook.
+    await app.register(helpRoutes({ publicBase: deps.publicBase }));
 
     // ---------------------------------------------------------------- graph
     app.get(

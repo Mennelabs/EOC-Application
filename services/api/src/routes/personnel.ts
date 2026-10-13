@@ -7,12 +7,15 @@
  */
 import type { FastifyPluginAsync } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import type { Transaction } from 'kysely';
 import { z } from 'zod';
+import type { Database } from '@cg/db';
 import { diffForAudit } from '@cg/audit';
 import type { FieldDescriptor } from '@cg/authz';
 import { normalisePhone } from '@cg/crypto';
 import { errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
+import { credentialKinds } from './roster.ts';
 import { classifierFor, iso, listQuery, pickDefined, stamped, uuidParam } from './helpers.ts';
 
 const FIELDS: FieldDescriptor[] = [
@@ -233,6 +236,48 @@ export const personnelRoutes: FastifyPluginAsync = async (raw) => {
     };
   }
 
+  /**
+   * PER-01, AC-05A: a skill is never inferred. A skill written here (the
+   * layer-1 route) becomes a recorded, unverified credential; a coordinator
+   * verifies it before it counts for an assignment or a skill search. A skill
+   * outside the credential kinds is kept as kind `other` with the skill as its label.
+   */
+  async function recordSkillsAsCredentials(
+    trx: Transaction<Database>,
+    person: { id: string; tenant_id: string },
+    skills: readonly string[],
+    accountId: string,
+  ): Promise<void> {
+    if (!skills.length) return;
+    const existing = await trx
+      .selectFrom('cg.credential')
+      .select(['kind', 'label'])
+      .where('personnel_id', '=', person.id)
+      .where('status', 'in', ['recorded', 'verified'])
+      .execute();
+    const known = new Set<string>(credentialKinds);
+    for (const skill of skills) {
+      const kind = known.has(skill) ? (skill as (typeof credentialKinds)[number]) : 'other';
+      const have = existing.some((c) =>
+        kind === 'other' ? c.kind === 'other' && c.label === skill : c.kind === kind,
+      );
+      if (have) continue;
+      await trx
+        .insertInto('cg.credential')
+        .values({
+          tenant_id: person.tenant_id,
+          personnel_id: person.id,
+          kind,
+          label: kind === 'other' ? skill : null,
+          status: 'recorded',
+          note: 'Recorded from the personnel record; verify before it counts.',
+          created_by: accountId,
+          updated_by: accountId,
+        })
+        .execute();
+    }
+  }
+
   app.post(
     '/personnel',
     {
@@ -268,6 +313,7 @@ export const personnelRoutes: FastifyPluginAsync = async (raw) => {
           })
           .returningAll()
           .executeTakeFirstOrThrow();
+        await recordSkillsAsCredentials(trx, inserted, request.body.skills, s.accountId);
         await request.audit(trx, {
           action: 'personnel.create',
           targetType: 'personnel',
@@ -351,6 +397,8 @@ export const personnelRoutes: FastifyPluginAsync = async (raw) => {
             .executeTakeFirst(),
           toPersonnel(current),
         );
+        if (request.body.skills)
+          await recordSkillsAsCredentials(trx, row, request.body.skills, s.accountId);
         await request.audit(trx, {
           action: 'personnel.update',
           targetType: 'personnel',

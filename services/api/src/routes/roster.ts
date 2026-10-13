@@ -26,7 +26,7 @@ type TeamRow = Selectable<Database['cg.team']>;
 type CheckInRow = Selectable<Database['cg.check_in']>;
 type AlertRow = Selectable<Database['cg.safety_alert']>;
 
-const credentialKinds = [
+export const credentialKinds = [
   'damage_assessor',
   'chainsaw',
   'spanish_speaker',
@@ -1901,6 +1901,20 @@ export const rosterRoutes: FastifyPluginAsync = async (instance) => {
             .set({ last_contact_at: new Date() })
             .where('id', '=', request.body.deviceId)
             .where('account_id', '=', s.accountId)
+            .execute();
+        // One feed row per batch, not per fix, so the board learns the team moved (ADR-0022, 0036).
+        if (accepted > 0)
+          await trx
+            .insertInto('cg.change_feed')
+            .values({
+              tenant_id: person.tenant_id,
+              scope_kind: open.team_id ? 'team' : 'person',
+              scope_id: open.team_id ?? person.id,
+              record_type: 'position',
+              record_id: open.team_id ?? person.id,
+              record_version: null,
+              op: 'upsert',
+            })
             .execute();
         return { accepted, rejected, checkInId: open.id };
       });

@@ -32,6 +32,7 @@ import {
   remindSiteConfirmations,
   reviewResources,
 } from './jobs/reminders.ts';
+import { relayChangesOnce, type ChangeRelayState } from './jobs/changes.ts';
 import { dropPositionTrails, watchFieldSafety, watchReminders } from './jobs/field.ts';
 import { consume, consumeIntake, relayOnce } from './jobs/relay.ts';
 import type { JobContext, Schedule } from './jobs/types.ts';
@@ -187,6 +188,22 @@ async function relayLoop(): Promise<void> {
   }
 }
 
+/** ADR-0022: feed rows become notices on the fan-out exchange within about half a second. */
+const changeRelay: ChangeRelayState = { last: null };
+async function changeLoop(): Promise<void> {
+  for (;;) {
+    try {
+      if (queue) {
+        const n = await relayChangesOnce(db, queue.channel, log, changeRelay);
+        if (n > 0) continue;
+      }
+    } catch (err) {
+      log.warn({ err }, 'change relay failed');
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+}
+
 function startSchedules(): void {
   for (const s of schedules) {
     const tick = async () => {
@@ -220,6 +237,7 @@ const server = createServer((req, res) => {
 
 void keepQueueConnected();
 void relayLoop();
+void changeLoop();
 startSchedules();
 server.listen(config.PORT, '0.0.0.0', () => log.info({ port: config.PORT }, 'worker listening'));
 

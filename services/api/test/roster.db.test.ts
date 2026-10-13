@@ -89,7 +89,7 @@ describe.skipIf(!appUrl || !workerUrl)('field roster schema and seed (database-b
       select count(*)::text as n from cg.personnel p
       where p.home_tenant_id is not null
         and exists (select 1 from unnest(p.skills) s
-                    where not exists (select 1 from cg.credential c where c.personnel_id = p.id and c.kind = s))`.execute(
+                    where not exists (select 1 from cg.credential c where c.personnel_id = p.id and (c.kind = s or (c.kind = 'other' and c.label = s))))`.execute(
       dbWorker,
     );
     expect(unbacked.rows[0]?.n).toBe('0');

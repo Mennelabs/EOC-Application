@@ -5,8 +5,10 @@ import { auditRoutes } from './audit.ts';
 import { breakGlassRoutes } from './breakglass.ts';
 import { contactRoutes } from './contacts.ts';
 import { definitionRoutes } from './definitions.ts';
+import { dispatchRoutes, type DispatchDeps } from './dispatch.ts';
 import { eventRoutes } from './events.ts';
 import { fieldOpsRoutes } from './field-ops.ts';
+import { fieldSyncRoutes, type FieldSyncDeps } from './field-sync.ts';
 import { intakeGraphRoutes } from './intake-graphs.ts';
 import { meRoutes } from './me.ts';
 import { messageRoutes } from './messages.ts';
@@ -22,8 +24,14 @@ import { siteRoutes } from './sites.ts';
 import { sharedRoutes } from './shared.ts';
 import { tenantRoutes } from './tenants.ts';
 
+/** What the server gives the routes that talk to the broker or object storage (absent in tests: poll fallback, no map extracts). */
+export interface RouteDeps {
+  dispatch?: DispatchDeps;
+  fieldSync?: FieldSyncDeps;
+}
+
 /** Route plugins mounted under /api/v1. Each layer adds its modules here. */
-export const routes: FastifyPluginAsync[] = [
+export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   meRoutes,
   tenantRoutes,
   eventRoutes,
@@ -42,8 +50,13 @@ export const routes: FastifyPluginAsync[] = [
   missionRoutes,
   rosterRoutes,
   fieldOpsRoutes,
+  dispatchRoutes(deps.dispatch),
+  fieldSyncRoutes(deps.fieldSync),
   resourceRoutes(),
   contactRoutes,
   messageRoutes,
   referralRoutes,
 ];
+
+/** The default set, as the tests mount it. */
+export const routes: FastifyPluginAsync[] = routesWith();

@@ -452,3 +452,29 @@ fieldset {
 .badge-team-out_of_service {
   color: #9a1b1b;
 }
+.badge-card {
+  border: 2px solid #111;
+  border-radius: 8px;
+  padding: 1rem;
+  max-width: 22rem;
+  background: #fff;
+  color: #111;
+}
+.badge-name {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .badge-print,
+  .badge-print .badge-card,
+  .badge-print .badge-card * {
+    visibility: visible;
+  }
+  .badge-print .actions,
+  .badge-print .hint {
+    display: none;
+  }
+}

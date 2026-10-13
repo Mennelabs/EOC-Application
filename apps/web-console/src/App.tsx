@@ -13,6 +13,14 @@ import {
 import { AiRegisterScreen, AssistedScreen, IntakeSetupScreen } from './screens/intake.tsx';
 import { ContactsScreen } from './screens/contacts.tsx';
 import { DispatchScreen, ReplayScreen } from './screens/dispatch.tsx';
+import {
+  BadgesScreen,
+  DevicesScreen,
+  FieldMessagesScreen,
+  NetControlScreen,
+  RemindersScreen,
+  RosterScreen,
+} from './screens/fieldops.tsx';
 import { MissionDetailScreen, MissionsScreen } from './screens/missions.tsx';
 import { KeyCounts, NeedsBoardScreen, PartnerScreen } from './screens/needs.tsx';
 import { PartnersScreen } from './screens/partners.tsx';
@@ -42,6 +50,12 @@ const routes = [
   { path: '/console/dispatch', label: 'Dispatch board', layer: 4 },
   { path: '/console/missions', label: 'Missions', layer: 4 },
   { path: '/console/replay', label: 'Board replay', layer: 4 },
+  { path: '/console/roster', label: 'Roster and check-in', layer: 4 },
+  { path: '/console/net-control', label: 'Net control log', layer: 4 },
+  { path: '/console/field-messages', label: 'Messages to the field', layer: 4 },
+  { path: '/console/badges', label: 'Badges', layer: 4 },
+  { path: '/console/reminders', label: 'Reminders', layer: 4 },
+  { path: '/console/devices', label: 'Field devices', layer: 4 },
   { path: '/console/events', label: 'Events', layer: 1 },
   { path: '/console/tenants', label: 'Organizations', layer: 1 },
   { path: '/console/accounts', label: 'Staff accounts', layer: 1 },
@@ -199,6 +213,18 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <MissionsScreen navigate={navigate} />;
       case '/console/replay':
         return <ReplayScreen />;
+      case '/console/roster':
+        return <RosterScreen />;
+      case '/console/net-control':
+        return <NetControlScreen />;
+      case '/console/field-messages':
+        return <FieldMessagesScreen />;
+      case '/console/badges':
+        return <BadgesScreen />;
+      case '/console/reminders':
+        return <RemindersScreen />;
+      case '/console/devices':
+        return <DevicesScreen />;
       case '/console/reports':
         return <ReviewQueueScreen navigate={navigate} />;
       case '/console/assist':

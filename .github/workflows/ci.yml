@@ -68,11 +68,12 @@ jobs:
           pnpm vitest run --project unit --no-file-parallelism services/api/test/public.db.test.ts services/api/test/channels.db.test.ts services/api/test/reports.db.test.ts services/api/test/sharing.db.test.ts services/api/test/needs.db.test.ts services/api/test/help.db.test.ts services/api/test/updates.db.test.ts services/api/test/roster.db.test.ts services/api/test/missions.db.test.ts services/api/test/field.db.test.ts services/api/test/fieldops.db.test.ts services/api/test/dispatch-sync.db.test.ts services/api/test/fieldwork.db.test.ts services/api/test/fieldrecords.db.test.ts services/api/test/siteoperator.db.test.ts services/worker/test/intake.db.test.ts services/worker/test/reminders.db.test.ts
       - run: npx playwright install --with-deps chromium
       - run: pnpm test:e2e
-      - name: Load smoke profiles through the k6 container (SCL-03)
+      - name: Load smoke profiles through the k6 container (SCL-03; field positions and stream fan-out, DSP-08, NFR-07)
         run: |
           tests/load/run.sh submissions smoke
           tests/load/run.sh sms-sessions smoke
           tests/load/run.sh help smoke
+          tests/load/run.sh field smoke
       - name: Migration drill on the compose database, last so nothing depends on the state it leaves (SEC-05, SEC-11)
         run: |
           set -a; . ./.env; set +a
@@ -89,6 +90,30 @@ jobs:
           retention-days: 7
       - run: docker compose down -v
         if: always()
+
+  android:
+    # Layer-4 plan §5/§9 (FLD-01, ADR-0014): the field app's native project
+    # compiles. The runner's JDK 17 and Android SDK are used, so no extra
+    # action is pulled in. iOS needs a macOS runner (plan §14).
+    name: Field app Android debug build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Generate the native Android project
+        working-directory: apps/field
+        run: CI=1 EXPO_NO_TELEMETRY=1 pnpm prebuild:android
+      - name: Compile the debug app
+        working-directory: apps/field/android
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME_17_X64 }}
+        run: ./gradlew assembleDebug --no-daemon -PreactNativeArchitectures=x86_64
 
   sast:
     name: Semgrep (SAST)

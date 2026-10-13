@@ -3,9 +3,10 @@
 #   tests/load/run.sh submissions [full|smoke]
 #   tests/load/run.sh sms-sessions [full|smoke]
 #   tests/load/run.sh help [full|smoke]
+#   tests/load/run.sh field [full|smoke]
 # BASE_URL (default https://localhost) names the gateway. Results land in tests/load/out/.
 set -euo pipefail
-script="${1:?script name: submissions, sms-sessions or help}"
+script="${1:?script name: submissions, sms-sessions, help or field}"
 profile="${2:-smoke}"
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/out"

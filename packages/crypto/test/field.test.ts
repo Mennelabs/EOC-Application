@@ -75,3 +75,50 @@ describe('normalisePhone', () => {
     expect(normalisePhone('+1 314 555 0142')).toBe('+13145550142');
   });
 });
+
+describe('FieldCrypto key lookups (SEC-10)', () => {
+  function counting() {
+    const keys = new InMemoryKeyService();
+    const inner = new MemoryKeyStore();
+    const calls = { getActive: 0, get: 0 };
+    const store = {
+      getActive: (t: string) => {
+        calls.getActive++;
+        return inner.getActive(t);
+      },
+      get: (t: string, v: number) => {
+        calls.get++;
+        return inner.get(t, v);
+      },
+      insert: (t: string, r: { version: number; wrapped: string; kekName: string }) =>
+        inner.insert(t, r),
+    };
+    return { keys, inner, store, calls };
+  }
+
+  it('reads the active key record once per tenant while it is fresh, and a known version never again', async () => {
+    const { keys, store, calls } = counting();
+    const fc = new FieldCrypto(keys, store);
+    const blobs = [];
+    for (let i = 0; i < 20; i++) blobs.push(await fc.encrypt(A, `value ${i}`));
+    expect(calls.getActive).toBe(1); // the first use creates the key; nothing after
+    for (const b of blobs) await fc.decrypt(A, b);
+    expect(calls.get).toBe(0);
+    // Another process with the same store reads the version once, then decrypts from memory.
+    const other = new FieldCrypto(keys, store);
+    for (const b of blobs) expect(await other.decrypt(A, b)).toMatch(/^value /);
+    expect(calls.get).toBe(1);
+  });
+
+  it('picks up a rotated key once the active entry expires; older ciphertexts stay readable', async () => {
+    const { keys, inner, store } = counting();
+    const fc = new FieldCrypto(keys, store, { activeTtlMs: 0 });
+    const old = await fc.encrypt(A, 'before rotation');
+    const fresh = await keys.generateDataKey(A);
+    await inner.insert(A, { version: 2, wrapped: fresh.wrapped });
+    const rotated = await fc.encrypt(A, 'after rotation');
+    expect(rotated.readUInt16BE(1)).toBe(2);
+    expect(await fc.decrypt(A, old)).toBe('before rotation');
+    expect(await fc.decrypt(A, rotated)).toBe('after rotation');
+  });
+});

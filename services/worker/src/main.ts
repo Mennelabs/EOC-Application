@@ -45,7 +45,9 @@ let queue: QueueConnection | undefined;
 const keyToken = readFileSync(config.OPENBAO_TOKEN_FILE, 'utf8').trim();
 const fieldCrypto = new FieldCrypto(
   new OpenBaoKeyService(config.OPENBAO_ADDR, keyToken),
-  dbKeyStore(db),
+  // Key records come through their own small pool: an encrypt inside a request or job
+  // transaction must never wait for a connection that those transactions hold (SEC-10).
+  dbKeyStore(createDb(config.DATABASE_URL, 2)),
 );
 
 const s3 = createS3({

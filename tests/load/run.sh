@@ -2,9 +2,10 @@
 # Runs one k6 profile from the pinned k6 container against the stack (SCL-03).
 #   tests/load/run.sh submissions [full|smoke]
 #   tests/load/run.sh sms-sessions [full|smoke]
+#   tests/load/run.sh help [full|smoke]
 # BASE_URL (default https://localhost) names the gateway. Results land in tests/load/out/.
 set -euo pipefail
-script="${1:?script name: submissions or sms-sessions}"
+script="${1:?script name: submissions, sms-sessions or help}"
 profile="${2:-smoke}"
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/out"

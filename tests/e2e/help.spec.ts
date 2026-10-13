@@ -75,6 +75,24 @@ test.describe('find help', () => {
     expect(overflow).toBe(false);
   });
 
+  test('PUB-15: the poster view carries the phone number, the short address and a QR code, never the QR alone', async ({
+    page,
+  }) => {
+    await page.goto('/county/help');
+    await expect(page.getByRole('heading', { name: 'Open sites' })).toBeVisible();
+    // Headless Chromium answers window.print() without a dialog; the poster stays in the page.
+    await page.getByRole('button', { name: 'Print a poster' }).click();
+    const poster = page.locator('#poster');
+    await expect(poster).toBeAttached();
+    await expect(poster.locator('.url')).toContainText('/county/help');
+    await expect(poster.locator('.qr')).toBeAttached();
+    await expect(poster.locator('.phone')).toContainText(/\d{3}/);
+    await page.emulateMedia({ media: 'print' });
+    await expect(poster).toBeVisible();
+    await expect(page.locator('#app')).toBeHidden();
+    await page.emulateMedia({ media: 'screen' });
+  });
+
   test('the media sheet and a resource page are served as accessible HTML (PUB-13, PUB-18)', async ({
     page,
   }) => {

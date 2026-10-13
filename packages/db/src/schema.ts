@@ -759,6 +759,33 @@ export interface ResourceTextTable extends Stamped {
   reviewed_at: TsNullable;
 }
 
+export type ReminderKind =
+  | 'site_reconfirm'
+  | 'site_hidden'
+  | 'resource_review'
+  | 'resource_link'
+  | 'resource_expired'
+  | 'contact_reverify'
+  | 'publication'
+  | 'publication_withdrawn';
+
+/** F09, REM-01: one row per subject and cycle; a reminder is sent once (BRD:FR-00.06). */
+export interface ReminderTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  kind: ReminderKind;
+  subject_kind: 'site' | 'resource' | 'partner_contact' | 'publication' | 'tenant';
+  subject_id: Uuid;
+  cycle_key: string;
+  due_at: ColumnType<Date, Date | string, Date | string>;
+  state: Generated<'active' | 'sent' | 'completed' | 'canceled'>;
+  owner_account_id: Uuid | null;
+  sent_at: TsNullable;
+  recipient_count: Generated<number>;
+  completed_at: TsNullable;
+  created_at: TsGen;
+}
+
 export interface PublicationTable {
   id: Generated<Uuid>;
   tenant_id: Uuid;
@@ -974,4 +1001,5 @@ export interface Database {
   'cg.resource': ResourceTable;
   'cg.resource_text': ResourceTextTable;
   'cg.publication': PublicationTable;
+  'cg.reminder': ReminderTable;
 }

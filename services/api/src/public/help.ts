@@ -157,6 +157,7 @@ export const helpRoutes =
           found.texts[0];
         if (!text) throw errors.notFound();
         const r = found.resource;
+        // Expired by its date, or marked expired by the worker once the date passed (AC-16B).
         const expiredAt =
           r.status === 'expired' || (r.expires_at && new Date(r.expires_at) <= new Date())
             ? (r.expires_at ?? r.updated_at)

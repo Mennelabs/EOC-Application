@@ -42,6 +42,8 @@ export interface JobContext {
   /** Shipped question graph, used when a submission names a version that is not in the database. */
   defaultGraph: QuestionGraph;
   now?: () => Date;
+  /** Outside-link check for resources (BRD:FR-16.03); a HEAD request with a short timeout by default. */
+  linkCheck?: (url: string) => Promise<boolean>;
 }
 
 export interface OutboxMessage {

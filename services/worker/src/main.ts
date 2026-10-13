@@ -26,6 +26,12 @@ import { createDb } from '@cg/db';
 import { KeycloakAdmin } from './idp/keycloak.ts';
 import { anchorAuditChains, expireBreakGlass, retentionSweep } from './jobs/handlers.ts';
 import { mergeLateAnswers, sweepStoredSubmissions, topUpReferenceCodes } from './jobs/intake.ts';
+import {
+  noticePublications,
+  remindContactVerification,
+  remindSiteConfirmations,
+  reviewResources,
+} from './jobs/reminders.ts';
 import { consume, consumeIntake, relayOnce } from './jobs/relay.ts';
 import type { JobContext, Schedule } from './jobs/types.ts';
 import { nullMailer, smtpMailer } from './mail.ts';
@@ -132,6 +138,11 @@ const schedules: Schedule[] = [
         .then(() => undefined),
   },
   { name: 'reference-code-pool', everyMs: 60_000, run: (c) => topUpReferenceCodes(c) },
+  // F09, REM-01: reminders and notices on the worker's clock (jobs/reminders.ts); each is sent once per cycle.
+  { name: 'site-reconfirm', everyMs: 5 * 60_000, run: remindSiteConfirmations }, // PUB-03
+  { name: 'resource-review', everyMs: 60 * 60_000, run: reviewResources }, // BRD:FR-16.03, AC-16B
+  { name: 'contact-reverify', everyMs: 60 * 60_000, run: remindContactVerification }, // CNT-01
+  { name: 'publication-notices', everyMs: 30_000, run: noticePublications }, // PUB-06
 ];
 
 const probes = [postgresProbe('db', pool), queueProbe('queue', () => queue)];

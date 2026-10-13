@@ -14,7 +14,12 @@ export type TemplateName =
   | 'sharing_recall'
   | 'needs_confirmation'
   | 'staff_update'
-  | 'referral_notice';
+  | 'referral_notice'
+  | 'site_reconfirm'
+  | 'site_hidden'
+  | 'resource_attention'
+  | 'contact_reverify'
+  | 'publication_notice';
 
 export const TEMPLATE_NAMES: readonly TemplateName[] = [
   'confirmation',
@@ -26,6 +31,11 @@ export const TEMPLATE_NAMES: readonly TemplateName[] = [
   'needs_confirmation',
   'staff_update',
   'referral_notice',
+  'site_reconfirm',
+  'site_hidden',
+  'resource_attention',
+  'contact_reverify',
+  'publication_notice',
 ];
 
 export interface TemplateVars {
@@ -48,6 +58,17 @@ export interface TemplateVars {
   sender?: string;
   /** A referral notice to a partner organization (FL-10). */
   purpose?: string;
+  /** Staff reminders and notices (F09, PUB-03, BRD:FR-16.03, CNT-01, PUB-06). */
+  site?: string;
+  dueAt?: string;
+  title?: string;
+  what?: string;
+  items?: string;
+  count?: string;
+  kind?: string;
+  version?: string;
+  approver?: string;
+  channels?: string;
 }
 
 export interface Rendered {
@@ -76,6 +97,16 @@ const EN = {
       `${v.county} Emergency Mgmt (${v.sender ?? v.county}) about report ${v.referenceCode}: ${v.text ?? ''} Reply to this text to answer. In danger now? Call 911. Reply STOP to opt out.`,
     referral_notice: (v: TemplateVars) =>
       `${v.county} Emergency Mgmt: a referral for record ${v.referenceCode} was sent to ${v.partner ?? 'your organization'}: ${v.purpose ?? ''}. Open your workspace to accept it.`,
+    site_reconfirm: (v: TemplateVars) =>
+      `${v.county} Emergency Mgmt: please confirm ${v.site ?? 'your site'} is still as published by ${v.dueAt ?? 'the end of its window'}, or it leaves the public page.`,
+    site_hidden: (v: TemplateVars) =>
+      `${v.county} Emergency Mgmt: ${v.site ?? 'your site'} was not confirmed by ${v.dueAt ?? 'its deadline'} and is hidden from the public page until confirmed.`,
+    resource_attention: (v: TemplateVars) =>
+      `${v.county} Emergency Mgmt: the public resource "${v.title ?? ''}" ${v.what ?? 'needs attention'}.`,
+    contact_reverify: (v: TemplateVars) =>
+      `${v.county} Emergency Mgmt: ${v.count ?? 'some'} interagency contact(s) are due for re-verification. See the contacts registry.`,
+    publication_notice: (v: TemplateVars) =>
+      `${v.county} Emergency Mgmt: ${v.kind ?? 'item'} "${v.title ?? ''}" ${v.what ?? 'published'} (v${v.version ?? '?'}) by ${v.approver ?? 'a named approver'}.`,
   },
   email: {
     confirmation: (v: TemplateVars) => ({
@@ -133,6 +164,38 @@ const EN = {
         `Purpose: ${v.purpose ?? ''}\n\n` +
         `Open your partner workspace to accept or decline it. Only the sections the resident agreed to share are visible, and the referral rides on that consent.\n`,
     }),
+    site_reconfirm: (v: TemplateVars) => ({
+      subject: `${v.county}: confirm ${v.site ?? 'your site'} by ${v.dueAt ?? 'its deadline'}`,
+      body:
+        `${v.site ?? 'Your site'} is published on ${v.county}'s public help page, texts and phone line.\n\n` +
+        `Please confirm in the console that it is still as published (status, hours, services) by ${v.dueAt ?? 'the end of its confirmation window'}. ` +
+        `A site that is not confirmed in time is hidden on every channel until someone confirms it (PUB-03).\n`,
+    }),
+    site_hidden: (v: TemplateVars) => ({
+      subject: `${v.county}: ${v.site ?? 'a site'} is hidden until confirmed`,
+      body:
+        `${v.site ?? 'A site'} was not confirmed by ${v.dueAt ?? 'its deadline'}, so it is no longer shown on ${v.county}'s public help page, in texts or on the phone line.\n\n` +
+        `Confirm it in the console to show it again, or close it if it is no longer open.\n`,
+    }),
+    resource_attention: (v: TemplateVars) => ({
+      subject: `${v.county}: public resource "${v.title ?? ''}" needs attention`,
+      body:
+        `${v.county} Emergency Management: the public resource "${v.title ?? ''}" ${v.what ?? 'needs attention'}.\n\n` +
+        `Open it in the console under Resources to review, correct, extend or remove it. Nothing expired is shown as current (AC-16B).\n`,
+    }),
+    contact_reverify: (v: TemplateVars) => ({
+      subject: `${v.county}: ${v.count ?? 'some'} interagency contact(s) due for re-verification`,
+      body:
+        `${v.county} Emergency Management: these interagency contacts reach their re-verification date within two weeks or are past it:\n\n${v.items ?? ''}\n\n` +
+        `Call each one, then mark it verified in the console under Contacts (names and numbers are shown there, not in this email).\n`,
+    }),
+    publication_notice: (v: TemplateVars) => ({
+      subject: `${v.county}: ${v.kind ?? 'item'} "${v.title ?? ''}" ${v.what ?? 'published'}`,
+      body:
+        `${v.county} Emergency Management: ${v.kind ?? 'item'} "${v.title ?? ''}" (version ${v.version ?? '?'}) was ${v.what ?? 'published'} by ${v.approver ?? 'a named approver'}.\n\n` +
+        `Reason: ${v.why ?? ''}\nChannels: ${v.channels ?? ''}\n\n` +
+        `The public page, texts, the phone line, the feeds and the widget already carry the change. Pass it on to social media, 211 and the press as your plan says, and record what you sent in the publication log.\n`,
+    }),
     needs_confirmation: (v: TemplateVars) => ({
       subject: `${v.county}: your request for help ${v.referenceCode}`,
       body:
@@ -164,6 +227,16 @@ const ES: typeof EN = {
       `${v.county} (${v.sender ?? v.county}) sobre el reporte ${v.referenceCode}: ${v.text ?? ''} Responda a este texto. ¿En peligro? Llame al 911. Responda ALTO para cancelar.`,
     referral_notice: (v) =>
       `${v.county}: se envió una referencia del registro ${v.referenceCode} a ${v.partner ?? 'su organización'}: ${v.purpose ?? ''}. Abra su espacio de trabajo para aceptarla.`,
+    site_reconfirm: (v) =>
+      `Manejo de Emergencias de ${v.county}: confirme que ${v.site ?? 'su sitio'} sigue como se publicó antes de ${v.dueAt ?? 'que termine su plazo'}, o dejará de verse en la página pública.`,
+    site_hidden: (v) =>
+      `Manejo de Emergencias de ${v.county}: ${v.site ?? 'su sitio'} no se confirmó antes de ${v.dueAt ?? 'su plazo'} y está oculto de la página pública hasta que se confirme.`,
+    resource_attention: (v) =>
+      `Manejo de Emergencias de ${v.county}: el recurso público "${v.title ?? ''}" ${v.what ?? 'necesita atención'}.`,
+    contact_reverify: (v) =>
+      `Manejo de Emergencias de ${v.county}: ${v.count ?? 'algunos'} contacto(s) interinstitucionales deben reverificarse. Vea el registro de contactos.`,
+    publication_notice: (v) =>
+      `Manejo de Emergencias de ${v.county}: ${v.kind ?? 'elemento'} "${v.title ?? ''}" ${v.what ?? 'publicado'} (v${v.version ?? '?'}) por ${v.approver ?? 'una persona autorizada'}.`,
   },
   email: {
     confirmation: (v) => ({
@@ -220,6 +293,38 @@ const ES: typeof EN = {
         `Manejo de Emergencias de ${v.county} envió a ${v.partner ?? 'su organización'} una referencia del registro ${v.referenceCode}.\n\n` +
         `Propósito: ${v.purpose ?? ''}\n\n` +
         `Abra su espacio de trabajo para aceptarla o rechazarla. Solo se ven las secciones que el residente aceptó compartir.\n`,
+    }),
+    site_reconfirm: (v) => ({
+      subject: `${v.county}: confirme ${v.site ?? 'su sitio'} antes de ${v.dueAt ?? 'su plazo'}`,
+      body:
+        `${v.site ?? 'Su sitio'} está publicado en la página pública de ayuda, los mensajes de texto y la línea telefónica de ${v.county}.\n\n` +
+        `Confirme en la consola que sigue como se publicó (estado, horario, servicios) antes de ${v.dueAt ?? 'que termine su plazo de confirmación'}. ` +
+        `Un sitio que no se confirma a tiempo se oculta en todos los canales hasta que alguien lo confirme (PUB-03).\n`,
+    }),
+    site_hidden: (v) => ({
+      subject: `${v.county}: ${v.site ?? 'un sitio'} está oculto hasta que se confirme`,
+      body:
+        `${v.site ?? 'Un sitio'} no se confirmó antes de ${v.dueAt ?? 'su plazo'}, así que ya no se muestra en la página pública de ayuda, en los mensajes de texto ni en la línea telefónica de ${v.county}.\n\n` +
+        `Confírmelo en la consola para mostrarlo de nuevo, o ciérrelo si ya no está abierto.\n`,
+    }),
+    resource_attention: (v) => ({
+      subject: `${v.county}: el recurso público "${v.title ?? ''}" necesita atención`,
+      body:
+        `Manejo de Emergencias de ${v.county}: el recurso público "${v.title ?? ''}" ${v.what ?? 'necesita atención'}.\n\n` +
+        `Ábralo en la consola, en Recursos, para revisarlo, corregirlo, extenderlo o retirarlo. Nada vencido se muestra como vigente (AC-16B).\n`,
+    }),
+    contact_reverify: (v) => ({
+      subject: `${v.county}: ${v.count ?? 'algunos'} contacto(s) interinstitucionales por reverificar`,
+      body:
+        `Manejo de Emergencias de ${v.county}: estos contactos interinstitucionales llegan a su fecha de reverificación en dos semanas o ya la pasaron:\n\n${v.items ?? ''}\n\n` +
+        `Llame a cada uno y márquelo como verificado en la consola, en Contactos (los nombres y números se muestran allí, no en este correo).\n`,
+    }),
+    publication_notice: (v) => ({
+      subject: `${v.county}: ${v.kind ?? 'elemento'} "${v.title ?? ''}" ${v.what ?? 'publicado'}`,
+      body:
+        `Manejo de Emergencias de ${v.county}: ${v.kind ?? 'elemento'} "${v.title ?? ''}" (versión ${v.version ?? '?'}) fue ${v.what ?? 'publicado'} por ${v.approver ?? 'una persona autorizada'}.\n\n` +
+        `Motivo: ${v.why ?? ''}\nCanales: ${v.channels ?? ''}\n\n` +
+        `La página pública, los mensajes de texto, la línea telefónica, los feeds y el widget ya llevan el cambio. Páselo a redes sociales, al 211 y a la prensa según su plan, y anote lo enviado en el registro de publicaciones.\n`,
     }),
     needs_confirmation: (v) => ({
       subject: `${v.county}: su solicitud de ayuda ${v.referenceCode}`,

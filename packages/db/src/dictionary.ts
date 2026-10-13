@@ -720,6 +720,28 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     },
     { standard: false },
   ),
+  reminder: table(
+    {
+      id: { c: 'internal' },
+      tenant_id: { c: 'internal' },
+      kind: { c: 'internal', r: 'reminders', d: 'F09, REM-01: what the reminder is for' },
+      subject_kind: { c: 'internal', r: 'reminders' },
+      subject_id: { c: 'internal', r: 'reminders' },
+      cycle_key: {
+        c: 'internal',
+        r: 'reminders',
+        d: 'One sending per cycle: a confirmation window, a review date, a week',
+      },
+      due_at: { c: 'internal', r: 'reminders' },
+      state: { c: 'internal', r: 'reminders' },
+      owner_account_id: { c: 'internal', r: 'reminders' },
+      sent_at: { c: 'internal', r: 'reminders' },
+      recipient_count: { c: 'internal', r: 'reminders' },
+      completed_at: { c: 'internal', r: 'reminders' },
+      created_at: { c: 'internal' },
+    },
+    { standard: false },
+  ),
   consent: table({
     party_id: { c: 'internal' },
     report_id: { c: 'internal' },

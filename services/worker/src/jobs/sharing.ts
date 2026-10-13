@@ -15,7 +15,6 @@ import {
   deriveGrants,
   isSharingService,
   project,
-  roleTemplates,
   type SharingAgreement,
   type SharingFacts,
   type SharingSection,
@@ -23,6 +22,7 @@ import {
 import type { Database } from '@cg/db';
 import type { Transaction } from 'kysely';
 import { enqueueOutbox, systemAudit } from '../system.ts';
+import { staffRecipients } from './recipients.ts';
 import type { JobContext } from './types.ts';
 
 export type SyncReason = 'filed' | 'after_answers' | 'consent' | 'corrected' | 'withdrawn';
@@ -34,12 +34,6 @@ export interface SyncResult {
 }
 
 /** Templates whose holders could have seen a shared record, so they get the recall notice. */
-const RECALL_ROLE_TEMPLATES = [
-  'tenant_admin',
-  ...roleTemplates
-    .filter((t) => t.grants.some((g) => g.action === 'shared.read' || g.action === '*'))
-    .map((t) => t.key),
-];
 
 const REASON_TEXT: Record<SyncReason, string> = {
   filed: 'the report was filed',
@@ -117,31 +111,13 @@ async function facts(
   };
 }
 
-/** Who at a partner organization hears about its shared records: role holders who could read them, else the security contact. */
+/** Who at a partner organization hears about its shared records: role holders who could read them and the administrators, else the security contact. */
 export async function partnerRecipients(
   trx: Transaction<Database>,
   partnerTenantId: string,
 ): Promise<{ partnerName: string; emails: string[] }> {
-  const partner = await trx
-    .selectFrom('cg.tenant')
-    .select(['name', 'security_contact_email'])
-    .where('id', '=', partnerTenantId)
-    .executeTakeFirstOrThrow();
-  const accounts = await trx
-    .selectFrom('cg.account as a')
-    .innerJoin('cg.role_assignment as ra', 'ra.account_id', 'a.id')
-    .innerJoin('cg.role as r', 'r.id', 'ra.role_id')
-    .select('a.email as email')
-    .distinct()
-    .where('a.tenant_id', '=', partnerTenantId)
-    .where('a.status', 'in', ['active', 'invited'])
-    .where('ra.status', '=', 'active')
-    .where('r.template_key', 'in', RECALL_ROLE_TEMPLATES)
-    .execute();
-  const emails = accounts.map((a) => a.email);
-  if (emails.length === 0 && partner.security_contact_email)
-    emails.push(partner.security_contact_email);
-  return { partnerName: partner.name, emails };
+  const r = await staffRecipients(trx, partnerTenantId, ['shared.read'], { includeAdmins: true });
+  return { partnerName: r.tenantName, emails: r.emails };
 }
 
 export type SharingSubject = { reportId: string } | { executionId: string };

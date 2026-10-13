@@ -133,6 +133,7 @@ const app = await buildApp({
       objects: {
         client: s3,
         ...(presignClient ? { presignClient } : {}),
+        maxBytes: config.PUBLIC_UPLOAD_MAX_BYTES,
         bucket: config.S3_BUCKET,
       },
     },

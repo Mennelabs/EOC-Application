@@ -16,13 +16,13 @@
  */
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { HeadObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { sql, type Transaction } from 'kysely';
 import { z } from 'zod';
 import type { Database } from '@cg/db';
 import { ApiError, errors } from '../errors.ts';
-import { iso } from './helpers.ts';
+import { enqueueOutbox, iso, uuidParam } from './helpers.ts';
 
 type Trx = Transaction<Database>;
 
@@ -61,6 +61,14 @@ export const FIELD_COMMANDS: Record<
     needsTarget: true,
   },
   'safety_alert.raise': { method: 'POST', path: () => '/api/v1/safety-alerts', needsTarget: false },
+  'assessment.record': {
+    method: 'POST',
+    path: () => '/api/v1/field-assessments',
+    needsTarget: false,
+  },
+  'service_log.record': { method: 'POST', path: () => '/api/v1/service-logs', needsTarget: false },
+  'need.done': { method: 'POST', path: (id) => `/api/v1/needs/${id}/done`, needsTarget: true },
+  'site.census': { method: 'POST', path: (id) => `/api/v1/sites/${id}/confirm`, needsTarget: true },
   'reminder.acknowledge': {
     method: 'POST',
     path: (id) => `/api/v1/reminders/${id}/acknowledge`,
@@ -123,9 +131,22 @@ export interface FieldSyncDeps {
         client: import('@aws-sdk/client-s3').S3Client;
         presignClient?: import('@aws-sdk/client-s3').S3Client;
         bucket: string;
+        /** Upload cap per photo (the same as the resident app's, SCL-04). */
+        maxBytes?: number;
       }
     | undefined;
 }
+
+const fieldRecordTypes = [
+  'field_assessment',
+  'hazard',
+  'mission',
+  'need',
+  'search_mark',
+  'placard',
+  'site',
+] as const;
+const imageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'] as const;
 
 export const fieldSyncRoutes =
   (deps: FieldSyncDeps = {}): FastifyPluginAsync =>
@@ -425,7 +446,11 @@ export const fieldSyncRoutes =
             };
           } else {
             const payload: Record<string, unknown> = { ...c.body };
-            if (c.kind === 'safety_alert.raise' && !payload['clientUuid'])
+            // Records keyed by the phone's id take the command id, so the record and the command agree (FLD-13).
+            if (
+              ['safety_alert.raise', 'assessment.record', 'service_log.record'].includes(c.kind) &&
+              !payload['clientUuid']
+            )
               payload['clientUuid'] = c.id;
             if (c.kind === 'position.batch' && b.deviceId && !payload['deviceId'])
               payload['deviceId'] = b.deviceId;
@@ -952,6 +977,231 @@ export const fieldSyncRoutes =
         };
       },
     );
+    // ------------------------------------------------------------- photos
+    /**
+     * FLD-07, PHO-06: photo-first capture. The phone asks for a ticket with
+     * its own id for the photo (a resend returns the same ticket), sends the
+     * bytes through the gateway, and completes it; completion links the photo
+     * to the field record it documents (which may have been saved after the
+     * photo) and queues the same processing as residents' photos: metadata
+     * stripped, derivatives made, originals kept restricted.
+     */
+    const maxBytes = deps.objects?.maxBytes ?? 8 * 1024 * 1024;
+    app.addContentTypeParser(
+      [...imageTypes],
+      { parseAs: 'buffer', bodyLimit: maxBytes + 1024 },
+      (_req, body, done) => done(null, body),
+    );
+    app.post(
+      '/field/photos',
+      {
+        schema: {
+          tags: ['field'],
+          body: z.object({
+            clientUuid: z.uuid(),
+            contentType: z.enum(imageTypes),
+            bytes: z.number().int().positive(),
+            shot: z.string().min(1).max(40).default('field'),
+            recordType: z.enum(fieldRecordTypes).optional(),
+            recordId: z.uuid().optional(),
+            takenAt: z.iso.datetime().optional(),
+            position: z
+              .object({ lat: z.number().min(-90).max(90), lon: z.number().min(-180).max(180) })
+              .optional(),
+          }),
+          response: {
+            201: z.object({ photoId: z.uuid(), uploadPath: z.string(), status: z.string() }),
+            200: z.object({ photoId: z.uuid(), uploadPath: z.string(), status: z.string() }),
+          },
+        },
+      },
+      async (request, reply) => {
+        const s = account(request);
+        await request.authorize('field.photo', { type: 'photo', tenantId: s.tenantId });
+        if (!deps.objects)
+          throw new ApiError(503, 'photos_unavailable', 'Photos cannot be uploaded right now.', {
+            retryable: true,
+          });
+        const b = request.body;
+        if (b.bytes > maxBytes)
+          throw new ApiError(
+            413,
+            'photo_too_large',
+            `Photos must be under ${Math.round(maxBytes / 1_048_576)} MB.`,
+          );
+        const { row, created } = await request.tx(async (trx) => {
+          const existing = await trx
+            .selectFrom('cg.photo')
+            .select(['id', 'status'])
+            .where('execution_id', '=', b.clientUuid)
+            .where('source', '=', 'field')
+            .executeTakeFirst();
+          if (existing) return { row: existing, created: false };
+          const inserted = await trx
+            .insertInto('cg.photo')
+            .values({
+              tenant_id: s.tenantId,
+              execution_id: b.clientUuid,
+              shot: b.shot,
+              source: 'field',
+              object_key_original: '',
+              content_type: b.contentType,
+              bytes: b.bytes,
+              field_record_type: b.recordType ?? null,
+              field_record_id: b.recordId ?? null,
+              suggested_taken_at: b.takenAt ? new Date(b.takenAt) : null,
+              suggested_geom: b.position
+                ? sql`ST_SetSRID(ST_MakePoint(${b.position.lon}, ${b.position.lat}), 4326)`
+                : null,
+              created_by: s.accountId,
+              updated_by: s.accountId,
+            })
+            .returning(['id', 'status'])
+            .executeTakeFirstOrThrow();
+          await trx
+            .updateTable('cg.photo')
+            .set({
+              object_key_original: `tenants/${s.tenantId}/originals/${b.clientUuid}/${inserted.id}`,
+            })
+            .where('id', '=', inserted.id)
+            .execute();
+          return { row: inserted, created: true };
+        });
+        return reply.code(created ? 201 : 200).send({
+          photoId: row.id,
+          uploadPath: `/api/v1/field/photos/${row.id}/content`,
+          status: row.status,
+        });
+      },
+    );
+
+    app.put(
+      '/field/photos/:id/content',
+      { bodyLimit: maxBytes + 1024, schema: { tags: ['field'], params: uuidParam } },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('field.photo', { type: 'photo', tenantId: s.tenantId });
+        const objects = deps.objects;
+        if (!objects)
+          throw new ApiError(503, 'photos_unavailable', 'Photos cannot be uploaded right now.', {
+            retryable: true,
+          });
+        const body = request.body;
+        if (!Buffer.isBuffer(body) || body.length === 0)
+          throw new ApiError(
+            400,
+            'validation_failed',
+            'Send the photo itself as the request body.',
+          );
+        if (body.length > maxBytes)
+          throw new ApiError(413, 'photo_too_large', 'That photo is too large.');
+        const row = await request.tx((trx) =>
+          trx
+            .selectFrom('cg.photo')
+            .select(['id', 'object_key_original', 'status', 'content_type'])
+            .where('id', '=', request.params.id)
+            .where('source', '=', 'field')
+            .where('created_by', '=', s.accountId)
+            .executeTakeFirst(),
+        );
+        if (!row) throw errors.notFound();
+        if (row.status !== 'uploading') return { photoId: row.id, status: row.status };
+        await objects.client.send(
+          new PutObjectCommand({
+            Bucket: objects.bucket,
+            Key: row.object_key_original,
+            Body: body,
+            ...(row.content_type ? { ContentType: row.content_type } : {}),
+          }),
+        );
+        return { photoId: row.id, status: 'stored' };
+      },
+    );
+
+    app.post(
+      '/field/photos/:id/complete',
+      {
+        schema: {
+          tags: ['field'],
+          params: uuidParam,
+          body: z.object({
+            recordType: z.enum(fieldRecordTypes).optional(),
+            recordId: z.uuid().optional(),
+          }),
+          response: { 200: z.object({ photoId: z.uuid(), status: z.string() }) },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('field.photo', { type: 'photo', tenantId: s.tenantId });
+        const objects = deps.objects;
+        if (!objects)
+          throw new ApiError(503, 'photos_unavailable', 'Photos cannot be uploaded right now.', {
+            retryable: true,
+          });
+        const row = await request.tx((trx) =>
+          trx
+            .selectFrom('cg.photo')
+            .select(['id', 'object_key_original', 'status', 'bytes', 'execution_id'])
+            .where('id', '=', request.params.id)
+            .where('source', '=', 'field')
+            .where('created_by', '=', s.accountId)
+            .executeTakeFirst(),
+        );
+        if (!row) throw errors.notFound();
+        const b = request.body;
+        const link =
+          b.recordType && b.recordId
+            ? { field_record_type: b.recordType, field_record_id: b.recordId }
+            : {};
+        if (row.status !== 'uploading') {
+          if (b.recordType && b.recordId)
+            await request.tx((trx) =>
+              trx.updateTable('cg.photo').set(link).where('id', '=', row.id).execute(),
+            );
+          return { photoId: row.id, status: row.status };
+        }
+        const head = await objects.client
+          .send(new HeadObjectCommand({ Bucket: objects.bucket, Key: row.object_key_original }))
+          .catch(() => null);
+        if (!head)
+          throw new ApiError(409, 'upload_incomplete', 'The photo has not finished uploading.', {
+            retryable: true,
+          });
+        await request.tx(async (trx) => {
+          await trx
+            .updateTable('cg.photo')
+            .set({
+              status: 'uploaded',
+              bytes: head.ContentLength ?? row.bytes,
+              uploaded_at: new Date(),
+              ...link,
+            })
+            .where('id', '=', row.id)
+            .execute();
+          await enqueueOutbox(
+            trx,
+            s.tenantId,
+            'photo.process',
+            { photoId: row.id },
+            row.execution_id,
+          );
+          await request.audit(trx, {
+            action: 'field.photo',
+            targetType: 'photo',
+            targetId: row.id,
+            changes: {
+              fields: [
+                { name: 'field_record_type', to: b.recordType ?? null },
+                { name: 'field_record_id', to: b.recordId ?? null },
+              ],
+            },
+          });
+        });
+        return { photoId: row.id, status: 'uploaded' };
+      },
+    );
+
     // ------------------------------------------------------------ records
     /**
      * FLD-13, FLD-14: the phone refetches the records the feed names, in one

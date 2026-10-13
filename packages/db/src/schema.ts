@@ -571,6 +571,9 @@ export interface PhotoTable extends Stamped {
   suggested_geom: ColumnType<unknown, unknown, unknown> | null;
   uploaded_at: TsNullable;
   processed_at: TsNullable;
+  field_record_type:
+    'field_assessment' | 'hazard' | 'mission' | 'need' | 'search_mark' | 'placard' | 'site' | null;
+  field_record_id: Uuid | null;
 }
 
 export type NeedStatus = 'open' | 'claimed' | 'in_progress' | 'met' | 'closed' | 'withdrawn';
@@ -1410,7 +1413,8 @@ export interface ActivityEntryTable {
     | 'alert'
     | 'service'
     | 'hazard'
-    | 'note';
+    | 'note'
+    | 'assessment';
   summary: string;
   ref_kind: string | null;
   ref_id: Uuid | null;
@@ -1990,6 +1994,43 @@ export interface HealthNoteTable {
   updated_by: Uuid | null;
 }
 
+/** FLD-08/10/13: what a field team saw at a property (migration 0037). */
+export interface FieldAssessmentTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  client_uuid: Uuid;
+  mission_id: Uuid | null;
+  assignment_id: Uuid | null;
+  team_id: Uuid | null;
+  personnel_id: Uuid | null;
+  mode: Generated<'sweep' | 'detailed' | 'validation'>;
+  parcel_id: string | null;
+  location_id: Uuid | null;
+  geom: ColumnType<unknown, unknown, unknown> | null;
+  accuracy_m: number | null;
+  usng: string | null;
+  landmark: string | null;
+  structure: Generated<
+    'single_family' | 'manufactured' | 'apartment_building' | 'commercial' | 'public' | 'other'
+  >;
+  degree: FemaDegree | 'cant_reach';
+  observations: JsonGen<Record<string, unknown>>;
+  note: string | null;
+  report_id: Uuid | null;
+  duplicate_of: Uuid | null;
+  review_state: Generated<'new' | 'accepted' | 'rejected' | 'superseded'>;
+  reviewed_by: Uuid | null;
+  reviewed_at: TsNullable;
+  review_reason: string | null;
+  assessed_at: TsGen;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
 export interface ChangeFeedTable {
   seq: Generated<number>;
   tenant_id: Uuid;
@@ -2283,6 +2324,7 @@ export interface Database {
   'cg.canvass_visit': CanvassVisitTable;
   'cg.shelter_stay': ShelterStayTable;
   'cg.health_note': HealthNoteTable;
+  'cg.field_assessment': FieldAssessmentTable;
   'cg.change_feed': ChangeFeedTable;
   'cg.client_command': ClientCommandTable;
 }

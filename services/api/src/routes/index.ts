@@ -7,6 +7,7 @@ import { contactRoutes } from './contacts.ts';
 import { definitionRoutes } from './definitions.ts';
 import { dispatchRoutes, type DispatchDeps } from './dispatch.ts';
 import { eventRoutes } from './events.ts';
+import { fieldAssessmentRoutes } from './field-assessments.ts';
 import { fieldOpsRoutes } from './field-ops.ts';
 import { fieldSyncRoutes, type FieldSyncDeps } from './field-sync.ts';
 import { intakeGraphRoutes } from './intake-graphs.ts';
@@ -50,6 +51,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   missionRoutes,
   rosterRoutes,
   fieldOpsRoutes,
+  fieldAssessmentRoutes,
   dispatchRoutes(deps.dispatch),
   fieldSyncRoutes(deps.fieldSync),
   resourceRoutes(),

@@ -341,6 +341,9 @@ importers:
       '@cg/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@cg/field-core':
+        specifier: workspace:*
+        version: link:../../packages/field-core
       '@cg/intake':
         specifier: workspace:*
         version: link:../../packages/intake

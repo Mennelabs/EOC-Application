@@ -428,6 +428,22 @@ export const actions = {
   'field.sync': a('read', 'change_feed', 'Pull changes for your scopes since a cursor'),
   'field.command': a('write', 'client_command', 'Apply a batch of field commands'),
   'field.area': a('read', 'area_package', 'Download the area package for offline work'),
+  'field.photo': a(
+    'write',
+    'photo',
+    'Take photos in the field and attach them to a field record (FLD-07)',
+  ),
+  'assessment.record': a(
+    'write',
+    'field_assessment',
+    'Record a field damage assessment at a property (FLD-08, FLD-10)',
+  ),
+  'assessment.read': a('read', 'field_assessment', 'Read field damage assessments'),
+  'assessment.approve': a(
+    'write',
+    'field_assessment',
+    'Accept or reject a field assessment; acceptance verifies the linked report',
+  ),
   'assessment.export': a('export', 'report', 'Export assessments as CSV or GeoJSON (SCL-13)', {
     consequential: true,
   }),

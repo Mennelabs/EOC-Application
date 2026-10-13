@@ -73,7 +73,7 @@ export function createSubjectLoader(db: Kysely<Database>, settings: IdpSettings)
       const tenant = await withTenant(db, { tenantId }, (trx) =>
         trx
           .selectFrom('cg.tenant')
-          .select(['id', 'slug', 'path', 'status'])
+          .select(['id', 'slug', 'path', 'status', 'kind'])
           .where('id', '=', tenantId)
           .executeTakeFirst(),
       );
@@ -158,6 +158,7 @@ export function createSubjectLoader(db: Kysely<Database>, settings: IdpSettings)
           accountId: account.id,
           tenantId,
           tenantPath: tenant.path,
+          tenantKind: tenant.kind,
           status: account.status,
           roles,
           agreementTenantIds: agreements.map((a) => a.from_tenant_id),

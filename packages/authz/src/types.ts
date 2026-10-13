@@ -85,6 +85,8 @@ export interface AccountSubject {
   accountId: string;
   tenantId: string;
   tenantPath: string;
+  /** county, city, region, state or partner_org: the console picks its workspaces by it (CON-01). */
+  tenantKind?: string;
   status: AccountStatus;
   roles: ResolvedRole[];
   /** Tenants whose signed agreements grant this tenant read access (SCL-01). */

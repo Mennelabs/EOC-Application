@@ -38,13 +38,11 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
         id: s.accountId,
         tenantId: s.tenantId,
       });
-      const tenant = await request.tx((trx) =>
-        trx.selectFrom('cg.tenant').select('kind').where('id', '=', s.tenantId).executeTakeFirst(),
-      );
+      // The kind rides on the subject (loaded with the account), so this route touches no table.
       return {
         accountId: s.accountId,
         tenantId: s.tenantId,
-        tenantKind: tenant?.kind ?? 'county',
+        tenantKind: s.tenantKind ?? 'county',
         status: s.status,
         roles: s.roles.map((r) => ({ key: r.key, version: r.version, templateKey: r.templateKey })),
         agreementTenantIds: s.agreementTenantIds ?? [],

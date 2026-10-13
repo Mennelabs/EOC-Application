@@ -1,8 +1,8 @@
 /**
  * 0032 reminders (F09) and badges (layer-4 plan §2, task B; REM-01,
  * BRD:FR-09.01–09.06, AC-09A/B/C, BDG-01, BDG-02, BRD:FR-13.01–13.06,
- * AC-13A/B/C, RULE-11, FL:FR-03): layer 3's send-once ledger becomes
- * `cg.notice_log` and `cg.reminder` takes the full F09 model, shared state
+ * AC-13A/B/C, RULE-11, FL:FR-03): with layer 3's send-once ledger under its
+ * own name (`cg.notice_log`), `cg.reminder` takes the full F09 model, shared state
  * with owner, due time, snooze, acknowledgement apart from completion, and
  * completion only against a persisted update; badges hold an access label
  * apart from account permissions and a state per fact: generated, print
@@ -18,18 +18,6 @@ import { SAFETY_COMMS_ROWS } from './0031_hazards_safety_comms.ts';
 export const BADGES_ROW = `,\n        (p_tenant, 'badges', interval '3 years', 'duration', 'BDG-02, FR-13.02: badge issuance and reprint history', p_actor)`;
 
 export async function up(db: Kysely<unknown>): Promise<void> {
-  // The layer-3 ledger keeps every row and its unique key under a name that says what it is.
-  await sql`alter table cg.reminder rename to notice_log`.execute(db);
-  await sql`alter index cg.reminder_due_idx rename to notice_log_due_idx`.execute(db);
-  // The constraints keep their old names after a rename; the new table needs them.
-  await sql`alter table cg.notice_log rename constraint reminder_pkey to notice_log_pkey`.execute(
-    db,
-  );
-  await sql`alter table cg.notice_log rename constraint reminder_tenant_id_kind_subject_id_cycle_key_key to notice_log_tenant_id_kind_subject_id_cycle_key_key`.execute(
-    db,
-  );
-  await sql`delete from cg.data_dictionary where table_name = 'reminder'`.execute(db);
-
   await sql`
     create table cg.reminder (
       id uuid primary key default gen_random_uuid(),
@@ -171,13 +159,6 @@ export async function down(db: Kysely<unknown>): Promise<void> {
   await sql`drop table if exists cg.badge cascade`.execute(db);
   await sql`drop table if exists cg.reminder_event cascade`.execute(db);
   await sql`drop table if exists cg.reminder cascade`.execute(db);
-  await sql`alter table cg.notice_log rename to reminder`.execute(db);
-  await sql`alter index cg.notice_log_due_idx rename to reminder_due_idx`.execute(db);
-  await sql`alter table cg.reminder rename constraint notice_log_pkey to reminder_pkey`.execute(db);
-  await sql`alter table cg.reminder rename constraint notice_log_tenant_id_kind_subject_id_cycle_key_key to reminder_tenant_id_kind_subject_id_cycle_key_key`.execute(
-    db,
-  );
-  await sql`delete from cg.data_dictionary where table_name = 'notice_log'`.execute(db);
   await sql`delete from cg.retention_policy where data_category = 'badges' and note like '%:%'`.execute(
     db,
   );

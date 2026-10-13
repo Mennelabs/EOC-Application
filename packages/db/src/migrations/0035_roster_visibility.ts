@@ -49,7 +49,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   }
   await sql`
     create or replace function cg.ensure_position_partition(p_day date)
-    returns text language plpgsql as $$
+    returns text language plpgsql security definer set search_path = cg, public as $$
     declare
       part text := 'position_p_' || to_char(p_day, 'YYYYMMDD');
     begin
@@ -93,7 +93,7 @@ export async function down(db: Kysely<unknown>): Promise<void> {
   );
   await sql`
     create or replace function cg.ensure_position_partition(p_day date)
-    returns text language plpgsql as $$
+    returns text language plpgsql security definer set search_path = cg, public as $$
     declare
       part text := 'position_p_' || to_char(p_day, 'YYYYMMDD');
     begin

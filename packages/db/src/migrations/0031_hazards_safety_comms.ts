@@ -50,7 +50,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       updated_at timestamptz not null default now(),
       updated_by uuid
     )`.execute(db);
-  await sql`create index hazard_event_idx on cg.hazard (tenant_id, event_id, state, severity)`.execute(
+  await sql`create index hazard_event_state_idx on cg.hazard (tenant_id, event_id, state, severity)`.execute(
     db,
   );
   await sql`create index hazard_mission_idx on cg.hazard (mission_id) where mission_id is not null`.execute(

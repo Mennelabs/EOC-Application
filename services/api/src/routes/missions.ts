@@ -274,7 +274,6 @@ const personOut = z.object({
   /** Restricted (counseling category, AC-04C). */
   behavioralHealth: z.string().nullable().optional(),
   partyId: z.uuid().nullable(),
-  enclaveReference: z.string().nullable().optional(),
   status: z.enum(['active', 'removed']),
   removedReason: z.string().nullable(),
 });
@@ -304,7 +303,7 @@ const PERSON_FIELDS: FieldDescriptor[] = [
   { name: 'injuryDetail', category: 'health', classification: 'restricted' },
   { name: 'transport', category: 'basic', classification: 'internal' },
   { name: 'behavioralHealth', category: 'counseling', classification: 'restricted' },
-  { name: 'enclaveReference', category: 'cji', classification: 'cji' },
+  // enclave_reference (SEC-12) is never returned by the platform API; the enclave (layer 5) resolves it.
 ];
 const MISSION_FIELDS: FieldDescriptor[] = [
   { name: 'summary', category: 'basic', classification: 'sensitive' },
@@ -902,20 +901,15 @@ export const missionRoutes: FastifyPluginAsync = async (instance) => {
           actor_account_id: s.accountId,
         });
         let current = inserted;
-        if (b.save === 'intake') {
-          const blockers = dispatchBlockers({ ...inserted, state: 'open' }).filter(
-            (x) => !x.startsWith('state:'),
-          );
-          if (blockers.length > 0)
-            throw new ApiError(
-              422,
-              'dispatch_prerequisites',
-              'The mission is saved as a draft until these are known.',
-              {
-                fields: blockers.map((name) => ({ name, message: 'needed before dispatch' })),
-                details: { missionId: inserted.id, reference: inserted.reference, state: 'draft' },
-              },
-            );
+        // FR-02.02, AC-02B: an intake save with a missing prerequisite keeps the draft (this
+        // transaction commits) and answers 422 naming what is missing, after the commit.
+        const blockers =
+          b.save === 'intake'
+            ? dispatchBlockers({ ...inserted, state: 'open' }).filter(
+                (x) => !x.startsWith('state:'),
+              )
+            : [];
+        if (b.save === 'intake' && blockers.length === 0) {
           current = await trx
             .updateTable('cg.mission')
             .set({ state: 'open', opened_at: new Date(), updated_by: s.accountId })
@@ -954,11 +948,24 @@ export const missionRoutes: FastifyPluginAsync = async (instance) => {
             classifierFor('mission'),
           ),
         });
-        return (await query(trx)
-          .where('m.id', '=', current.id)
-          .executeTakeFirstOrThrow()) as Joined;
+        return {
+          saved: (await query(trx)
+            .where('m.id', '=', current.id)
+            .executeTakeFirstOrThrow()) as Joined,
+          blockers,
+        };
       });
-      return reply.code(201).send(await toOut(row, { caller: true }));
+      if (row.blockers.length > 0)
+        throw new ApiError(
+          422,
+          'dispatch_prerequisites',
+          'The mission is saved as a draft until these are known.',
+          {
+            fields: row.blockers.map((name) => ({ name, message: 'needed before dispatch' })),
+            details: { missionId: row.saved.id, reference: row.saved.reference, state: 'draft' },
+          },
+        );
+      return reply.code(201).send(await toOut(row.saved, { caller: true }));
     },
   );
 
@@ -1546,7 +1553,6 @@ export const missionRoutes: FastifyPluginAsync = async (instance) => {
         ? { behavioralHealth: await dec(r.behavioral_health_enc) }
         : {}),
       partyId: r.party_id,
-      ...(fields.includes('enclaveReference') ? { enclaveReference: r.enclave_reference } : {}),
       status: r.status,
       removedReason: r.removed_reason,
     };
@@ -1691,14 +1697,7 @@ export const missionRoutes: FastifyPluginAsync = async (instance) => {
       });
       return reply
         .code(201)
-        .send(
-          await personToOut(row, [
-            'details',
-            'injuryDetail',
-            'behavioralHealth',
-            'enclaveReference',
-          ]),
-        );
+        .send(await personToOut(row, ['details', 'injuryDetail', 'behavioralHealth']));
     },
   );
 
@@ -1764,7 +1763,7 @@ export const missionRoutes: FastifyPluginAsync = async (instance) => {
         });
         return updated;
       });
-      return personToOut(row, ['details', 'injuryDetail', 'behavioralHealth', 'enclaveReference']);
+      return personToOut(row, ['details', 'injuryDetail', 'behavioralHealth']);
     },
   );
 

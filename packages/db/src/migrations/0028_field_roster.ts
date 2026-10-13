@@ -46,6 +46,20 @@ export function retentionFunction(extraRows: string): string {
 export const FIELD_RECORDS_ROW = `,\n        (p_tenant, 'field_records', interval '7 years', 'duration', 'FL-17, DSP-11: roster, check-ins and hours back FEMA Public Assistance claims', p_actor)`;
 
 export async function up(db: Kysely<unknown>): Promise<void> {
+  // A database that ran 0027 before layer 4 holds the notice ledger as cg.reminder; the name
+  // belongs to the F09 model from 0032 on, so the ledger takes its final name here first.
+  await sql`
+    do $$ begin
+      if exists (select 1 from information_schema.columns
+                 where table_schema = 'cg' and table_name = 'reminder' and column_name = 'cycle_key') then
+        alter table cg.reminder rename to notice_log;
+        alter index cg.reminder_due_idx rename to notice_log_due_idx;
+        alter table cg.notice_log rename constraint reminder_pkey to notice_log_pkey;
+        alter table cg.notice_log rename constraint reminder_tenant_id_kind_subject_id_cycle_key_key
+          to notice_log_tenant_id_kind_subject_id_cycle_key_key;
+      end if;
+    end $$`.execute(db);
+
   // Personnel: the field needs an hours limit (PER-02), the home agency when it is a
   // tenant of its own (DSP-09) and a badge photo reference (FR-13.01, layer-4 B).
   await sql`

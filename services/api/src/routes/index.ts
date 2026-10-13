@@ -16,6 +16,7 @@ import { referralRoutes } from './referrals.ts';
 import { reportRoutes } from './reports.ts';
 import { resourceRoutes } from './resources.ts';
 import { roleRoutes } from './roles.ts';
+import { rosterRoutes } from './roster.ts';
 import { siteRoutes } from './sites.ts';
 import { sharedRoutes } from './shared.ts';
 import { tenantRoutes } from './tenants.ts';
@@ -38,6 +39,7 @@ export const routes: FastifyPluginAsync[] = [
   needRoutes,
   siteRoutes,
   missionRoutes,
+  rosterRoutes,
   resourceRoutes(),
   contactRoutes,
   messageRoutes,

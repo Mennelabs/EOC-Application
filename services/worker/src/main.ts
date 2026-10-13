@@ -32,6 +32,7 @@ import {
   remindSiteConfirmations,
   reviewResources,
 } from './jobs/reminders.ts';
+import { dropPositionTrails, watchFieldSafety } from './jobs/field.ts';
 import { consume, consumeIntake, relayOnce } from './jobs/relay.ts';
 import type { JobContext, Schedule } from './jobs/types.ts';
 import { nullMailer, smtpMailer } from './mail.ts';
@@ -145,6 +146,9 @@ const schedules: Schedule[] = [
   { name: 'resource-review', everyMs: 60 * 60_000, run: reviewResources }, // BRD:FR-16.03, AC-16B
   { name: 'contact-reverify', everyMs: 60 * 60_000, run: remindContactVerification }, // CNT-01
   { name: 'publication-notices', everyMs: 30_000, run: noticePublications }, // PUB-06
+  // DSP-04, DSP-07, FLD-16: check-in timers, acknowledgement windows, escalation; DSP-08 trails.
+  { name: 'field-safety', everyMs: 60_000, run: watchFieldSafety },
+  { name: 'position-trails', everyMs: 24 * 3600_000, run: dropPositionTrails },
 ];
 
 const probes = [postgresProbe('db', pool), queueProbe('queue', () => queue)];

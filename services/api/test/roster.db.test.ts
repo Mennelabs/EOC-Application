@@ -176,12 +176,17 @@ describe.skipIf(!appUrl || !workerUrl)('field roster schema and seed (database-b
     );
     expect(theirs).toHaveLength(0);
 
-    const dropped = await sql<{ partition_name: string; row_count: string }>`
-      select partition_name, row_count::text from cg.drop_position_partitions(interval '30 days')`.execute(
-      dbWorker,
-    );
+    // The system role counts what will leave before the drop (the worker logs it per tenant).
+    const leaving = await dbWorker
+      .selectFrom('cg.position')
+      .select((eb) => eb.fn.countAll<string>().as('n'))
+      .where('check_in_id', '=', checkInId)
+      .where('recorded_at', '<', new Date(Date.now() - 30 * 86_400_000))
+      .executeTakeFirstOrThrow();
+    expect(leaving.n).toBe('1');
+    const dropped = await sql<{ partition_name: string }>`
+      select partition_name from cg.drop_position_partitions(interval '30 days')`.execute(dbWorker);
     expect(dropped.rows.map((r) => r.partition_name)).toContain(oldPartition);
-    expect(dropped.rows.find((r) => r.partition_name === oldPartition)?.row_count).toBe('1');
     const left = await dbWorker
       .selectFrom('cg.position')
       .select('accuracy_m')

@@ -19,7 +19,8 @@ export type TemplateName =
   | 'site_hidden'
   | 'resource_attention'
   | 'contact_reverify'
-  | 'publication_notice';
+  | 'publication_notice'
+  | 'help_alert';
 
 export const TEMPLATE_NAMES: readonly TemplateName[] = [
   'confirmation',
@@ -36,6 +37,7 @@ export const TEMPLATE_NAMES: readonly TemplateName[] = [
   'resource_attention',
   'contact_reverify',
   'publication_notice',
+  'help_alert',
 ];
 
 export interface TemplateVars {
@@ -101,6 +103,8 @@ const EN = {
       `${v.county} Emergency Mgmt: please confirm ${v.site ?? 'your site'} is still as published by ${v.dueAt ?? 'the end of its window'}, or it leaves the public page.`,
     site_hidden: (v: TemplateVars) =>
       `${v.county} Emergency Mgmt: ${v.site ?? 'your site'} was not confirmed by ${v.dueAt ?? 'its deadline'} and is hidden from the public page until confirmed.`,
+    help_alert: (v: TemplateVars) =>
+      `${v.county} Emergency Mgmt: field safety alert (${v.kind ?? 'alert'}) for ${v.site ?? 'a team'} raised ${v.dueAt ?? 'just now'}; nobody has acknowledged it. Open the dispatch board.`,
     resource_attention: (v: TemplateVars) =>
       `${v.county} Emergency Mgmt: the public resource "${v.title ?? ''}" ${v.what ?? 'needs attention'}.`,
     contact_reverify: (v: TemplateVars) =>
@@ -177,6 +181,14 @@ const EN = {
         `${v.site ?? 'A site'} was not confirmed by ${v.dueAt ?? 'its deadline'}, so it is no longer shown on ${v.county}'s public help page, in texts or on the phone line.\n\n` +
         `Confirm it in the console to show it again, or close it if it is no longer open.\n`,
     }),
+    help_alert: (v: TemplateVars) => ({
+      subject: `${v.county}: field safety alert for ${v.site ?? 'a team'} needs acknowledgement`,
+      body:
+        `A ${v.kind ?? 'safety'} alert for ${v.site ?? 'a team'} was raised at ${v.dueAt ?? 'an unknown time'} and nobody on ${v.county}'s dispatch board has acknowledged it.\n\n` +
+        `${v.what ? `${v.what}\n\n` : ''}` +
+        `Open the dispatch board to acknowledge it and reach the team: ${v.url ?? ''}\n\n` +
+        `If anyone is in danger now, call 911.\n`,
+    }),
     resource_attention: (v: TemplateVars) => ({
       subject: `${v.county}: public resource "${v.title ?? ''}" needs attention`,
       body:
@@ -231,6 +243,8 @@ const ES: typeof EN = {
       `Manejo de Emergencias de ${v.county}: confirme que ${v.site ?? 'su sitio'} sigue como se publicó antes de ${v.dueAt ?? 'que termine su plazo'}, o dejará de verse en la página pública.`,
     site_hidden: (v) =>
       `Manejo de Emergencias de ${v.county}: ${v.site ?? 'su sitio'} no se confirmó antes de ${v.dueAt ?? 'su plazo'} y está oculto de la página pública hasta que se confirme.`,
+    help_alert: (v) =>
+      `Gestión de Emergencias de ${v.county}: alerta de seguridad en campo (${v.kind ?? 'alerta'}) para ${v.site ?? 'un equipo'} emitida ${v.dueAt ?? 'ahora'}; nadie la ha atendido. Abra el tablero de despacho.`,
     resource_attention: (v) =>
       `Manejo de Emergencias de ${v.county}: el recurso público "${v.title ?? ''}" ${v.what ?? 'necesita atención'}.`,
     contact_reverify: (v) =>
@@ -306,6 +320,14 @@ const ES: typeof EN = {
       body:
         `${v.site ?? 'Un sitio'} no se confirmó antes de ${v.dueAt ?? 'su plazo'}, así que ya no se muestra en la página pública de ayuda, en los mensajes de texto ni en la línea telefónica de ${v.county}.\n\n` +
         `Confírmelo en la consola para mostrarlo de nuevo, o ciérrelo si ya no está abierto.\n`,
+    }),
+    help_alert: (v) => ({
+      subject: `${v.county}: una alerta de seguridad en campo para ${v.site ?? 'un equipo'} necesita atención`,
+      body:
+        `Se emitió una alerta (${v.kind ?? 'seguridad'}) para ${v.site ?? 'un equipo'} a las ${v.dueAt ?? 'hora desconocida'} y nadie en el tablero de despacho de ${v.county} la ha atendido.\n\n` +
+        `${v.what ? `${v.what}\n\n` : ''}` +
+        `Abra el tablero de despacho para atenderla y comunicarse con el equipo: ${v.url ?? ''}\n\n` +
+        `Si alguien está en peligro ahora, llame al 911.\n`,
     }),
     resource_attention: (v) => ({
       subject: `${v.county}: el recurso público "${v.title ?? ''}" necesita atención`,

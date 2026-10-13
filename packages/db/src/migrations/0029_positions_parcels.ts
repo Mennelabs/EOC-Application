@@ -62,7 +62,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   // so an insert never meets a missing partition (SCL-06).
   await sql`
     create or replace function cg.ensure_position_partition(p_day date)
-    returns text language plpgsql as $$
+    returns text language plpgsql security definer set search_path = cg, public as $$
     declare
       part text := 'position_p_' || to_char(p_day, 'YYYYMMDD');
     begin
@@ -79,7 +79,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     end $$`.execute(db);
   await sql`
     create or replace function cg.ensure_position_partitions(p_days_ahead integer default 3, p_days_back integer default 1)
-    returns setof text language plpgsql as $$
+    returns setof text language plpgsql security definer set search_path = cg, public as $$
     declare
       today date := (now() at time zone 'UTC')::date;
       d date;
@@ -94,14 +94,14 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       return;
     end $$`.execute(db);
 
-  // Drops every partition whose day ended before now() - p_keep (DSP-08, SEC-13).
-  // Returns the names so the sweep can log the deletion (cg.deletion_log).
+  // Drops every partition whose day ended before now() - p_keep (DSP-08, SEC-13) and
+  // names them; the caller counts what leaves (as the system role) for cg.deletion_log,
+  // since row-level security is forced on the owner this function runs as.
   await sql`
     create or replace function cg.drop_position_partitions(p_keep interval)
-    returns table (partition_name text, day date, row_count bigint) language plpgsql as $$
+    returns table (partition_name text, day date) language plpgsql security definer set search_path = cg, public as $$
     declare
       r record;
-      n bigint;
     begin
       for r in
         select c.relname, to_date(substr(c.relname, 12), 'YYYYMMDD') as day
@@ -112,9 +112,8 @@ export async function up(db: Kysely<unknown>): Promise<void> {
         where ns.nspname = 'cg' and p.relname = 'position'
       loop
         if ((r.day + 1)::timestamp at time zone 'UTC') < now() - p_keep then
-          execute format('select count(*) from cg.%I', r.relname) into n;
           execute format('drop table cg.%I', r.relname);
-          partition_name := r.relname; day := r.day; row_count := n;
+          partition_name := r.relname; day := r.day;
           return next;
         end if;
       end loop;

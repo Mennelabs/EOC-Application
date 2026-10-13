@@ -41,6 +41,10 @@ const personnelOut = z.object({
   dutyStatus: z.enum(['off_duty', 'on_duty']),
   availability: z.enum(['unavailable', 'available', 'assigned']),
   status: z.enum(['active', 'inactive', 'archived']),
+  /** PER-02: hours per shift before an assignment warns (layer 4). */
+  hoursLimit: z.number().int().min(1).max(24).nullable(),
+  /** DSP-09: the agency when it runs its own tenant. */
+  homeTenantId: z.uuid().nullable(),
   /** Present only when the caller may see contact details. */
   contact: contactSchema.nullable().optional(),
 });
@@ -61,6 +65,8 @@ type Row = {
   availability: 'unavailable' | 'available' | 'assigned';
   status: 'active' | 'inactive' | 'archived';
   contact_enc: Buffer | null;
+  hours_limit: number | null;
+  home_tenant_id: string | null;
 };
 
 const toPersonnel = (r: Row): z.infer<typeof personnelOut> => ({
@@ -78,6 +84,8 @@ const toPersonnel = (r: Row): z.infer<typeof personnelOut> => ({
   dutyStatus: r.duty_status,
   availability: r.availability,
   status: r.status,
+  hoursLimit: r.hours_limit,
+  homeTenantId: r.home_tenant_id,
 });
 
 export const personnelRoutes: FastifyPluginAsync = async (raw) => {
@@ -208,6 +216,8 @@ export const personnelRoutes: FastifyPluginAsync = async (raw) => {
     skills: z.array(z.string().min(1).max(60)).max(50).default([]),
     accountId: z.uuid().optional(),
     contact: contactSchema.optional(),
+    hoursLimit: z.number().int().min(1).max(24).optional(),
+    homeTenantId: z.uuid().optional(),
   });
 
   async function sealContact(tenantId: string, contact: z.infer<typeof contactSchema> | undefined) {
@@ -250,6 +260,8 @@ export const personnelRoutes: FastifyPluginAsync = async (raw) => {
             department: request.body.department ?? null,
             operational_role: request.body.operationalRole ?? null,
             skills: request.body.skills,
+            hours_limit: request.body.hoursLimit ?? null,
+            home_tenant_id: request.body.homeTenantId ?? s.tenantId,
             ...sealed,
             created_by: s.accountId,
             updated_by: s.accountId,
@@ -321,6 +333,8 @@ export const personnelRoutes: FastifyPluginAsync = async (raw) => {
         accountId: 'account_id',
         dutyStatus: 'duty_status',
         availability: 'availability',
+        hoursLimit: 'hours_limit',
+        homeTenantId: 'home_tenant_id',
       });
       const sealed =
         request.body.contact !== undefined

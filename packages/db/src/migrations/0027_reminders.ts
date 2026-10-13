@@ -4,8 +4,10 @@
  * notice the worker raises on its own clock, so a reminder goes out once
  * whatever the schedule's pace or restarts (BRD:FR-00.06). The full F09
  * model (owner, snooze, acknowledge, escalation) arrives with missions in
- * layer 4. Every column is in the dictionary (SEC-11); a retention category
- * of its own (SEC-13).
+ * layer 4, which is why this ledger carries its final name, `cg.notice_log`,
+ * from the start (a database that ran this migration as `cg.reminder` is
+ * renamed by 0028). Every column is in the dictionary (SEC-11); a retention
+ * category of its own (SEC-13).
  */
 import { sql, type Kysely } from 'kysely';
 import { loadDictionary } from './0009_data_dictionary_rows.ts';
@@ -41,7 +43,7 @@ function retentionFunction(extraRows: string): string {
 
 export async function up(db: Kysely<unknown>): Promise<void> {
   await sql`
-    create table cg.reminder (
+    create table cg.notice_log (
       id uuid primary key default gen_random_uuid(),
       tenant_id uuid not null references cg.tenant(id),
       kind text not null check (kind in ('site_reconfirm', 'site_hidden', 'resource_review', 'resource_link', 'resource_expired', 'contact_reverify', 'publication', 'publication_withdrawn')),
@@ -57,8 +59,10 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       created_at timestamptz not null default now(),
       unique (tenant_id, kind, subject_id, cycle_key)
     )`.execute(db);
-  await sql`create index reminder_due_idx on cg.reminder (tenant_id, state, due_at)`.execute(db);
-  await sql`select cg.apply_tenant_rls('cg.reminder')`.execute(db);
+  await sql`create index notice_log_due_idx on cg.notice_log (tenant_id, state, due_at)`.execute(
+    db,
+  );
+  await sql`select cg.apply_tenant_rls('cg.notice_log')`.execute(db);
   await sql
     .raw(
       retentionFunction(
@@ -71,7 +75,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
 }
 
 export async function down(db: Kysely<unknown>): Promise<void> {
-  await sql`drop table if exists cg.reminder cascade`.execute(db);
+  await sql`drop table if exists cg.notice_log cascade`.execute(db);
   await sql`delete from cg.retention_policy where data_category = 'reminders' and note like '%:%'`.execute(
     db,
   );

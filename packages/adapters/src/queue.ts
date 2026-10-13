@@ -20,8 +20,14 @@ export interface QueueConnection {
   close(): Promise<void>;
 }
 
+/** Seconds between AMQP heartbeats: a broker that vanishes without closing is noticed (SCL-06). */
+export const QUEUE_HEARTBEAT_S = 10;
+
 export async function connectQueue(url: string): Promise<QueueConnection> {
-  const connection = await amqp.connect(url);
+  const withHeartbeat = /[?&]heartbeat=/.test(url)
+    ? url
+    : `${url}${url.includes('?') ? '&' : '?'}heartbeat=${QUEUE_HEARTBEAT_S}`;
+  const connection = await amqp.connect(withHeartbeat);
   const channel = await connection.createConfirmChannel();
   return {
     connection,
@@ -61,6 +67,135 @@ export function queueProbe(name: string, getConn: () => QueueConnection | undefi
       const conn = getConn();
       if (!conn) throw new Error('not connected');
       await conn.channel.checkQueue(TOPOLOGY.queues[0]);
+    },
+  };
+}
+
+/** What the supervisor needs from a connection and its channels: events, and a way to close. */
+interface Watchable {
+  on(event: 'close' | 'error', listener: (err?: unknown) => void): unknown;
+}
+
+export interface QueueSupervisorOptions {
+  connect: () => Promise<QueueConnection>;
+  /** Sets the connection up (topology, consumers); returns any extra channels to watch. */
+  onReady: (q: QueueConnection) => Promise<Watchable[]>;
+  log: {
+    info: (obj: object, msg: string) => void;
+    warn: (obj: object, msg: string) => void;
+  };
+  /** A cheap round trip that fails on a dead channel; default checks the jobs queue. */
+  check?: (q: QueueConnection) => Promise<unknown>;
+  checkEveryMs?: number;
+  checkTimeoutMs?: number;
+  maxBackoffMs?: number;
+}
+
+export interface QueueSupervisor {
+  /** The live connection, or undefined while it is being re-established. */
+  current(): QueueConnection | undefined;
+  stop(): Promise<void>;
+}
+
+/**
+ * Keeps one queue connection alive for a long-running process (SCL-06, ADR-0007).
+ * Any close or error on the connection or on any channel it set up, or a failed
+ * liveness check, tears the whole connection down once and rebuilds it with its
+ * consumers, with backoff while the broker is away. A channel that dies while its
+ * connection stays open (a channel-level error, a broker restart seen only by one
+ * channel) is caught the same way, so the process never keeps a dead consumer.
+ */
+export function superviseQueue(opts: QueueSupervisorOptions): QueueSupervisor {
+  const checkEveryMs = opts.checkEveryMs ?? 10_000;
+  const checkTimeoutMs = opts.checkTimeoutMs ?? 5_000;
+  const maxBackoffMs = opts.maxBackoffMs ?? 30_000;
+  const check = opts.check ?? ((q) => q.channel.checkQueue(TOPOLOGY.queues[0]));
+  let live: QueueConnection | undefined;
+  let generation = 0;
+  let attempt = 0;
+  let connecting = false;
+  let stopped = false;
+  let retry: ReturnType<typeof setTimeout> | undefined;
+
+  const schedule = (delay: number) => {
+    if (stopped || retry) return;
+    retry = setTimeout(() => {
+      retry = undefined;
+      void start();
+    }, delay);
+  };
+
+  const drop = (gen: number, reason: string, err?: unknown) => {
+    if (gen !== generation || stopped) return;
+    generation++;
+    const old = live;
+    live = undefined;
+    opts.log.warn({ err, reason }, 'queue connection lost; reconnecting');
+    void old?.close();
+    schedule(500);
+  };
+
+  async function start(): Promise<void> {
+    if (stopped || connecting || live) return;
+    connecting = true;
+    const gen = ++generation;
+    let q: QueueConnection | undefined;
+    try {
+      q = await opts.connect();
+      const watch = (w: Watchable, what: string) => {
+        w.on('close', (err) => drop(gen, `${what} closed`, err));
+        w.on('error', (err) => drop(gen, `${what} error`, err));
+      };
+      watch(q.connection as unknown as Watchable, 'connection');
+      watch(q.channel as unknown as Watchable, 'channel');
+      for (const [i, ch] of (await opts.onReady(q)).entries()) watch(ch, `channel ${i + 2}`);
+      if (gen !== generation || stopped) {
+        await q.close();
+        return;
+      }
+      live = q;
+      attempt = 0;
+      opts.log.info({}, 'queue connected; consuming jobs and submissions');
+    } catch (err) {
+      if (gen === generation) generation++;
+      await q?.close().catch(() => undefined);
+      const delay = Math.min(maxBackoffMs, 500 * 2 ** attempt++);
+      opts.log.warn({ err, delay }, 'queue unavailable, retrying');
+      schedule(delay);
+    } finally {
+      connecting = false;
+    }
+  }
+
+  const timer = setInterval(() => {
+    const q = live;
+    if (!q) {
+      if (!connecting) schedule(0);
+      return;
+    }
+    const gen = generation;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    void Promise.race([
+      check(q),
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error('queue check timed out')), checkTimeoutMs);
+      }),
+    ])
+      .catch((err: unknown) => drop(gen, 'liveness check failed', err))
+      .finally(() => clearTimeout(timeout));
+  }, checkEveryMs);
+  timer.unref?.();
+
+  void start();
+  return {
+    current: () => live,
+    async stop() {
+      stopped = true;
+      clearInterval(timer);
+      if (retry) clearTimeout(retry);
+      const q = live;
+      live = undefined;
+      await q?.close();
     },
   };
 }

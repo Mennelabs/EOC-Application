@@ -104,6 +104,8 @@ export interface MapPoint {
 
 export interface ConsoleMap {
   setPoints(points: MapPoint[], visibleLayers: ReadonlySet<string>): void;
+  /** The event's area (GeoJSON), outlined; null removes it. */
+  setArea(geojson: unknown): void;
   destroy(): void;
 }
 
@@ -152,6 +154,22 @@ export function openMap(
         map.fitBounds(bounds, { padding: 48, maxZoom: 14, duration: 0 });
         fitted = true;
       }
+    },
+    setArea(geojson) {
+      const apply = () => {
+        if (map.getLayer('area-line')) map.removeLayer('area-line');
+        if (map.getSource('area')) map.removeSource('area');
+        if (!geojson) return;
+        map.addSource('area', { type: 'geojson', data: geojson as never });
+        map.addLayer({
+          id: 'area-line',
+          type: 'line',
+          source: 'area',
+          paint: { 'line-color': '#6b2fd6', 'line-width': 3, 'line-dasharray': [2, 1] },
+        });
+      };
+      if (map.isStyleLoaded()) apply();
+      else map.once('load', apply);
     },
     destroy() {
       map.remove();

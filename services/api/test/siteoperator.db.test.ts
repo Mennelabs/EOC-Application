@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
 import { createDb, type Database } from '@cg/db';
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import { loadSeed } from '../../../tools/seed/src/load.ts';
 import { buildApp, type App } from '../src/app.ts';
 import { AuthError, type SubjectLoader } from '../src/auth/subject.ts';
@@ -89,6 +89,8 @@ describe.skipIf(!appUrl || !workerUrl)('site operator (database-backed)', () => 
       ['countyCare', county, 'mass_care_coordinator'],
       ['ngoShelter', ngo, 'shelter_worker'],
       ['otherShelter', other, 'shelter_worker'],
+      ['gis', county, 'planning_gis_lead'],
+      ['admin', county, 'tenant_admin'],
     ] as const) {
       const email = `${who.toLowerCase()}.operator@example.org`;
       const existing = await dbWorker
@@ -254,5 +256,91 @@ describe.skipIf(!appUrl || !workerUrl)('site operator (database-backed)', () => 
       `/api/v1/field-records/shelter_stay/census?siteId=${siteId}`,
     );
     expect(otherView.json<{ households: number }>().households).toBe(0);
+  });
+
+  it('CON-03, PUB-05, RULE-16: the situation layers show exact report points only to roles with the exact-location category, and never a confidential site', async () => {
+    const county = (
+      await dbWorker
+        .selectFrom('cg.event')
+        .select('tenant_id')
+        .where('id', '=', eventId)
+        .executeTakeFirstOrThrow()
+    ).tenant_id;
+    // A report at a known point in this event, and a confidential site with a location.
+    const loc = await dbWorker
+      .insertInto('cg.location')
+      .values({
+        tenant_id: county,
+        geom: sql`ST_SetSRID(ST_MakePoint(-90.86543, 38.79876), 4326)`,
+        precision: 'exact',
+        source: 'resident',
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    const report = await dbWorker
+      .selectFrom('cg.report')
+      .select('id')
+      .where('tenant_id', '=', county)
+      .where('withdrawn_at', 'is', null)
+      .where('duplicate_of', 'is', null)
+      .orderBy('submitted_at', 'desc')
+      .executeTakeFirstOrThrow();
+    await dbWorker
+      .updateTable('cg.report')
+      .set({ location_id: loc.id, event_id: eventId })
+      .where('id', '=', report.id)
+      .execute();
+    const hidden = await dbWorker
+      .insertInto('cg.location')
+      .values({
+        tenant_id: county,
+        geom: sql`ST_SetSRID(ST_MakePoint(-90.9, 38.8), 4326)`,
+        precision: 'exact',
+        source: 'reviewer',
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    const confidential = await dbWorker
+      .insertInto('cg.site')
+      .values({
+        tenant_id: county,
+        event_id: eventId,
+        kind: 'shelter',
+        name: 'Exercise confidential shelter',
+        slug: `confidential-${randomUUID().slice(0, 8)}`,
+        status: 'open',
+        confidential: true,
+        location_id: hidden.id,
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    type Situation = {
+      layers: Record<
+        string,
+        {
+          available: boolean;
+          items: { id: string; position: { lat: number; lon: number }; approximate: boolean }[];
+        }
+      >;
+    };
+    const gis = await call('gis', 'GET', `/api/v1/situation?eventId=${eventId}`);
+    expect(gis.status, gis.body).toBe(200);
+    const g = gis.json<Situation>();
+    const exact = g.layers['reports']!.items.find((i) => i.id === report.id)!;
+    expect(exact).toMatchObject({
+      approximate: false,
+      position: { lat: 38.79876, lon: -90.86543 },
+    });
+    expect(g.layers['sites']!.items.some((i) => i.id === confidential.id)).toBe(false);
+    const admin = await call('admin', 'GET', `/api/v1/situation?eventId=${eventId}`);
+    expect(admin.status, admin.body).toBe(200);
+    const rounded = admin
+      .json<Situation>()
+      .layers['reports']!.items.find((i) => i.id === report.id)!;
+    expect(rounded).toMatchObject({ approximate: true, position: { lat: 38.8, lon: -90.87 } });
+    // A role without the layer's action is told the layer is not available, not given an empty map.
+    const shelter = await call('ngoShelter', 'GET', `/api/v1/situation?eventId=${eventId}`);
+    if (shelter.status === 200)
+      expect(shelter.json<Situation>().layers['reports']!.available).toBe(false);
   });
 });

@@ -13,6 +13,8 @@ import {
 import { AiRegisterScreen, AssistedScreen, IntakeSetupScreen } from './screens/intake.tsx';
 import { ContactsScreen } from './screens/contacts.tsx';
 import { DispatchScreen, ReplayScreen } from './screens/dispatch.tsx';
+import { SheltersScreen, VolunteerReceptionScreen } from './screens/masscare.tsx';
+import { SituationScreen } from './screens/situation.tsx';
 import {
   BadgesScreen,
   DevicesScreen,
@@ -50,6 +52,9 @@ const routes = [
   { path: '/console/dispatch', label: 'Dispatch board', layer: 4 },
   { path: '/console/missions', label: 'Missions', layer: 4 },
   { path: '/console/replay', label: 'Board replay', layer: 4 },
+  { path: '/console/situation', label: 'Situation map', layer: 4 },
+  { path: '/console/shelters', label: 'Shelters', layer: 4 },
+  { path: '/console/reception', label: 'Volunteer reception', layer: 4 },
   { path: '/console/roster', label: 'Roster and check-in', layer: 4 },
   { path: '/console/net-control', label: 'Net control log', layer: 4 },
   { path: '/console/field-messages', label: 'Messages to the field', layer: 4 },
@@ -213,6 +218,12 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <MissionsScreen navigate={navigate} />;
       case '/console/replay':
         return <ReplayScreen />;
+      case '/console/situation':
+        return <SituationScreen />;
+      case '/console/shelters':
+        return <SheltersScreen me={me} />;
+      case '/console/reception':
+        return <VolunteerReceptionScreen />;
       case '/console/roster':
         return <RosterScreen />;
       case '/console/net-control':

@@ -25,6 +25,7 @@ import { roleRoutes } from './roles.ts';
 import { rosterRoutes } from './roster.ts';
 import { siteRoutes } from './sites.ts';
 import { sharedRoutes } from './shared.ts';
+import { situationRoutes } from './situation.ts';
 import { tenantRoutes } from './tenants.ts';
 import { volunteerRoutes } from './volunteers.ts';
 
@@ -61,6 +62,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   fieldVoiceRoutes(deps.fieldVoice),
   fieldRecordRoutes(deps.fieldRecords ?? deps.fieldSync),
   dispatchRoutes(deps.dispatch),
+  situationRoutes,
   fieldSyncRoutes(deps.fieldSync),
   resourceRoutes(),
   contactRoutes,

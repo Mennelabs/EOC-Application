@@ -104,6 +104,12 @@ export const cast = [
   // Layer 4: the field side of the exercise (DSP-09, DSP-10, FLD-03).
   { email: 'rowan.field@example.org', name: 'Rowan Achebe', role: 'team_lead', tenant: 'county' },
   {
+    email: 'casey.dispatch@example.org',
+    name: 'Casey Whitfield',
+    role: 'field_coordinator',
+    tenant: 'county',
+  },
+  {
     email: 'pat.netcontrol@example.org',
     name: 'Pat Iverson',
     role: 'net_control',

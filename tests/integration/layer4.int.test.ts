@@ -18,7 +18,7 @@ import { randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { api, BASE, sql, token, waitFor } from './support.ts';
 
-const priya = () => token('county', 'priya.assessment@example.org');
+const casey = () => token('county', 'casey.dispatch@example.org');
 const rowan = () => token('county', 'rowan.field@example.org');
 const pat = () => token('county', 'pat.netcontrol@example.org');
 const cleanupDispatch = () => token('cleanup', 'dispatch.cleanup@example.org');
@@ -62,7 +62,7 @@ async function streamFor(tok: string, ms: number, during: () => Promise<void>) {
 }
 
 beforeAll(async () => {
-  const events = await api(await priya(), '/events');
+  const events = await api(await casey(), '/events');
   expect(events.status, events.text).toBe(200);
   eventId = (events.body as { id: string; name: string }[]).find((e) =>
     e.name.toUpperCase().includes('WESTWIND'),
@@ -90,7 +90,7 @@ describe('layer 4 against the stack', () => {
       },
     });
     expect(sent.status, sent.text).toBe(202);
-    const board = await api(await priya(), `/dispatch/board?eventId=${eventId}`);
+    const board = await api(await casey(), `/dispatch/board?eventId=${eventId}`);
     expect(board.status, board.text).toBe(200);
     const mine = (board.body as unknown as Board).teams.find((t) => t.id === teamId)!;
     expect(mine.position).not.toBeNull();
@@ -102,7 +102,7 @@ describe('layer 4 against the stack', () => {
     const clientUuid = randomUUID();
     const field = await rowan();
     let alertId = '';
-    const { status, frames } = await streamFor(await priya(), 8000, async () => {
+    const { status, frames } = await streamFor(await casey(), 8000, async () => {
       const raised = await api(field, '/safety-alerts', {
         body: {
           clientUuid,
@@ -118,17 +118,17 @@ describe('layer 4 against the stack', () => {
       frames.some((f) => f['recordType'] === 'safety_alert' && f['recordId'] === alertId),
       JSON.stringify(frames.slice(-5)),
     ).toBe(true);
-    const open = await api(await priya(), '/safety-alerts?open=true');
+    const open = await api(await casey(), '/safety-alerts?open=true');
     const seen = (
       open.body as unknown as { id: string; position: { lat: number; lon: number } | null }[]
     ).find((a) => a.id === alertId)!;
     expect(seen.position?.lat).toBeCloseTo(38.79531, 5);
-    const ack = await api(await priya(), `/safety-alerts/${alertId}/acknowledge`, { body: {} });
+    const ack = await api(await casey(), `/safety-alerts/${alertId}/acknowledge`, { body: {} });
     expect(ack.status, ack.text).toBeLessThan(300);
   });
 
   it('FLD-13, AC-00B, AC-00C: a command batch sent twice applies once; a stale command gets the current record', async () => {
-    const staff = await priya();
+    const staff = await casey();
     const mission = await api(staff, '/missions', {
       idempotencyKey: randomUUID(),
       body: {
@@ -227,7 +227,7 @@ describe('layer 4 against the stack', () => {
     expect(res.status, res.text).toBe(201);
     expect(res.body['positionRecordedAt']).not.toBeNull();
     const latest = await api(
-      await priya(),
+      await casey(),
       `/positions/latest?eventId=${eventId}&teamId=${teamId}`,
     );
     expect(
@@ -241,7 +241,7 @@ describe('layer 4 against the stack', () => {
       `update cg.team_status set created_at = now() - interval '2 hours' where team_id = '${teamId}'`,
     );
     sql(`update cg.check_in set started_at = now() - interval '2 hours' where id = '${checkInId}'`);
-    const staff = await priya();
+    const staff = await casey();
     const alert = await waitFor(async () => {
       const open = await api(staff, '/safety-alerts?open=true');
       const mine = (open.body as unknown as { id: string; kind: string; teamId: string }[]).filter(

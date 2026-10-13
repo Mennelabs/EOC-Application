@@ -94,8 +94,8 @@ test.describe('field app (web build)', () => {
     await expect(page.getByText(/Dispatch has your help alert|Help alert saved/)).toBeVisible({
       timeout: 30_000,
     });
-    // The exercise dispatcher clears it so the board journeys start quiet.
-    const staff = await token('county', 'priya.assessment@example.org');
+    // The exercise field coordinator clears it so the board journeys start quiet.
+    const staff = await token('county', 'casey.dispatch@example.org');
     const alerts = (await api(staff, '/safety-alerts?open=true')).body as {
       id: string;
       kind: string;

@@ -83,7 +83,7 @@ const json = (tok) => ({
 
 export function setup() {
   const field = token('county', 'rowan.field@example.org');
-  const dispatch = token('county', 'priya.assessment@example.org');
+  const dispatch = token('county', 'casey.dispatch@example.org');
   // A shift left open by an earlier suite ends first; then the run's own shift.
   const mine = http.get(`${BASE}/api/v1/check-ins?mine=true`, json(field));
   for (const c of mine.json() || [])

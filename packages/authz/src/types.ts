@@ -66,7 +66,16 @@ export interface Grant {
   events?: EventScope;
   /** Field categories visible beyond 'basic'; default none. */
   dataCategories?: DataCategory[];
+  /**
+   * Which records of the type; default 'all'. 'own' = only the records the
+   * subject holds (work assigned to them or to a team they are on): FLD-14
+   * "volunteers see only their own assignments". The route filters lists by
+   * the decision's `recordScope` and marks a single record `heldBySubject`.
+   */
+  records?: RecordScope;
 }
+
+export type RecordScope = 'all' | 'own';
 
 export interface ResolvedRole {
   roleId: string;
@@ -128,6 +137,8 @@ export interface Resource {
   changeRequestApproved?: boolean;
   /** For public resources: only published ones are readable without sign-in. */
   published?: boolean;
+  /** For a single record of a type granted `records: 'own'`: whether the subject holds it (FLD-14). */
+  heldBySubject?: boolean;
   fields?: FieldDescriptor[];
 }
 
@@ -150,6 +161,8 @@ export interface Decision {
   restrictedRead: DataCategory[];
   /** RULE-14: needs confirmation and a reason at the API layer. */
   consequential: boolean;
+  /** 'own' when every matching grant is limited to records the subject holds; lists must filter (FLD-14). */
+  recordScope: RecordScope;
   /** Extra audit context, e.g. 'self_review_exception' or 'break_glass'. */
   auditReason?: string;
 }

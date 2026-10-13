@@ -99,18 +99,27 @@ export async function invitationLink(email: string): Promise<string> {
  * sign-in. Returns the account's email. Each caller gets its own account, so
  * projects never race on a shared user (SEC-07, ADM-05 G6).
  */
+/** The two seeded administrators of a realm: the county's, or a partner organization's (ADM-02). */
+export function administrators(realm: string): { admin: string; security: string } {
+  return realm === 'county'
+    ? { admin: 'admin@example.org', security: 'security.admin@example.org' }
+    : { admin: `admin.${realm}@example.org`, security: `security.${realm}@example.org` };
+}
+
 export async function onboard(
   page: Page,
   context: BrowserContext,
   roleKey: string,
   displayName: string,
   tag: string,
+  realm = 'county',
 ): Promise<string> {
   const email = `e2e-${tag}-${Date.now().toString(36)}@example.org`;
 
-  // Admin invites; a second administrator approves a role for the new account.
-  const admin = await token('county', 'admin@example.org');
-  const security = await token('county', 'security.admin@example.org');
+  // The organization's administrator invites; its second administrator approves a role.
+  const admins = administrators(realm);
+  const admin = await token(realm, admins.admin);
+  const security = await token(realm, admins.security);
   const invited = await api(admin, '/accounts/invite', {
     body: { email, displayName },
   });
@@ -208,7 +217,7 @@ export async function onboard(
   while (!(await welcome.isVisible()) && Date.now() < signInDeadline) {
     if (!orgSent && (await org.isVisible())) {
       orgSent = true;
-      await org.fill('county');
+      await org.fill(realm);
       await page.getByRole('button', { name: 'Continue' }).click();
     } else if (!passwordSent && (await username.isVisible())) {
       passwordSent = true;

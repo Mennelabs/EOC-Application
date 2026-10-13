@@ -24,6 +24,14 @@ export const CAST_ACCOUNTS: ReadonlyArray<readonly [realm: string, user: string]
   ['canteen', 'ruth.canteen@example.org'],
   ['shelter-ngo', 'nurse@example.org'],
   ['coad', 'jen.coad@example.org'],
+  // Their administrators (ADM-02, decision 2026-10-13), who onboard their own staff.
+  ...(['coad', 'canteen', 'shelter-ngo', 'cleanup', 'legal'] as const).flatMap(
+    (realm) =>
+      [
+        [realm, `admin.${realm}@example.org`],
+        [realm, `security.${realm}@example.org`],
+      ] as const,
+  ),
 ];
 
 async function canSignIn(realm: string, user: string): Promise<boolean> {

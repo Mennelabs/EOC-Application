@@ -14,6 +14,8 @@ export interface ActionMeta {
   public?: boolean;
   /** RULE-14: confirmation and reason required. */
   consequential?: boolean;
+  /** Never covered by a wildcard grant ('*' or 'family.*'): a role must name it (DSP-08). */
+  explicit?: boolean;
 }
 
 const a = (
@@ -254,6 +256,198 @@ export const actions = {
     'Enable or disable an AI feature for the tenant',
     { consequential: true },
   ),
+  // Layer 4 task A: the field roster (PER-01, DSP-02, DSP-08, DSP-09, FLD-02, FLD-03, FLD-04).
+  'credential.read': a('read', 'credential', 'Read recorded skills and credentials'),
+  'credential.record': a(
+    'write',
+    'credential',
+    'Record a credential for a person (never inferred)',
+  ),
+  'credential.verify': a(
+    'write',
+    'credential',
+    'Verify a recorded credential against its evidence',
+  ),
+  'credential.revoke': a('write', 'credential', 'Revoke a credential (history kept)', {
+    consequential: true,
+  }),
+  'team.read': a('read', 'team', 'Read teams and units, their members and status'),
+  'team.manage': a('write', 'team', 'Create a team or unit; add and remove members'),
+  'team.status': a('write', 'team', "Set or confirm a team's status"),
+  'team.archive': a('write', 'team', 'Stand down or archive a team', { consequential: true }),
+  'check_in.create': a('write', 'check_in', 'Check yourself in to an event by code or QR'),
+  'check_in.end': a('write', 'check_in', 'Check yourself out'),
+  'check_in.read': a('read', 'check_in', 'Read who is checked in, on which team, since when'),
+  'check_in.manage': a(
+    'write',
+    'check_in',
+    'Check another person in or out (staging, net control)',
+  ),
+  'device.register': a('write', 'field_device', 'Register this app install'),
+  'device.read': a('read', 'field_device', 'Read registered app installs'),
+  'device.wipe': a('admin', 'field_device', "Request a remote wipe of the app's data", {
+    consequential: true,
+  }),
+  'position.record': a('write', 'position', 'Report your position while checked in'),
+  'position.read': a('read', 'position', 'See live positions (dispatch and safety roles)', {
+    explicit: true,
+  }),
+  'parcel.read': a('read', 'parcel', 'Read parcel outlines and addresses of record'),
+  'parcel.import': a('admin', 'parcel', "Load or replace the tenant's parcel data", {
+    consequential: true,
+  }),
+  // Layer 4 task B: missions, assignments, hazards, messages, safety, logs, reminders (F09),
+  // badges, field records and sync (MIS-01–04, FR-02/04/06/07/09/13, DSP-06/07/10/11, FL:FR-*).
+  'mission.read': a('read', 'mission', 'Read missions, their timeline and assignments'),
+  'mission.create': a('write', 'mission', 'Create a mission (draft or intake save; CALL-01)'),
+  'mission.update': a('write', 'mission', "Update a mission's summary, location and links"),
+  'mission.narrative': a('write', 'mission', 'Add a narrative entry or an amendment by role'),
+  'mission.transition': a(
+    'write',
+    'mission',
+    'Open, en route, on scene, cleared (the allowed graph)',
+  ),
+  'mission.priority': a('write', 'mission', 'Change priority with a reason', {
+    consequential: true,
+  }),
+  'mission.lock': a('write', 'mission', 'Lock or unlock a mission against edits'),
+  'mission.cancel': a('write', 'mission', 'Cancel a mission with a reason', {
+    consequential: true,
+  }),
+  'mission.close': a('write', 'mission', 'Close a mission with its disposition', {
+    consequential: true,
+  }),
+  'mission.reopen': a('write', 'mission', 'Reopen a closed mission with a reason', {
+    consequential: true,
+  }),
+  'mission.person.read': a(
+    'read',
+    'mission_person',
+    'Read people involved (restricted details by category)',
+  ),
+  'mission.person.edit': a('write', 'mission_person', 'Add, change or remove a person involved'),
+  'mission.media.read': a(
+    'read',
+    'mission_media',
+    'Read media references and download through the authorized route',
+  ),
+  'mission.media.add': a('write', 'mission_media', 'Attach or remove a media reference'),
+  'assignment.read': a('read', 'assignment', 'Read assignments and their history'),
+  'assignment.create': a('write', 'assignment', 'Assign a person or team to a mission'),
+  'assignment.override': a('write', 'assignment', 'Assign despite a conflict, with a reason', {
+    consequential: true,
+  }),
+  'assignment.dispatch': a('write', 'assignment', 'Dispatch an assignment through a method'),
+  'assignment.acknowledge': a('write', 'assignment', 'Acknowledge or decline your assignment'),
+  'assignment.status': a('write', 'assignment', 'Record en route, on scene or cleared'),
+  'assignment.release': a('write', 'assignment', 'Release a resource with a reason', {
+    consequential: true,
+  }),
+  'dispatch.read': a('read', 'dispatch', 'The board: teams, work queue, suggestions, replay'),
+  'stream.read': a('read', 'stream', 'Live updates (Server-Sent Events)'),
+  'hazard.read': a('read', 'hazard', 'Read hazards (restricted details by category)'),
+  'hazard.report': a('write', 'hazard', 'Report a hazard or correct one'),
+  'hazard.confirm': a('write', 'hazard', 'Confirm a hazard or accept an AI suggestion'),
+  'hazard.clear': a('write', 'hazard', 'Clear a hazard with a reason', { consequential: true }),
+  'field_message.send': a('write', 'field_message', 'Message a person, team, agency or area'),
+  'field_message.read': a('read', 'field_message', 'Read messages and receipts'),
+  'field_message.receipt': a('write', 'field_message', 'Record delivered, read or acknowledged'),
+  'safety_alert.raise': a('write', 'safety_alert', 'Raise a help alert'),
+  'safety_alert.read': a('read', 'safety_alert', 'Read safety alerts'),
+  'safety_alert.acknowledge': a('write', 'safety_alert', 'Acknowledge or escalate an alert'),
+  'safety_alert.resolve': a('write', 'safety_alert', 'Resolve an alert with its resolution', {
+    consequential: true,
+  }),
+  'comms_log.read': a('read', 'comms_log', 'Read the communications log (ICS 309)'),
+  'comms_log.write': a('write', 'comms_log', 'Log traffic heard on a net (net control)'),
+  'activity.read': a('read', 'activity_entry', 'Read activity logs (ICS 214)'),
+  'activity.write': a('write', 'activity_entry', 'Add an activity note'),
+  'significant_event.read': a('read', 'significant_event', 'Read the significant events log'),
+  'significant_event.write': a('write', 'significant_event', 'Add a significant event'),
+  'reminder.read': a('read', 'reminder', 'Read reminders (F09)'),
+  'reminder.manage': a('write', 'reminder', 'Create, snooze, reset or cancel a reminder'),
+  'reminder.acknowledge': a('write', 'reminder', 'Acknowledge a reminder'),
+  'reminder.complete': a('write', 'reminder', 'Complete a reminder against a persisted update'),
+  'badge.read': a('read', 'badge', 'Read badges and their history'),
+  'badge.generate': a('write', 'badge', 'Generate or replace a badge'),
+  'badge.print': a('write', 'badge', 'Print requested, confirmed, failed or handed out'),
+  'badge.revoke': a('write', 'badge', 'Revoke a badge at once', { consequential: true }),
+  'badge.verify': a('read', 'badge', 'Verify a badge at a checkpoint (name, agency, label only)'),
+  'service_log.write': a('write', 'service_log', 'One-tap service counters'),
+  'service_log.read': a('read', 'service_log', 'Read service counts'),
+  'job_aid.read': a('read', 'job_aid', 'Read job aids for your role'),
+  'job_aid.edit': a('write', 'job_aid', 'Draft or change a job aid'),
+  'job_aid.approve': a('admin', 'job_aid', 'Approve a job aid for the county', {
+    consequential: true,
+  }),
+  'search_mark.read': a('read', 'search_mark', 'Read search marks and the searched layer'),
+  'search_mark.write': a('write', 'search_mark', 'Record a search mark'),
+  'placard.read': a('read', 'placard', 'Read posted placards'),
+  'placard.write': a('write', 'placard', 'Record a posted placard'),
+  'road_status.read': a('read', 'road_status', 'Read road status'),
+  'road_status.write': a('write', 'road_status', 'Set road status'),
+  'debris_ticket.read': a('read', 'debris_ticket', 'Read debris load tickets'),
+  'debris_ticket.write': a('write', 'debris_ticket', 'Record a debris load ticket'),
+  'inspection.read': a('read', 'inspection', 'Read inspections (aggregate illness counts only)'),
+  'inspection.write': a('write', 'inspection', 'Record an inspection'),
+  'pet_intake.read': a('read', 'pet_intake', 'Read pet intake and matches'),
+  'pet_intake.write': a('write', 'pet_intake', 'Record a pet intake or match'),
+  'walkthrough.read': a('read', 'site_walkthrough', 'Read facility walk-throughs'),
+  'walkthrough.write': a('write', 'site_walkthrough', 'Record a facility walk-through'),
+  'right_of_entry.read': a('read', 'right_of_entry', 'Read right-of-entry records (restricted)'),
+  'right_of_entry.write': a('write', 'right_of_entry', 'Record a signed right of entry or release'),
+  'volunteer_registration.read': a('read', 'volunteer_registration', 'Read walk-up registrations'),
+  'volunteer_registration.write': a(
+    'write',
+    'volunteer_registration',
+    'Register a walk-up volunteer',
+  ),
+  'stock.read': a('read', 'stock_item', 'Read stock and movements'),
+  'stock.write': a('write', 'stock_item', 'Record stock received, issued, counted or requested'),
+  'interpreter.request': a('write', 'interpreter_request', 'Request an interpreter'),
+  'interpreter.respond': a(
+    'write',
+    'interpreter_request',
+    'Accept, join or finish an interpreter request',
+  ),
+  'interpreter.read': a('read', 'interpreter_request', 'Read the interpreter queue'),
+  'child_check_in.read': a('read', 'child_check_in', 'Read child check-ins (restricted)'),
+  'child_check_in.write': a('write', 'child_check_in', 'Check a child in or out'),
+  'canvass_visit.read': a('read', 'canvass_visit', 'Read canvass visits'),
+  'canvass_visit.write': a('write', 'canvass_visit', 'Record a canvass visit'),
+  'shelter_stay.read': a('read', 'shelter_stay', 'Read shelter registrations and census'),
+  'shelter_stay.write': a('write', 'shelter_stay', 'Register, assign a cot, check out'),
+  'shelter_incident.read': a('read', 'shelter_incident', 'Read the quiet incident log'),
+  'shelter_incident.write': a('write', 'shelter_incident', 'Add to the quiet incident log'),
+  'health_note.read': a(
+    'read',
+    'health_note',
+    'Read health notes (health roles only; every view audited)',
+  ),
+  'health_note.write': a('write', 'health_note', 'Write a health note or request'),
+  'field.sync': a('read', 'change_feed', 'Pull changes for your scopes since a cursor'),
+  'field.command': a('write', 'client_command', 'Apply a batch of field commands'),
+  'field.area': a('read', 'area_package', 'Download the area package for offline work'),
+  'field.photo': a(
+    'write',
+    'photo',
+    'Take photos in the field and attach them to a field record (FLD-07)',
+  ),
+  'assessment.record': a(
+    'write',
+    'field_assessment',
+    'Record a field damage assessment at a property (FLD-08, FLD-10)',
+  ),
+  'assessment.read': a('read', 'field_assessment', 'Read field damage assessments'),
+  'assessment.approve': a(
+    'write',
+    'field_assessment',
+    'Accept or reject a field assessment; acceptance verifies the linked report',
+  ),
+  'assessment.export': a('export', 'report', 'Export assessments as CSV or GeoJSON (SCL-13)', {
+    consequential: true,
+  }),
+  'route.import': a('admin', 'mission', 'Import routes from GeoJSON or CSV'),
 } as const satisfies Record<string, ActionMeta>;
 
 export type ActionKey = keyof typeof actions;
@@ -264,12 +458,15 @@ export function isActionKey(key: string): key is ActionKey {
 
 /** Does a grant pattern cover an action? '*' and 'family.*' are the only wildcards. */
 export function actionMatches(pattern: string, action: string): boolean {
+  if (pattern === action) return true;
+  // An explicit action is granted only by name, never by a wildcard (DSP-08: positions).
+  if ((actions as Record<string, ActionMeta>)[action]?.explicit) return false;
   if (pattern === '*') return true;
   if (pattern.endsWith('.*')) {
     const family = pattern.slice(0, -1); // keep the trailing dot
     return action.startsWith(family);
   }
-  return pattern === action;
+  return false;
 }
 
 /** A7 / AC-12B: approving a finding the same person recorded. */

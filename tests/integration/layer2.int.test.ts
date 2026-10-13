@@ -272,15 +272,19 @@ describe('public submission (BRD:FR-11.01–11.04, AC-11B, SCL-06)', () => {
       });
       expect(res.status, JSON.stringify(res.body)).toBe(202);
       const code = res.body['referenceCode'] as string;
+      // Kept in the database while the queue is down. The worker's stored-submission sweep
+      // may file it from there before the queue returns (that is the SCL-06 fallback), so
+      // either state is right here; what matters is that it is kept and filed once.
       expect(
         sql(`select status from cg.intake_submission where execution_id = '${executionId}'`),
-      ).toEqual(['stored']);
+      ).toEqual([expect.stringMatching(/^(stored|processed)$/)]);
       compose('start', 'queue');
       const id = await filed(code, 120_000);
       expect(id).toBeTruthy();
       expect(
         sql(`select status from cg.intake_submission where execution_id = '${executionId}'`),
       ).toEqual(['processed']);
+      expect(sql(`select count(*) from cg.report where reference_code = '${code}'`)).toEqual(['1']);
     } finally {
       compose('start', 'queue');
     }

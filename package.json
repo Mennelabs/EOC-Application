@@ -38,7 +38,8 @@
       "esbuild"
     ],
     "overrides": {
-      "rolldown": "1.2.12"
+      "rolldown": "1.2.12",
+      "ua-parser-js": "1.0.39"
     }
   }
 }

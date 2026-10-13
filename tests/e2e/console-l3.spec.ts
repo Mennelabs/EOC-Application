@@ -111,3 +111,87 @@ test.describe('layer 3 console', () => {
     await expectNoViolations(page);
   });
 });
+
+test.describe('partner workspace (ADM-02, NED-04, FL-03, AC-17C)', () => {
+  test('a partner organization onboards its own staff; the workspace shows only the consented sections; a claim appears under its claims', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    // A resident's report with consent for relief agencies: the canteen gets its feeding sections.
+    const graph = (await (await fetch(`${BASE}/api/public/intake/county/westwind`)).json()) as {
+      graph: { key: string; version: number };
+    };
+    const executionId = crypto.randomUUID();
+    const n = Date.now() % 9000;
+    const submitted = await fetch(`${BASE}/api/public/intake/county/westwind/submissions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'idempotency-key': executionId },
+      body: JSON.stringify({
+        executionId,
+        channel: 'web',
+        language: 'en',
+        graphKey: graph.graph.key,
+        graphVersion: graph.graph.version,
+        relationship: 'own_home',
+        answers: {
+          danger_now: { kind: 'value', value: 'no' },
+          relationship: { kind: 'value', value: 'own_home' },
+          address: {
+            kind: 'value',
+            value: { line1: `${n} Partner Pl`, city: 'Westwind', postal: '63002' },
+          },
+          home_type: { kind: 'value', value: 'house' },
+          cause: { kind: 'value', value: 'wind_tornado' },
+          damage_types: { kind: 'value', value: ['roof'] },
+          roof_state: { kind: 'value', value: 'large_hole' },
+          habitable: { kind: 'value', value: 'no' },
+          tonight: { kind: 'value', value: 'no' },
+          insurance: { kind: 'unknown' },
+          contact_name: { kind: 'value', value: 'Rosa Delgado' },
+          contact: { kind: 'value', value: { phone: `314556${1000 + n}`, preferred: 'text' } },
+        },
+        needs: ['food_water'],
+        consent: { relief_agencies: true },
+      }),
+    });
+    expect(submitted.status).toBe(202);
+    const code = ((await submitted.json()) as { referenceCode: string }).referenceCode;
+
+    // The canteen's own administrators invite and approve the new coordinator (ADM-02).
+    await onboard(
+      page,
+      context,
+      'ngo_incident_commander',
+      `Canteen ${tag}`,
+      `partner-${testInfo.project.name}`,
+      'canteen',
+    );
+
+    await page.getByRole('link', { name: 'Partner workspace' }).click();
+    await expect(page.getByRole('heading', { name: 'Partner workspace' })).toBeVisible();
+    const shared = page.getByRole('row').filter({ hasText: code });
+    await expect(shared).toBeVisible({ timeout: 90_000 }); // once the worker filed it and derived the grant
+    await expect(shared).toContainText(/Westwind,? 63002/); // the feeding service sees the area, not the address
+    await expect(shared).not.toContainText('Rosa Delgado'); // never the name (NED-04)
+    await expect(shared).not.toContainText('Partner Pl'); // nor the exact address
+    await expectNoViolations(page);
+
+    // The partner claims the need on the board and sees it under its own claims (CON-08).
+    await page.getByRole('link', { name: 'Needs board' }).click();
+    await page.getByLabel('Reference').fill(code);
+    const need = page.getByRole('row').filter({ hasText: code });
+    await expect(need).toBeVisible({ timeout: 30_000 });
+    await need.getByRole('button', { name: 'Act' }).click();
+    await page.getByLabel('Note').fill('Canteen 2 covers Cedar Ridge');
+    await page.getByRole('button', { name: 'Claim' }).click();
+    await expect(page.getByRole('status')).toContainText('claimed');
+    await page.getByRole('link', { name: 'Partner workspace' }).click();
+    await expect(
+      page.getByRole('table', { name: 'Needs your organization holds' }).getByRole('row').filter({
+        hasText: code,
+      }),
+    ).toBeVisible();
+    await expectNoViolations(page);
+  });
+});

@@ -86,6 +86,16 @@ export const AI_FEATURES: readonly RegisterEntry[] = [
     owner: 'Equity lead',
   },
   {
+    feature: 'field.voice_draft',
+    needs: 'llm',
+    dataSent:
+      'What a field volunteer said or typed about a property, redacted of phone numbers, emails, street addresses and identifiers',
+    decisionInformed:
+      'Drafts the home type and the damage seen on a field assessment (FLD-09); never the degree of damage, which the volunteer picks from pictures (FLD-08)',
+    humanCheckpoint: 'The volunteer confirms or rejects each drafted field one by one (INT-13)',
+    owner: 'Damage assessment lead',
+  },
+  {
     feature: 'photo.quality',
     needs: 'image',
     dataSent: 'A resident photo',

@@ -45,6 +45,7 @@ Then open:
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | https://localhost/         | Resident app (English/Spanish). Accept Caddy's local certificate once, or trust it: `docker compose cp gateway:/data/caddy/pki/authorities/local/root.crt .` |
 | https://localhost/console/ | Staff console shell                                                                                                                                          |
+| https://localhost/field/   | Field app, web build (the phone app's screens for the browser tests): organization code `westwind`, a PIN, then event code `WESTWIND`                        |
 | https://localhost/api/meta | API metadata; `/api/health/ready` lists dependency health                                                                                                    |
 | https://localhost/auth/    | Keycloak (admin `cg-admin`, password in `.env`)                                                                                                              |
 | http://localhost:8025      | Mailpit: every email the system sends                                                                                                                        |
@@ -98,7 +99,7 @@ Sign in as `priya.assessment@example.org` (`county`). **Review queue** lists rep
 
 ### Needs, partners and public information (layer 3)
 
-Sign in as `luis.masscare@example.org` (`county`) for the **Needs board**: open, claimed and done needs with filters, claim, assign to a consented partner, release, done and reopen with a note, overlap warnings when another organization holds a need at the same household or address, who holds a claim as the visibility rules allow, a CSV export through the confirmation dialog, and the key counts on home. `tomas.pio@example.org` manages **Sites** (open, capacity, confirm, close, publish or unpublish through the dialog with a named reason, confidential sites that never publish, alert drafts sized for WEA and the mass-notification system), **Resources** (English and Spanish text marked human-reviewed, review and expiry dates, an outside-link check, publish only when the HTML passes the accessibility check), the **Publication log** and the **Contacts** registry (names and numbers only for roles with the contact category, verification dates, a weekly re-verification digest). **Partner agreements** are drafted by the county and signed by the partner. A partner organization's own staff (`ruth.canteen@example.org` in realm `canteen`, `nurse@example.org` in `shelter-ngo`) use the **Partner workspace**: the consented records with only the sections their service is allowed, their claims, referrals in and out, and "send an update" to the resident. Residents hear by text (with opt-in) or email; replies by text land on the report. The worker reminds site leads before a confirmation window lapses, expires resources past their date, checks outside links daily and notices every publication (`services/worker/src/jobs/reminders.ts`).
+Sign in as `luis.masscare@example.org` (`county`) for the **Needs board**: open, claimed and done needs with filters, claim, assign to a consented partner, release, done and reopen with a note, overlap warnings when another organization holds a need at the same household or address, who holds a claim as the visibility rules allow, a CSV export through the confirmation dialog, and the key counts on home. `tomas.pio@example.org` manages **Sites** (open, capacity, confirm, close, publish or unpublish through the dialog with a named reason, confidential sites that never publish, alert drafts sized for WEA and the mass-notification system), **Resources** (English and Spanish text marked human-reviewed, review and expiry dates, an outside-link check, publish only when the HTML passes the accessibility check), the **Publication log** and the **Contacts** registry (names and numbers only for roles with the contact category, verification dates, a weekly re-verification digest). **Partner agreements** are drafted by the county and signed by the partner. A partner organization's own staff (`ruth.canteen@example.org` in realm `canteen`, `nurse@example.org` in `shelter-ngo`; each partner also has `admin.<org>@example.org` and `security.<org>@example.org` to invite and approve its own people) use the **Partner workspace**: the consented records with only the sections their service is allowed, their claims, referrals in and out, and "send an update" to the resident. Residents hear by text (with opt-in) or email; replies by text land on the report. The worker reminds site leads before a confirmation window lapses, expires resources past their date, checks outside links daily and notices every publication (`services/worker/src/jobs/reminders.ts`).
 
 The CJIS enclave (`cjis-*` services) starts on its own internal network. It has no published ports on purpose: `docker compose exec cjis-api wget -qO- http://127.0.0.1:8080/health/ready`.
 
@@ -165,7 +166,7 @@ pnpm seed                      # -> tools/seed/out/
 pnpm seed -- --seed 7 --reports 5000
 ```
 
-Everything it produces is invented and marked `synthetic: true`. Loading it into the database arrives with the layer-1 schema. **Only synthetic or exercise data ever goes into this stack (SCL-12).**
+Since layer 4 the loader also fills the field roster (`tools/seed/src/county.ts`, `teams`): damage assessment teams, the CERT canvass team, a Guard traffic-control unit and ARES net control for the county; chainsaw crews, canteens, shelter staff and an outreach pair for the partner organizations, each member with recorded, verified credentials (DSP-02, PER-01); the county's parcel grid (`cg.parcel`, FLD-04); and the exercise event's check-in code `WESTWIND` (FLD-03). Everything it produces is invented and marked `synthetic: true`. **Only synthetic or exercise data ever goes into this stack (SCL-12).**
 
 ## Run the checks
 
@@ -198,6 +199,8 @@ export DATABASE_URL=postgres://cg_app:$CG_APP_PASSWORD@localhost:5432/cg   # and
 pnpm --filter @cg/api dev
 pnpm --filter @cg/web-resident dev
 ```
+
+The field app (`apps/field`, Expo SDK 57, React Native) runs in a browser with `pnpm --filter @cg/field web` and on a device or emulator through a local build: `pnpm --filter @cg/field prebuild:android`, then Gradle or Android Studio (EAS cloud builds are not used, ADR-0014). Its platform-free core (outbox, sync, conflicts, purge, parcel snapping, USNG, sweep order, timers, location policy) is `packages/field-core`.
 
 ## Rules in brief
 

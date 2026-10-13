@@ -11,3 +11,9 @@ playwright-report/
 .DS_Store
 backups/
 tests/load/out/
+
+# Expo (field app): generated locally, never committed
+.expo/
+apps/field/android/
+apps/field/ios/
+apps/field/expo-env.d.ts

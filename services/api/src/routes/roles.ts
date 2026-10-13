@@ -29,6 +29,7 @@ const grantSchema = z.object({
   action: z.string(),
   tenants: z.union([z.literal('own'), z.literal('subtree'), z.array(z.uuid())]).optional(),
   events: z.enum(['all', 'assigned']).optional(),
+  records: z.enum(['all', 'own']).optional(),
   dataCategories: z.array(z.string()).optional(),
 });
 
@@ -54,7 +55,12 @@ const versionOut = z.object({
 
 const previewOut = z.object({
   allowedActions: z.array(
-    z.object({ action: z.string(), description: z.string(), consequential: z.boolean() }),
+    z.object({
+      action: z.string(),
+      description: z.string(),
+      consequential: z.boolean(),
+      ownRecordsOnly: z.boolean(),
+    }),
   ),
   deniedActions: z.array(z.string()),
   visibleCategories: z.array(z.string()),

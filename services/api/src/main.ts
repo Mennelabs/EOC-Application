@@ -18,7 +18,7 @@ import { createDb } from '@cg/db';
 import { FieldCrypto, OpenBaoKeyService, dbKeyStore } from '@cg/crypto';
 import { buildApp } from './app.ts';
 import { createSubjectLoader } from './auth/subject.ts';
-import { routes } from './routes/index.ts';
+import { routesWith } from './routes/index.ts';
 import { fakeProvider, providerByName } from '@cg/ai';
 import { westwindGraph } from '@cg/intake';
 import { dataUrlFetcher, twilioMediaFetcher } from './channels/media.ts';
@@ -127,7 +127,18 @@ const app = await buildApp({
     internalBase: config.IDP_INTERNAL_BASE,
     publicBase: config.IDP_PUBLIC_BASE,
   }),
-  routes,
+  routes: routesWith({
+    dispatch: { getQueue: () => queue },
+    fieldVoice: { ai, defaultGraph: westwindGraph },
+    fieldSync: {
+      objects: {
+        client: s3,
+        ...(presignClient ? { presignClient } : {}),
+        maxBytes: config.PUBLIC_UPLOAD_MAX_BYTES,
+        bucket: config.S3_BUCKET,
+      },
+    },
+  }),
   publicRoutes: [
     publicRoutes({
       resolver,

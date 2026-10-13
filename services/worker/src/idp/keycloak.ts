@@ -90,6 +90,7 @@ export class KeycloakAdmin {
     }
     await this.ensureBrowserFlow(spec.slug);
     await this.ensureConsoleClient(spec);
+    await this.ensureFieldClient(spec);
     if (spec.devDirectGrant) await this.ensureTestClient(spec);
   }
 
@@ -195,6 +196,41 @@ export class KeycloakAdmin {
         [409],
       );
     }
+  }
+
+  /**
+   * The field app (layer 4, ADR-0014): a public client with PKCE. The web build
+   * signs in under /field/ on the gateway; the native app returns through its
+   * own scheme (expo-auth-session). Dev realms also accept the Expo dev server.
+   */
+  private async ensureFieldClient(spec: RealmSpec): Promise<void> {
+    if (await this.clientByClientId(spec.slug, 'cg-field')) return;
+    const web = `${spec.consoleOrigin}/field/*`;
+    await this.ok(
+      'POST',
+      `/${spec.slug}/clients`,
+      {
+        clientId: 'cg-field',
+        name: 'Field app',
+        publicClient: true,
+        standardFlowEnabled: true,
+        directAccessGrantsEnabled: false,
+        implicitFlowEnabled: false,
+        serviceAccountsEnabled: false,
+        redirectUris: spec.devDirectGrant
+          ? [web, 'cgfield://*', 'http://localhost:8081/*']
+          : [web, 'cgfield://*'],
+        webOrigins: spec.devDirectGrant
+          ? [spec.consoleOrigin, 'http://localhost:8081']
+          : [spec.consoleOrigin],
+        attributes: {
+          'pkce.code.challenge.method': 'S256',
+          'post.logout.redirect.uris': `${web}##cgfield://*`,
+        },
+        protocolMappers: [tenantClaimMapper(spec.tenantId)],
+      },
+      [409],
+    );
   }
 
   private async ensureTestClient(spec: RealmSpec): Promise<void> {

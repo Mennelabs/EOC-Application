@@ -7,12 +7,15 @@
  */
 import type { FastifyPluginAsync } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import type { Transaction } from 'kysely';
 import { z } from 'zod';
+import type { Database } from '@cg/db';
 import { diffForAudit } from '@cg/audit';
 import type { FieldDescriptor } from '@cg/authz';
 import { normalisePhone } from '@cg/crypto';
 import { errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
+import { credentialKinds } from './roster.ts';
 import { classifierFor, iso, listQuery, pickDefined, stamped, uuidParam } from './helpers.ts';
 
 const FIELDS: FieldDescriptor[] = [
@@ -41,6 +44,10 @@ const personnelOut = z.object({
   dutyStatus: z.enum(['off_duty', 'on_duty']),
   availability: z.enum(['unavailable', 'available', 'assigned']),
   status: z.enum(['active', 'inactive', 'archived']),
+  /** PER-02: hours per shift before an assignment warns (layer 4). */
+  hoursLimit: z.number().int().min(1).max(24).nullable(),
+  /** DSP-09: the agency when it runs its own tenant. */
+  homeTenantId: z.uuid().nullable(),
   /** Present only when the caller may see contact details. */
   contact: contactSchema.nullable().optional(),
 });
@@ -61,6 +68,8 @@ type Row = {
   availability: 'unavailable' | 'available' | 'assigned';
   status: 'active' | 'inactive' | 'archived';
   contact_enc: Buffer | null;
+  hours_limit: number | null;
+  home_tenant_id: string | null;
 };
 
 const toPersonnel = (r: Row): z.infer<typeof personnelOut> => ({
@@ -78,6 +87,8 @@ const toPersonnel = (r: Row): z.infer<typeof personnelOut> => ({
   dutyStatus: r.duty_status,
   availability: r.availability,
   status: r.status,
+  hoursLimit: r.hours_limit,
+  homeTenantId: r.home_tenant_id,
 });
 
 export const personnelRoutes: FastifyPluginAsync = async (raw) => {
@@ -208,6 +219,8 @@ export const personnelRoutes: FastifyPluginAsync = async (raw) => {
     skills: z.array(z.string().min(1).max(60)).max(50).default([]),
     accountId: z.uuid().optional(),
     contact: contactSchema.optional(),
+    hoursLimit: z.number().int().min(1).max(24).optional(),
+    homeTenantId: z.uuid().optional(),
   });
 
   async function sealContact(tenantId: string, contact: z.infer<typeof contactSchema> | undefined) {
@@ -221,6 +234,48 @@ export const personnelRoutes: FastifyPluginAsync = async (raw) => {
         ? await app.fieldCrypto.blindIndex(tenantId, 'phone', normalised.phone)
         : null,
     };
+  }
+
+  /**
+   * PER-01, AC-05A: a skill is never inferred. A skill written here (the
+   * layer-1 route) becomes a recorded, unverified credential; a coordinator
+   * verifies it before it counts for an assignment or a skill search. A skill
+   * outside the credential kinds is kept as kind `other` with the skill as its label.
+   */
+  async function recordSkillsAsCredentials(
+    trx: Transaction<Database>,
+    person: { id: string; tenant_id: string },
+    skills: readonly string[],
+    accountId: string,
+  ): Promise<void> {
+    if (!skills.length) return;
+    const existing = await trx
+      .selectFrom('cg.credential')
+      .select(['kind', 'label'])
+      .where('personnel_id', '=', person.id)
+      .where('status', 'in', ['recorded', 'verified'])
+      .execute();
+    const known = new Set<string>(credentialKinds);
+    for (const skill of skills) {
+      const kind = known.has(skill) ? (skill as (typeof credentialKinds)[number]) : 'other';
+      const have = existing.some((c) =>
+        kind === 'other' ? c.kind === 'other' && c.label === skill : c.kind === kind,
+      );
+      if (have) continue;
+      await trx
+        .insertInto('cg.credential')
+        .values({
+          tenant_id: person.tenant_id,
+          personnel_id: person.id,
+          kind,
+          label: kind === 'other' ? skill : null,
+          status: 'recorded',
+          note: 'Recorded from the personnel record; verify before it counts.',
+          created_by: accountId,
+          updated_by: accountId,
+        })
+        .execute();
+    }
   }
 
   app.post(
@@ -250,12 +305,15 @@ export const personnelRoutes: FastifyPluginAsync = async (raw) => {
             department: request.body.department ?? null,
             operational_role: request.body.operationalRole ?? null,
             skills: request.body.skills,
+            hours_limit: request.body.hoursLimit ?? null,
+            home_tenant_id: request.body.homeTenantId ?? s.tenantId,
             ...sealed,
             created_by: s.accountId,
             updated_by: s.accountId,
           })
           .returningAll()
           .executeTakeFirstOrThrow();
+        await recordSkillsAsCredentials(trx, inserted, request.body.skills, s.accountId);
         await request.audit(trx, {
           action: 'personnel.create',
           targetType: 'personnel',
@@ -321,6 +379,8 @@ export const personnelRoutes: FastifyPluginAsync = async (raw) => {
         accountId: 'account_id',
         dutyStatus: 'duty_status',
         availability: 'availability',
+        hoursLimit: 'hours_limit',
+        homeTenantId: 'home_tenant_id',
       });
       const sealed =
         request.body.contact !== undefined
@@ -337,6 +397,8 @@ export const personnelRoutes: FastifyPluginAsync = async (raw) => {
             .executeTakeFirst(),
           toPersonnel(current),
         );
+        if (request.body.skills)
+          await recordSkillsAsCredentials(trx, row, request.body.skills, s.accountId);
         await request.audit(trx, {
           action: 'personnel.update',
           targetType: 'personnel',

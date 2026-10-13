@@ -32,6 +32,8 @@ import {
   remindSiteConfirmations,
   reviewResources,
 } from './jobs/reminders.ts';
+import { relayChangesOnce, type ChangeRelayState } from './jobs/changes.ts';
+import { dropPositionTrails, watchFieldSafety, watchReminders } from './jobs/field.ts';
 import { consume, consumeIntake, relayOnce } from './jobs/relay.ts';
 import type { JobContext, Schedule } from './jobs/types.ts';
 import { nullMailer, smtpMailer } from './mail.ts';
@@ -145,6 +147,10 @@ const schedules: Schedule[] = [
   { name: 'resource-review', everyMs: 60 * 60_000, run: reviewResources }, // BRD:FR-16.03, AC-16B
   { name: 'contact-reverify', everyMs: 60 * 60_000, run: remindContactVerification }, // CNT-01
   { name: 'publication-notices', everyMs: 30_000, run: noticePublications }, // PUB-06
+  // DSP-04, DSP-07, FLD-16: check-in timers, acknowledgement windows, escalation; DSP-08 trails.
+  { name: 'field-safety', everyMs: 60_000, run: watchFieldSafety },
+  { name: 'reminders-f09', everyMs: 60_000, run: watchReminders }, // F09, FR-09.05/09.06
+  { name: 'position-trails', everyMs: 24 * 3600_000, run: dropPositionTrails },
 ];
 
 const probes = [postgresProbe('db', pool), queueProbe('queue', () => queue)];
@@ -182,6 +188,22 @@ async function relayLoop(): Promise<void> {
   }
 }
 
+/** ADR-0022: feed rows become notices on the fan-out exchange within about half a second. */
+const changeRelay: ChangeRelayState = { last: null };
+async function changeLoop(): Promise<void> {
+  for (;;) {
+    try {
+      if (queue) {
+        const n = await relayChangesOnce(db, queue.channel, log, changeRelay);
+        if (n > 0) continue;
+      }
+    } catch (err) {
+      log.warn({ err }, 'change relay failed');
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+}
+
 function startSchedules(): void {
   for (const s of schedules) {
     const tick = async () => {
@@ -215,6 +237,7 @@ const server = createServer((req, res) => {
 
 void keepQueueConnected();
 void relayLoop();
+void changeLoop();
 startSchedules();
 server.listen(config.PORT, '0.0.0.0', () => log.info({ port: config.PORT }, 'worker listening'));
 

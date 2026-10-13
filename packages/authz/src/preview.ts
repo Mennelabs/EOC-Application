@@ -15,7 +15,13 @@ import {
 } from './types.ts';
 
 export interface RolePreview {
-  allowedActions: { action: ActionKey; description: string; consequential: boolean }[];
+  allowedActions: {
+    action: ActionKey;
+    description: string;
+    consequential: boolean;
+    /** FLD-14: only records the holder of the role is assigned to (directly or through a team). */
+    ownRecordsOnly: boolean;
+  }[];
   deniedActions: ActionKey[];
   /** Field categories visible on records this role can read. */
   visibleCategories: DataCategory[];
@@ -69,6 +75,7 @@ export function previewRole(grants: Grant[], templateKey: string | null): RolePr
         action: key,
         description: meta.description,
         consequential: meta.consequential === true,
+        ownRecordsOnly: d.recordScope === 'own',
       });
       for (const name of d.fields) visible.add(name.replace('sample_', '') as DataCategory);
     } else {

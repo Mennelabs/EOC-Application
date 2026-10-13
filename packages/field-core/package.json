@@ -1,0 +1,13 @@
+{
+  "name": "@cg/field-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared field-app core (layer-4 plan §5): outbox, sync loop, conflicts, parcel snapping, USNG, sweep ordering, timers, battery policy, purge. Plain TypeScript, no platform code.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  }
+}

@@ -12,6 +12,9 @@ export default tseslint.config(
       'mockups/**',
       'tools/seed/out/**',
       'test-results/**',
+      'apps/field/.expo/**',
+      'apps/field/android/**',
+      'apps/field/ios/**',
       'playwright-report/**',
     ],
   },
@@ -36,7 +39,7 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.serviceworker } },
   },
   {
-    files: ['apps/web-*/**/*.{ts,tsx}'],
+    files: ['apps/web-*/**/*.{ts,tsx}', 'apps/field/**/*.{ts,tsx}'],
     languageOptions: { globals: { ...globals.browser } },
     plugins: { 'react-hooks': reactHooks },
     rules: reactHooks.configs.recommended.rules,

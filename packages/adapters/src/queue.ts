@@ -9,6 +9,8 @@ import type { Probe } from './health.ts';
 /** Queues that must exist before intake is opened (SCL-03, rule 8). */
 export const TOPOLOGY = {
   deadLetterExchange: 'cg.dead-letter',
+  /** Fan-out of change notices to every API process for the live stream (ADR-0022). */
+  changesExchange: 'cg.changes',
   queues: ['intake.submissions', 'jobs.default'] as const,
 };
 
@@ -33,6 +35,7 @@ export async function connectQueue(url: string): Promise<QueueConnection> {
 
 export async function assertTopology(channel: amqp.Channel): Promise<void> {
   await channel.assertExchange(TOPOLOGY.deadLetterExchange, 'fanout', { durable: true });
+  await channel.assertExchange(TOPOLOGY.changesExchange, 'fanout', { durable: true });
   await channel.assertQueue(`${TOPOLOGY.deadLetterExchange}.queue`, {
     durable: true,
     arguments: { 'x-queue-type': 'quorum' },

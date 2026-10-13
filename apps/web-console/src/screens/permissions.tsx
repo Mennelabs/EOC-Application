@@ -19,7 +19,12 @@ interface Role {
   status: string;
 }
 interface Preview {
-  allowedActions: { action: string; description: string; consequential: boolean }[];
+  allowedActions: {
+    action: string;
+    description: string;
+    consequential: boolean;
+    ownRecordsOnly?: boolean;
+  }[];
   deniedActions: string[];
   visibleCategories: string[];
   hiddenCategories: { category: string; reason: string }[];
@@ -103,6 +108,7 @@ export function RolesScreen() {
             {detail.preview.allowedActions.map((a) => (
               <li key={a.action}>
                 <code>{a.action}</code> — {a.description}
+                {a.ownRecordsOnly ? ' (only work assigned to them or their team)' : ''}
                 {a.consequential ? ' (needs confirmation)' : ''}
               </li>
             ))}

@@ -24,6 +24,8 @@ export const messagePayloadSchema = z.object({
   shareGrantId: z.uuid().optional(),
   /** A referral notice names its referral so a redelivery finds it (FL-10). */
   referralId: z.uuid().optional(),
+  /** A field message's text fallback names its receipt, which records the message row (DSP-06). */
+  fieldReceiptId: z.uuid().optional(),
   variables: z.record(z.string(), z.string()).default({}),
 });
 
@@ -104,6 +106,12 @@ export const messageSend: TopicHandler = async (ctx, msg) => {
           .returning('id')
           .executeTakeFirstOrThrow()
       ).id;
+    if (p.fieldReceiptId)
+      await trx
+        .updateTable('cg.field_message_receipt')
+        .set({ sms_message_id: id, channel: 'sms' })
+        .where('id', '=', p.fieldReceiptId)
+        .execute();
     if (p.shareGrantId)
       await trx
         .updateTable('cg.share_grant')

@@ -78,6 +78,9 @@ jobs:
           set -a; . ./.env; set +a
           # The newest migrations down and up again; no undocumented or stale dictionary column; RLS forced on every tenant table and partition.
           DATABASE_MIGRATOR_URL="postgres://cg_migrator:${CG_MIGRATOR_PASSWORD}@127.0.0.1:5432/cg" pnpm --filter @cg/db check:migrations 2
+      - name: Show the worker and API logs when a test step failed
+        if: failure()
+        run: docker compose ps -a && docker compose logs --no-color --tail 400 worker api
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:

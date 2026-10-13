@@ -15,7 +15,7 @@ import { fakeProvider } from '@cg/ai';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
 import { createDb, randomCode, withTenant, type Database, type ReportFlag } from '@cg/db';
 import { westwindGraph } from '@cg/intake';
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import { loadSeed } from '../../../tools/seed/src/load.ts';
 import type { KeycloakAdmin } from '../src/idp/keycloak.ts';
 import { fileSubmission, sweepStoredSubmissions, topUpReferenceCodes } from '../src/jobs/intake.ts';
@@ -235,12 +235,12 @@ describe.skipIf(!workerUrl)('worker filing (database-backed)', () => {
     expect(submission.status).toBe('processed');
     expect(submission.processed_at).not.toBeNull();
 
+    // Relayed rows stay in the outbox (a worker on the same database may have relayed them already).
     const outbox = await db
       .selectFrom('cg.outbox')
       .select(['topic', 'payload'])
       .where('tenant_id', '=', tenantId)
       .where('topic', '=', 'message.send')
-      .where('published_at', 'is', null)
       .orderBy('id')
       .execute();
     const templates = outbox
@@ -386,7 +386,6 @@ describe.skipIf(!workerUrl)('worker filing (database-backed)', () => {
       .selectFrom('cg.outbox')
       .select('payload')
       .where('topic', '=', 'message.send')
-      .where('published_at', 'is', null)
       .execute();
     const mine = outbox
       .map((o) => o.payload as { reportId: string; channel: string; template: string })
@@ -395,25 +394,29 @@ describe.skipIf(!workerUrl)('worker filing (database-backed)', () => {
   });
 
   it('sends the confirmation through the SMS adapter once and records the message (CHN-03, SEC-10)', async () => {
-    const rows = await db
-      .selectFrom('cg.outbox')
-      .select(['id', 'tenant_id', 'topic', 'payload', 'execution_id'])
-      .where('topic', '=', 'message.send')
-      .where('published_at', 'is', null)
-      .orderBy('id')
-      .execute();
-    const row = rows.find(
-      (r) =>
-        (r.payload as { reportId: string; template: string }).reportId === firstReportId &&
-        (r.payload as { template: string }).template === 'confirmation',
-    )!;
-    expect(row).toBeDefined();
+    // The filed report's confirmation, as the worker's outbox carries it. The job is built here
+    // with its own outbox id: a worker running against the same database may already have relayed
+    // and sent the real row, and this case is about one sending per delivery, not about the relay.
+    const report = await db
+      .selectFrom('cg.report')
+      .select(['reporter_party_id', 'reference_code'])
+      .where('id', '=', firstReportId)
+      .executeTakeFirstOrThrow();
+    const outboxId = 800_000_000 + Math.floor(Math.random() * 99_999_999);
     const msg = {
-      id: Number(row.id),
-      tenantId: row.tenant_id,
-      topic: row.topic,
-      payload: row.payload as Record<string, unknown>,
-      executionId: row.execution_id,
+      id: outboxId,
+      tenantId,
+      topic: 'message.send',
+      payload: {
+        template: 'confirmation',
+        channel: 'sms',
+        toEnc: (await crypto.encrypt(tenantId, '+13145550199')).toString('base64'),
+        language: 'en',
+        reportId: firstReportId,
+        partyId: report.reporter_party_id,
+        variables: { referenceCode: report.reference_code },
+      },
+      executionId: firstExecution,
     };
     const before = sms.sent.length;
     await messageSend(ctx, msg);
@@ -428,6 +431,7 @@ describe.skipIf(!workerUrl)('worker filing (database-backed)', () => {
       .selectAll()
       .where('report_id', '=', firstReportId)
       .where('template', '=', 'confirmation')
+      .where(sql`provider_evidence->>'outboxId'`, '=', String(outboxId))
       .execute();
     expect(message).toHaveLength(1);
     expect(message[0]!.state).toBe('sent');

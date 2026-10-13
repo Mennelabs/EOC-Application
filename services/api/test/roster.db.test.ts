@@ -61,6 +61,7 @@ describe.skipIf(!appUrl || !workerUrl)('field roster schema and seed (database-b
         .execute();
       expect(members, spec.key).toHaveLength(spec.members.length);
       expect(members.filter((m) => m.role === 'lead')).toHaveLength(1);
+      // The seed's own credential rows (the field suites record and revoke credentials of their own).
       const credentials = await dbWorker
         .selectFrom('cg.credential')
         .select(['kind', 'status'])
@@ -69,14 +70,17 @@ describe.skipIf(!appUrl || !workerUrl)('field roster schema and seed (database-b
           'in',
           members.map((m) => m.personnel_id),
         )
+        .where('issuer', '=', 'Exercise WESTWIND (synthetic)')
         .execute();
       expect(credentials.length).toBe(spec.members.reduce((n, m) => n + m.credentials.length, 0));
       expect(credentials.every((c) => c.status === 'verified')).toBe(true);
+      // The seed's own status row (later suites move the team around; the seed fact stays).
       const status = await dbWorker
         .selectFrom('cg.team_status')
         .select(['status', 'fact'])
         .where('team_id', '=', team.id)
-        .orderBy('created_at', 'desc')
+        .where('source', '=', 'seed')
+        .orderBy('created_at')
         .executeTakeFirstOrThrow();
       expect(status).toEqual({ status: 'available', fact: 'confirmed' });
     }
@@ -349,12 +353,16 @@ describe.skipIf(!appUrl || !workerUrl)('field roster schema and seed (database-b
     );
     expect(partnerView).toHaveLength(0);
     // Hazard, reminder (F09) and the logs came with the seed; the ledger is now notice_log.
+    // The seed's downed line on the welfare check (other suites report and clear hazards of their own).
     const hazard = await dbWorker
       .selectFrom('cg.hazard')
-      .select(['state', 'severity', 'ai_suggested'])
+      .select(['severity', 'ai_suggested', 'source'])
       .where('tenant_id', '=', countyId)
+      .where('kind', '=', 'downed_line')
+      .where('source', '=', 'call')
+      .orderBy('created_at')
       .executeTakeFirstOrThrow();
-    expect(hazard).toEqual({ state: 'reported', severity: 'danger', ai_suggested: false });
+    expect(hazard).toEqual({ severity: 'danger', ai_suggested: false, source: 'call' });
     const reminder = await dbWorker
       .selectFrom('cg.reminder')
       .select(['state', 'kind', 'escalate_to_role'])

@@ -620,10 +620,11 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('referral.respond'),
       g('me.read'),
       { action: 'event.read', events: 'assigned' },
-      // Behavioural-health details on a mission come with the template key (counseling, AC-04C).
+      // Behavioural-health details on a mission or a hazard come with the template key (counseling, AC-04C).
       { action: 'mission.read', events: 'assigned' },
       g('mission.person.read', ['contact']),
       g('mission.narrative'),
+      { action: 'hazard.read', events: 'assigned' },
       g('job_aid.read'),
     ],
   },

@@ -32,7 +32,7 @@ import {
   remindSiteConfirmations,
   reviewResources,
 } from './jobs/reminders.ts';
-import { dropPositionTrails, watchFieldSafety } from './jobs/field.ts';
+import { dropPositionTrails, watchFieldSafety, watchReminders } from './jobs/field.ts';
 import { consume, consumeIntake, relayOnce } from './jobs/relay.ts';
 import type { JobContext, Schedule } from './jobs/types.ts';
 import { nullMailer, smtpMailer } from './mail.ts';
@@ -148,6 +148,7 @@ const schedules: Schedule[] = [
   { name: 'publication-notices', everyMs: 30_000, run: noticePublications }, // PUB-06
   // DSP-04, DSP-07, FLD-16: check-in timers, acknowledgement windows, escalation; DSP-08 trails.
   { name: 'field-safety', everyMs: 60_000, run: watchFieldSafety },
+  { name: 'reminders-f09', everyMs: 60_000, run: watchReminders }, // F09, FR-09.05/09.06
   { name: 'position-trails', everyMs: 24 * 3600_000, run: dropPositionTrails },
 ];
 

@@ -358,3 +358,109 @@ export async function dropPositionTrails(ctx: JobContext): Promise<void> {
   // Keep the look-ahead so an insert never meets a missing partition (SCL-06).
   await sql`select cg.ensure_position_partitions(3, 1)`.execute(ctx.db);
 }
+
+/**
+ * Every minute (F09, FR-09.05/09.06): an active reminder past its due time (or
+ * its snooze) turns `overdue` with a history row, and one that names an
+ * escalation role is escalated once after its delay: the role's holders hear
+ * by email through the message pipeline.
+ */
+export async function watchReminders(ctx: JobContext): Promise<void> {
+  const now = nowOf(ctx);
+  for (const tenantId of await allTenantIds(ctx.db)) {
+    await asSystem(ctx.db, tenantId, async (trx) => {
+      const due = await trx
+        .selectFrom('cg.reminder')
+        .select(['id'])
+        .where('tenant_id', '=', tenantId)
+        .where('state', '=', 'active')
+        .where((eb) =>
+          eb.or([
+            eb.and([eb('snoozed_until', 'is', null), eb('due_at', '<=', now)]),
+            eb('snoozed_until', '<=', now),
+          ]),
+        )
+        .execute();
+      for (const r of due) {
+        await trx
+          .updateTable('cg.reminder')
+          .set({ state: 'overdue', snoozed_until: null })
+          .where('id', '=', r.id)
+          .execute();
+        await trx
+          .insertInto('cg.reminder_event')
+          .values({
+            tenant_id: tenantId,
+            reminder_id: r.id,
+            kind: 'overdue',
+            detail: JSON.stringify({ at: now.toISOString() }),
+          })
+          .execute();
+      }
+      const toEscalate = await trx
+        .selectFrom('cg.reminder')
+        .selectAll()
+        .where('tenant_id', '=', tenantId)
+        .where('state', '=', 'overdue')
+        .where('escalated_at', 'is', null)
+        .where('escalate_to_role', 'is not', null)
+        .where(
+          sql<boolean>`due_at + make_interval(mins => coalesce(escalate_after_minutes, 30)) <= ${now}`,
+        )
+        .execute();
+      for (const r of toEscalate) {
+        const recipients = await staffRecipients(trx, tenantId, ['reminder.acknowledge'], {
+          includeAdmins: true,
+        });
+        const owner = r.owner_account_id
+          ? await trx
+              .selectFrom('cg.account')
+              .select('email')
+              .where('id', '=', r.owner_account_id)
+              .executeTakeFirst()
+          : null;
+        const emails = [...new Set([...(owner?.email ? [owner.email] : []), ...recipients.emails])];
+        for (const email of emails) {
+          await enqueueOutbox(trx, tenantId, 'message.send', {
+            template: 'reminder_overdue',
+            channel: 'email',
+            toEnc: (await ctx.crypto.encrypt(tenantId, email)).toString('base64'),
+            language: 'en',
+            variables: {
+              title: r.title,
+              dueAt: new Date(r.due_at).toISOString().slice(0, 16).replace('T', ' ') + ' UTC',
+              what: r.note ?? '',
+              url: `${ctx.urls.gatewayPublic}/console/reminders`,
+            },
+            reminderId: r.id,
+          });
+        }
+        await trx
+          .updateTable('cg.reminder')
+          .set({ escalated_at: now })
+          .where('id', '=', r.id)
+          .execute();
+        await trx
+          .insertInto('cg.reminder_event')
+          .values({
+            tenant_id: tenantId,
+            reminder_id: r.id,
+            kind: 'escalated',
+            detail: JSON.stringify({ to: r.escalate_to_role, recipients: emails.length }),
+          })
+          .execute();
+        await systemAudit(trx, tenantId, 'reminder.timer', {
+          action: 'reminder.escalate',
+          targetType: 'reminder',
+          targetId: r.id,
+          changes: {
+            fields: [
+              { name: 'escalated_to', to: r.escalate_to_role },
+              { name: 'recipients', to: emails.length },
+            ],
+          },
+        });
+      }
+    });
+  }
+}

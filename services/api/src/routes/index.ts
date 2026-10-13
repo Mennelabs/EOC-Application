@@ -6,6 +6,7 @@ import { breakGlassRoutes } from './breakglass.ts';
 import { contactRoutes } from './contacts.ts';
 import { definitionRoutes } from './definitions.ts';
 import { eventRoutes } from './events.ts';
+import { fieldOpsRoutes } from './field-ops.ts';
 import { intakeGraphRoutes } from './intake-graphs.ts';
 import { meRoutes } from './me.ts';
 import { messageRoutes } from './messages.ts';
@@ -40,6 +41,7 @@ export const routes: FastifyPluginAsync[] = [
   siteRoutes,
   missionRoutes,
   rosterRoutes,
+  fieldOpsRoutes,
   resourceRoutes(),
   contactRoutes,
   messageRoutes,

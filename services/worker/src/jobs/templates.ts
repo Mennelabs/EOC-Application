@@ -20,7 +20,9 @@ export type TemplateName =
   | 'resource_attention'
   | 'contact_reverify'
   | 'publication_notice'
-  | 'help_alert';
+  | 'help_alert'
+  | 'field_message'
+  | 'reminder_overdue';
 
 export const TEMPLATE_NAMES: readonly TemplateName[] = [
   'confirmation',
@@ -38,6 +40,8 @@ export const TEMPLATE_NAMES: readonly TemplateName[] = [
   'contact_reverify',
   'publication_notice',
   'help_alert',
+  'field_message',
+  'reminder_overdue',
 ];
 
 export interface TemplateVars {
@@ -105,6 +109,10 @@ const EN = {
       `${v.county} Emergency Mgmt: ${v.site ?? 'your site'} was not confirmed by ${v.dueAt ?? 'its deadline'} and is hidden from the public page until confirmed.`,
     help_alert: (v: TemplateVars) =>
       `${v.county} Emergency Mgmt: field safety alert (${v.kind ?? 'alert'}) for ${v.site ?? 'a team'} raised ${v.dueAt ?? 'just now'}; nobody has acknowledged it. Open the dispatch board.`,
+    field_message: (v: TemplateVars) =>
+      `${v.county} dispatch: ${v.text ?? ''} (Reply through the app when you can; in danger now, call 911.)`,
+    reminder_overdue: (v: TemplateVars) =>
+      `${v.county} Emergency Mgmt: the reminder "${v.title ?? ''}" was due ${v.dueAt ?? 'earlier'} and nobody has acknowledged it. Open the console.`,
     resource_attention: (v: TemplateVars) =>
       `${v.county} Emergency Mgmt: the public resource "${v.title ?? ''}" ${v.what ?? 'needs attention'}.`,
     contact_reverify: (v: TemplateVars) =>
@@ -189,6 +197,16 @@ const EN = {
         `Open the dispatch board to acknowledge it and reach the team: ${v.url ?? ''}\n\n` +
         `If anyone is in danger now, call 911.\n`,
     }),
+    field_message: (v: TemplateVars) => ({
+      subject: `${v.county} dispatch: a message for you`,
+      body: `${v.text ?? ''}\n\nSent by ${v.sender ?? v.county} dispatch. Reply through the app when you can. If you are in danger now, call 911.\n`,
+    }),
+    reminder_overdue: (v: TemplateVars) => ({
+      subject: `${v.county}: an overdue reminder needs acknowledgement`,
+      body:
+        `The reminder "${v.title ?? ''}" was due ${v.dueAt ?? 'earlier'} and nobody on ${v.county}'s console has acknowledged it.\n\n` +
+        `${v.what ? `${v.what}\n\n` : ''}Open the console to acknowledge, snooze or complete it: ${v.url ?? ''}\n`,
+    }),
     resource_attention: (v: TemplateVars) => ({
       subject: `${v.county}: public resource "${v.title ?? ''}" needs attention`,
       body:
@@ -245,6 +263,10 @@ const ES: typeof EN = {
       `Manejo de Emergencias de ${v.county}: ${v.site ?? 'su sitio'} no se confirmó antes de ${v.dueAt ?? 'su plazo'} y está oculto de la página pública hasta que se confirme.`,
     help_alert: (v) =>
       `Gestión de Emergencias de ${v.county}: alerta de seguridad en campo (${v.kind ?? 'alerta'}) para ${v.site ?? 'un equipo'} emitida ${v.dueAt ?? 'ahora'}; nadie la ha atendido. Abra el tablero de despacho.`,
+    field_message: (v) =>
+      `Despacho de ${v.county}: ${v.text ?? ''} (Responda por la aplicación cuando pueda; si está en peligro ahora, llame al 911.)`,
+    reminder_overdue: (v) =>
+      `Gestión de Emergencias de ${v.county}: el recordatorio "${v.title ?? ''}" venció ${v.dueAt ?? 'antes'} y nadie lo ha atendido. Abra la consola.`,
     resource_attention: (v) =>
       `Manejo de Emergencias de ${v.county}: el recurso público "${v.title ?? ''}" ${v.what ?? 'necesita atención'}.`,
     contact_reverify: (v) =>
@@ -328,6 +350,16 @@ const ES: typeof EN = {
         `${v.what ? `${v.what}\n\n` : ''}` +
         `Abra el tablero de despacho para atenderla y comunicarse con el equipo: ${v.url ?? ''}\n\n` +
         `Si alguien está en peligro ahora, llame al 911.\n`,
+    }),
+    field_message: (v) => ({
+      subject: `Despacho de ${v.county}: un mensaje para usted`,
+      body: `${v.text ?? ''}\n\nEnviado por el despacho de ${v.sender ?? v.county}. Responda por la aplicación cuando pueda. Si está en peligro ahora, llame al 911.\n`,
+    }),
+    reminder_overdue: (v) => ({
+      subject: `${v.county}: un recordatorio vencido necesita atención`,
+      body:
+        `El recordatorio "${v.title ?? ''}" venció ${v.dueAt ?? 'antes'} y nadie en la consola de ${v.county} lo ha atendido.\n\n` +
+        `${v.what ? `${v.what}\n\n` : ''}Abra la consola para atenderlo, posponerlo o completarlo: ${v.url ?? ''}\n`,
     }),
     resource_attention: (v) => ({
       subject: `${v.county}: el recurso público "${v.title ?? ''}" necesita atención`,

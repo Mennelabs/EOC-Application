@@ -382,10 +382,16 @@ export const siteRoutes: FastifyPluginAsync = async (instance) => {
           x = x.where((eb) =>
             eb.or([eb('s.published_at', 'is', null), eb('s.unpublished_at', 'is not', null)]),
           );
+        // PUB-03: staleness is decided in the query (the same rule as toOut), so a stale site
+        // beyond the first page is never missing from the list staff reconfirm from.
+        const staleRule = sql<boolean>`(s.published_at is not null and s.unpublished_at is null
+          and coalesce(s.last_confirmed_at, s.published_at)
+            + make_interval(hours => s.confirm_every_hours) < now())`;
+        if (q.stale === true) x = x.where(staleRule);
+        if (q.stale === false) x = x.where(sql<boolean>`not ${staleRule}`);
         return x.execute();
       });
-      const out = (rows as Joined[]).map(toOut);
-      return q.stale === undefined ? out : out.filter((x) => x.stale === q.stale);
+      return (rows as Joined[]).map(toOut);
     },
   );
 

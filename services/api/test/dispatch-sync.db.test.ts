@@ -763,6 +763,45 @@ describe.skipIf(!appUrl || !workerUrl)(
         { 'if-match': String(other.version) },
       );
       expect(ack.status).toBe(404);
+      // The phone's refetch answers its own records and null for anyone else's (FLD-14, FLD-13).
+      const hazard = await dbWorker
+        .selectFrom('cg.hazard')
+        .select('id')
+        .where('event_id', '=', eventId)
+        .executeTakeFirstOrThrow();
+      const rec = await call('assessor', 'POST', '/api/v1/field/records', {
+        items: [
+          { type: 'mission', id: assignment.missionId },
+          { type: 'mission', id: other.missionId },
+          { type: 'assignment', id: assignment.id },
+          { type: 'assignment', id: other.id },
+          { type: 'hazard', id: hazard.id },
+          { type: 'team', id: teamId },
+          { type: 'team', id: other.teamId! },
+        ],
+      });
+      expect(rec.status, rec.body).toBe(200);
+      const got = rec.json<{
+        records: { type: string; id: string; record: Record<string, unknown> | null }[];
+      }>().records;
+      expect(got.map((g) => g.record !== null)).toEqual([
+        true,
+        false,
+        true,
+        false,
+        true,
+        true,
+        false,
+      ]);
+      expect(got[0]!.record).toMatchObject({ reference: expect.stringMatching(/^M-/) });
+      expect(JSON.stringify(got)).not.toMatch(/caller|phone/i);
+      expect(
+        (
+          await call('pio', 'POST', '/api/v1/field/records', {
+            items: [{ type: 'hazard', id: hazard.id }],
+          })
+        ).status,
+      ).toBe(403);
       // Its own mission reads normally.
       expect(
         (await call('assessor', 'GET', `/api/v1/missions/${assignment.missionId}`)).status,

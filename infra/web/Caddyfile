@@ -15,6 +15,13 @@
 		respond `{"productName":"{$PRODUCT_NAME}","countyName":"{$COUNTY_NAME}","helpPhone":"{$HELP_PHONE}","tenant":"{$DEFAULT_TENANT}","event":"{$DEFAULT_EVENT}"}` 200
 	}
 
+	redir /field /field/
+	handle_path /field/* {
+		root * /srv/field
+		try_files {path} /index.html
+		file_server
+	}
+
 	redir /console /console/
 	handle_path /console/* {
 		root * /srv/console

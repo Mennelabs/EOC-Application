@@ -45,6 +45,7 @@ Then open:
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | https://localhost/         | Resident app (English/Spanish). Accept Caddy's local certificate once, or trust it: `docker compose cp gateway:/data/caddy/pki/authorities/local/root.crt .` |
 | https://localhost/console/ | Staff console shell                                                                                                                                          |
+| https://localhost/field/   | Field app, web build (the phone app's screens for the browser tests): organization code `westwind`, a PIN, then event code `WESTWIND`                        |
 | https://localhost/api/meta | API metadata; `/api/health/ready` lists dependency health                                                                                                    |
 | https://localhost/auth/    | Keycloak (admin `cg-admin`, password in `.env`)                                                                                                              |
 | http://localhost:8025      | Mailpit: every email the system sends                                                                                                                        |
@@ -198,6 +199,8 @@ export DATABASE_URL=postgres://cg_app:$CG_APP_PASSWORD@localhost:5432/cg   # and
 pnpm --filter @cg/api dev
 pnpm --filter @cg/web-resident dev
 ```
+
+The field app (`apps/field`, Expo SDK 57, React Native) runs in a browser with `pnpm --filter @cg/field web` and on a device or emulator through a local build: `pnpm --filter @cg/field prebuild:android`, then Gradle or Android Studio (EAS cloud builds are not used, ADR-0014). Its platform-free core (outbox, sync, conflicts, purge, parcel snapping, USNG, sweep order, timers, location policy) is `packages/field-core`.
 
 ## Rules in brief
 

@@ -5,6 +5,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import { actions, decide, type AccountSubject } from '@cg/authz';
 import { errors } from '../errors.ts';
 
 const meResponse = z.object({
@@ -18,7 +19,30 @@ const meResponse = z.object({
   ),
   agreementTenantIds: z.array(z.uuid()),
   breakGlass: z.object({ id: z.uuid(), expiresAt: z.iso.datetime() }).nullable(),
+  /**
+   * Actions the account may take on its own tenant's records, as the policy
+   * engine answers for a list (FLD-01: the field app builds the home screen by
+   * role from this; ADM-04). Every request is still checked on the server.
+   */
+  actions: z.array(z.string()),
+  /** Actions limited to work the account holds (FLD-14). */
+  ownRecordsOnly: z.array(z.string()),
 });
+
+function allowedActions(subject: AccountSubject): {
+  actions: string[];
+  ownRecordsOnly: string[];
+} {
+  const out: string[] = [];
+  const own: string[] = [];
+  for (const [key, meta] of Object.entries(actions)) {
+    const d = decide(subject, key, { type: meta.resource, tenantId: subject.tenantId });
+    if (d.effect !== 'allow') continue;
+    out.push(key);
+    if (d.recordScope === 'own') own.push(key);
+  }
+  return { actions: out, ownRecordsOnly: own };
+}
 
 export const meRoutes: FastifyPluginAsync = async (app) => {
   app.withTypeProvider<ZodTypeProvider>().get(
@@ -49,6 +73,7 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
         breakGlass: s.breakGlass
           ? { id: s.breakGlass.id, expiresAt: s.breakGlass.expiresAt.toISOString() }
           : null,
+        ...allowedActions(s),
       };
     },
   );

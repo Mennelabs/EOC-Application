@@ -60,8 +60,13 @@ export interface FieldApi {
     changes: ChangeWire[];
     device: DeviceWire | null;
   }>;
-  /** Refetch one record through its authorized route; null when gone or not visible. */
-  fetchRecord(recordType: string, id: string): Promise<(StoredDoc & { version?: number }) | null>;
+  /**
+   * Refetch records through POST /field/records (one call, scoped like the
+   * sync, FLD-14); `record` is null when gone or no longer visible.
+   */
+  fetchRecords(
+    items: { type: string; id: string }[],
+  ): Promise<{ type: string; id: string; record: Record<string, unknown> | null }[]>;
 }
 
 export interface SyncEvents {
@@ -94,7 +99,12 @@ export const RECORD_COLLECTIONS: Record<string, string> = {
   reminder: 'reminders',
   field_device: 'devices',
   site: 'sites',
-  position: 'positions',
+};
+
+/** Feed types whose change refreshes another record: the server answers with that record and its id field. */
+const ALIASES: Record<string, { collection: string; idField: string }> = {
+  team_status: { collection: 'teams', idField: 'teamId' },
+  field_message_receipt: { collection: 'messages', idField: 'messageId' },
 };
 
 const BACKOFF = [2_000, 5_000, 15_000, 60_000, 300_000];
@@ -211,37 +221,58 @@ export class SyncLoop {
           return this.failed(err, { sent, applied, conflicts, received });
         }
         if (page.device?.wipe) return this.wipe();
-        // One fetch per record, the latest version only.
+        // The latest change per record; only records newer than the phone's copy are fetched, in batches.
         const latest = new Map<string, ChangeWire>();
         for (const ch of page.changes) latest.set(`${ch.recordType}:${ch.recordId}`, ch);
+        const wanted: { type: string; id: string }[] = [];
         for (const ch of latest.values()) {
+          const alias = ALIASES[ch.recordType];
           const collection = RECORD_COLLECTIONS[ch.recordType];
-          if (!collection) continue;
-          if (ch.op === 'delete') {
+          if (!alias && !collection) continue; // positions and anything the phone does not keep
+          if (collection && ch.op === 'delete') {
             await this.store.delete(collection, ch.recordId);
             received += 1;
             continue;
           }
-          const local = await this.store.get<StoredDoc & { version?: number }>(
-            collection,
-            ch.recordId,
-          );
-          if (
-            local &&
-            ch.version !== null &&
-            local.version !== undefined &&
-            local.version >= ch.version
-          )
-            continue;
-          if (ch.recordType === 'position') continue; // the board's concern, not the phone's
+          if (collection) {
+            const local = await this.store.get<StoredDoc & { version?: number }>(
+              collection,
+              ch.recordId,
+            );
+            if (
+              local &&
+              ch.version !== null &&
+              local.version !== undefined &&
+              local.version >= ch.version
+            )
+              continue;
+          }
+          wanted.push({ type: ch.recordType, id: ch.recordId });
+        }
+        for (let i = 0; i < wanted.length; i += 200) {
+          let fresh: Awaited<ReturnType<FieldApi['fetchRecords']>>;
           try {
-            const fresh = await this.api.fetchRecord(ch.recordType, ch.recordId);
-            if (fresh) {
-              await this.store.put(collection, { ...fresh, syncState: 'received' });
-              received += 1;
-            }
+            fresh = await this.api.fetchRecords(wanted.slice(i, i + 200));
           } catch (err) {
             return this.failed(err, { sent, applied, conflicts, received });
+          }
+          for (const f of fresh) {
+            const alias = ALIASES[f.type];
+            if (alias) {
+              const targetId = f.record?.[alias.idField];
+              if (typeof targetId === 'string')
+                await this.store.put(alias.collection, {
+                  ...f.record,
+                  id: targetId,
+                  syncState: 'received',
+                });
+              continue;
+            }
+            const collection = RECORD_COLLECTIONS[f.type]!;
+            if (f.record)
+              await this.store.put(collection, { ...f.record, id: f.id, syncState: 'received' });
+            else await this.store.delete(collection, f.id); // gone or no longer visible to this phone (FLD-14)
+            received += 1;
           }
         }
         cursor = page.cursor;

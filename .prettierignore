@@ -10,3 +10,6 @@ pnpm-lock.yaml
 **/dist/
 tools/seed/out/
 tools/reqindex/requirements.json
+.expo/
+apps/field/android/
+apps/field/ios/

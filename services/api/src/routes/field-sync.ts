@@ -952,4 +952,386 @@ export const fieldSyncRoutes =
         };
       },
     );
+    // ------------------------------------------------------------ records
+    /**
+     * FLD-13, FLD-14: the phone refetches the records the feed names, in one
+     * call, through the same scoping as the sync: missions and assignments it
+     * holds, messages addressed to it, its own teams, check-ins, alerts and
+     * device, and the event's hazards and open sites. Anything else answers
+     * null (gone or not visible: the phone drops its copy). No resident
+     * personal detail is returned.
+     */
+    app.post(
+      '/field/records',
+      {
+        schema: {
+          tags: ['field'],
+          body: z.object({
+            items: z
+              .array(z.object({ type: z.string().max(40), id: z.uuid() }))
+              .min(1)
+              .max(200),
+          }),
+          response: {
+            200: z.object({
+              asOf: z.iso.datetime(),
+              records: z.array(
+                z.object({
+                  type: z.string(),
+                  id: z.uuid(),
+                  record: z.record(z.string(), z.unknown()).nullable(),
+                }),
+              ),
+            }),
+          },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('field.sync', { type: 'change_feed', tenantId: s.tenantId });
+        const me = await whoAmI(request);
+        const items = request.body.items;
+        const ids = (type: string) => [
+          ...new Set(items.filter((i) => i.type === type).map((i) => i.id)),
+        ];
+        const pt = (lat: unknown, lon: unknown) =>
+          lat !== null && lon !== null && lat !== undefined && lon !== undefined
+            ? { lat: Number(lat), lon: Number(lon) }
+            : null;
+        const found = new Map<string, Record<string, unknown>>();
+        const put = (type: string, id: string, r: Record<string, unknown>) =>
+          found.set(`${type}:${id}`, { id, ...r });
+        await run(request, me, async (trx) => {
+          const missionIds = new Set(await myMissionIds(trx, me));
+          const want = ids('mission').filter((id) => missionIds.has(id));
+          if (want.length) {
+            const rows = await trx
+              .selectFrom('cg.mission as m')
+              .leftJoin('cg.location as l', 'l.id', 'm.location_id')
+              .select([
+                'm.id',
+                'm.version',
+                'm.reference',
+                'm.kind',
+                'm.state',
+                'm.priority',
+                'm.urgency',
+                'm.summary',
+                'm.conditions',
+                'm.required_credentials',
+                'm.route',
+                'm.event_id',
+                'm.location_id',
+                'l.line1',
+                'l.city',
+                'l.postal',
+                'l.landmark',
+                'l.parcel_id',
+                'l.usng',
+                sql<number | null>`ST_Y(l.geom)`.as('lat'),
+                sql<number | null>`ST_X(l.geom)`.as('lon'),
+              ])
+              .where('m.id', 'in', want)
+              .execute();
+            for (const m of rows)
+              put('mission', m.id, {
+                version: m.version,
+                reference: m.reference,
+                kind: m.kind,
+                state: m.state,
+                priority: m.priority,
+                urgency: m.urgency,
+                summary: m.summary,
+                conditions: m.conditions,
+                requiredCredentials: m.required_credentials,
+                route: m.route ?? null,
+                eventId: m.event_id,
+                location: m.location_id
+                  ? {
+                      line1: m.line1,
+                      city: m.city,
+                      postal: m.postal,
+                      landmark: m.landmark,
+                      parcelId: m.parcel_id,
+                      usng: m.usng,
+                      position: pt(m.lat, m.lon),
+                    }
+                  : null,
+              });
+          }
+          const aIds = ids('assignment');
+          if (aIds.length) {
+            const rows = await trx
+              .selectFrom('cg.assignment as a')
+              .innerJoin('cg.mission as m', 'm.id', 'a.mission_id')
+              .select([
+                'a.id',
+                'a.version',
+                'a.state',
+                'a.mission_id',
+                'a.team_id',
+                'a.personnel_id',
+                'a.dispatched_at',
+                'a.dispatch_method',
+                'a.acknowledged_at',
+                'a.released_at',
+                'm.reference',
+              ])
+              .where('a.id', 'in', aIds)
+              .where((eb) =>
+                eb.or([
+                  eb('a.personnel_id', '=', me.personnelId),
+                  ...(me.teamIds.length ? [eb('a.team_id', 'in', me.teamIds)] : []),
+                ]),
+              )
+              .execute();
+            for (const a of rows)
+              put('assignment', a.id, {
+                version: a.version,
+                state: a.state,
+                missionId: a.mission_id,
+                reference: a.reference,
+                teamId: a.team_id,
+                personnelId: a.personnel_id,
+                dispatchedAt: iso(a.dispatched_at),
+                dispatchMethod: a.dispatch_method,
+                acknowledgedAt: iso(a.acknowledged_at),
+                releasedAt: iso(a.released_at),
+              });
+          }
+          const hIds = ids('hazard');
+          if (hIds.length) {
+            const rows = await trx
+              .selectFrom('cg.hazard')
+              .select([
+                'id',
+                'version',
+                'kind',
+                'state',
+                'severity',
+                'summary',
+                'radius_m',
+                'ai_suggested',
+                'accepted_at',
+                'event_id',
+                sql<number | null>`ST_Y(geom)`.as('lat'),
+                sql<number | null>`ST_X(geom)`.as('lon'),
+              ])
+              .where('id', 'in', hIds)
+              .execute();
+            for (const h of rows)
+              put('hazard', h.id, {
+                version: h.version,
+                kind: h.kind,
+                state: h.state,
+                severity: h.severity,
+                summary: h.summary,
+                position: pt(h.lat, h.lon),
+                radiusM: h.radius_m,
+                unverified: h.ai_suggested && !h.accepted_at,
+                eventId: h.event_id,
+              });
+          }
+          const msgIds = ids('field_message');
+          const receiptIds = ids('field_message_receipt');
+          if (msgIds.length || receiptIds.length) {
+            const rows = await trx
+              .selectFrom('cg.field_message_receipt as r')
+              .innerJoin('cg.field_message as m', 'm.id', 'r.message_id')
+              .select([
+                'r.id as receipt_id',
+                'r.read_at',
+                'r.acknowledged_at',
+                'r.delivered_at',
+                'm.id',
+                'm.kind',
+                'm.body',
+                'm.lang',
+                'm.priority',
+                'm.requires_ack',
+                'm.sent_at',
+                'm.mission_id',
+                'm.hazard_id',
+                'm.expires_at',
+              ])
+              .where('r.personnel_id', '=', me.personnelId)
+              .where((eb) =>
+                eb.or([
+                  ...(msgIds.length ? [eb('m.id', 'in', msgIds)] : []),
+                  ...(receiptIds.length ? [eb('r.id', 'in', receiptIds)] : []),
+                ]),
+              )
+              .execute();
+            for (const m of rows) {
+              const rec = {
+                kind: m.kind,
+                body: m.body,
+                lang: m.lang,
+                priority: m.priority,
+                requiresAck: m.requires_ack,
+                sentAt: iso(m.sent_at),
+                missionId: m.mission_id,
+                hazardId: m.hazard_id,
+                expiresAt: iso(m.expires_at),
+                receipt: {
+                  id: m.receipt_id,
+                  deliveredAt: iso(m.delivered_at),
+                  readAt: iso(m.read_at),
+                  acknowledgedAt: iso(m.acknowledged_at),
+                },
+              };
+              put('field_message', m.id, rec);
+              // A receipt change refreshes the message it belongs to.
+              put('field_message_receipt', m.receipt_id, { messageId: m.id, ...rec });
+            }
+          }
+          const tIds = [...ids('team'), ...ids('team_status')];
+          const statusTeams = ids('team_status').length
+            ? await trx
+                .selectFrom('cg.team_status')
+                .select(['id', 'team_id'])
+                .where('id', 'in', ids('team_status'))
+                .execute()
+            : [];
+          const teamWanted = [
+            ...new Set([...ids('team'), ...statusTeams.map((x) => x.team_id)]),
+          ].filter((id) => me.teamIds.includes(id));
+          if (tIds.length && teamWanted.length) {
+            const teams = await trx
+              .selectFrom('cg.team')
+              .select(['id', 'version', 'name', 'callsign', 'kind', 'check_in_interval_minutes'])
+              .where('id', 'in', teamWanted)
+              .execute();
+            for (const t of teams) {
+              const st = await trx
+                .selectFrom('cg.team_status')
+                .select(['status', 'created_at', 'source'])
+                .where('team_id', '=', t.id)
+                .where('fact', '=', 'confirmed')
+                .orderBy('created_at', 'desc')
+                .executeTakeFirst();
+              const team = {
+                version: t.version,
+                name: t.name,
+                callsign: t.callsign,
+                kind: t.kind,
+                checkInIntervalMinutes: t.check_in_interval_minutes,
+                status: st?.status ?? null,
+                statusAt: iso(st?.created_at ?? null),
+                statusSource: st?.source ?? null,
+              };
+              put('team', t.id, team);
+              for (const x of statusTeams.filter((y) => y.team_id === t.id))
+                put('team_status', x.id, { teamId: t.id, ...team });
+            }
+          }
+          const ciIds = ids('check_in');
+          if (ciIds.length) {
+            const rows = await trx
+              .selectFrom('cg.check_in')
+              .select([
+                'id',
+                'event_id',
+                'team_id',
+                'started_at',
+                'ended_at',
+                'end_reason',
+                'location_sharing',
+              ])
+              .where('id', 'in', ciIds)
+              .where('personnel_id', '=', me.personnelId)
+              .execute();
+            for (const c of rows)
+              put('check_in', c.id, {
+                eventId: c.event_id,
+                teamId: c.team_id,
+                startedAt: iso(c.started_at),
+                endedAt: iso(c.ended_at),
+                endReason: c.end_reason,
+                locationSharing: c.location_sharing,
+              });
+          }
+          const alIds = ids('safety_alert');
+          if (alIds.length) {
+            const rows = await trx
+              .selectFrom('cg.safety_alert')
+              .select([
+                'id',
+                'version',
+                'kind',
+                'state',
+                'raised_at',
+                'acknowledged_at',
+                'resolved_at',
+                'client_uuid',
+              ])
+              .where('id', 'in', alIds)
+              .where('personnel_id', '=', me.personnelId)
+              .execute();
+            for (const a of rows)
+              put('safety_alert', a.id, {
+                version: a.version,
+                kind: a.kind,
+                state: a.state,
+                raisedAt: iso(a.raised_at),
+                acknowledgedAt: iso(a.acknowledged_at),
+                resolvedAt: iso(a.resolved_at),
+                clientUuid: a.client_uuid,
+              });
+          }
+          const sIds = ids('site');
+          if (sIds.length) {
+            const rows = await trx
+              .selectFrom('cg.site as st')
+              .leftJoin('cg.location as l', 'l.id', 'st.location_id')
+              .select([
+                'st.id',
+                'st.version',
+                'st.name',
+                'st.kind',
+                'st.status',
+                'st.services',
+                sql<number | null>`ST_Y(l.geom)`.as('lat'),
+                sql<number | null>`ST_X(l.geom)`.as('lon'),
+              ])
+              .where('st.id', 'in', sIds)
+              .where('st.confidential', '=', false)
+              .execute();
+            for (const x of rows)
+              put('site', x.id, {
+                version: x.version,
+                name: x.name,
+                kind: x.kind,
+                status: x.status,
+                services: x.services,
+                position: pt(x.lat, x.lon),
+              });
+          }
+          const dIds = ids('field_device');
+          if (dIds.length) {
+            const rows = await trx
+              .selectFrom('cg.field_device')
+              .select(['id', 'version', 'status', 'wipe_requested_at'])
+              .where('id', 'in', dIds)
+              .where('account_id', '=', s.accountId)
+              .execute();
+            for (const d of rows)
+              put('field_device', d.id, {
+                version: d.version,
+                status: d.status,
+                wipe: d.status === 'wipe_requested' || d.status === 'wiped',
+                wipeRequestedAt: iso(d.wipe_requested_at),
+              });
+          }
+        });
+        return {
+          asOf: new Date().toISOString(),
+          records: items.map((i) => ({
+            type: i.type,
+            id: i.id,
+            record: found.get(`${i.type}:${i.id}`) ?? null,
+          })),
+        };
+      },
+    );
   };

@@ -10,3 +10,8 @@ packages:
 blockExoticSubdeps: true
 minimumReleaseAge: 10080
 trustPolicy: no-downgrade
+# Exact versions only, each reviewed: an older maintenance line published after
+# the package's newer line gained provenance (pnpm judges trust by publish date).
+#  - semver@6.3.1: npm/node-semver 6.x ReDoS fix (2023), required by Babel (field app, layer 4).
+trustPolicyExclude:
+  - semver@6.3.1

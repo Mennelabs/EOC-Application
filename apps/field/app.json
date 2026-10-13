@@ -1,0 +1,59 @@
+{
+  "expo": {
+    "name": "Field",
+    "slug": "cg-field",
+    "scheme": "cgfield",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "platforms": ["ios", "android", "web"],
+    "ios": {
+      "bundleIdentifier": "com.mennelabs.cgfield",
+      "supportsTablet": true,
+      "infoPlist": {
+        "UIBackgroundModes": ["location"]
+      }
+    },
+    "android": {
+      "package": "com.mennelabs.cgfield"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "experiments": {
+      "baseUrl": "/field"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-sqlite",
+        {
+          "useSQLCipher": true
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Unlock the field app with Face ID."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Shares your location with dispatch while you are checked in.",
+          "locationAlwaysAndWhenInUsePermission": "Shares your location with dispatch while you are checked in, also when the app is in the background.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ]
+    ],
+    "extra": {
+      "apiBase": "",
+      "productName": "",
+      "countyName": "",
+      "tenant": ""
+    }
+  }
+}

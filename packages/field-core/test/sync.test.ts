@@ -100,8 +100,12 @@ class FakeApi implements FieldApi {
       device: this.wipe ? { id: 'dev', status: 'wipe_requested', wipe: true } : null,
     };
   }
-  async fetchRecord(type: string, id: string) {
-    return this.records.get(`${type}:${id}`) ?? null;
+  fetched: string[] = [];
+  async fetchRecords(items: { type: string; id: string }[]) {
+    return items.map((i) => {
+      this.fetched.push(`${i.type}:${i.id}`);
+      return { ...i, record: this.records.get(`${i.type}:${i.id}`) ?? null };
+    });
   }
 }
 
@@ -298,12 +302,7 @@ describe('sync loop (FLD-13, NFR-07, NFR-08, AC-00B)', () => {
       change(4, 'mission', 'm2', 1),
     ];
     const loop = new SyncLoop(store, api);
-    const fetched: string[] = [];
-    const orig = api.fetchRecord.bind(api);
-    api.fetchRecord = async (t, id) => {
-      fetched.push(`${t}:${id}`);
-      return orig(t, id);
-    };
+    const fetched = api.fetched;
     const r = await loop.runOnce();
     expect(r.ok).toBe(true);
     expect(r.received).toBe(2);
@@ -321,6 +320,40 @@ describe('sync loop (FLD-13, NFR-07, NFR-08, AC-00B)', () => {
     api.failNextSync = true;
     expect((await loop.runOnce()).ok).toBe(false);
     expect(await store.getMeta('cursor')).toBe('4');
+  });
+
+  it('a status or receipt change refreshes the team or message it belongs to; a record no longer visible leaves the phone (FLD-14)', async () => {
+    const store = new MemoryStore();
+    const api = new FakeApi();
+    await store.put('assignments', { id: 'a-old', version: 1, state: 'dispatched' });
+    api.records.set('team_status:s1', {
+      id: 's1',
+      version: 0,
+      teamId: 'team-1',
+      name: 'DA 2',
+      status: 'on_task',
+    });
+    api.records.set('field_message_receipt:r1', {
+      id: 'r1',
+      version: 0,
+      messageId: 'm-1',
+      body: 'Use the west entrance.',
+    });
+    api.feed = [
+      change(1, 'team_status', 's1', null),
+      change(2, 'field_message_receipt', 'r1', null),
+      change(3, 'assignment', 'a-old', 2),
+    ];
+    const loop = new SyncLoop(store, api);
+    expect((await loop.runOnce()).ok).toBe(true);
+    expect(await store.get('teams', 'team-1')).toMatchObject({
+      status: 'on_task',
+      syncState: 'received',
+    });
+    expect(await store.get('messages', 'm-1')).toMatchObject({ body: 'Use the west entrance.' });
+    expect(await store.get('team_status', 's1')).toBeNull();
+    // The assignment was released from this team: the server answers null and the phone drops it.
+    expect(await store.get('assignments', 'a-old')).toBeNull();
   });
 
   it('a wipe requested for the device clears every collection and the cursor, and the loop stops (FLD-02, FLD-14)', async () => {

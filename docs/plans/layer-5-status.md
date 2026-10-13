@@ -29,10 +29,21 @@ See `docs/plans/layer-4-report.md`, "What did not pass, or is not yet proven" it
 
 ## Tasks
 
-| Task | What                         | State | Commits | Notes |
-| ---- | ---------------------------- | ----- | ------- | ----- |
-| P    | Plan `docs/plans/layer-5.md` | todo  |         |       |
+Plan: [`layer-5.md`](layer-5.md). One task per commit; each ends green, pushed, and recorded here.
+
+| Task | What                                                                                                        | State | Commits | Notes |
+| ---- | ----------------------------------------------------------------------------------------------------------- | ----- | ------- | ----- |
+| P    | Plan `docs/plans/layer-5.md`                                                                                | done  | this    |       |
+| A    | Enclave containers and identity (`cjis-idp`, `cjis-provision`, `cjis-web`, `cjis-gateway`, secrets, guard)  | todo  |         |       |
+| B    | Enclave database `packages/cjis-db` (migrations, dictionary, RLS, audit chain, retention, synthetic agency) | todo  |         |       |
+| C    | Enclave API (auth, qualification, policy, audit, encryption, routes, jobs)                                  | todo  |         |       |
+| D    | Platform side (migration 0041, actions, template, mission routes, seed liaison, dictionary guard)           | todo  |         |       |
+| E    | Enclave web app `apps/web-cjis`                                                                             | todo  |         |       |
+| F    | Console CJIS panel and link action                                                                          | todo  |         |       |
+| G    | Tests and CI (stack suite, browser journeys, enclave database suites, image scans)                          | todo  |         |       |
+| H    | Docs (ADRs 0021/0036–0038, architecture, traceability, report, README, accessibility records)               | todo  |         |       |
 
 ## Known issues and deferred items
 
-- None yet.
+- Deferred IDs in `layer-5.md` §11; readings flagged for Adam in §12; questions with defaults in force in §14.
+- The CJIS Security Policy PDF hosts are blocked by this environment's egress policy, so the values in `layer-5.md` §4 come from the policy's known control text and are marked for confirmation by the agency's CJIS Systems Officer.

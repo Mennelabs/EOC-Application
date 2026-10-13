@@ -129,6 +129,7 @@ const app = await buildApp({
   }),
   routes: routesWith({
     dispatch: { getQueue: () => queue },
+    fieldVoice: { ai, defaultGraph: westwindGraph },
     fieldSync: {
       objects: {
         client: s3,

@@ -200,6 +200,7 @@ export function Field({
   hint,
   secure,
   numeric,
+  multiline,
   autoComplete,
 }: {
   label: string;
@@ -208,6 +209,8 @@ export function Field({
   hint?: string;
   secure?: boolean;
   numeric?: boolean;
+  /** Free text the volunteer may dictate with the keyboard's microphone (FLD-09). */
+  multiline?: boolean;
   autoComplete?: 'off' | 'one-time-code' | 'organization' | 'new-password' | 'current-password';
 }) {
   const { theme } = useField();
@@ -232,15 +235,19 @@ export function Field({
         onChangeText={onChange}
         secureTextEntry={!!secure}
         keyboardType={numeric ? 'number-pad' : 'default'}
-        autoCapitalize="none"
-        autoCorrect={false}
+        autoCapitalize={multiline ? 'sentences' : 'none'}
+        autoCorrect={!!multiline}
+        {...(multiline
+          ? { multiline: true, numberOfLines: 4, textAlignVertical: 'top' as const }
+          : {})}
         {...(autoComplete ? { autoComplete } : {})}
         style={{
-          minHeight: theme.target,
+          minHeight: multiline ? theme.target * 2 : theme.target,
           borderWidth: 2,
           borderColor: theme.border,
           borderRadius: 8,
           paddingHorizontal: 12,
+          ...(multiline ? { paddingVertical: 8 } : {}),
           fontSize: theme.font + 2,
           color: theme.text,
           backgroundColor: theme.surface,

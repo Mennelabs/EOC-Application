@@ -209,6 +209,48 @@ const en = {
   'aids.heading': 'Job aids',
   'aids.none': 'No job aids on this phone yet.',
   'aids.open': 'Read',
+  'assess.seen': 'What damage did you see?',
+  'seen.roof': 'Roof',
+  'seen.windows_doors': 'Windows or doors',
+  'seen.walls': 'Walls',
+  'seen.tree_on_home': 'Tree on the home',
+  'seen.moved_off_foundation': 'Moved off its foundation',
+  'photos.heading': 'Photos',
+  'photos.hint':
+    'Take photos first. They are attached when you save, and leave the phone once received.',
+  'photos.take': 'Take photo',
+  'photos.pick': 'Choose a photo',
+  'photos.alt': 'Photo {n}',
+  'photos.remove': 'Remove photo {n}',
+  'photos.denied':
+    'The camera is not allowed. Turn it on in the phone settings, or choose a photo.',
+  'photos.waiting': 'On this phone',
+  'photos.sent': 'Received',
+  'photos.failed':
+    'Not sent because its record was not saved. Remove it, or take it again with a new record.',
+  'photos.count': 'Photos on this phone: {count}',
+  'voice.heading': 'Say what you see',
+  'voice.hint': 'Use the microphone on your keyboard, or type. Do not say names or phone numbers.',
+  'voice.draft': 'Fill in from my words',
+  'voice.working': 'Drafting…',
+  'voice.notice':
+    'A computer drafted these from your words. Check each one; nothing is used until you say yes.',
+  'voice.youSaid': 'You said: “{evidence}”',
+  'voice.structure': 'Type of home: {value}',
+  'voice.water': 'Water got into the living area',
+  'voice.seen': 'Damage seen: {value}',
+  'voice.confirm': 'Yes, use it',
+  'voice.reject': 'No',
+  'voice.used': 'Used',
+  'voice.rejected': 'Not used',
+  'voice.none': 'Nothing could be drafted from these words. Fill in the fields yourself.',
+  'voice.injection': 'These words read like instructions to the system, so nothing was drafted.',
+  'voice.off':
+    'Help from a computer is switched off here. Fill in the fields yourself; your words stay in the note.',
+  'voice.failed':
+    'The draft did not work. Fill in the fields yourself; your words stay in the note.',
+  'voice.offline':
+    'Drafting needs a connection. Fill in the fields yourself; your words stay in the note.',
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -421,6 +463,48 @@ const es: Record<MessageKey, string> = {
   'aids.heading': 'Guías de trabajo',
   'aids.none': 'Todavía no hay guías en este teléfono.',
   'aids.open': 'Leer',
+  'assess.seen': '¿Qué daños vio?',
+  'seen.roof': 'Techo',
+  'seen.windows_doors': 'Ventanas o puertas',
+  'seen.walls': 'Paredes',
+  'seen.tree_on_home': 'Árbol sobre la vivienda',
+  'seen.moved_off_foundation': 'Se movió de sus cimientos',
+  'photos.heading': 'Fotos',
+  'photos.hint':
+    'Tome las fotos primero. Se adjuntan al guardar y salen del teléfono una vez recibidas.',
+  'photos.take': 'Tomar foto',
+  'photos.pick': 'Elegir una foto',
+  'photos.alt': 'Foto {n}',
+  'photos.remove': 'Quitar la foto {n}',
+  'photos.denied':
+    'La cámara no tiene permiso. Actívela en los ajustes del teléfono, o elija una foto.',
+  'photos.waiting': 'En este teléfono',
+  'photos.sent': 'Recibida',
+  'photos.failed':
+    'No se envió porque su registro no se guardó. Quítela, o tómela de nuevo con un registro nuevo.',
+  'photos.count': 'Fotos en este teléfono: {count}',
+  'voice.heading': 'Diga lo que ve',
+  'voice.hint': 'Use el micrófono del teclado, o escriba. No diga nombres ni teléfonos.',
+  'voice.draft': 'Llenar con mis palabras',
+  'voice.working': 'Preparando…',
+  'voice.notice':
+    'Una computadora preparó esto con sus palabras. Revise cada uno; no se usa nada hasta que diga que sí.',
+  'voice.youSaid': 'Usted dijo: “{evidence}”',
+  'voice.structure': 'Tipo de vivienda: {value}',
+  'voice.water': 'Entró agua a la vivienda',
+  'voice.seen': 'Daño visto: {value}',
+  'voice.confirm': 'Sí, usarlo',
+  'voice.reject': 'No',
+  'voice.used': 'Usado',
+  'voice.rejected': 'No usado',
+  'voice.none': 'No se pudo preparar nada con estas palabras. Llene los campos usted mismo.',
+  'voice.injection':
+    'Estas palabras parecen instrucciones para el sistema, así que no se preparó nada.',
+  'voice.off':
+    'La ayuda de una computadora está apagada aquí. Llene los campos usted mismo; sus palabras quedan en la nota.',
+  'voice.failed': 'No funcionó. Llene los campos usted mismo; sus palabras quedan en la nota.',
+  'voice.offline':
+    'Para preparar los campos se necesita conexión. Llene los campos usted mismo; sus palabras quedan en la nota.',
 };
 
 const catalog: Record<Locale, Record<MessageKey, string>> = { en, es };

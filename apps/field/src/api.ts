@@ -6,7 +6,7 @@
  * carries the access token; a failure to reach the server is thrown as
  * `offline` so the caller keeps the work on the phone (SCL-06).
  */
-import type { FieldApi } from '@cg/field-core';
+import type { FieldApi, PhotoApi, PhotoRecordType } from '@cg/field-core';
 import { accessToken } from './auth';
 
 export class OfflineError extends Error {
@@ -103,7 +103,15 @@ export interface AreaPackage {
   maps: { areaKey: string; available: boolean; url: string | null }[];
 }
 
-export class Api implements FieldApi {
+export interface VoiceDraft {
+  draftId: string;
+  drafts: { field: 'structure' | 'water_inside' | 'seen'; value: string; evidence: string }[];
+  injectionSuspected: boolean;
+  provider: { provider: string; model: string };
+  notice: string;
+}
+
+export class Api implements FieldApi, PhotoApi {
   private readonly base: string;
   constructor(base: string) {
     this.base = base;
@@ -140,6 +148,26 @@ export class Api implements FieldApi {
     return json as T;
   }
 
+  /** Raw bytes (a photo) with their own content type. */
+  async put(path: string, contentType: string, data: Uint8Array): Promise<void> {
+    const token = await accessToken();
+    if (!token) throw new ApiError(401, 'signed_out', 'Signed out', null);
+    let res: Response;
+    try {
+      res = await fetch(`${this.base}/api/v1${path}`, {
+        method: 'PUT',
+        headers: { authorization: `Bearer ${token}`, 'content-type': contentType },
+        body: data as unknown as BodyInit,
+      });
+    } catch {
+      throw new OfflineError();
+    }
+    if (!res.ok) {
+      const json = (await res.json().catch(() => ({}))) as { code?: string; message?: string };
+      throw new ApiError(res.status, json.code ?? 'error', json.message ?? res.statusText, json);
+    }
+  }
+
   me(): Promise<Me> {
     return this.call('GET', '/me');
   }
@@ -166,6 +194,24 @@ export class Api implements FieldApi {
   area(eventId: string | null, lang: string): Promise<AreaPackage> {
     const q = new URLSearchParams({ lang, ...(eventId ? { eventId } : {}) });
     return this.call('GET', `/field/area?${q.toString()}`);
+  }
+
+  /** FLD-09: fields drafted from what the volunteer said; each is confirmed on the phone (INT-13). */
+  voiceDraft(input: { clientUuid: string; text: string; language: string }): Promise<VoiceDraft> {
+    return this.call('POST', '/field-assessments/draft', input);
+  }
+
+  // ---- PhotoApi (packages/field-core photos.ts; FLD-07)
+  ticket(input: Parameters<PhotoApi['ticket']>[0]) {
+    return this.call<{ photoId: string; status: string }>('POST', '/field/photos', input);
+  }
+
+  upload(photoId: string, contentType: string, data: Uint8Array) {
+    return this.put(`/field/photos/${photoId}/content`, contentType, data);
+  }
+
+  complete(photoId: string, link?: { recordType: PhotoRecordType; recordId: string }) {
+    return this.call<{ status: string }>('POST', `/field/photos/${photoId}/complete`, link ?? {});
   }
 
   // ---- FieldApi (packages/field-core)

@@ -22,6 +22,7 @@ import {
   distanceM,
   hazardsAround,
   locationPolicy,
+  PhotoQueue,
   purgePersonalData,
   startTimer,
   SyncLoop,
@@ -30,10 +31,12 @@ import {
   type HazardArea,
   type LocationPolicy,
   type OutboxCommand,
+  type PhotoDoc,
   type SyncStatus,
   type TimerState,
 } from '@cg/field-core';
-import { Api, ApiError, OfflineError, type CheckIn, type Me } from './api';
+import { Api, ApiError, OfflineError, type CheckIn, type Me, type VoiceDraft } from './api';
+import { takePhoto } from './camera';
 import * as auth from './auth';
 import { loadConfig, type FieldConfig } from './config';
 import { deviceLocale, LocaleContext, translate, type Locale, type MessageKey } from './i18n';
@@ -106,6 +109,8 @@ interface FieldState {
   areaState: 'idle' | 'downloading' | 'ready' | 'failed';
   sync: SyncStatus;
   outbox: OutboxCommand[];
+  /** Photos on this phone (FLD-07): untagged, waiting for their record, or sent. */
+  photos: PhotoDoc[];
   timer: TimerState | null;
   fix: Fix | null;
   policy: LocationPolicy;
@@ -140,6 +145,14 @@ interface FieldActions {
   /** Keep a small piece of screen state on the phone (a sweep in progress). */
   saveDoc(collection: string, doc: { id: string; [k: string]: unknown }): Promise<void>;
   setAssignmentStatus(id: string, to: 'en_route' | 'on_scene' | 'cleared'): Promise<void>;
+  /** FLD-07: take a photo first; it waits on the phone until it is attached to a record. */
+  takePhoto(fromLibrary?: boolean): Promise<PhotoDoc | 'denied' | null>;
+  removePhoto(id: string): Promise<boolean>;
+  /** FLD-09: fields drafted from the volunteer's words, or why there are none. */
+  voiceDraft(
+    clientUuid: string,
+    text: string,
+  ): Promise<VoiceDraft | { off: string } | { offline: true }>;
   recordAssessment(input: AssessmentInput): Promise<string>;
   /** Sweep undo: removes a record that has not left the phone; false once it was sent. */
   withdraw(commandId: string): Promise<boolean>;
@@ -148,15 +161,18 @@ interface FieldActions {
     severity: string;
     summary?: string;
     position?: { lat: number; lon: number; accuracyM?: number };
+    photoIds?: string[];
   }): Promise<void>;
   logService(kind: string, count: number, siteId?: string): Promise<void>;
   census(siteId: string, occupancy: number, status?: string): Promise<void>;
-  needDone(needId: string, note: string): Promise<void>;
+  needDone(needId: string, note: string, photoIds?: string[]): Promise<void>;
   /** Online lists the phone does not keep (needs held by the crew's organization). */
   online<T>(path: string): Promise<T>;
 }
 
 export interface AssessmentInput {
+  /** The phone's id for the record, when the screen already used it (a voice draft is filed under it). */
+  id?: string;
   mode: 'sweep' | 'detailed' | 'validation';
   parcelId?: string;
   address?: string | null;
@@ -164,10 +180,11 @@ export interface AssessmentInput {
   landmark?: string;
   structure: string;
   degree: string;
-  observations?: Record<string, string | number | boolean>;
+  observations?: Record<string, string | number | boolean | string[]>;
   note?: string;
   missionId?: string;
   assignmentId?: string;
+  photoIds?: string[];
 }
 
 const Ctx = createContext<(FieldState & FieldActions) | null>(null);
@@ -202,6 +219,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
   const [areaState, setAreaState] = useState<FieldState['areaState']>('idle');
   const [sync, setSync] = useState<SyncStatus>(emptySync);
   const [outbox, setOutbox] = useState<OutboxCommand[]>([]);
+  const [photos, setPhotos] = useState<PhotoDoc[]>([]);
   const [timer, setTimer] = useState<TimerState | null>(null);
   const [fix, setFix] = useState<Fix | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -209,6 +227,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
 
   const store = useRef<FieldStore | null>(null);
   const loop = useRef<SyncLoop | null>(null);
+  const photoQueue = useRef<PhotoQueue | null>(null);
   const api = useRef<Api>(new Api(''));
   const fixes = useRef<Fix[]>([]);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -253,6 +272,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
     setMessages(msgs.sort((a, b) => (b.sentAt ?? '').localeCompare(a.sentAt ?? '')));
     setHazards(hz.filter((h) => h.state !== 'cleared'));
     setOutbox(cmds);
+    setPhotos((await photoQueue.current?.all()) ?? []);
     const current = ci ? (JSON.parse(ci) as CheckIn) : null;
     setCheckIn(current);
     const myTeam = current?.teamId ? (tm.find((x) => x.id === current.teamId) ?? null) : null;
@@ -265,7 +285,12 @@ export function FieldProvider({ children }: { children: ReactNode }) {
 
   const runSync = useCallback(async () => {
     if (!loop.current) return;
-    await loop.current.runOnce();
+    const result = await loop.current.runOnce();
+    // Photos follow their records (FLD-07); a lost connection keeps them for the next try.
+    if (photoQueue.current && result.ok !== false) {
+      await photoQueue.current.runOnce(api.current);
+      await photoQueue.current.pruneReceived(24 * 3_600_000);
+    }
     await refresh();
   }, [refresh]);
 
@@ -308,9 +333,13 @@ export function FieldProvider({ children }: { children: ReactNode }) {
             void vault.wipeVault().then(() => auth.saveSession(null));
             store.current = null;
             loop.current = null;
+            photoQueue.current = null;
             setPhase('wiped');
           },
         },
+      });
+      photoQueue.current = new PhotoQueue(s, loop.current.outbox, {
+        isOffline: (err) => err instanceof OfflineError,
       });
       setPhase('ready');
       try {
@@ -608,6 +637,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
       await auth.signOut();
       store.current = null;
       loop.current = null;
+      photoQueue.current = null;
       setMe(null);
       setPhase('signed_out');
     },
@@ -648,10 +678,38 @@ export function FieldProvider({ children }: { children: ReactNode }) {
         localRef: { collection: 'assignments', id },
       });
     },
+    async takePhoto(fromLibrary) {
+      const q = photoQueue.current;
+      if (!q) return null;
+      const shot = await takePhoto(fromLibrary);
+      if (!shot || shot === 'denied') return shot;
+      const f = fix ?? (await currentFix());
+      const doc = await q.add({
+        ...shot,
+        ...(f ? { position: { lat: f.lat, lon: f.lon } } : {}),
+      });
+      await refresh();
+      return doc;
+    },
+    async removePhoto(id) {
+      const ok = (await photoQueue.current?.remove(id)) ?? false;
+      await refresh();
+      return ok;
+    },
+    async voiceDraft(clientUuid, text) {
+      try {
+        return await api.current.voiceDraft({ clientUuid, text, language: locale });
+      } catch (err) {
+        if (err instanceof OfflineError) return { offline: true as const };
+        if (err instanceof ApiError && err.code === 'ai_off') return { off: t('voice.off') };
+        if (err instanceof ApiError) return { off: t('voice.failed') };
+        throw err;
+      }
+    },
     async recordAssessment(input) {
       const s = store.current;
       if (!s) throw new Error('locked');
-      const id = globalThis.crypto.randomUUID();
+      const id = input.id ?? globalThis.crypto.randomUUID();
       const body: Record<string, unknown> = {
         mode: input.mode,
         structure: input.structure,
@@ -677,6 +735,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
         at: new Date().toISOString(),
         syncState: 'on_this_phone',
       });
+      if (input.photoIds?.length) await photoQueue.current?.tag(input.photoIds, id);
       await enqueue({
         id,
         kind: 'assessment.record',
@@ -696,7 +755,10 @@ export function FieldProvider({ children }: { children: ReactNode }) {
     },
     async quickReport(input) {
       if (!checkIn?.eventId) return;
+      const id = globalThis.crypto.randomUUID();
+      if (input.photoIds?.length) await photoQueue.current?.tag(input.photoIds, id);
       await enqueue({
+        id,
         kind: 'hazard.report',
         body: {
           eventId: checkIn.eventId,
@@ -721,8 +783,10 @@ export function FieldProvider({ children }: { children: ReactNode }) {
         body: { occupancy, ...(status ? { status } : {}) },
       });
     },
-    async needDone(needId, note) {
-      await enqueue({ kind: 'need.done', targetId: needId, body: { note } });
+    async needDone(needId, note, photoIds) {
+      const id = globalThis.crypto.randomUUID();
+      if (photoIds?.length) await photoQueue.current?.tag(photoIds, id);
+      await enqueue({ id, kind: 'need.done', targetId: needId, body: { note } });
     },
     online: <T,>(path: string) => api.current.call<T>('GET', path),
   };
@@ -743,6 +807,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
     areaState,
     sync,
     outbox,
+    photos,
     timer,
     fix,
     policy,

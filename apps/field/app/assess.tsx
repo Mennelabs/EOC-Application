@@ -1,9 +1,11 @@
 /**
- * Damage assessment (FLD-08, FLD-05, FLD-13): the home type, then the degree
- * chosen from a picture and a short description for that home type, a few
- * picture-based observations, a note and, when there is no parcel, a
- * landmark. Saved on the phone first; it sends when there is signal. No
- * resident personal details are asked for.
+ * Damage assessment (FLD-08, FLD-05, FLD-07, FLD-09, FLD-13): photos first,
+ * the home type, then the degree chosen from a picture and a short
+ * description for that home type, the damage seen, a voice or typed note
+ * that can draft the home type and damage seen (each confirmed by the
+ * volunteer, never the degree) and, when there is no parcel, a landmark.
+ * Saved on the phone first; it sends when there is signal. No resident
+ * personal details are asked for.
  */
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
@@ -19,7 +21,11 @@ import {
 } from '../src/assessment';
 import { HouseDiagram } from '../src/diagram';
 import { useField } from '../src/field';
+import { PhotoStrip } from '../src/photos';
 import { Alert, Body, Button, Card, Field, Heading, NavBar, Page } from '../src/ui';
+import { VoiceNote } from '../src/voice';
+
+const SEEN = ['roof', 'windows_doors', 'walls', 'tree_on_home', 'moved_off_foundation'] as const;
 
 export default function Assess() {
   const p = useLocalSearchParams<{
@@ -45,10 +51,16 @@ export default function Assess() {
   const [note, setNote] = useState('');
   const [landmark, setLandmark] = useState('');
   const [saved, setSaved] = useState(false);
+  const [id] = useState(() => globalThis.crypto.randomUUID());
+  const [photoIds, setPhotoIds] = useState<string[]>([]);
+  const [seen, setSeen] = useState<string[]>([]);
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [usedDrafts, setUsedDrafts] = useState<string[]>([]);
   const needsLandmark = !p.parcelId;
   const save = async () => {
     if (!degree) return;
     await f.recordAssessment({
+      id,
       mode: 'detailed',
       structure,
       degree,
@@ -63,7 +75,13 @@ export default function Assess() {
           }
         : {}),
       ...(landmark.trim() ? { landmark: landmark.trim() } : {}),
-      observations: { water_inside: waterInside },
+      observations: {
+        water_inside: waterInside,
+        ...(seen.length ? { seen } : {}),
+        // Which fields came from a confirmed voice draft; the draft records provider and model (AIG-12).
+        ...(draftId && usedDrafts.length ? { voice_draft: draftId, voice_used: usedDrafts } : {}),
+      },
+      ...(photoIds.length ? { photoIds } : {}),
       ...(note.trim() ? { note: note.trim() } : {}),
       ...(p.missionId ? { missionId: p.missionId } : {}),
       ...(p.assignmentId ? { assignmentId: p.assignmentId } : {}),
@@ -120,6 +138,7 @@ export default function Assess() {
           onChange={setLandmark}
         />
       ) : null}
+      <PhotoStrip ids={photoIds} onChange={setPhotoIds} />
       <Heading level={2}>{t('assess.homeType')}</Heading>
       <View
         role="radiogroup"
@@ -191,7 +210,37 @@ export default function Assess() {
           ))}
         </View>
       </Card>
-      <Field label={t('assess.note')} hint={t('assess.noteHint')} value={note} onChange={setNote} />
+      <Card>
+        <Heading level={3}>{t('assess.seen')}</Heading>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {SEEN.map((v) => (
+            <Pressable
+              key={v}
+              role="checkbox"
+              aria-checked={seen.includes(v)}
+              onPress={() => setSeen(seen.includes(v) ? seen.filter((x) => x !== v) : [...seen, v])}
+              style={choice(seen.includes(v))}
+            >
+              <Text style={{ color: theme.text, fontSize: theme.font }}>{t(`seen.${v}`)}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </Card>
+      <VoiceNote
+        clientUuid={id}
+        text={note}
+        onText={setNote}
+        label={t('assess.note')}
+        onUse={(d, did) => {
+          setDraftId(did);
+          setUsedDrafts((u) => [...u, `${d.field}:${d.value}`]);
+          if (d.field === 'structure' && (STRUCTURES as string[]).includes(d.value))
+            setStructure(d.value as Structure);
+          else if (d.field === 'water_inside') setWaterInside('yes');
+          else if (d.field === 'seen')
+            setSeen((cur) => (cur.includes(d.value) ? cur : [...cur, d.value]));
+        }}
+      />
       <NavBar current="home" />
     </Page>
   );

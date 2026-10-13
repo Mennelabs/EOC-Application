@@ -47,6 +47,14 @@
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Photos of damage and hazards are attached to the records you save, and leave the phone once received.",
+          "photosPermission": "Choose a photo of damage or a hazard to attach to a record.",
+          "microphonePermission": false
+        }
       ]
     ],
     "extra": {

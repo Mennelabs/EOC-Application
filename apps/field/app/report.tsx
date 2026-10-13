@@ -9,6 +9,7 @@ import { Pressable, Text, View, type ViewStyle } from 'react-native';
 import { useField } from '../src/field';
 import { currentFix } from '../src/location';
 import { label } from '../src/vocab';
+import { PhotoStrip } from '../src/photos';
 import { Alert, Body, Button, Field, Heading, NavBar, Page } from '../src/ui';
 
 const KINDS = [
@@ -29,6 +30,7 @@ export default function Report() {
   const [severity, setSeverity] = useState<'caution' | 'danger'>('caution');
   const [note, setNote] = useState('');
   const [saved, setSaved] = useState(false);
+  const [photoIds, setPhotoIds] = useState<string[]>([]);
   const choice = (selected: boolean): ViewStyle => ({
     minHeight: theme.target,
     borderWidth: selected ? 4 : 2,
@@ -45,6 +47,7 @@ export default function Report() {
       kind,
       severity,
       ...(note.trim() ? { summary: note.trim() } : {}),
+      ...(photoIds.length ? { photoIds } : {}),
       ...(fix
         ? {
             position: {
@@ -106,7 +109,8 @@ export default function Report() {
           </Pressable>
         ))}
       </View>
-      <Field label={t('report.note')} value={note} onChange={setNote} />
+      <Field label={t('report.note')} value={note} onChange={setNote} multiline />
+      <PhotoStrip ids={photoIds} onChange={setPhotoIds} />
       <Body muted>{t('report.where')}</Body>
       <NavBar current="home" />
     </Page>

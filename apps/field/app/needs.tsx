@@ -5,6 +5,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useField } from '../src/field';
+import { PhotoStrip } from '../src/photos';
 import { Alert, Body, Button, Card, Field, Heading, NavBar, Page } from '../src/ui';
 
 interface Need {
@@ -23,6 +24,7 @@ export default function Needs() {
   const [offline, setOffline] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const [note, setNote] = useState('');
+  const [photoIds, setPhotoIds] = useState<string[]>([]);
   const [done, setDone] = useState<string[]>([]);
   useEffect(() => {
     // Shown as the server allows (NED-04, CON-15) and never kept on the phone (FLD-14).
@@ -49,15 +51,17 @@ export default function Needs() {
             <Body>✓ {t('needs.markedDone')}</Body>
           ) : open === n.id ? (
             <>
-              <Field label={t('needs.note')} value={note} onChange={setNote} />
+              <Field label={t('needs.note')} value={note} onChange={setNote} multiline />
+              <PhotoStrip ids={photoIds} onChange={setPhotoIds} />
               <Button
                 label={t('needs.done')}
                 disabled={note.trim().length < 3}
                 onPress={() =>
-                  void f.needDone(n.id, note.trim()).then(() => {
+                  void f.needDone(n.id, note.trim(), photoIds).then(() => {
                     setDone((d) => [...d, n.id]);
                     setOpen(null);
                     setNote('');
+                    setPhotoIds([]);
                   })
                 }
               />

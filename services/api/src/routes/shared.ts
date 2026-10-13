@@ -91,12 +91,13 @@ export const sharedRoutes: FastifyPluginAsync = async (instance) => {
       tenantId: grants[0]!.to_tenant_id,
       fields,
     });
-    const can = (field: keyof SharedOut) => decision.fields.includes(field);
     const clear: Record<string, unknown> = {};
     const restricted: Record<string, unknown> = {};
+    let unreadable = false;
     for (const g of grants) {
       Object.assign(clear, g.projection);
-      if (g.projection_enc)
+      if (!g.projection_enc) continue;
+      try {
         Object.assign(
           restricted,
           JSON.parse(await app.fieldCrypto.decrypt(g.tenant_id, g.projection_enc)) as Record<
@@ -104,7 +105,16 @@ export const sharedRoutes: FastifyPluginAsync = async (instance) => {
             unknown
           >,
         );
+      } catch (err) {
+        // A key problem on one record is an incident for operators, not an outage for the board:
+        // the row stays with its clear sections, the restricted ones are reported as masked.
+        unreadable = true;
+        request.log.error({ err, grantId: g.id }, 'share grant projection could not be opened');
+      }
     }
+    const restrictedFields = new Set<keyof SharedOut>(['name', 'contact', 'accessNeeds']);
+    const can = (field: keyof SharedOut) =>
+      decision.fields.includes(field) && !(unreadable && restrictedFields.has(field));
     const pick = <T>(field: keyof SharedOut, from: Record<string, unknown>): T | null =>
       can(field) && from[field] !== undefined ? (from[field] as T) : null;
     const out: SharedOut = {
@@ -125,7 +135,7 @@ export const sharedRoutes: FastifyPluginAsync = async (instance) => {
       needs: pick<SharedOut['needs']>('needs', clear),
       accessNeeds: pick<string[]>('accessNeeds', restricted),
     };
-    return { out, restrictedRead: decision.restrictedRead };
+    return { out, restrictedRead: unreadable ? [] : decision.restrictedRead };
   }
 
   async function audit(request: FastifyRequest, grants: GrantRow[], restrictedRead: string[]) {

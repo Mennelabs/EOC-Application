@@ -156,6 +156,7 @@ export function validateAnswers(
   ctx: SessionContext,
   answers: Answers,
   after: Answers,
+  options: { requireAll?: boolean } = {},
 ): void {
   const questions = new Map<string, QuestionNode>();
   for (const n of graph.nodes) if (n.kind === 'question') questions.set(n.id, n);
@@ -179,7 +180,7 @@ export function validateAnswers(
     }
     for (const e of validateAnswer(q, value)) fields.push({ name: id, message: e.message });
   }
-  for (const node of visibleNodes(graph, ctx, answers)) {
+  for (const node of options.requireAll === false ? [] : visibleNodes(graph, ctx, answers)) {
     if (node.kind !== 'question' || !node.required || !isAsked(node, ctx, answers)) continue;
     const a = answers[node.id];
     if (!a || a.kind === 'skipped')
@@ -239,6 +240,8 @@ export interface SubmitInput {
   body: SubmitBody;
   /** A text or voice session already told the resident their code (no second confirmation). */
   confirmationSent?: boolean;
+  /** A need without a damage report (NED-02): only the answers given are checked; the worker files needs, not a report. */
+  needsOnly?: boolean;
 }
 
 export interface SubmitResult {
@@ -270,7 +273,22 @@ export async function submitIntake(
       channel: body.channel,
       relationship: body.relationship,
     };
-    validateAnswers(graph, ctx, body.answers, body.afterSubmission);
+    validateAnswers(graph, ctx, body.answers, body.afterSubmission, {
+      requireAll: !input.needsOnly,
+    });
+    if (input.needsOnly) {
+      const categories = new Set(graph.needCategories.map((c) => c.value));
+      const orgTypes = new Set(graph.consentOrgTypes.map((o) => o.value));
+      const fields: { name: string; message: string }[] = [];
+      if (body.needs.length === 0) fields.push({ name: 'needs', message: 'pick at least one' });
+      for (const n of body.needs)
+        if (!categories.has(n)) fields.push({ name: 'needs', message: `unknown need ${n}` });
+      for (const o of Object.keys(body.consent))
+        if (!orgTypes.has(o))
+          fields.push({ name: 'consent', message: `unknown organization type ${o}` });
+      if (fields.length > 0)
+        throw new ApiError(400, 'validation_failed', 'Some answers need another look.', { fields });
+    }
 
     // Contact details for the party record and the risk score.
     const contact = contactFrom(body.answers['contact']);
@@ -319,6 +337,7 @@ export async function submitIntake(
       risk: result,
       receivedAt: deps.now().toISOString(),
       confirmationSent: input.confirmationSent ?? false,
+      needsOnly: input.needsOnly ?? false,
     };
     const payloadEnc = await deps.crypto.encrypt(tenantId, JSON.stringify(payload));
     return { eventId: event.id, payloadEnc, risk: result };

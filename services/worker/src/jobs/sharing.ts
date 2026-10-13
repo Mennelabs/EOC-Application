@@ -2,8 +2,9 @@
  * Share grants (NED-04, NED-05, AC-17C, FL-03, SEC-05/06, SEC-18, ADR-0030):
  * the only path a partner organization reads a resident's record through.
  * One job keeps the grants in step with the facts: it runs after a report
- * is filed, after late answers are merged, after a consent change (web or
- * the NOSHARE text keyword), after a correction and after a withdrawal.
+ * or a needs-only submission is filed, after late answers are merged, after
+ * a consent change (web or the NOSHARE text keyword), after a correction and
+ * after a withdrawal.
  * Each run derives what should exist from the signed agreements and the
  * resident's consents, writes or refreshes the projection the partner may
  * see, revokes what no longer applies and queues a recall notice to the
@@ -57,7 +58,7 @@ async function facts(
   trx: Transaction<Database>,
   tenantId: string,
   report: {
-    id: string;
+    id: string | null;
     reporter_party_id: string | null;
     subject_party_id: string | null;
     location_id: string | null;
@@ -88,11 +89,13 @@ async function facts(
         .where('id', '=', report.location_id)
         .executeTakeFirst()
     : undefined;
-  const after = await trx
-    .selectFrom('cg.post_submission_answers')
-    .select(['aggregate_answers', 'restricted_answers_enc'])
-    .where('report_id', '=', report.id)
-    .executeTakeFirst();
+  const after = report.id
+    ? await trx
+        .selectFrom('cg.post_submission_answers')
+        .select(['aggregate_answers', 'restricted_answers_enc'])
+        .where('report_id', '=', report.id)
+        .executeTakeFirst()
+    : undefined;
   const restrictedAfter = after?.restricted_answers_enc
     ? (JSON.parse((await decrypt(after.restricted_answers_enc)) ?? '{}') as Record<string, unknown>)
     : {};
@@ -141,33 +144,85 @@ async function recallRecipients(
   return { partnerName: partner.name, emails };
 }
 
+export type SharingSubject = { reportId: string } | { executionId: string };
+
+interface Target {
+  reportId: string | null;
+  needId: string | null;
+  needs: { id: string; category: string; status: string }[];
+}
+
 /**
- * Brings the grants for one report in line with its consents and the county's
- * agreements. Runs inside the county tenant's system transaction.
+ * Brings the grants for one report, or for the needs of one needs-only
+ * submission (NED-02), in line with the consents and the county's agreements.
+ * A report carries one grant per partner; a standalone submission one grant
+ * per need per partner. Runs inside the county tenant's system transaction.
  */
 export async function syncShareGrants(
   ctx: JobContext,
   trx: Transaction<Database>,
   tenantId: string,
-  reportId: string,
+  subject: SharingSubject,
   reason: SyncReason,
 ): Promise<SyncResult> {
   const now = ctx.now ?? (() => new Date());
   const result: SyncResult = { granted: 0, updated: 0, revoked: 0 };
-  const report = await trx
-    .selectFrom('cg.report')
-    .select([
-      'id',
-      'reference_code',
-      'execution_id',
-      'reporter_party_id',
-      'subject_party_id',
-      'location_id',
-      'withdrawn_at',
-    ])
-    .where('id', '=', reportId)
-    .executeTakeFirst();
-  if (!report) return result;
+
+  // 1. The record: who, where, which needs, the code, whether it still stands.
+  let partyIds: { reporter: string | null; subject: string | null };
+  let locationId: string | null;
+  let referenceCode: string;
+  let executionId: string;
+  let withdrawn: boolean;
+  let targets: Target[];
+  let needs: { id: string; category: string; status: string }[];
+  if ('reportId' in subject) {
+    const report = await trx
+      .selectFrom('cg.report')
+      .select([
+        'id',
+        'reference_code',
+        'execution_id',
+        'reporter_party_id',
+        'subject_party_id',
+        'location_id',
+        'withdrawn_at',
+      ])
+      .where('id', '=', subject.reportId)
+      .executeTakeFirst();
+    if (!report) return result;
+    needs = await trx
+      .selectFrom('cg.need')
+      .select(['id', 'category', 'status'])
+      .where('report_id', '=', report.id)
+      .where('status', '<>', 'withdrawn')
+      .orderBy('created_at')
+      .execute();
+    partyIds = { reporter: report.reporter_party_id, subject: report.subject_party_id };
+    locationId = report.location_id;
+    referenceCode = report.reference_code;
+    executionId = report.execution_id;
+    withdrawn = report.withdrawn_at !== null;
+    targets = [{ reportId: report.id, needId: null, needs }];
+  } else {
+    const rows = await trx
+      .selectFrom('cg.need')
+      .select(['id', 'category', 'status', 'contact_party_id', 'location_id', 'reference_code'])
+      .where('execution_id', '=', subject.executionId)
+      .where('report_id', 'is', null)
+      .orderBy('created_at')
+      .execute();
+    if (rows.length === 0) return result;
+    needs = rows
+      .filter((n) => n.status !== 'withdrawn')
+      .map((n) => ({ id: n.id, category: n.category, status: n.status }));
+    partyIds = { reporter: rows[0]!.contact_party_id, subject: rows[0]!.contact_party_id };
+    locationId = rows[0]!.location_id;
+    referenceCode = rows[0]!.reference_code ?? '';
+    executionId = subject.executionId;
+    withdrawn = needs.length === 0;
+    targets = needs.map((n) => ({ reportId: null, needId: n.id, needs: [n] }));
+  }
 
   const agreementRows = await trx
     .selectFrom('cg.data_sharing_agreement')
@@ -190,115 +245,136 @@ export async function syncShareGrants(
       signed: a.status === 'signed',
     });
   }
-  const consents = await trx
-    .selectFrom('cg.consent')
-    .select(['id', 'org_type as orgType', 'granted'])
-    .where('report_id', '=', reportId)
-    .execute();
-  const needs = await trx
-    .selectFrom('cg.need')
-    .select(['id', 'category', 'status'])
-    .where('report_id', '=', reportId)
-    .where('status', '<>', 'withdrawn')
-    .orderBy('created_at')
-    .execute();
+  let consentQuery = trx.selectFrom('cg.consent').select(['id', 'org_type as orgType', 'granted']);
+  consentQuery =
+    'reportId' in subject
+      ? consentQuery.where('report_id', '=', subject.reportId)
+      : consentQuery
+          .where('party_id', '=', partyIds.reporter ?? '00000000-0000-0000-0000-000000000000')
+          .where('report_id', 'is', null);
+  const consents = await consentQuery.execute();
   const derived = deriveGrants(agreements, consents, {
     needs: needs.map((n) => n.category),
-    withdrawn: report.withdrawn_at !== null,
+    withdrawn,
   });
-  const existing = await trx
-    .selectFrom('cg.share_grant')
-    .selectAll()
-    .where('report_id', '=', reportId)
-    .where('revoked_at', 'is', null)
-    .execute();
 
-  const f = derived.length > 0 ? await facts(ctx, trx, tenantId, report, needs) : null;
+  let existingQuery = trx.selectFrom('cg.share_grant').selectAll().where('revoked_at', 'is', null);
+  existingQuery =
+    'reportId' in subject
+      ? existingQuery.where('report_id', '=', subject.reportId)
+      : existingQuery.where(
+          'need_id',
+          'in',
+          targets.map((t) => t.needId!).concat(['00000000-0000-0000-0000-000000000000']),
+        );
+  const existing = await existingQuery.execute();
+
+  // 2. What should exist: one grant per partner (× need for standalone needs), cut to its sections.
+  const f =
+    derived.length > 0 && !withdrawn
+      ? await facts(
+          ctx,
+          trx,
+          tenantId,
+          {
+            id: 'reportId' in subject ? subject.reportId : null,
+            reporter_party_id: partyIds.reporter,
+            subject_party_id: partyIds.subject,
+            location_id: locationId,
+          },
+          needs,
+        )
+      : null;
   const keep = new Set<string>();
   for (const d of derived) {
-    const projection = project(d.sections, f!);
-    const clear = { ...projection.clear, referenceCode: report.reference_code };
-    const restricted =
-      Object.keys(projection.restricted).length > 0 ? JSON.stringify(projection.restricted) : null;
-    const current = existing.find(
-      (g) => g.to_tenant_id === d.toTenantId && g.org_type === d.orgType,
-    );
-    if (current) {
-      keep.add(current.id);
-      const currentRestricted = current.projection_enc
-        ? await ctx.crypto.decrypt(tenantId, current.projection_enc)
-        : null;
-      const same =
-        JSON.stringify(current.sections) === JSON.stringify(d.sections) &&
-        JSON.stringify(current.projection) === JSON.stringify(clear) &&
-        currentRestricted === restricted &&
-        current.consent_id === d.consentId &&
-        current.agreement_id === d.agreementId;
-      if (same) continue;
-      await trx
-        .updateTable('cg.share_grant')
-        .set({
+    for (const target of targets) {
+      const projection = project(d.sections, { ...f!, needs: target.needs });
+      const clear = { ...projection.clear, referenceCode };
+      const restricted =
+        Object.keys(projection.restricted).length > 0
+          ? JSON.stringify(projection.restricted)
+          : null;
+      const current = existing.find(
+        (g) =>
+          g.to_tenant_id === d.toTenantId &&
+          g.org_type === d.orgType &&
+          g.report_id === target.reportId &&
+          g.need_id === target.needId,
+      );
+      const auditFields = [
+        { name: 'org_type', to: d.orgType },
+        { name: 'to_tenant_id', to: d.toTenantId },
+        ...(target.reportId ? [{ name: 'report_id', to: target.reportId }] : []),
+        ...(target.needId ? [{ name: 'need_id', to: target.needId }] : []),
+      ];
+      if (current) {
+        keep.add(current.id);
+        const currentRestricted = current.projection_enc
+          ? await ctx.crypto.decrypt(tenantId, current.projection_enc)
+          : null;
+        const same =
+          JSON.stringify(current.sections) === JSON.stringify(d.sections) &&
+          JSON.stringify(current.projection) === JSON.stringify(clear) &&
+          currentRestricted === restricted &&
+          current.consent_id === d.consentId &&
+          current.agreement_id === d.agreementId;
+        if (same) continue;
+        await trx
+          .updateTable('cg.share_grant')
+          .set({
+            sections: d.sections,
+            projection: JSON.stringify(clear),
+            projection_enc: restricted ? await ctx.crypto.encrypt(tenantId, restricted) : null,
+            consent_id: d.consentId,
+            agreement_id: d.agreementId,
+          })
+          .where('id', '=', current.id)
+          .execute();
+        result.updated++;
+        await systemAudit(trx, tenantId, 'sharing.sync', {
+          action: 'share_grant.updated',
+          targetType: 'share_grant',
+          targetId: current.id,
+          executionId,
+          reason: REASON_TEXT[reason],
+          changes: {
+            fields: [{ name: 'sections', from: current.sections, to: d.sections }, ...auditFields],
+          },
+        });
+        continue;
+      }
+      const inserted = await trx
+        .insertInto('cg.share_grant')
+        .values({
+          tenant_id: tenantId,
+          to_tenant_id: d.toTenantId,
+          org_type: d.orgType,
+          report_id: target.reportId,
+          need_id: target.needId,
+          party_id: partyIds.reporter,
+          consent_id: d.consentId,
+          agreement_id: d.agreementId,
           sections: d.sections,
           projection: JSON.stringify(clear),
           projection_enc: restricted ? await ctx.crypto.encrypt(tenantId, restricted) : null,
-          consent_id: d.consentId,
-          agreement_id: d.agreementId,
+          granted_at: now(),
         })
-        .where('id', '=', current.id)
-        .execute();
-      result.updated++;
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      keep.add(inserted.id);
+      result.granted++;
       await systemAudit(trx, tenantId, 'sharing.sync', {
-        action: 'share_grant.updated',
+        action: 'share_grant.granted',
         targetType: 'share_grant',
-        targetId: current.id,
-        executionId: report.execution_id,
+        targetId: inserted.id,
+        executionId,
         reason: REASON_TEXT[reason],
-        changes: {
-          fields: [
-            { name: 'sections', from: current.sections, to: d.sections },
-            { name: 'to_tenant_id', to: d.toTenantId },
-            { name: 'report_id', to: report.id },
-          ],
-        },
+        changes: { fields: [{ name: 'sections', to: d.sections }, ...auditFields] },
       });
-      continue;
     }
-    const inserted = await trx
-      .insertInto('cg.share_grant')
-      .values({
-        tenant_id: tenantId,
-        to_tenant_id: d.toTenantId,
-        org_type: d.orgType,
-        report_id: report.id,
-        party_id: report.reporter_party_id,
-        consent_id: d.consentId,
-        agreement_id: d.agreementId,
-        sections: d.sections,
-        projection: JSON.stringify(clear),
-        projection_enc: restricted ? await ctx.crypto.encrypt(tenantId, restricted) : null,
-        granted_at: now(),
-      })
-      .returning('id')
-      .executeTakeFirstOrThrow();
-    keep.add(inserted.id);
-    result.granted++;
-    await systemAudit(trx, tenantId, 'sharing.sync', {
-      action: 'share_grant.granted',
-      targetType: 'share_grant',
-      targetId: inserted.id,
-      executionId: report.execution_id,
-      reason: REASON_TEXT[reason],
-      changes: {
-        fields: [
-          { name: 'sections', to: d.sections },
-          { name: 'org_type', to: d.orgType },
-          { name: 'to_tenant_id', to: d.toTenantId },
-          { name: 'report_id', to: report.id },
-        ],
-      },
-    });
   }
 
+  // 3. What no longer applies: revoke and recall (NED-05: within the hour; the job does it now).
   for (const g of existing) {
     if (keep.has(g.id)) continue;
     await trx
@@ -311,18 +387,18 @@ export async function syncShareGrants(
       action: 'share_grant.revoked',
       targetType: 'share_grant',
       targetId: g.id,
-      executionId: report.execution_id,
+      executionId,
       reason: REASON_TEXT[reason],
       changes: {
         fields: [
           { name: 'sections', from: g.sections, to: [] },
           { name: 'to_tenant_id', to: g.to_tenant_id },
-          { name: 'report_id', to: report.id },
+          ...(g.report_id ? [{ name: 'report_id', to: g.report_id }] : []),
+          ...(g.need_id ? [{ name: 'need_id', to: g.need_id }] : []),
         ],
       },
     });
-    // NED-05: the partner hears within the hour; the job does it now. Exports already taken
-    // cannot be pulled back, so the notice names what was shared and since when.
+    // Exports already taken cannot be pulled back, so the notice names what was shared and since when.
     const { partnerName, emails } = await recallRecipients(trx, g.to_tenant_id);
     if (emails.length === 0) {
       await systemAudit(trx, tenantId, 'sharing.sync', {
@@ -343,17 +419,17 @@ export async function syncShareGrants(
           channel: 'email',
           toEnc: (await ctx.crypto.encrypt(tenantId, email)).toString('base64'),
           language: 'en',
-          reportId: report.id,
+          ...(g.report_id ? { reportId: g.report_id } : {}),
           shareGrantId: g.id,
           variables: {
-            referenceCode: report.reference_code,
+            referenceCode,
             partner: partnerName,
             sections: (g.sections as SharingSection[]).join(', '),
             sharedSince: g.granted_at.toISOString().slice(0, 16).replace('T', ' ') + ' UTC',
             why: REASON_TEXT[reason],
           },
         },
-        report.execution_id,
+        executionId,
       );
     }
   }

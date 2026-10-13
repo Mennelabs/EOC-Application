@@ -7,6 +7,7 @@ import { definitionRoutes } from './definitions.ts';
 import { eventRoutes } from './events.ts';
 import { intakeGraphRoutes } from './intake-graphs.ts';
 import { meRoutes } from './me.ts';
+import { needRoutes } from './needs.ts';
 import { personnelRoutes } from './personnel.ts';
 import { reportRoutes } from './reports.ts';
 import { roleRoutes } from './roles.ts';
@@ -28,4 +29,5 @@ export const routes: FastifyPluginAsync[] = [
   reportRoutes,
   intakeGraphRoutes,
   sharedRoutes,
+  needRoutes,
 ];

@@ -220,6 +220,86 @@ export const publicRoutes =
       },
     );
 
+    // ------------------------------------------------ a need, no damage report
+    /**
+     * NED-02/03: a household that needs help but has no damage to report (or
+     * not yet). Categories, a place in any form, how to reach them and consent
+     * per organization type, through the same queue as a report; the worker
+     * files needs with their own reference code and the partner grants follow.
+     */
+    const needsOnlySchema = z.object({
+      executionId: z.uuid(),
+      language: z.string().min(2).max(10).default('en'),
+      needs: z.array(z.string().max(60)).min(1).max(20),
+      note: z.string().max(500).optional(),
+      address: z.record(z.string(), z.string().max(500)).optional(),
+      contactName: z.string().max(200).optional(),
+      contact: z.object({
+        phone: z.string().max(40).optional(),
+        email: z.string().max(200).optional(),
+        preferred: z.string().max(20).optional(),
+      }),
+      consent: z.record(z.string(), z.boolean()).default({}),
+      smsOptIn: z.boolean().default(false),
+    });
+    app.post(
+      '/needs/:tenant/:event',
+      {
+        config: { idempotent: true },
+        schema: { tags: ['public needs'], params: tenantEventParam, body: needsOnlySchema },
+      },
+      async (request, reply) => {
+        const tenant = tenantOf(request);
+        const body = request.body;
+        if (request.executionId !== body.executionId)
+          throw new ApiError(
+            400,
+            'execution_id_mismatch',
+            'The Idempotency-Key must equal executionId.',
+          );
+        if (!body.contact.phone && !body.contact.email)
+          throw errors.validation([
+            { name: 'contact', message: 'a phone number or an email address is needed' },
+          ]);
+        await request.authorize('need.create_public', { type: 'need', tenantId: tenant.id });
+        const graph = await request.tx((trx) =>
+          loadGraph(trx, deps.defaultGraph.key, undefined, deps.defaultGraph),
+        );
+        const contact: Record<string, string> = {};
+        if (body.contact.phone) contact['phone'] = body.contact.phone;
+        if (body.contact.email) contact['email'] = body.contact.email;
+        if (body.contact.preferred) contact['preferred'] = body.contact.preferred;
+        const result = await submitIntake(submitDeps, request, {
+          tenantId: tenant.id,
+          eventSlug: request.params.event,
+          needsOnly: true,
+          body: {
+            executionId: body.executionId,
+            channel: 'web',
+            language: body.language,
+            graphKey: graph.key,
+            graphVersion: graph.version,
+            relationship: 'own_home',
+            answers: {
+              contact: { kind: 'value', value: contact },
+              ...(body.contactName
+                ? { contact_name: { kind: 'value', value: body.contactName } }
+                : {}),
+              ...(body.address ? { address: { kind: 'value', value: body.address } } : {}),
+            },
+            ...(body.note ? { ownWords: body.note } : {}),
+            needs: body.needs,
+            consent: body.consent,
+            photoIds: [],
+            afterSubmission: {},
+            smsOptIn: body.smsOptIn,
+            aiAssisted: false,
+          },
+        });
+        return reply.code(202).send({ referenceCode: result.referenceCode, status: result.status });
+      },
+    );
+
     // --------------------------------------------- after the report is saved
     /** "Text this number to me" on the confirmation screen (INT-22, ACC-30): up to three times, within a day. */
     app.post(

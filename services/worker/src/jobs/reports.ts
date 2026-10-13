@@ -114,24 +114,27 @@ export const reportWithdrawn: TopicHandler = async (ctx, msg) => {
   const reportId = str(msg.payload['reportId']);
   await asSystem(ctx.db, msg.tenantId, async (trx) => {
     await notifyReporter(ctx, trx, msg.tenantId, reportId, 'withdrawn', {});
-    await syncShareGrants(ctx, trx, msg.tenantId, reportId, 'withdrawn');
+    await syncShareGrants(ctx, trx, msg.tenantId, { reportId }, 'withdrawn');
   });
 };
 
 /** consent.changed: grants follow the consents; a withdrawal revokes and recalls at once (NED-04/05). */
 export const consentChanged: TopicHandler = async (ctx, msg) => {
-  const reportId = str(msg.payload['reportId']);
+  const reportId = msg.payload['reportId'] ? str(msg.payload['reportId']) : null;
+  const executionId = msg.payload['executionId'] ? str(msg.payload['executionId']) : null;
+  const subject = reportId ? { reportId } : executionId ? { executionId } : null;
+  if (!subject) throw new Error('consent.changed without reportId or executionId');
   const result = await asSystem(ctx.db, msg.tenantId, (trx) =>
-    syncShareGrants(ctx, trx, msg.tenantId, reportId, 'consent'),
+    syncShareGrants(ctx, trx, msg.tenantId, subject, 'consent'),
   );
-  ctx.log.info({ reportId, orgType: msg.payload['orgType'], ...result }, 'sharing synced');
+  ctx.log.info({ ...subject, orgType: msg.payload['orgType'], ...result }, 'sharing synced');
 };
 
 /** report.corrected: the shared projection follows the corrected answers (NED-04). */
 export const reportCorrected: TopicHandler = async (ctx, msg) => {
   const reportId = str(msg.payload['reportId']);
   const result = await asSystem(ctx.db, msg.tenantId, (trx) =>
-    syncShareGrants(ctx, trx, msg.tenantId, reportId, 'corrected'),
+    syncShareGrants(ctx, trx, msg.tenantId, { reportId }, 'corrected'),
   );
   ctx.log.info({ reportId, reopened: msg.payload['reopened'], ...result }, 'report corrected');
 };

@@ -208,6 +208,7 @@ export const actions = {
   'board.configure': a('admin', 'board_visibility', 'Set who sees whose claims on the board', {
     consequential: true,
   }),
+  'board.read': a('read', 'board_visibility', 'See who sees whose claims on the board'),
   'shared.read': a('read', 'share_grant', 'Read records shared with your organization'),
   'referral.create': a('write', 'referral', 'Refer a resident to another organization'),
   'referral.respond': a('write', 'referral', 'Accept, decline or close a referral'),

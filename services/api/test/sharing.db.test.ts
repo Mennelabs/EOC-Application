@@ -74,13 +74,6 @@ describe.skipIf(!appUrl || !workerUrl)('partner sharing (database-backed)', () =
     dbWorker = createDb(workerUrl!, 2);
     const seeded = await loadSeed(dbWorker);
     tenants = seeded.tenants;
-    // Grants left by earlier local runs were sealed with that process's in-memory keys; this
-    // process cannot read them, so they are revoked before the partner list is rendered.
-    await dbWorker
-      .updateTable('cg.share_grant')
-      .set({ revoked_at: new Date(), revoke_reason: 'test_reset' })
-      .where('revoked_at', 'is', null)
-      .execute();
     const paths = Object.fromEntries(
       (
         await dbWorker
@@ -358,10 +351,11 @@ describe.skipIf(!appUrl || !workerUrl)('partner sharing (database-backed)', () =
       .where('action', '=', 'shared.read')
       .where('actor_account_id', '=', subjects['crew']!.accountId)
       .execute();
-    expect(audits.length).toBeGreaterThanOrEqual(2); // the list and the detail
-    expect(audits.every((a) => a.target_id === view.grantIds[0])).toBe(true);
+    // The list and the detail each audited this grant (other grants on the list have their own rows).
+    const onThisGrant = audits.filter((a) => a.target_id === view.grantIds[0]);
+    expect(onThisGrant.length).toBeGreaterThanOrEqual(2);
     // The name is restricted by classification (basic category), the phone by category.
-    expect(audits.at(-1)!.classification_read).toEqual(['basic', 'contact']);
+    expect(onThisGrant.at(-1)!.classification_read).toEqual(['basic', 'contact']);
   });
 
   it('the canteen reads the area and a household band, never the street, the name or the phone (NED-04)', async () => {

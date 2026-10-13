@@ -11,7 +11,8 @@ export type TemplateName =
   | 'otp'
   | 'correction_request'
   | 'withdrawn'
-  | 'sharing_recall';
+  | 'sharing_recall'
+  | 'needs_confirmation';
 
 export const TEMPLATE_NAMES: readonly TemplateName[] = [
   'confirmation',
@@ -20,6 +21,7 @@ export const TEMPLATE_NAMES: readonly TemplateName[] = [
   'correction_request',
   'withdrawn',
   'sharing_recall',
+  'needs_confirmation',
 ];
 
 export interface TemplateVars {
@@ -59,6 +61,8 @@ const EN = {
       `${v.county} Emergency Mgmt: Your damage report ${v.referenceCode} was withdrawn as you asked.${v.helpPhone ? ` If this was a mistake, call ${v.helpPhone}.` : ''}`,
     sharing_recall: (v: TemplateVars) =>
       `${v.county} Emergency Mgmt: Record ${v.referenceCode} shared with ${v.partner ?? 'your organization'} is recalled (${v.why ?? 'consent withdrawn'}). Delete what you hold of it, as your agreement requires.`,
+    needs_confirmation: (v: TemplateVars) =>
+      `${v.county} Emergency Mgmt: Thanks for telling us what you need. Your reference number is ${v.referenceCode}. This does not send emergency help. In danger now? Call 911. Reply STOP to opt out.`,
   },
   email: {
     confirmation: (v: TemplateVars) => ({
@@ -102,6 +106,14 @@ const EN = {
         (v.helpPhone ? ` Questions? Call ${v.helpPhone}.` : '') +
         '\n',
     }),
+    needs_confirmation: (v: TemplateVars) => ({
+      subject: `${v.county}: your request for help ${v.referenceCode}`,
+      body:
+        `Thanks for telling ${v.county} Emergency Management what you need.\n\n` +
+        `Your reference number is ${v.referenceCode}. Keep it: a partner organization or the county may contact you about it, and you can text NOSHARE with it to stop sharing.\n\n` +
+        `This does not send emergency help. If you are in danger now, call 911.\n` +
+        (v.helpPhone ? `Questions? Call ${v.helpPhone}.\n` : ''),
+    }),
   },
 };
 
@@ -119,6 +131,8 @@ const ES: typeof EN = {
       `${v.county} Manejo de Emergencias: Su reporte ${v.referenceCode} fue retirado como pidió.${v.helpPhone ? ` Si fue un error, llame al ${v.helpPhone}.` : ''}`,
     sharing_recall: (v) =>
       `${v.county} Manejo de Emergencias: El registro ${v.referenceCode} compartido con ${v.partner ?? 'su organización'} fue retirado (${v.why ?? 'consentimiento retirado'}). Borre lo que tenga de él, como exige su acuerdo.`,
+    needs_confirmation: (v) =>
+      `${v.county} Manejo de Emergencias: Gracias por decirnos qué necesita. Referencia: ${v.referenceCode}. No envía ayuda de emergencia. ¿En peligro? Llame al 911. Responda ALTO para cancelar.`,
   },
   email: {
     confirmation: (v) => ({
@@ -161,6 +175,14 @@ const ES: typeof EN = {
         `Su organización ya no puede ver el registro. Su acuerdo de intercambio de datos le obliga a borrar cualquier copia o exportación y a no contactar al residente sobre él.` +
         (v.helpPhone ? ` ¿Preguntas? Llame al ${v.helpPhone}.` : '') +
         '\n',
+    }),
+    needs_confirmation: (v) => ({
+      subject: `${v.county}: su solicitud de ayuda ${v.referenceCode}`,
+      body:
+        `Gracias por decirle a Manejo de Emergencias de ${v.county} qué necesita.\n\n` +
+        `Su número de referencia es ${v.referenceCode}. Guárdelo: una organización asociada o el condado puede contactarle, y puede enviar NOSHARE con él para dejar de compartir.\n\n` +
+        `Esto no envía ayuda de emergencia. Si está en peligro ahora, llame al 911.\n` +
+        (v.helpPhone ? `¿Preguntas? Llame al ${v.helpPhone}.\n` : ''),
     }),
   },
 };

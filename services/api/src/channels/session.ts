@@ -859,19 +859,32 @@ export class ChannelSessions {
       .where('cg.party.phone_bidx', '=', bidx)
       .where('cg.report.withdrawn_at', 'is', null)
       .executeTakeFirst();
-    if (!report) return S.noshareUnknown(tenant.name);
-    const changed = await trx
+    // A need filed without a damage report carries its own code (NED-02).
+    const need = report
+      ? undefined
+      : await trx
+          .selectFrom('cg.need')
+          .innerJoin('cg.party', 'cg.party.id', 'cg.need.contact_party_id')
+          .select(['cg.need.execution_id as execution_id', 'cg.need.contact_party_id as party_id'])
+          .where('cg.need.reference_code', '=', code)
+          .where('cg.need.report_id', 'is', null)
+          .where('cg.party.phone_bidx', '=', bidx)
+          .executeTakeFirst();
+    if (!report && !need?.execution_id) return S.noshareUnknown(tenant.name);
+    let consents = trx
       .updateTable('cg.consent')
       .set({ granted: false, withdrawn_at: this.now(), channel: 'sms' })
-      .where('report_id', '=', report.id)
-      .where('granted', '=', true)
-      .returning('org_type')
-      .execute();
+      .where('granted', '=', true);
+    consents = report
+      ? consents.where('report_id', '=', report.id)
+      : consents.where('party_id', '=', need!.party_id!).where('report_id', 'is', null);
+    const changed = await consents.returning('org_type').execute();
+    const executionId = report ? report.execution_id : need!.execution_id!;
     await req.audit(trx, {
       action: 'report.self_update',
       targetType: 'consent',
-      targetId: report.id,
-      executionId: report.execution_id,
+      targetId: report ? report.id : executionId,
+      executionId,
       reason: 'NOSHARE keyword',
       changes: { fields: changed.map((c) => ({ name: c.org_type, from: true, to: false })) },
     });
@@ -879,8 +892,10 @@ export class ChannelSessions {
       trx,
       tenant.id,
       'consent.changed',
-      { reportId: report.id, orgType: '*', granted: false },
-      report.execution_id,
+      report
+        ? { reportId: report.id, orgType: '*', granted: false }
+        : { executionId, orgType: '*', granted: false },
+      executionId,
     );
     return S.noshare(tenant.name, code);
   }

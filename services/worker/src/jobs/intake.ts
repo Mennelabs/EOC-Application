@@ -75,6 +75,8 @@ export const submissionPayloadSchema = z.object({
   receivedAt: z.string().optional(),
   /** A text or voice session already told the resident their code in the same conversation (CHN-03). */
   confirmationSent: z.boolean().default(false),
+  /** A need without a damage report (NED-02): needs, place, contact and consent; no report row. */
+  needsOnly: z.boolean().default(false),
 });
 export type SubmissionPayload = z.infer<typeof submissionPayloadSchema>;
 
@@ -90,7 +92,9 @@ export interface FilingInput {
 }
 
 export interface FilingResult {
-  reportId: string;
+  /** Null for a need filed without a damage report (NED-02). */
+  reportId: string | null;
+  needIds: string[];
   created: boolean;
   flags: ReportFlag[];
 }
@@ -307,7 +311,7 @@ export async function fileSubmission(ctx: JobContext, input: FilingInput): Promi
     .executeTakeFirst();
   if (already) {
     await markProcessed(ctx.db, executionId);
-    return { reportId: already.id, created: false, flags: already.flags };
+    return { reportId: already.id, needIds: [], created: false, flags: already.flags };
   }
 
   const payload = submissionPayloadSchema.parse(
@@ -315,6 +319,7 @@ export async function fileSubmission(ctx: JobContext, input: FilingInput): Promi
   );
   if (payload.executionId !== executionId)
     throw new Error(`payload execution id does not match ${executionId}`);
+  if (payload.needsOnly) return fileStandaloneNeeds(ctx, input, payload);
 
   try {
     return await asSystem(ctx.db, tenantId, async (trx) => {
@@ -458,9 +463,10 @@ export async function fileSubmission(ctx: JobContext, input: FilingInput): Promi
         .executeTakeFirstOrThrow();
 
       const categories = new Set(graph.needCategories.map((c) => c.value));
+      const needIds: string[] = [];
       for (const category of new Set(payload.needs)) {
         if (!categories.has(category)) continue;
-        await trx
+        const need = await trx
           .insertInto('cg.need')
           .values({
             tenant_id: tenantId,
@@ -468,8 +474,14 @@ export async function fileSubmission(ctx: JobContext, input: FilingInput): Promi
             subject_party_id: subjectId,
             event_id: payload.eventId ?? input.eventId,
             category,
+            location_id: location.id,
+            contact_party_id: reporterId,
+            reference_code: input.referenceCode,
+            execution_id: executionId,
           })
-          .execute();
+          .returning('id')
+          .executeTakeFirstOrThrow();
+        needIds.push(need.id);
       }
       const orgTypes = new Set(graph.consentOrgTypes.map((o) => o.value));
       for (const [orgType, granted] of Object.entries(payload.consent)) {
@@ -569,7 +581,7 @@ export async function fileSubmission(ctx: JobContext, input: FilingInput): Promi
       }
 
       // Partner sharing follows the consents just recorded (NED-04).
-      await syncShareGrants(ctx, trx, tenantId, report.id, 'filed');
+      await syncShareGrants(ctx, trx, tenantId, { reportId: report.id }, 'filed');
 
       await systemAudit(trx, tenantId, 'intake.file', {
         action: 'report.filed',
@@ -587,7 +599,7 @@ export async function fileSubmission(ctx: JobContext, input: FilingInput): Promi
         },
       });
       await markProcessed(trx, executionId);
-      return { reportId: report.id, created: true, flags };
+      return { reportId: report.id, needIds, created: true, flags };
     });
   } catch (err) {
     if (isUniqueViolation(err)) {
@@ -599,7 +611,7 @@ export async function fileSubmission(ctx: JobContext, input: FilingInput): Promi
         .executeTakeFirst();
       if (existing) {
         await markProcessed(ctx.db, executionId);
-        return { reportId: existing.id, created: false, flags: existing.flags };
+        return { reportId: existing.id, needIds: [], created: false, flags: existing.flags };
       }
     }
     throw err;
@@ -613,6 +625,156 @@ export async function fileSubmission(ctx: JobContext, input: FilingInput): Promi
  * (lost message) are filed from the database copy (SCL-06). A row that keeps
  * failing is kept with its error for a person; nothing is ever dropped.
  */
+/**
+ * A need without a damage report (NED-02, NED-03): the household's contact
+ * party, the place in any form, consent per organization type, one need row
+ * per category (source 'standalone'), the reference code bound, a
+ * confirmation and the partner grants. No report row: the board shows it as
+ * a standalone need, and a later damage report is linked by a person, never
+ * merged silently (layer-3 plan §8).
+ */
+async function fileStandaloneNeeds(
+  ctx: JobContext,
+  input: FilingInput,
+  payload: SubmissionPayload,
+): Promise<FilingResult> {
+  const { tenantId, executionId } = input;
+  const now = ctx.now ?? (() => new Date());
+  const already = await ctx.db
+    .selectFrom('cg.need')
+    .select('id')
+    .where('execution_id', '=', executionId)
+    .execute();
+  if (already.length > 0) {
+    await markProcessed(ctx.db, executionId);
+    return { reportId: null, needIds: already.map((n) => n.id), created: false, flags: [] };
+  }
+  const result = await asSystem(ctx.db, tenantId, async (trx) => {
+    const graph = await loadGraph(trx, payload.graphKey, payload.graphVersion, ctx.defaultGraph);
+    const answers = payload.answers;
+    const receivedAt = payload.receivedAt ? new Date(payload.receivedAt) : now();
+    const at = receivedAt.toISOString();
+    const contact = recordOf(answers['contact']);
+    const phone = contact?.['phone'] ? normalisePhone(contact['phone']) : null;
+    const email = contact?.['email'] ? contact['email'].trim().toLowerCase() : null;
+    const partyId = await insertParty(ctx, trx, tenantId, {
+      kind: 'resident',
+      name: stringOf(answers['contact_name']),
+      phone,
+      email,
+      ...(contact?.['preferred'] ? { preferred: contact['preferred'] } : {}),
+      language: payload.language,
+      smsOptIn: payload.smsOptIn,
+      channel: payload.channel,
+      at: receivedAt,
+    });
+    const location = await insertLocation(trx, tenantId, answers['address']);
+    const detail = payload.ownWords?.trim() ? payload.ownWords.trim().slice(0, 500) : null;
+    const categories = new Set(graph.needCategories.map((c) => c.value));
+    const needIds: string[] = [];
+    const wanted = [...new Set(payload.needs)].filter((c) => categories.has(c));
+    for (const category of wanted) {
+      const need = await trx
+        .insertInto('cg.need')
+        .values({
+          tenant_id: tenantId,
+          report_id: null,
+          subject_party_id: partyId,
+          event_id: payload.eventId ?? input.eventId,
+          category,
+          // The free-text note goes with "something else" when asked for, else with the first need.
+          detail:
+            detail &&
+            (category === 'other' || (!wanted.includes('other') && category === wanted[0]))
+              ? detail
+              : null,
+          source: 'standalone',
+          location_id: location.id,
+          contact_party_id: partyId,
+          reference_code: input.referenceCode,
+          execution_id: executionId,
+        })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      needIds.push(need.id);
+    }
+    const orgTypes = new Set(graph.consentOrgTypes.map((o) => o.value));
+    for (const [orgType, granted] of Object.entries(payload.consent)) {
+      if (!orgTypes.has(orgType)) continue;
+      await trx
+        .insertInto('cg.consent')
+        .values({
+          tenant_id: tenantId,
+          party_id: partyId,
+          report_id: null,
+          org_type: orgType,
+          granted,
+          granted_at: granted ? receivedAt : null,
+          channel: payload.channel,
+          evidence: JSON.stringify({
+            at,
+            channel: payload.channel,
+            form: 'needs-only consent step',
+          }),
+        })
+        .onConflict((oc) => oc.doNothing())
+        .execute();
+    }
+    const bound = await trx
+      .updateTable('cg.reference_code')
+      .set({ state: 'used', execution_id: executionId })
+      .where('tenant_id', '=', tenantId)
+      .where('code', '=', input.referenceCode)
+      .executeTakeFirst();
+    if (Number(bound.numUpdatedRows ?? 0) === 0)
+      await trx
+        .insertInto('cg.reference_code')
+        .values({
+          tenant_id: tenantId,
+          code: input.referenceCode,
+          state: 'used',
+          execution_id: executionId,
+        })
+        .onConflict((oc) => oc.doNothing())
+        .execute();
+    const outgoing: { template: string; channel: 'sms' | 'email'; to: string }[] = [];
+    if (payload.confirmationSent) {
+      // The channel replied with the code already.
+    } else if (phone && payload.smsOptIn)
+      outgoing.push(
+        { template: 'opt_in_confirmation', channel: 'sms', to: phone },
+        { template: 'needs_confirmation', channel: 'sms', to: phone },
+      );
+    else if (email) outgoing.push({ template: 'needs_confirmation', channel: 'email', to: email });
+    for (const m of outgoing)
+      await enqueueOutbox(trx, tenantId, 'message.send', {
+        template: m.template,
+        channel: m.channel,
+        toEnc: (await ctx.crypto.encrypt(tenantId, m.to)).toString('base64'),
+        language: payload.language,
+        partyId,
+        variables: { referenceCode: input.referenceCode },
+      });
+    await syncShareGrants(ctx, trx, tenantId, { executionId }, 'filed');
+    await systemAudit(trx, tenantId, 'intake.file', {
+      action: 'need.filed',
+      targetType: 'need',
+      targetId: needIds[0] ?? executionId,
+      executionId,
+      changes: {
+        fields: [
+          { name: 'channel', to: payload.channel },
+          { name: 'needs', to: wanted },
+          { name: 'path', to: input.path },
+        ],
+      },
+    });
+    await markProcessed(trx, executionId);
+    return { reportId: null, needIds, created: true, flags: [] as ReportFlag[] };
+  });
+  return result;
+}
+
 export async function sweepStoredSubmissions(ctx: JobContext, limit = 50): Promise<number> {
   const stale = new Date((ctx.now ?? (() => new Date()))().getTime() - 2 * 60_000);
   const rows = await ctx.db
@@ -711,7 +873,7 @@ export async function mergeLateAnswers(ctx: JobContext, limit = 50): Promise<num
         .set({ after_merged_at: new Date() })
         .where('execution_id', '=', row.execution_id)
         .execute();
-      await syncShareGrants(ctx, trx, row.tenant_id, row.report_id, 'after_answers');
+      await syncShareGrants(ctx, trx, row.tenant_id, { reportId: row.report_id }, 'after_answers');
       await systemAudit(trx, row.tenant_id, 'intake.after_answers', {
         action: 'report.after_answers_merged',
         targetType: 'report',

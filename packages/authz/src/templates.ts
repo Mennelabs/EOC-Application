@@ -35,6 +35,7 @@ export const roleTemplates: readonly RoleTemplate[] = [
     source: 'platform',
     grants: [
       g('board.configure'),
+      g('board.read'),
       g('partner.invite'),
       g('dashboard.read'),
       g('site.read'),
@@ -71,6 +72,7 @@ export const roleTemplates: readonly RoleTemplate[] = [
     source: 'cast',
     grants: [
       g('dashboard.read'),
+      g('board.read'),
       g('site.read'),
       g('resource.read'),
       g('publication.read'),
@@ -150,6 +152,8 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('need.release'),
       g('need.done'),
       g('need.export'),
+      g('need.update'), // reopen a met need, set it back on the board (NED-07)
+      g('board.read'),
       g('site.*'),
       g('resource.read'),
       g('publication.read'),
@@ -177,6 +181,7 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('need.assign'),
       g('need.release'),
       g('need.done'),
+      g('need.update'),
       g('site.read'),
       g('dashboard.read'),
       g('contact.read'),
@@ -328,6 +333,7 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('partner.invite'),
       g('contact.*'),
       g('board.configure'),
+      g('board.read'),
       g('need.read'),
       g('site.read'),
       g('me.read'),

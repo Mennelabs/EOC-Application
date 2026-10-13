@@ -37,6 +37,7 @@ import * as m0035 from './0035_roster_visibility.ts';
 import * as m0036 from './0036_change_feed.ts';
 import * as m0037 from './0037_field_assessment.ts';
 import * as m0038 from './0038_field_record_photos.ts';
+import * as m0039 from './0039_site_operator.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -78,4 +79,5 @@ export const migrations: Record<string, Migration> = {
   '0036_change_feed': m0036,
   '0037_field_assessment': m0037,
   '0038_field_record_photos': m0038,
+  '0039_site_operator': m0039,
 };

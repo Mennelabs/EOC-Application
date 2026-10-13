@@ -74,6 +74,8 @@ const siteFields = {
   leadContactId: z.uuid().nullable(),
   confirmEveryHours: z.number().int().min(1).max(168),
   usng: z.string().max(40).nullable(),
+  /** CON-16: the partner organization that runs the site; its staff may read it and confirm status and census. */
+  operatorTenantId: z.uuid().nullable(),
 };
 
 const siteOut = z.object({
@@ -109,6 +111,7 @@ const siteOut = z.object({
   publishedAt: z.iso.datetime().nullable(),
   unpublishedAt: z.iso.datetime().nullable(),
   usng: z.string().nullable(),
+  operatorTenantId: z.uuid().nullable(),
 });
 type SiteOut = z.infer<typeof siteOut>;
 
@@ -213,6 +216,7 @@ export const siteRoutes: FastifyPluginAsync = async (instance) => {
       publishedAt: iso(r.published_at),
       unpublishedAt: iso(r.unpublished_at),
       usng: r.usng,
+      operatorTenantId: r.operator_tenant_id,
     };
   }
 
@@ -228,6 +232,30 @@ export const siteRoutes: FastifyPluginAsync = async (instance) => {
     tenantId: r.tenant_id,
     ...(r.event_id ? { eventId: r.event_id } : {}),
   });
+  /**
+   * CON-16: the partner that runs a site reads it and confirms its status and census as its own;
+   * editing, publishing and closing stay with the owner (resourceOf).
+   */
+  const operatedResourceOf = (request: FastifyRequest, r: Joined) => {
+    const s = request.subject;
+    return s.kind === 'account' && r.operator_tenant_id && r.operator_tenant_id === s.tenantId
+      ? { type: 'site', id: r.id, tenantId: s.tenantId }
+      : resourceOf(r);
+  };
+
+  /** CON-16: the operator is a partner organization this tenant can see (its own partner). */
+  async function checkOperator(trx: Trx, id: string): Promise<void> {
+    const t = await trx
+      .selectFrom('cg.tenant')
+      .select('id')
+      .where('id', '=', id)
+      .where('kind', '=', 'partner_org')
+      .executeTakeFirst();
+    if (!t)
+      throw errors.validation([
+        { name: 'operatorTenantId', message: 'choose one of your partner organizations' },
+      ]);
+  }
 
   /** Writes or updates the site's location row from an address and an optional point. */
   async function saveLocation(
@@ -298,6 +326,7 @@ export const siteRoutes: FastifyPluginAsync = async (instance) => {
     leadContactId: 'lead_contact_id',
     confirmEveryHours: 'confirm_every_hours',
     usng: 'usng',
+    operatorTenantId: 'operator_tenant_id',
   } as const;
 
   type SiteBody = { [K in keyof typeof siteFields]?: z.infer<(typeof siteFields)[K]> | undefined };
@@ -365,7 +394,7 @@ export const siteRoutes: FastifyPluginAsync = async (instance) => {
     { schema: { tags: ['sites'], params: uuidParam, response: { 200: siteOut } } },
     async (request) => {
       const row = await load(request, request.params.id);
-      await request.authorize('site.read', resourceOf(row), { asNotFound: true });
+      await request.authorize('site.read', operatedResourceOf(request, row), { asNotFound: true });
       return toOut(row);
     },
   );
@@ -398,6 +427,7 @@ export const siteRoutes: FastifyPluginAsync = async (instance) => {
           leadContactId: siteFields.leadContactId.optional(),
           confirmEveryHours: siteFields.confirmEveryHours.default(12),
           usng: siteFields.usng.optional(),
+          operatorTenantId: siteFields.operatorTenantId.optional(),
         }),
         response: { 201: siteOut },
       },
@@ -411,6 +441,7 @@ export const siteRoutes: FastifyPluginAsync = async (instance) => {
       });
       const b = request.body;
       const row = await request.tx(async (trx) => {
+        if (b.operatorTenantId) await checkOperator(trx, b.operatorTenantId);
         const locationId = await saveLocation(
           trx,
           s.tenantId,
@@ -484,6 +515,7 @@ export const siteRoutes: FastifyPluginAsync = async (instance) => {
       await request.authorize('site.edit', resourceOf(current), { asNotFound: true });
       const b = request.body;
       const row = await request.tx(async (trx) => {
+        if (b.operatorTenantId) await checkOperator(trx, b.operatorTenantId);
         const locationId = await saveLocation(
           trx,
           s.tenantId,
@@ -540,7 +572,9 @@ export const siteRoutes: FastifyPluginAsync = async (instance) => {
     async (request) => {
       const s = account(request);
       const current = await load(request, request.params.id);
-      await request.authorize('site.confirm', resourceOf(current), { asNotFound: true });
+      await request.authorize('site.confirm', operatedResourceOf(request, current), {
+        asNotFound: true,
+      });
       const row = await request.tx(async (trx) => {
         await trx
           .updateTable('cg.site')

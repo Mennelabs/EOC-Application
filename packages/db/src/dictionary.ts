@@ -678,6 +678,10 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     published_at: { c: 'public' },
     unpublished_at: { c: 'internal' },
     usng: { c: 'public' },
+    operator_tenant_id: {
+      c: 'internal',
+      d: 'CON-16: the partner organization that runs the site (a county shelter run by an NGO)',
+    },
   }),
   zip_centroid: table(
     {

@@ -10,6 +10,8 @@ import { errors } from '../errors.ts';
 const meResponse = z.object({
   accountId: z.uuid(),
   tenantId: z.uuid(),
+  /** county, city, region, state or partner_org: the console picks its workspaces by it. */
+  tenantKind: z.string(),
   status: z.string(),
   roles: z.array(
     z.object({ key: z.string(), version: z.number().int(), templateKey: z.string().nullable() }),
@@ -36,9 +38,13 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
         id: s.accountId,
         tenantId: s.tenantId,
       });
+      const tenant = await request.tx((trx) =>
+        trx.selectFrom('cg.tenant').select('kind').where('id', '=', s.tenantId).executeTakeFirst(),
+      );
       return {
         accountId: s.accountId,
         tenantId: s.tenantId,
+        tenantKind: tenant?.kind ?? 'county',
         status: s.status,
         roles: s.roles.map((r) => ({ key: r.key, version: r.version, templateKey: r.templateKey })),
         agreementTenantIds: s.agreementTenantIds ?? [],

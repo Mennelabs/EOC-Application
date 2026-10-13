@@ -11,7 +11,12 @@ import {
   RolesScreen,
 } from './screens/permissions.tsx';
 import { AiRegisterScreen, AssistedScreen, IntakeSetupScreen } from './screens/intake.tsx';
+import { ContactsScreen } from './screens/contacts.tsx';
+import { KeyCounts, NeedsBoardScreen, PartnerScreen } from './screens/needs.tsx';
+import { PartnersScreen } from './screens/partners.tsx';
+import { ResourcesScreen } from './screens/resources.tsx';
 import { ReportDetailScreen, ReviewQueueScreen } from './screens/review.tsx';
+import { PublicationsScreen, SitesScreen } from './screens/sites.tsx';
 import { ConfirmDialog, Field, Status } from './ui/primitives.tsx';
 
 /**
@@ -25,6 +30,13 @@ const routes = [
   { path: '/console/reports', label: 'Review queue', layer: 2 },
   { path: '/console/assist', label: 'Assisted report', layer: 2 },
   { path: '/console/intake', label: 'Intake setup', layer: 2 },
+  { path: '/console/needs', label: 'Needs board', layer: 3 },
+  { path: '/console/partner', label: 'Partner workspace', layer: 3 },
+  { path: '/console/sites', label: 'Sites', layer: 3 },
+  { path: '/console/resources', label: 'Resources', layer: 3 },
+  { path: '/console/publications', label: 'Publication log', layer: 3 },
+  { path: '/console/contacts', label: 'Contacts', layer: 3 },
+  { path: '/console/partners', label: 'Partner agreements', layer: 3 },
   { path: '/console/events', label: 'Events', layer: 1 },
   { path: '/console/tenants', label: 'Organizations', layer: 1 },
   { path: '/console/accounts', label: 'Staff accounts', layer: 1 },
@@ -40,6 +52,7 @@ const routes = [
 interface Me {
   accountId: string;
   tenantId: string;
+  tenantKind?: string;
   roles: { key: string; version: number }[];
   breakGlass: { id: string; expiresAt: string } | null;
 }
@@ -181,6 +194,20 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <IntakeSetupScreen />;
       case '/console/ai-register':
         return <AiRegisterScreen />;
+      case '/console/needs':
+        return <NeedsBoardScreen me={me} />;
+      case '/console/partner':
+        return <PartnerScreen me={me} />;
+      case '/console/sites':
+        return <SitesScreen />;
+      case '/console/resources':
+        return <ResourcesScreen />;
+      case '/console/publications':
+        return <PublicationsScreen />;
+      case '/console/contacts':
+        return <ContactsScreen />;
+      case '/console/partners':
+        return <PartnersScreen me={me} />;
       case '/console/events':
         return <EventsScreen />;
       case '/console/tenants':
@@ -216,6 +243,7 @@ export function App({ config }: { config: RuntimeConfig }) {
             ) : (
               <p role="status">Loading your account…</p>
             )}
+            {me ? <KeyCounts /> : null}
           </section>
         );
     }

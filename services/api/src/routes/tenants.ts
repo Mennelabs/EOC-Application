@@ -98,7 +98,10 @@ const agreementOut = z.object({
   dataCategories: z.array(z.string()),
   status: z.enum(['draft', 'signed', 'revoked']),
   signedAt: z.iso.datetime().nullable(),
+  signedBy: z.uuid().nullable(),
   revokedAt: z.iso.datetime().nullable(),
+  /** What the agreement is for: organization type and service for sharing (layer 3, NED-04). */
+  terms: z.record(z.string(), z.unknown()),
 });
 
 const configOut = z.object({
@@ -401,7 +404,9 @@ export const tenantRoutes: FastifyPluginAsync = async (raw) => {
     data_categories: string[];
     status: 'draft' | 'signed' | 'revoked';
     signed_at: Date | null;
+    signed_by: string | null;
     revoked_at: Date | null;
+    terms: unknown;
   }): z.infer<typeof agreementOut> => ({
     id: r.id,
     version: r.version,
@@ -413,7 +418,9 @@ export const tenantRoutes: FastifyPluginAsync = async (raw) => {
     dataCategories: r.data_categories,
     status: r.status,
     signedAt: iso(r.signed_at),
+    signedBy: r.signed_by,
     revokedAt: iso(r.revoked_at),
+    terms: (r.terms ?? {}) as Record<string, unknown>,
   });
 
   app.get(

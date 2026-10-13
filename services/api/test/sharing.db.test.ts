@@ -121,6 +121,13 @@ describe.skipIf(!appUrl || !workerUrl)('partner sharing (database-backed)', () =
       nurse: subjectFor('shelter-ngo', 'shelter_nurse', seeded.accounts['nurse@example.org']!),
       jen: subjectFor('coad', 'coad_chair', seeded.accounts['jen.coad@example.org']!),
       crew: subjectFor('cleanup', 'cleanup_crew_lead', randomUUID()),
+      // Agreements: the director drafts, a second administrator signs (ADM-02).
+      dana: subjectFor(
+        'county',
+        'county_em_director',
+        seeded.accounts['dana.director@example.org']!,
+      ),
+      coordinator: subjectFor('county', 'partner_coordinator', randomUUID()),
     };
     const loader: SubjectLoader = {
       async fromBearer(token) {
@@ -473,5 +480,85 @@ describe.skipIf(!appUrl || !workerUrl)('partner sharing (database-backed)', () =
     expect((await grants()).map((g) => g.revoked_at?.toISOString())).toEqual(
       rows.map((g) => g.revoked_at?.toISOString()),
     );
+  });
+
+  it('an agreement is drafted by the county, signed by the partner with its version and a reason, and revoked by the county (ADM-02, SCL-01)', async () => {
+    const confirmed = (reason: string) => ({ 'x-confirm': 'true', 'x-reason': reason });
+    const drafted = await app.inject({
+      method: 'POST',
+      url: '/api/v1/agreements',
+      headers: { ...headers('dana'), 'idempotency-key': randomUUID() },
+      payload: {
+        toTenantId: tenants['coad'],
+        scope: 'consented_records',
+        dataCategories: [],
+        terms: { orgType: 'community_groups', service: 'coordination', recallOnWithdrawal: true },
+      },
+    });
+    expect(drafted.statusCode, drafted.body).toBe(201);
+    const agreement = drafted.json() as {
+      id: string;
+      version: number;
+      status: string;
+      terms: Record<string, unknown>;
+    };
+    expect(agreement.status).toBe('draft');
+    expect(agreement.terms['service']).toBe('coordination');
+    // The county cannot sign its own draft; the partner signs, with the version and a reason.
+    const countySigns = await app.inject({
+      method: 'POST',
+      url: `/api/v1/agreements/${agreement.id}/sign`,
+      headers: {
+        ...headers('coordinator'),
+        'if-match': String(agreement.version),
+        ...confirmed('not my side'),
+      },
+    });
+    expect(countySigns.statusCode).toBe(404);
+    const unconfirmed = await app.inject({
+      method: 'POST',
+      url: `/api/v1/agreements/${agreement.id}/sign`,
+      headers: { ...headers('jen'), 'if-match': String(agreement.version) },
+    });
+    expect(unconfirmed.statusCode).toBe(428);
+    const signed = await app.inject({
+      method: 'POST',
+      url: `/api/v1/agreements/${agreement.id}/sign`,
+      headers: {
+        ...headers('jen'),
+        'if-match': String(agreement.version),
+        ...confirmed('Board approved'),
+      },
+    });
+    expect(signed.statusCode, signed.body).toBe(200);
+    const after = signed.json() as {
+      version: number;
+      status: string;
+      signedAt: string | null;
+      signedBy: string | null;
+    };
+    expect(after.status).toBe('signed');
+    expect(after.signedBy).toBe(subjects['jen']!.accountId);
+    const partnerRevokes = await app.inject({
+      method: 'POST',
+      url: `/api/v1/agreements/${agreement.id}/revoke`,
+      headers: {
+        ...headers('jen'),
+        'if-match': String(after.version),
+        ...confirmed('not my side'),
+      },
+    });
+    expect(partnerRevokes.statusCode).toBe(404);
+    const revoked = await app.inject({
+      method: 'POST',
+      url: `/api/v1/agreements/${agreement.id}/revoke`,
+      headers: {
+        ...headers('dana'),
+        'if-match': String(after.version),
+        ...confirmed('Partner left the COAD'),
+      },
+    });
+    expect(revoked.statusCode, revoked.body).toBe(200);
+    expect((revoked.json() as { status: string }).status).toBe('revoked');
   });
 });

@@ -340,12 +340,12 @@ describe.skipIf(!appUrl || !workerUrl)('needs board (database-backed)', () => {
   });
 
   it('a partner sees only what its grants cover and claims inside the county record, attributed and audited (NED-04, SEC-18)', async () => {
-    const crew = await get('crew', '/api/v1/needs');
+    const crew = await get('crew', `/api/v1/needs?reference=${code}`);
     expect(crew.status, crew.body).toBe(200);
     const visible = mine(crew.json() as Need[]);
     expect(visible.map((n) => n.category).sort()).toEqual(['cleanup_tarp', 'food_water']);
     expect(visible[0]!.sharedWith).toEqual([]); // the county's partner list is the county's
-    const coad = await get('jen', '/api/v1/needs');
+    const coad = await get('jen', `/api/v1/needs?reference=${code}`);
     expect(mine(coad.json() as Need[])).toEqual([]); // coordination shares nothing
 
     const claim = await post('crew', `/api/v1/needs/${needIds[1]}/claim`, {
@@ -440,7 +440,7 @@ describe.skipIf(!appUrl || !workerUrl)('needs board (database-backed)', () => {
   });
 
   it('who sees whose claims is configured per agency (CON-15)', async () => {
-    const before = mine((await get('crew', '/api/v1/needs')).json() as Need[]);
+    const before = mine((await get('crew', `/api/v1/needs?reference=${code}`)).json() as Need[]);
     expect(before.find((n) => n.id === needIds[0])!.claim?.tenantName).toBe(
       'Hope Canteen Services',
     );
@@ -468,7 +468,7 @@ describe.skipIf(!appUrl || !workerUrl)('needs board (database-backed)', () => {
       },
     });
     expect(set.statusCode, set.body).toBe(200);
-    const after = mine((await get('crew', '/api/v1/needs')).json() as Need[]);
+    const after = mine((await get('crew', `/api/v1/needs?reference=${code}`)).json() as Need[]);
     const other = after.find((n) => n.id === needIds[0])!;
     expect(other.claimed).toBe(true);
     expect(other.claim).toBeNull();
@@ -556,8 +556,12 @@ describe.skipIf(!appUrl || !workerUrl)('needs board (database-backed)', () => {
       .execute();
     expect(grants.length).toBeGreaterThan(0);
     expect(grants.every((g) => g.revoked_at !== null && g.revoke_reason === 'consent')).toBe(true);
-    expect(mine((await get('crew', '/api/v1/needs')).json() as Need[])).toEqual([]);
-    expect(mine((await get('ruth', '/api/v1/needs')).json() as Need[])).toEqual([]);
+    expect(mine((await get('crew', `/api/v1/needs?reference=${code}`)).json() as Need[])).toEqual(
+      [],
+    );
+    expect(mine((await get('ruth', `/api/v1/needs?reference=${code}`)).json() as Need[])).toEqual(
+      [],
+    );
     // The county still sees the needs; the claim stands until the county decides.
     expect(
       mine((await get('luis', `/api/v1/needs?reference=${code}`)).json() as Need[]),

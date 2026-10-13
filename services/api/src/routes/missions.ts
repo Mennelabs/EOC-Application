@@ -336,12 +336,32 @@ export const missionRoutes: FastifyPluginAsync = async (instance) => {
     partnerId: string | null;
     teamIds: string[];
     personnelIds: string[];
+    /** FLD-14: the caller's own personnel records and current teams; a grant with `records: 'own'` reaches only work they hold. */
+    holder: { personnelIds: string[]; teamIds: string[] };
+  }
+  async function holderOf(trx: Trx, accountId: string): Promise<Scope['holder']> {
+    const people = await trx
+      .selectFrom('cg.personnel')
+      .select('id')
+      .where('account_id', '=', accountId)
+      .execute();
+    const personnelIds = people.map((p) => p.id);
+    const teams = personnelIds.length
+      ? await trx
+          .selectFrom('cg.team_member')
+          .select('team_id')
+          .where('personnel_id', 'in', personnelIds)
+          .where('left_at', 'is', null)
+          .execute()
+      : [];
+    return { personnelIds, teamIds: [...new Set(teams.map((t) => t.team_id))] };
   }
   async function scopeOf(request: FastifyRequest): Promise<Scope> {
     const s = account(request);
-    if (s.tenantKind !== 'partner_org')
-      return { tenantId: s.tenantId, partnerId: null, teamIds: [], personnelIds: [] };
     return request.tx(async (trx) => {
+      const holder = await holderOf(trx, s.accountId);
+      if (s.tenantKind !== 'partner_org')
+        return { tenantId: s.tenantId, partnerId: null, teamIds: [], personnelIds: [], holder };
       const me = await trx
         .selectFrom('cg.tenant')
         .select('parent_id')
@@ -354,9 +374,15 @@ export const missionRoutes: FastifyPluginAsync = async (instance) => {
         partnerId: s.tenantId,
         teamIds: teams.map((t) => t.id),
         personnelIds: people.map((p) => p.id),
+        holder,
       };
     });
   }
+  /** Whether an active assignment on the mission is held by the caller or one of the caller's teams (FLD-14). */
+  const heldFilter = (holder: Scope['holder'], fallback: string) => ({
+    teamIds: holder.teamIds.length ? holder.teamIds : [fallback],
+    personnelIds: holder.personnelIds.length ? holder.personnelIds : [fallback],
+  });
   const run = <T>(request: FastifyRequest, scope: Scope, fn: (trx: Trx) => Promise<T>) =>
     scope.partnerId ? request.txAs(scope.tenantId, fn) : request.tx(fn);
 
@@ -371,6 +397,8 @@ export const missionRoutes: FastifyPluginAsync = async (instance) => {
     usng: string | null;
     lat: number | string | null;
     lon: number | string | null;
+    /** Set by load(): the caller holds an active assignment on it (FLD-14). */
+    held?: boolean;
   };
 
   const query = (trx: Trx) =>
@@ -502,7 +530,18 @@ export const missionRoutes: FastifyPluginAsync = async (instance) => {
   async function load(request: FastifyRequest, scope: Scope, id: string): Promise<Joined> {
     const row = await run(request, scope, async (trx) => {
       const r = (await query(trx).where('m.id', '=', id).executeTakeFirst()) as Joined | undefined;
-      if (!r || !scope.partnerId) return r;
+      if (!r) return r;
+      const h = heldFilter(scope.holder, id);
+      r.held = !!(await trx
+        .selectFrom('cg.assignment')
+        .select('id')
+        .where('mission_id', '=', id)
+        .where('released_at', 'is', null)
+        .where((eb) =>
+          eb.or([eb('team_id', 'in', h.teamIds), eb('personnel_id', 'in', h.personnelIds)]),
+        )
+        .executeTakeFirst());
+      if (!scope.partnerId) return r;
       if (r.owning_tenant_id === scope.partnerId) return r;
       const mine = await trx
         .selectFrom('cg.assignment')
@@ -522,11 +561,16 @@ export const missionRoutes: FastifyPluginAsync = async (instance) => {
     return row;
   }
 
-  const resourceOf = (s: { tenantId: string }, r: MissionRow, fields?: FieldDescriptor[]) => ({
+  const resourceOf = (
+    s: { tenantId: string },
+    r: MissionRow & { held?: boolean },
+    fields?: FieldDescriptor[],
+  ) => ({
     type: 'mission',
     id: r.id,
     tenantId: s.tenantId,
     eventId: r.event_id,
+    ...(r.held !== undefined ? { heldBySubject: r.held } : {}),
     ...(fields ? { fields } : {}),
   });
 
@@ -732,6 +776,23 @@ export const missionRoutes: FastifyPluginAsync = async (instance) => {
               ),
             ),
           );
+        if (decision.recordScope === 'own') {
+          const h = heldFilter(scope.holder, s.accountId);
+          x = x.where(({ exists, selectFrom }) =>
+            exists(
+              selectFrom('cg.assignment as a')
+                .select('a.id')
+                .whereRef('a.mission_id', '=', 'm.id')
+                .where('a.released_at', 'is', null)
+                .where((e) =>
+                  e.or([
+                    e('a.team_id', 'in', h.teamIds),
+                    e('a.personnel_id', 'in', h.personnelIds),
+                  ]),
+                ),
+            ),
+          );
+        }
         if (scope.partnerId) {
           const teamIds = scope.teamIds.length ? scope.teamIds : [scope.partnerId];
           const peopleIds = scope.personnelIds.length ? scope.personnelIds : [scope.partnerId];
@@ -1572,6 +1633,7 @@ export const missionRoutes: FastifyPluginAsync = async (instance) => {
           id: current.id,
           tenantId: s.tenantId,
           eventId: current.event_id,
+          heldBySubject: current.held ?? false,
           fields: PERSON_FIELDS,
         },
         { asNotFound: true },
@@ -1655,7 +1717,13 @@ export const missionRoutes: FastifyPluginAsync = async (instance) => {
       const current = await load(request, scope, request.params.id);
       await request.authorize(
         'mission.person.edit',
-        { type: 'mission_person', id: current.id, tenantId: s.tenantId, eventId: current.event_id },
+        {
+          type: 'mission_person',
+          id: current.id,
+          tenantId: s.tenantId,
+          eventId: current.event_id,
+          heldBySubject: current.held ?? false,
+        },
         { asNotFound: true },
       );
       assertUnlocked(current, s.accountId);
@@ -1719,7 +1787,13 @@ export const missionRoutes: FastifyPluginAsync = async (instance) => {
       const current = await load(request, scope, request.params.id);
       await request.authorize(
         'mission.person.edit',
-        { type: 'mission_person', id: current.id, tenantId: s.tenantId, eventId: current.event_id },
+        {
+          type: 'mission_person',
+          id: current.id,
+          tenantId: s.tenantId,
+          eventId: current.event_id,
+          heldBySubject: current.held ?? false,
+        },
         { asNotFound: true },
       );
       assertUnlocked(current, s.accountId);
@@ -1799,6 +1873,7 @@ export const missionRoutes: FastifyPluginAsync = async (instance) => {
           id: current.id,
           tenantId: s.tenantId,
           eventId: current.event_id,
+          heldBySubject: current.held ?? false,
           fields: [{ name: 'restricted', category: 'evidence', classification: 'restricted' }],
         },
         { asNotFound: true },
@@ -1846,7 +1921,13 @@ export const missionRoutes: FastifyPluginAsync = async (instance) => {
       const current = await load(request, scope, request.params.id);
       await request.authorize(
         'mission.media.add',
-        { type: 'mission_media', id: current.id, tenantId: s.tenantId, eventId: current.event_id },
+        {
+          type: 'mission_media',
+          id: current.id,
+          tenantId: s.tenantId,
+          eventId: current.event_id,
+          heldBySubject: current.held ?? false,
+        },
         { asNotFound: true },
       );
       assertUnlocked(current, s.accountId);
@@ -1917,7 +1998,13 @@ export const missionRoutes: FastifyPluginAsync = async (instance) => {
       const current = await load(request, scope, request.params.id);
       await request.authorize(
         'mission.media.add',
-        { type: 'mission_media', id: current.id, tenantId: s.tenantId, eventId: current.event_id },
+        {
+          type: 'mission_media',
+          id: current.id,
+          tenantId: s.tenantId,
+          eventId: current.event_id,
+          heldBySubject: current.held ?? false,
+        },
         { asNotFound: true },
       );
       const row = await run(request, scope, async (trx) => {
@@ -2135,7 +2222,10 @@ export const missionRoutes: FastifyPluginAsync = async (instance) => {
     async (request) => {
       const s = account(request);
       const scope = await scopeOf(request);
-      await request.authorize('assignment.read', { type: 'assignment', tenantId: s.tenantId });
+      const decision = await request.authorize('assignment.read', {
+        type: 'assignment',
+        tenantId: s.tenantId,
+      });
       const q = request.query;
       const rows = await run(request, scope, (trx) => {
         let x = trx
@@ -2148,6 +2238,12 @@ export const missionRoutes: FastifyPluginAsync = async (instance) => {
         if (q.teamId) x = x.where('team_id', '=', q.teamId);
         if (q.personnelId) x = x.where('personnel_id', '=', q.personnelId);
         if (q.open) x = x.where('released_at', 'is', null);
+        if (decision.recordScope === 'own') {
+          const h = heldFilter(scope.holder, s.accountId);
+          x = x.where((eb) =>
+            eb.or([eb('team_id', 'in', h.teamIds), eb('personnel_id', 'in', h.personnelIds)]),
+          );
+        }
         if (scope.partnerId)
           x = x.where((eb) =>
             eb.or([
@@ -2192,7 +2288,12 @@ export const missionRoutes: FastifyPluginAsync = async (instance) => {
       const current = await load(request, scope, request.params.id);
       await request.authorize(
         'assignment.create',
-        { type: 'assignment', tenantId: s.tenantId, eventId: current.event_id },
+        {
+          type: 'assignment',
+          tenantId: s.tenantId,
+          eventId: current.event_id,
+          heldBySubject: current.held ?? false,
+        },
         { asNotFound: true },
       );
       assertUnlocked(current, s.accountId);
@@ -2216,6 +2317,7 @@ export const missionRoutes: FastifyPluginAsync = async (instance) => {
           type: 'assignment',
           tenantId: s.tenantId,
           eventId: current.event_id,
+          heldBySubject: current.held ?? false,
         });
       if (scope.partnerId) {
         for (const r of b.resources) {
@@ -2411,9 +2513,18 @@ export const missionRoutes: FastifyPluginAsync = async (instance) => {
       scope,
       (request.params as { id: string }).id,
     );
+    const heldBySubject =
+      (!!a.personnel_id && scope.holder.personnelIds.includes(a.personnel_id)) ||
+      (!!a.team_id && scope.holder.teamIds.includes(a.team_id));
     await request.authorize(
       action,
-      { type: 'assignment', id: a.id, tenantId: s.tenantId, eventId: mission.event_id },
+      {
+        type: 'assignment',
+        id: a.id,
+        tenantId: s.tenantId,
+        eventId: mission.event_id,
+        heldBySubject,
+      },
       { asNotFound: true },
     );
     if (action !== 'assignment.acknowledge') assertUnlocked(mission, s.accountId);

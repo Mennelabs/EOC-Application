@@ -728,6 +728,47 @@ describe.skipIf(!appUrl || !workerUrl)(
       expect(rp.truncated).toBe(false);
     });
 
+    it("FLD-14: a field role lists and reads only the missions and assignments it holds; another team's work is not found; a coordinator sees all", async () => {
+      const mine = await call('assessor', 'GET', '/api/v1/assignments?open=true&limit=200');
+      expect(mine.status, mine.body).toBe(200);
+      const held =
+        mine.json<
+          { id: string; teamId: string | null; personnelId: string | null; missionId: string }[]
+        >();
+      expect(held.length).toBeGreaterThan(0);
+      expect(held.every((a) => a.teamId === teamId || a.personnelId === personnelId)).toBe(true);
+      const all = (await call('priya', 'GET', '/api/v1/assignments?open=true&limit=200')).json<
+        { id: string; teamId: string | null; missionId: string; version: number }[]
+      >();
+      expect(all.length).toBeGreaterThan(held.length);
+      const missions = (
+        await call('assessor', 'GET', `/api/v1/missions?eventId=${eventId}&limit=200`)
+      ).json<{ id: string }[]>();
+      const heldMissions = new Set(held.map((a) => a.missionId));
+      expect(missions.length).toBeGreaterThan(0);
+      expect(missions.every((m) => heldMissions.has(m.id))).toBe(true);
+      // Another team's assignment and mission: not found, and no fact can be recorded on them.
+      const other = all.find(
+        (a) => a.teamId && a.teamId !== teamId && !heldMissions.has(a.missionId),
+      )!;
+      expect(other).toBeDefined();
+      expect((await call('assessor', 'GET', `/api/v1/missions/${other.missionId}`)).status).toBe(
+        404,
+      );
+      const ack = await call(
+        'assessor',
+        'POST',
+        `/api/v1/assignments/${other.id}/acknowledge`,
+        { accept: true },
+        { 'if-match': String(other.version) },
+      );
+      expect(ack.status).toBe(404);
+      // Its own mission reads normally.
+      expect(
+        (await call('assessor', 'GET', `/api/v1/missions/${assignment.missionId}`)).status,
+      ).toBe(200);
+    });
+
     it('FLD-13, FLD-02: the area package carries the assignments, parcels, hazards, sites and job aids without resident personal details; a wipe requested for the device rides along on the next sync', async () => {
       const res = await call('assessor', 'GET', `/api/v1/field/area?eventId=${eventId}`);
       expect(res.status, res.body).toBe(200);

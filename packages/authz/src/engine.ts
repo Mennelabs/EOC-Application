@@ -36,6 +36,7 @@ function deny(reason: string, consequential: boolean, guardrail?: Decision['guar
     maskedFields: [],
     restrictedRead: [],
     consequential,
+    recordScope: 'own',
   };
 }
 
@@ -64,6 +65,17 @@ function eventInScope(grant: Grant, role: ResolvedRole, resource: Resource): boo
   if (scope === 'all') return true;
   if (!resource.eventId) return true; // not an event-scoped record
   return (role.scope.eventIds ?? []).includes(resource.eventId);
+}
+
+/**
+ * FLD-14: a grant limited to held records covers a list (no id: the route
+ * filters by `recordScope`) and a single record only when the route says the
+ * subject holds it; an identified record without that answer is not held.
+ */
+function recordInScope(grant: Grant, resource: Resource): boolean {
+  if ((grant.records ?? 'all') === 'all') return true;
+  if (resource.id === undefined) return true;
+  return resource.heldBySubject === true;
 }
 
 function mask(
@@ -122,6 +134,7 @@ export function decide(
       maskedFields: [],
       restrictedRead: [],
       consequential,
+      recordScope: 'all',
     };
   }
 
@@ -134,6 +147,7 @@ export function decide(
       maskedFields: [],
       restrictedRead: [],
       consequential,
+      recordScope: 'all',
     };
   }
 
@@ -141,12 +155,15 @@ export function decide(
 
   const allowedCategories = new Set<DataCategory>();
   let matched: ResolvedRole | undefined;
+  let recordScope: Decision['recordScope'] = 'own';
   for (const role of subject.roles) {
     for (const grant of role.grants) {
       if (!actionMatches(grant.action, actionKey)) continue;
       if (!tenantInScope(grant, subject, resource, action.kind)) continue;
       if (!eventInScope(grant, role, resource)) continue;
+      if (!recordInScope(grant, resource)) continue;
       matched ??= role;
+      if ((grant.records ?? 'all') === 'all') recordScope = 'all';
       for (const c of grant.dataCategories ?? []) {
         // County-editable grants can never add a template-protected category.
         if (!TEMPLATE_PROTECTED_CATEGORIES.includes(c) && c !== 'cji') allowedCategories.add(c);
@@ -165,6 +182,7 @@ export function decide(
       maskedFields: m.masked,
       restrictedRead: action.kind === 'read' ? m.restrictedRead : [],
       consequential,
+      recordScope,
       ...(auditReason ? { auditReason } : {}),
     };
   }
@@ -189,6 +207,7 @@ export function decide(
         maskedFields: m.masked,
         restrictedRead: m.restrictedRead,
         consequential,
+        recordScope: 'all',
         auditReason: `break_glass:${bg.id}`,
       };
     }

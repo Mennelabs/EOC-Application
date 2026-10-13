@@ -363,17 +363,15 @@ describe.skipIf(!appUrl || !workerUrl)('field roster schema and seed (database-b
       .orderBy('created_at')
       .executeTakeFirstOrThrow();
     expect(hazard).toEqual({ severity: 'danger', ai_suggested: false, source: 'call' });
+    // The seed's call-back reminder (the field-ops suite later acknowledges and completes reminders of its own and may touch this one).
     const reminder = await dbWorker
       .selectFrom('cg.reminder')
-      .select(['state', 'kind', 'escalate_to_role'])
+      .select(['kind', 'escalate_to_role', 'completed_at'])
       .where('tenant_id', '=', countyId)
       .where('kind', '=', 'call_back')
+      .orderBy('created_at')
       .executeTakeFirstOrThrow();
-    expect(reminder).toEqual({
-      state: 'active',
-      kind: 'call_back',
-      escalate_to_role: 'field_coordinator',
-    });
+    expect(reminder).toMatchObject({ kind: 'call_back', escalate_to_role: 'field_coordinator' });
     const activity = await dbWorker
       .selectFrom('cg.activity_entry')
       .select((eb) => eb.fn.countAll<string>().as('n'))

@@ -95,3 +95,34 @@ describe('grant evaluation (ADM-04, SEC-06)', () => {
     ).toBe('allow');
   });
 });
+
+describe("record scope 'own' (FLD-14)", () => {
+  const own = account([role([{ action: 'assignment.read', records: 'own' }])]);
+  const list = { type: 'assignment', tenantId: TENANT_A };
+  it('a list is allowed and reports recordScope own, so the route filters', () => {
+    expect(decide(own, 'assignment.read', list)).toMatchObject({
+      effect: 'allow',
+      recordScope: 'own',
+    });
+  });
+  it('a single record is allowed only when the route says the subject holds it', () => {
+    expect(decide(own, 'assignment.read', { ...list, id: 'a1', heldBySubject: true }).effect).toBe(
+      'allow',
+    );
+    expect(decide(own, 'assignment.read', { ...list, id: 'a1', heldBySubject: false }).effect).toBe(
+      'deny',
+    );
+    // An identified record without an answer is not held (default deny).
+    expect(decide(own, 'assignment.read', { ...list, id: 'a1' }).effect).toBe('deny');
+  });
+  it('any grant without the limit widens the scope to all', () => {
+    const both = account([
+      role([{ action: 'assignment.read', records: 'own' }]),
+      role([{ action: 'assignment.read' }], { roleId: 'r2', key: 'dispatcher' }),
+    ]);
+    expect(decide(both, 'assignment.read', list).recordScope).toBe('all');
+    expect(
+      decide(both, 'assignment.read', { ...list, id: 'a1', heldBySubject: false }).effect,
+    ).toBe('allow');
+  });
+});

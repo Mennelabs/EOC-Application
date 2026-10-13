@@ -95,3 +95,37 @@ describe('shipped role templates (ADM-04)', () => {
     expect(can('net_control', 'shared.read')).toBe(false);
   });
 });
+
+describe('field roles see only their own work (FLD-14)', () => {
+  it('frontline roles read and act on held missions and assignments only; dispatch, safety and net control see all', async () => {
+    const { roleTemplates } = await import('../src/templates.ts');
+    const grantFor = (key: string, action: string) =>
+      roleTemplates.find((t) => t.key === key)!.grants.filter((g) => g.action === action);
+    for (const key of [
+      'field_volunteer',
+      'team_lead',
+      'damage_assessor',
+      'canvasser',
+      'search_rescue',
+    ]) {
+      for (const action of ['assignment.read', 'assignment.acknowledge', 'assignment.status']) {
+        const gs = grantFor(key, action);
+        expect(gs.length, `${key} ${action}`).toBeGreaterThan(0);
+        expect(
+          gs.every((g) => g.records === 'own'),
+          `${key} ${action}`,
+        ).toBe(true);
+      }
+      expect(
+        grantFor(key, 'mission.read').every((g) => g.records === 'own'),
+        key,
+      ).toBe(true);
+    }
+    for (const key of ['dispatcher_call_taker', 'safety_officer', 'net_control']) {
+      expect(
+        grantFor(key, 'assignment.read').every((g) => (g.records ?? 'all') === 'all'),
+        key,
+      ).toBe(true);
+    }
+  });
+});

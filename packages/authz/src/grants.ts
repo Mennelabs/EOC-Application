@@ -22,6 +22,7 @@ export const grantSchema = z.object({
   action: actionPattern,
   tenants: z.union([z.literal('own'), z.literal('subtree'), z.array(z.uuid()).min(1)]).optional(),
   events: z.enum(['all', 'assigned']).optional(),
+  records: z.enum(['all', 'own']).optional(),
   dataCategories: z
     .array(z.enum(DATA_CATEGORIES as [string, ...string[]]))
     .optional()

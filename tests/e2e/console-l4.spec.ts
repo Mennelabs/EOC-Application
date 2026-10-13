@@ -2,7 +2,7 @@
  * Layer 4 console journeys (layer-4 plan §9; CALL-01, DSP-01/02/03/04/07,
  * AC-06C, CON-03, PER-01, DSP-10, BDG-01, ACC-07): a field coordinator takes
  * a phone request as a mission, assigns it from the dispatch board with the
- * keyboard only (a conflict needs a recorded reason), acknowledges any open
+ * keyboard only (a conflict needs a recorded reason and the confirmation dialog), acknowledges any open
  * alert, and opens the roster, the situation map, the net control log and
  * badges; every screen passes axe WCAG 2.2 AA.
  */
@@ -79,12 +79,22 @@ test.describe('layer 4 console', () => {
     await send.focus();
     await page.keyboard.press('Enter');
     const done = page.getByText(/awaiting acknowledgement/);
-    // AC-06C: a team with conflicts is assigned only with a recorded reason.
+    // AC-06C, RULE-14: a team with conflicts is assigned only with a recorded reason, and the
+    // override is consequential, so the confirmation dialog asks for it to be confirmed.
     const why = page.getByLabel('Why assign anyway (recorded)');
     if (!(await appears(done, 8000)) && (await appears(why, 2000))) {
-      await why.fill('Exercise: the closest team, checked with the lead by radio');
+      const reason = 'Exercise: the closest team, checked with the lead by radio';
+      await why.fill(reason);
       await send.focus();
       await page.keyboard.press('Enter');
+      const dialog = page.getByRole('dialog');
+      if (await appears(dialog, 8000)) {
+        await expectNoViolations(page);
+        const field = dialog.getByLabel(/reason/i);
+        if (!(await field.inputValue())) await field.fill(reason);
+        await dialog.getByRole('button', { name: 'Confirm' }).focus();
+        await page.keyboard.press('Enter');
+      }
     }
     await expect(done).toBeVisible({ timeout: 30_000 });
     await expectNoViolations(page);

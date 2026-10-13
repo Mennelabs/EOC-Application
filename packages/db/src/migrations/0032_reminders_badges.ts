@@ -21,6 +21,13 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   // The layer-3 ledger keeps every row and its unique key under a name that says what it is.
   await sql`alter table cg.reminder rename to notice_log`.execute(db);
   await sql`alter index cg.reminder_due_idx rename to notice_log_due_idx`.execute(db);
+  // The constraints keep their old names after a rename; the new table needs them.
+  await sql`alter table cg.notice_log rename constraint reminder_pkey to notice_log_pkey`.execute(
+    db,
+  );
+  await sql`alter table cg.notice_log rename constraint reminder_tenant_id_kind_subject_id_cycle_key_key to notice_log_tenant_id_kind_subject_id_cycle_key_key`.execute(
+    db,
+  );
   await sql`delete from cg.data_dictionary where table_name = 'reminder'`.execute(db);
 
   await sql`
@@ -166,6 +173,10 @@ export async function down(db: Kysely<unknown>): Promise<void> {
   await sql`drop table if exists cg.reminder cascade`.execute(db);
   await sql`alter table cg.notice_log rename to reminder`.execute(db);
   await sql`alter index cg.notice_log_due_idx rename to reminder_due_idx`.execute(db);
+  await sql`alter table cg.reminder rename constraint notice_log_pkey to reminder_pkey`.execute(db);
+  await sql`alter table cg.reminder rename constraint notice_log_tenant_id_kind_subject_id_cycle_key_key to reminder_tenant_id_kind_subject_id_cycle_key_key`.execute(
+    db,
+  );
   await sql`delete from cg.data_dictionary where table_name = 'notice_log'`.execute(db);
   await sql`delete from cg.retention_policy where data_category = 'badges' and note like '%:%'`.execute(
     db,

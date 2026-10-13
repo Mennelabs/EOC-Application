@@ -33,6 +33,7 @@ import * as m0031 from './0031_hazards_safety_comms.ts';
 import * as m0032 from './0032_reminders_badges.ts';
 import * as m0033 from './0033_field_records.ts';
 import * as m0034 from './0034_sync.ts';
+import * as m0035 from './0035_roster_visibility.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -70,4 +71,5 @@ export const migrations: Record<string, Migration> = {
   '0032_reminders_badges': m0032,
   '0033_field_records': m0033,
   '0034_sync': m0034,
+  '0035_roster_visibility': m0035,
 };

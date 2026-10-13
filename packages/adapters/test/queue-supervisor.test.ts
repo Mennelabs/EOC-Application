@@ -98,6 +98,38 @@ describe('superviseQueue (SCL-06)', () => {
     expect(made.length).toBe(3);
   });
 
+  it('a connect that never answers (a broker still starting) times out and is retried', async () => {
+    let tries = 0;
+    let lateClosed = false;
+    sup = superviseQueue({
+      connect: () => {
+        tries++;
+        if (tries === 1)
+          // Hangs past the deadline, then arrives late: it must be closed, never used.
+          return new Promise((resolve) =>
+            setTimeout(() => {
+              const q = fakeConnection();
+              const close = q.close.bind(q);
+              q.close = async () => {
+                lateClosed = true;
+                await close();
+              };
+              resolve(q);
+            }, 200),
+          );
+        return Promise.resolve(fakeConnection());
+      },
+      onReady: async () => [],
+      log: quiet,
+      checkEveryMs: 1000,
+      connectTimeoutMs: 50,
+      maxBackoffMs: 20,
+    });
+    await until(() => sup!.current() !== undefined, 3000);
+    expect(tries).toBe(2);
+    await until(() => lateClosed, 3000);
+  });
+
   it('retries with backoff while the broker is down, then connects', async () => {
     let tries = 0;
     sup = superviseQueue({

@@ -27,7 +27,8 @@ export async function connectQueue(url: string): Promise<QueueConnection> {
   const withHeartbeat = /[?&]heartbeat=/.test(url)
     ? url
     : `${url}${url.includes('?') ? '&' : '?'}heartbeat=${QUEUE_HEARTBEAT_S}`;
-  const connection = await amqp.connect(withHeartbeat);
+  // A socket that never answers fails instead of waiting forever (the supervisor also bounds it).
+  const connection = await amqp.connect(withHeartbeat, { timeout: 10_000 });
   const channel = await connection.createConfirmChannel();
   return {
     connection,
@@ -88,6 +89,8 @@ export interface QueueSupervisorOptions {
   check?: (q: QueueConnection) => Promise<unknown>;
   checkEveryMs?: number;
   checkTimeoutMs?: number;
+  /** A connect or set-up that has not finished by then counts as failed and is retried. */
+  connectTimeoutMs?: number;
   maxBackoffMs?: number;
 }
 
@@ -109,6 +112,7 @@ export function superviseQueue(opts: QueueSupervisorOptions): QueueSupervisor {
   const checkEveryMs = opts.checkEveryMs ?? 10_000;
   const checkTimeoutMs = opts.checkTimeoutMs ?? 5_000;
   const maxBackoffMs = opts.maxBackoffMs ?? 30_000;
+  const connectTimeoutMs = opts.connectTimeoutMs ?? 20_000;
   const check = opts.check ?? ((q) => q.channel.checkQueue(TOPOLOGY.queues[0]));
   let live: QueueConnection | undefined;
   let generation = 0;
@@ -140,15 +144,38 @@ export function superviseQueue(opts: QueueSupervisorOptions): QueueSupervisor {
     connecting = true;
     const gen = ++generation;
     let q: QueueConnection | undefined;
+    let timedOut = false;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
     try {
-      q = await opts.connect();
-      const watch = (w: Watchable, what: string) => {
-        w.on('close', (err) => drop(gen, `${what} closed`, err));
-        w.on('error', (err) => drop(gen, `${what} error`, err));
-      };
-      watch(q.connection as unknown as Watchable, 'connection');
-      watch(q.channel as unknown as Watchable, 'channel');
-      for (const [i, ch] of (await opts.onReady(q)).entries()) watch(ch, `channel ${i + 2}`);
+      // A broker that is down or still starting can leave a connect or its set-up hanging;
+      // past the deadline the attempt counts as failed, and a late connection is closed.
+      const trying = (async () => {
+        const c = await opts.connect();
+        q = c;
+        if (timedOut) throw new Error('late connection');
+        const watch = (w: Watchable, what: string) => {
+          w.on('close', (err) => drop(gen, `${what} closed`, err));
+          w.on('error', (err) => drop(gen, `${what} error`, err));
+        };
+        watch(c.connection as unknown as Watchable, 'connection');
+        watch(c.channel as unknown as Watchable, 'channel');
+        for (const [i, ch] of (await opts.onReady(c)).entries()) watch(ch, `channel ${i + 2}`);
+        if (timedOut) throw new Error('late connection');
+        return c;
+      })();
+      trying.catch(() => {
+        if (timedOut) void q?.close().catch(() => undefined);
+      });
+      q = await Promise.race([
+        trying,
+        new Promise<never>((_, reject) => {
+          deadline = setTimeout(() => {
+            timedOut = true;
+            reject(new Error(`queue connect timed out after ${connectTimeoutMs} ms`));
+          }, connectTimeoutMs);
+        }),
+      ]);
+      clearTimeout(deadline);
       if (gen !== generation || stopped) {
         await q.close();
         return;
@@ -157,6 +184,7 @@ export function superviseQueue(opts: QueueSupervisorOptions): QueueSupervisor {
       attempt = 0;
       opts.log.info({}, 'queue connected; consuming jobs and submissions');
     } catch (err) {
+      clearTimeout(deadline);
       if (gen === generation) generation++;
       await q?.close().catch(() => undefined);
       const delay = Math.min(maxBackoffMs, 500 * 2 ** attempt++);

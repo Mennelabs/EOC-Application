@@ -98,10 +98,11 @@ test.describe('field app (web build)', () => {
     const staff = await token('county', 'casey.dispatch@example.org');
     const alerts = (await api(staff, '/safety-alerts?open=true')).body as {
       id: string;
+      version: number;
       kind: string;
     }[];
     for (const a of alerts.filter((a) => a.kind === 'help_button'))
-      await api(staff, `/safety-alerts/${a.id}/acknowledge`, { body: {} });
+      await api(staff, `/safety-alerts/${a.id}/acknowledge`, { body: {}, version: a.version });
 
     // FLD-14: check-out ends the shift and clears resident details from the phone.
     await page.getByRole('link', { name: 'Settings' }).click();

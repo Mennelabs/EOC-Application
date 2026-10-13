@@ -120,10 +120,17 @@ describe('layer 4 against the stack', () => {
     ).toBe(true);
     const open = await api(await casey(), '/safety-alerts?open=true');
     const seen = (
-      open.body as unknown as { id: string; position: { lat: number; lon: number } | null }[]
+      open.body as unknown as {
+        id: string;
+        version: number;
+        position: { lat: number; lon: number } | null;
+      }[]
     ).find((a) => a.id === alertId)!;
     expect(seen.position?.lat).toBeCloseTo(38.79531, 5);
-    const ack = await api(await casey(), `/safety-alerts/${alertId}/acknowledge`, { body: {} });
+    const ack = await api(await casey(), `/safety-alerts/${alertId}/acknowledge`, {
+      body: {},
+      version: seen.version,
+    });
     expect(ack.status, ack.text).toBeLessThan(300);
   });
 

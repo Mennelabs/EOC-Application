@@ -1,0 +1,388 @@
+{
+  "_about": "Evidence per requirement ID for layer 3 (needs board, partner sharing with consent, public \"Find help\"), plus earlier rows that layer 3 completes. status: pass | partial | deferred | designed. tools/reqindex/traceability.py merges trace-layer1..3.json in order.",
+  "RULE-12": [
+    "pass",
+    "services/api/src/public/render.ts and apps/web-help (\"never decides who is eligible\" on every public page), docs/plans/layer-3.md §12.7",
+    "tests/e2e/help.spec.ts, services/api/test/help.db.test.ts",
+    ""
+  ],
+  "BRD:FR-16.01": [
+    "partial",
+    "cg.resource + cg.resource_text (0024), services/api/src/routes/resources.ts, apps/web-console/src/screens/resources.tsx",
+    "services/api/test/help.db.test.ts, tests/e2e/console-l3.spec.ts",
+    "Title, summary, body, type, reference link, category, ordering, owner and state ship; thumbnails are not modelled (a resource is text first, FR-16.04)."
+  ],
+  "BRD:FR-16.02": [
+    "pass",
+    "services/api/src/public/help.ts (published, reviewed, unexpired only; drafts 404), sites-view.ts publicResources",
+    "tests/integration/layer3.int.test.ts (AC-16A), services/api/test/help.db.test.ts",
+    ""
+  ],
+  "BRD:FR-16.03": [
+    "pass",
+    "routes/resources.ts (review date, expiry, unpublish, check-link), services/worker/src/jobs/reminders.ts reviewResources (expiry → status, publication withdrawn, review and link reminders)",
+    "services/worker/test/reminders.db.test.ts, tests/integration/layer3.int.test.ts (AC-16B/C)",
+    ""
+  ],
+  "BRD:FR-16.04": [
+    "pass",
+    "services/api/src/public/html.ts checkResourceHtml + sanitiseHtml (gates publishing), render.ts resource pages",
+    "services/api/test/help-units.test.ts, help.db.test.ts, tests/e2e/help.spec.ts (axe on a resource page)",
+    ""
+  ],
+  "BRD:FR-16.05": [
+    "partial",
+    "cg.resource.targeting (jsonb) stored and shown to staff",
+    "services/api/test/help.db.test.ts",
+    "Targeting is recorded, never applied to availability or eligibility; filtering the public page by targeting waits for an approved use (ask Adam)."
+  ],
+  "AC-16A": [
+    "pass",
+    "public/help.ts",
+    "tests/integration/layer3.int.test.ts, services/api/test/help.db.test.ts",
+    ""
+  ],
+  "AC-16B": [
+    "pass",
+    "public/help.ts (410 with the date), worker reviewResources",
+    "tests/integration/layer3.int.test.ts, services/worker/test/reminders.db.test.ts",
+    ""
+  ],
+  "AC-16C": [
+    "pass",
+    "resource pages carry the reviewed text; the outside link is checked and marked, never the only content",
+    "tests/integration/layer3.int.test.ts, services/api/test/help.db.test.ts",
+    ""
+  ],
+  "BRD:FR-17.01": [
+    "pass",
+    "cg.partner_contact (0022; name and methods encrypted), services/api/src/routes/contacts.ts, apps/web-console/src/screens/contacts.tsx",
+    "tests/e2e/console-l3.spec.ts (registry), services/worker/test/reminders.db.test.ts (verify_by digest)",
+    ""
+  ],
+  "BRD:FR-17.02": [
+    "pass",
+    "contact.read/contact.edit with the contact data category (templates.ts); names and methods masked without it; every read audited",
+    "tests/e2e/console-l3.spec.ts, packages/authz/test (template categories)",
+    "The PIO sees agencies and roles, never numbers."
+  ],
+  "BRD:FR-17.03": [
+    "pass",
+    "cg.referral (purpose, attempts, outcome, actor, time), services/api/src/routes/referrals.ts",
+    "services/api/test/updates.db.test.ts, tests/integration/layer3.int.test.ts",
+    ""
+  ],
+  "BRD:FR-17.04": [
+    "pass",
+    "message.send through the worker (channels, states) separate from cg.partner_contact; staff updates routes/messages.ts",
+    "services/api/test/updates.db.test.ts, tests/integration/layer3.int.test.ts",
+    ""
+  ],
+  "AC-17A": [
+    "pass",
+    "cg.message states; email has sent_at and no delivered_at without provider evidence (FR-17.05)",
+    "tests/integration/layer3.int.test.ts (deliveredAt null after sent)",
+    ""
+  ],
+  "AC-17B": [
+    "pass",
+    "messageSend idempotent by outbox id; reminders once per cycle; a claim on a held need is a 409",
+    "services/worker/test/intake.db.test.ts (redelivery), reminders.db.test.ts, services/api/test/needs.db.test.ts",
+    ""
+  ],
+  "AC-17C": [
+    "pass",
+    "share grants with minimum-field projections (ADR-0030), routes/shared.ts",
+    "packages/authz/test/sharing.test.ts, services/api/test/sharing.db.test.ts, tests/integration/layer3.int.test.ts",
+    ""
+  ],
+  "NED-02": [
+    "pass",
+    "POST /api/public/needs/:tenant/:event, worker fileStandaloneNeeds (own reference code, consent rows, grants per need)",
+    "services/api/test/needs.db.test.ts, tests/e2e/console-l3.spec.ts (a needs-only submission on the board)",
+    ""
+  ],
+  "NED-04": [
+    "pass",
+    "packages/authz/src/sharing.ts (the table per service), services/worker/src/jobs/sharing.ts, routes/shared.ts",
+    "packages/authz/test/sharing.test.ts, services/api/test/sharing.db.test.ts, tests/integration/layer3.int.test.ts",
+    ""
+  ],
+  "NED-05": [
+    "pass",
+    "PATCH /intake/:tenant/me/consent, NOSHARE/NOCOMPARTIR keyword (channels/session.ts), worker consentChanged → revoke + recall notice",
+    "services/api/test/sharing.db.test.ts, tests/integration/layer3.int.test.ts (web and text withdrawal, notices)",
+    "Access is gone in the same worker transaction, not within the hour."
+  ],
+  "NED-06": [
+    "pass",
+    "public help view (published, confirmed sites only), nearest by ZIP or point, next nearest when full or closed",
+    "services/api/test/help.db.test.ts, tests/e2e/help.spec.ts",
+    ""
+  ],
+  "NED-07": [
+    "partial",
+    "GET /needs (documented API), GET /needs.csv (confirmed, audited, an exported event per need), claim/assign/release/done with overlap warnings",
+    "services/api/test/needs.db.test.ts, tests/integration/layer3.int.test.ts",
+    "Named case-management systems are a Section 21 open item (ask Adam); the CSV holds 200 rows per call and is county-only."
+  ],
+  "NED-08": [
+    "pass",
+    "packages/intake graph: \"someone to talk with\" as an optional need, no faith assumed (layer 2); counseling service shares a contact method only (sharing.ts)",
+    "packages/intake/test/graph.test.ts, packages/authz/test/sharing.test.ts",
+    ""
+  ],
+  "PUB-01": [
+    "pass",
+    "services/api/src/public/sites-view.ts (one view for every channel, ADR-0031)",
+    "tests/integration/layer3.int.test.ts (change on the page, the text reply and the feeds inside two minutes, measured)",
+    ""
+  ],
+  "PUB-02": [
+    "pass",
+    "sites-view.ts publicSites, apps/web-help siteCard, render.ts",
+    "services/api/test/help.db.test.ts, tests/e2e/help.spec.ts",
+    ""
+  ],
+  "PUB-03": [
+    "pass",
+    "confirm window in sites-view.ts; routes/sites.ts confirm; worker remindSiteConfirmations (reminder before, notice when hidden)",
+    "services/api/test/help.db.test.ts, services/worker/test/reminders.db.test.ts, tests/integration/layer3.int.test.ts",
+    ""
+  ],
+  "PUB-04": [
+    "pass",
+    "sites-view.ts nextNearest; text and voice carry it",
+    "services/api/test/help.db.test.ts, help-units.test.ts, tests/integration/layer3.int.test.ts",
+    ""
+  ],
+  "PUB-05": [
+    "pass",
+    "cg.site.confidential; publish refused; excluded from the view and every renderer",
+    "services/api/test/help.db.test.ts, tests/integration/layer3.int.test.ts (every output), sites.ts",
+    ""
+  ],
+  "PUB-06": [
+    "pass",
+    "site.publish and resource.publish consequential (named approver, reason), cg.publication rows, human-reviewed text required, worker publication notices",
+    "services/api/test/help.db.test.ts, reminders.db.test.ts, tests/e2e/console-l3.spec.ts (publish through the dialog), tests/integration/layer3.int.test.ts",
+    ""
+  ],
+  "PUB-07": [
+    "pass",
+    "apps/web-help (45 KB first load, budget in CI), EN/ES, list first, optional map, print",
+    "tests/e2e/help.spec.ts (EN, ES, keyboard, 320 px, poster), apps/web-help/scripts/check-size.mjs in CI",
+    ""
+  ],
+  "PUB-08": [
+    "pass",
+    "SHELTER/REFUGIO <ZIP> (dialogue.ts, channels/sites-text.ts, session.ts)",
+    "services/api/test/channels.db.test.ts, tests/integration/layer3.int.test.ts",
+    ""
+  ],
+  "PUB-09": [
+    "pass",
+    "voice greeting option 3/4, ZIP by keypad, nearest sites read out, 0 transfers (session.ts)",
+    "services/api/test/channels.db.test.ts",
+    ""
+  ],
+  "PUB-10": [
+    "pass",
+    "GET /api/public/help/:tenant/hsds.json (Open Referral 3.0 shape), the OpenAPI document for the public help routes",
+    "services/api/test/help.db.test.ts",
+    "Consumers poll; no push to 211 (ADR-0031)."
+  ],
+  "PUB-11": [
+    "pass",
+    "services/api/src/public/alerts.ts (WEA 90/360 and mass notification, EN/ES), POST /alerts/draft logged",
+    "services/api/test/help-units.test.ts",
+    "Drafts only; the county sends through its own alert system."
+  ],
+  "PUB-12": ["deferred", "", "", "AI drafting of posts and graphics: layer 7."],
+  "PUB-13": [
+    "partial",
+    "GET /api/public/help/:tenant/media (page with last-updated and generated times, no timed refresh)",
+    "services/api/test/help.db.test.ts, tests/e2e/help.spec.ts (axe)",
+    "PDF generation arrives with the FEMA package tooling (layer 6)."
+  ],
+  "PUB-14": ["deferred", "", "", "Audio scripts and text-to-speech: layer 7 (providers)."],
+  "PUB-15": [
+    "pass",
+    "apps/web-help renderPoster (phone, short address, QR; never the QR alone)",
+    "tests/e2e/help.spec.ts (poster view)",
+    ""
+  ],
+  "PUB-16": [
+    "pass",
+    "GET /api/public/help/:tenant/widget.js",
+    "services/api/test/help.db.test.ts",
+    ""
+  ],
+  "PUB-17": [
+    "pass",
+    "GET /api/public/help/:tenant/sites.geojson and hsds.json without confidential sites",
+    "services/api/test/help.db.test.ts, tests/integration/layer3.int.test.ts",
+    ""
+  ],
+  "PUB-18": [
+    "pass",
+    "resources with per-language human-reviewed text, review and expiry dates, link check, accessible HTML (ADR-0031)",
+    "services/api/test/help.db.test.ts, help-units.test.ts, tests/integration/layer3.int.test.ts (AC-16)",
+    ""
+  ],
+  "A11Y-01": [
+    "pass",
+    "accessibility statement and support phone in the help JSON and on the page footer (apps/web-help)",
+    "tests/e2e/help.spec.ts (axe WCAG 2.2 AA)",
+    ""
+  ],
+  "CNT-01": [
+    "pass",
+    "cg.partner_contact types (24-hour, backup, liaison), verify with a due date, worker weekly re-verification digest",
+    "services/worker/test/reminders.db.test.ts, tests/e2e/console-l3.spec.ts",
+    ""
+  ],
+  "ADM-02": [
+    "pass",
+    "agreements drafted by the county and signed by the partner (routes/tenants.ts), partner screen (partners.tsx); partner realms and invitations from layer 1",
+    "services/api/test/sharing.db.test.ts (agreement journey), tests/integration/layer1.int.test.ts",
+    "A partner administrator invites the partner's own staff; the seed carries none, so the browser journey for the partner workspace is deferred (status file)."
+  ],
+  "CON-03": [
+    "deferred",
+    "",
+    "",
+    "Map layers need missions, outages and Census profiles: layers 4 and 8. The map stack itself ships on the public page (ADR-0029)."
+  ],
+  "CON-04": [
+    "pass",
+    "GET /dashboard/counts with as-of, KeyCounts on the console home",
+    "services/api/test/needs.db.test.ts, tests/e2e/console-l3.spec.ts, tests/integration/layer3.int.test.ts",
+    ""
+  ],
+  "CON-08": [
+    "pass",
+    "routes/needs.ts claim/assign/release/done/reopen with overlap warnings, append-only need_event; screens/needs.tsx",
+    "services/api/test/needs.db.test.ts, tests/integration/layer3.int.test.ts, tests/e2e/console-l3.spec.ts",
+    ""
+  ],
+  "CON-09": [
+    "pass",
+    "routes/sites.ts (open, capacity, occupancy, confirm, close, publish with the dialog), screens/sites.tsx",
+    "services/api/test/help.db.test.ts, tests/e2e/console-l3.spec.ts",
+    ""
+  ],
+  "CON-15": [
+    "pass",
+    "cg.board_visibility (person > role > agency, event-specific over default), GET/PUT /board-visibility",
+    "services/api/test/needs.db.test.ts",
+    ""
+  ],
+  "CON-16": ["deferred", "", "", "Shelter registration: layer 4 with the shelter workflows."],
+  "FL-02": ["deferred", "", "", "Find a record by phone: layer 4 (field app)."],
+  "FL-03": [
+    "partial",
+    "the sections a partner may see (grants, ADR-0030); needs, consent and referrals on one record",
+    "services/api/test/sharing.db.test.ts",
+    "Help received and the recovery plan arrive with case management (layers 4 and 6)."
+  ],
+  "FL-09": ["deferred", "", "", "Document photos: layer 4."],
+  "FL-10": [
+    "pass",
+    "POST /referrals (only to an organization with an active grant), accept/decline/done, referral_notice email",
+    "services/api/test/updates.db.test.ts, tests/integration/layer3.int.test.ts",
+    ""
+  ],
+  "FL-11": [
+    "pass",
+    "POST /reports/:id/messages (text with opt-in, else email; output filter), replies by text stored as inbound messages (session.ts saveReply)",
+    "services/api/test/updates.db.test.ts, channels.db.test.ts, tests/integration/layer3.int.test.ts",
+    "Email replies are not captured (needs an inbound mail route; ask Adam)."
+  ],
+  "FL-13": ["deferred", "", "", "Help received: layer 6 (case management)."],
+  "FL:FR-07": [
+    "deferred",
+    "",
+    "",
+    "Frontline and case-management workflows on the shared record: layers 4 and 6 (layer-3 plan §11)."
+  ],
+  "FL:FR-11": [
+    "deferred",
+    "",
+    "",
+    "Frontline and case-management workflows on the shared record: layers 4 and 6 (layer-3 plan §11)."
+  ],
+  "FL:FR-12": [
+    "deferred",
+    "",
+    "",
+    "Frontline and case-management workflows on the shared record: layers 4 and 6 (layer-3 plan §11)."
+  ],
+  "FL:FR-14": [
+    "deferred",
+    "",
+    "",
+    "Frontline and case-management workflows on the shared record: layers 4 and 6 (layer-3 plan §11)."
+  ],
+  "FL:FR-15": [
+    "deferred",
+    "",
+    "",
+    "Frontline and case-management workflows on the shared record: layers 4 and 6 (layer-3 plan §11)."
+  ],
+  "FL:FR-16": [
+    "deferred",
+    "",
+    "",
+    "Frontline and case-management workflows on the shared record: layers 4 and 6 (layer-3 plan §11)."
+  ],
+  "FL:FR-18": [
+    "deferred",
+    "",
+    "",
+    "Frontline and case-management workflows on the shared record: layers 4 and 6 (layer-3 plan §11)."
+  ],
+  "FL:FR-23": [
+    "deferred",
+    "",
+    "",
+    "Frontline and case-management workflows on the shared record: layers 4 and 6 (layer-3 plan §11)."
+  ],
+  "FL:FR-25": [
+    "deferred",
+    "",
+    "",
+    "Frontline and case-management workflows on the shared record: layers 4 and 6 (layer-3 plan §11)."
+  ],
+  "FL:FR-27": [
+    "deferred",
+    "",
+    "",
+    "Frontline and case-management workflows on the shared record: layers 4 and 6 (layer-3 plan §11)."
+  ],
+  "FL:FR-29": [
+    "deferred",
+    "",
+    "",
+    "Frontline and case-management workflows on the shared record: layers 4 and 6 (layer-3 plan §11)."
+  ],
+  "FL:FR-30": [
+    "deferred",
+    "",
+    "",
+    "Frontline and case-management workflows on the shared record: layers 4 and 6 (layer-3 plan §11)."
+  ],
+  "FL:FR-32": ["deferred", "", "", "The resident's own export from my report: layer 6."],
+  "SCL-13": [
+    "pass",
+    "MapLibre + self-hosted PMTiles on the public page, loaded only on request (ADR-0029); ZIP centroids; Esri/FEMA by import and export only",
+    "tests/e2e/help.spec.ts (map toggle), apps/web-help/src/map.ts",
+    "Intake has no map by design; the field app map arrives in layer 4."
+  ],
+  "SEC-18": [
+    "pass",
+    "every partner read of a shared record audited with the grant id and the categories read (routes/shared.ts); contact registry reads audited; system reads of contact methods audited (reminders.ts)",
+    "services/api/test/sharing.db.test.ts, services/worker/test/reminders.db.test.ts",
+    "Partner reads are in the partner tenant's log; a county-side ledger comes with read receipts in layer 4."
+  ]
+}

@@ -12,6 +12,7 @@ import type { FieldCrypto } from '@cg/crypto';
 import { runProbes, type Probe } from '@cg/adapters';
 import { AuthError, type SubjectLoader } from './auth/subject.ts';
 import { errorHandler } from './errors.ts';
+import type { ReportDeps } from './routes/reports.ts';
 import { redactPaths } from './logging.ts';
 import { authorizePlugin } from './plugins/authorize.ts';
 import { contextPlugin } from './plugins/context.ts';
@@ -30,6 +31,12 @@ export interface AppOptions {
   fieldCrypto?: FieldCrypto;
   /** Route plugins mounted under /api/v1. */
   routes?: FastifyPluginAsync[];
+  /** Object storage, AI provider and the submission path for the report routes (layer 2). */
+  reportDeps?: ReportDeps;
+  /** Route plugins mounted under /api/public (no staff session; layer 2 intake). */
+  publicRoutes?: FastifyPluginAsync[];
+  /** Route plugins mounted under /api/webhooks (carrier callbacks and the simulator). */
+  webhookRoutes?: FastifyPluginAsync[];
 }
 
 export type App = Awaited<ReturnType<typeof buildApp>>;
@@ -54,6 +61,7 @@ export async function buildApp(opts: AppOptions) {
   app.setSerializerCompiler(serializerCompiler);
   app.setErrorHandler(errorHandler);
   if (opts.fieldCrypto) app.decorate('fieldCrypto', opts.fieldCrypto);
+  app.decorate('reportDeps', opts.reportDeps ?? {});
 
   // SCL-09: documented REST API, generated from the same schemas that validate requests.
   await app.register(swagger, {
@@ -99,6 +107,12 @@ export async function buildApp(opts: AppOptions) {
 
   for (const routes of opts.routes ?? []) {
     await app.register(routes, { prefix: '/api/v1' });
+  }
+  for (const routes of opts.publicRoutes ?? []) {
+    await app.register(routes, { prefix: '/api/public' });
+  }
+  for (const routes of opts.webhookRoutes ?? []) {
+    await app.register(routes, { prefix: '/api/webhooks' });
   }
 
   return app;

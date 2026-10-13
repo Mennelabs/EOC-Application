@@ -11,15 +11,20 @@
   "dependencies": {
     "@aws-sdk/client-s3": "3.1141.0",
     "@cg/adapters": "workspace:*",
+    "@cg/ai": "workspace:*",
     "@cg/audit": "workspace:*",
     "@cg/authz": "workspace:*",
     "@cg/config": "workspace:*",
+    "@cg/crypto": "workspace:*",
     "@cg/db": "workspace:*",
+    "@cg/intake": "workspace:*",
     "@cg/provisioning": "workspace:*",
     "amqplib": "2.0.1",
     "kysely": "0.29.6",
     "nodemailer": "10.0.10",
-    "pino": "10.3.1"
+    "pino": "10.3.1",
+    "sharp": "0.35.5",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@types/amqplib": "0.10.8",

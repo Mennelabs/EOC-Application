@@ -17,7 +17,13 @@ export const CAST_ACCOUNTS: ReadonlyArray<readonly [realm: string, user: string]
   ['county', 'priya.assessment@example.org'],
   ['county', 'marcus.gis@example.org'],
   ['county', 'tomas.pio@example.org'],
+  ['county', 'luis.masscare@example.org'],
+  ['county', 'keisha.afn@example.org'],
   ['state', 'state.liaison@example.org'],
+  // Partner organizations (layer 3): their realms are provisioned the same way.
+  ['canteen', 'ruth.canteen@example.org'],
+  ['shelter-ngo', 'nurse@example.org'],
+  ['coad', 'jen.coad@example.org'],
 ];
 
 async function canSignIn(realm: string, user: string): Promise<boolean> {

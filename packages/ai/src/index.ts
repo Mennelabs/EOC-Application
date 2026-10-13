@@ -1,0 +1,27 @@
+export * from './types.ts';
+export { redact, type Redaction } from './redact.ts';
+export { filterGeneratedText, type FilterResult } from './filter.ts';
+export { buildExtractionPrompt, RESIDENT_TEXT_OPEN, RESIDENT_TEXT_CLOSE } from './prompt.ts';
+export {
+  extractionOutputSchema,
+  extractionQuestions,
+  validateExtraction,
+  type ValidatedExtraction,
+} from './extraction.ts';
+export { fakeProvider, FakeLanguageModel } from './providers/fake.ts';
+export {
+  providers,
+  providerByName,
+  isCompliant,
+  canEnable,
+  AI_FEATURES,
+  type EvaluationSummary,
+  type RegisterEntry,
+} from './registry.ts';
+export {
+  evaluateProvider,
+  THRESHOLDS,
+  type EvaluationReport,
+  type CaseResult,
+} from './evaluation/harness.ts';
+export { evaluationCases, type EvalCase } from './evaluation/cases.ts';

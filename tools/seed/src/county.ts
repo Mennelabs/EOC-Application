@@ -425,3 +425,287 @@ export function buildCounty(seed: number, reportCount: number) {
     reports: reports(rng, parcelList, reportCount),
   };
 }
+
+/** Public sites for the exercise (layer 3; CON-09, PUB-02–05). One is confidential and never published. */
+export interface SiteSpec {
+  slug: string;
+  kind:
+    | 'shelter'
+    | 'feeding'
+    | 'pod'
+    | 'marc'
+    | 'cooling'
+    | 'warming'
+    | 'reporting'
+    | 'charging'
+    | 'other';
+  name: string;
+  status: 'planned' | 'open' | 'limited' | 'full' | 'closed';
+  address: { line1: string; city: string; postal: string };
+  location: [number, number];
+  capacity?: number;
+  occupancy?: number;
+  hours: Record<string, string | boolean>;
+  services: string[];
+  pets: 'yes' | 'no' | 'service_animals' | 'unknown';
+  accessibility: Record<string, boolean>;
+  medicalPower: boolean;
+  languages: string[];
+  transit?: string;
+  directions?: string;
+  confidential?: boolean;
+  publish: boolean;
+}
+
+const siteList: SiteSpec[] = [
+  {
+    slug: 'harmon-high-gym',
+    kind: 'shelter',
+    name: 'Harmon High School gym',
+    status: 'open',
+    address: { line1: '400 Schoolhouse Rd', city: 'Harmon City', postal: '63005' },
+    location: [-90.79, 38.812],
+    capacity: 350,
+    occupancy: 112,
+    hours: { always: true },
+    services: ['cots', 'meals', 'showers', 'charging', 'pet_area_outside'],
+    pets: 'service_animals',
+    accessibility: { ada: true, wheelchair: true, quiet_room: true, asl_on_request: true },
+    medicalPower: true,
+    languages: ['en', 'es'],
+    transit: 'Route 12 bus stops at the main entrance',
+    directions: 'Enter from Schoolhouse Rd; the gym is the first building on the left.',
+    publish: true,
+  },
+  {
+    slug: 'nueva-esperanza-hall',
+    kind: 'feeding',
+    name: 'Iglesia Nueva Esperanza fellowship hall',
+    status: 'open',
+    address: { line1: '18 Cedar Ridge Pkwy', city: 'Westwind', postal: '63002' },
+    location: [-90.873, 38.801],
+    hours: { daily: '11:00–13:30' },
+    services: ['meals', 'water', 'reporting_table', 'spanish_speaking_volunteers'],
+    pets: 'yes',
+    accessibility: { ada: true, wheelchair: true },
+    medicalPower: false,
+    languages: ['es', 'en'],
+    transit: 'Route 4 bus, Cedar Ridge stop',
+    publish: true,
+  },
+  {
+    slug: 'westwind-community-center',
+    kind: 'cooling',
+    name: 'Westwind Community Center',
+    status: 'closed',
+    address: { line1: '1 Civic Plaza', city: 'Westwind', postal: '63003' },
+    location: [-90.86, 38.797],
+    hours: {},
+    services: [],
+    pets: 'unknown',
+    accessibility: { ada: true },
+    medicalPower: false,
+    languages: ['en'],
+    directions: 'Closed while the power is out.',
+    publish: true,
+  },
+  {
+    slug: 'fairgrounds-pod',
+    kind: 'pod',
+    name: 'County fairgrounds distribution point',
+    status: 'planned',
+    address: { line1: '2200 Fairgrounds Rd', city: 'Westwind', postal: '63004' },
+    location: [-90.8, 38.78],
+    hours: { daily: '09:00–18:00' },
+    services: ['water', 'ice', 'meals', 'drive_through'],
+    pets: 'unknown',
+    accessibility: { ada: true, walk_up: true },
+    medicalPower: false,
+    languages: ['en', 'es'],
+    publish: false,
+  },
+  {
+    slug: 'safe-harbor',
+    kind: 'shelter',
+    name: 'Safe Harbor (confidential, referral only)',
+    status: 'open',
+    address: { line1: 'Withheld', city: 'Westwind', postal: '63003' },
+    location: [-90.85, 38.79],
+    capacity: 24,
+    hours: { always: true },
+    services: ['cots', 'meals', 'advocacy'],
+    pets: 'no',
+    accessibility: { ada: true },
+    medicalPower: false,
+    languages: ['en', 'es'],
+    confidential: true,
+    publish: false,
+  },
+];
+export const sites = siteList.map((f) => ({ ...f, ...SYNTHETIC }));
+
+/** Synthetic ZIP centroids: "nearest" works without the geocoder (SCL-06, PUB-08). */
+export const zipCentroids = [
+  { postal: '63001', name: 'Willow Bend', location: [-90.905, 38.79] as [number, number] },
+  { postal: '63002', name: 'Cedar Ridge', location: [-90.87, 38.795] as [number, number] },
+  { postal: '63003', name: 'Westwind', location: [-90.835, 38.8] as [number, number] },
+  { postal: '63004', name: 'Oak Hollow', location: [-90.815, 38.805] as [number, number] },
+  { postal: '63005', name: 'Harmon City', location: [-90.79, 38.812] as [number, number] },
+];
+
+/** Published resources beyond sites (F16, PUB-18); one is expired on purpose (AC-16B). */
+export interface ResourceSpec {
+  slug: string;
+  type: 'hotline' | 'program' | 'deadline' | 'guidance' | 'link' | 'document';
+  category: string;
+  ordering: number;
+  status: 'published' | 'expired' | 'draft';
+  referenceUrl?: string;
+  expiresInDays?: number;
+  text: Record<string, { title: string; summary: string; bodyHtml: string }>;
+}
+
+export const resources: ResourceSpec[] = [
+  {
+    slug: 'county-help-line',
+    type: 'hotline',
+    category: 'help',
+    ordering: 10,
+    status: 'published',
+    text: {
+      en: {
+        title: 'County disaster help line',
+        summary:
+          'Call (314) 555-0142, 7 am to 9 pm, for questions about shelter, food, cleanup or your report.',
+        bodyHtml:
+          '<p>Call <a href="tel:+13145550142">(314) 555-0142</a> from 7 am to 9 pm. Interpreters are available. If anyone is in danger, call 911.</p>',
+      },
+      es: {
+        title: 'Línea de ayuda del condado',
+        summary:
+          'Llame al (314) 555-0142, de 7 am a 9 pm, para preguntas sobre refugio, comida, limpieza o su reporte.',
+        bodyHtml:
+          '<p>Llame al <a href="tel:+13145550142">(314) 555-0142</a> de 7 am a 9 pm. Hay intérpretes. Si alguien está en peligro, llame al 911.</p>',
+      },
+    },
+  },
+  {
+    slug: 'fema-registration',
+    type: 'deadline',
+    category: 'money',
+    ordering: 20,
+    status: 'published',
+    referenceUrl: 'https://www.disasterassistance.gov/',
+    expiresInDays: 60,
+    text: {
+      en: {
+        title: 'Register with FEMA',
+        summary:
+          'If a federal disaster is declared, register online or by phone. Registering does not decide what you get.',
+        bodyHtml:
+          '<p>If a federal disaster is declared for this event, you can register at <a href="https://www.disasterassistance.gov/">DisasterAssistance.gov</a> or by calling 1-800-621-3362. Have your address and a way to be reached. Registering does not decide what help you get; FEMA does.</p>',
+      },
+      es: {
+        title: 'Regístrese con FEMA',
+        summary:
+          'Si se declara un desastre federal, regístrese en línea o por teléfono. Registrarse no decide qué recibirá.',
+        bodyHtml:
+          '<p>Si se declara un desastre federal para este evento, puede registrarse en <a href="https://www.disasterassistance.gov/">DisasterAssistance.gov</a> o llamando al 1-800-621-3362. Tenga a mano su dirección y una forma de contacto. Registrarse no decide qué ayuda recibirá; eso lo decide FEMA.</p>',
+      },
+    },
+  },
+  {
+    slug: 'debris-pickup',
+    type: 'guidance',
+    category: 'cleanup',
+    ordering: 30,
+    status: 'published',
+    text: {
+      en: {
+        title: 'Putting debris at the curb',
+        summary:
+          'Sort debris into piles: plants, building material, appliances, electronics, household chemicals.',
+        bodyHtml:
+          '<h2>Five piles</h2><ul><li>Plants and branches</li><li>Building material</li><li>Appliances</li><li>Electronics</li><li>Household chemicals, kept apart</li></ul><p>Keep piles off the road, away from mailboxes, hydrants and power lines.</p>',
+      },
+      es: {
+        title: 'Cómo poner los escombros en la acera',
+        summary:
+          'Separe los escombros en montones: plantas, material de construcción, electrodomésticos, electrónicos, químicos del hogar.',
+        bodyHtml:
+          '<h2>Cinco montones</h2><ul><li>Plantas y ramas</li><li>Material de construcción</li><li>Electrodomésticos</li><li>Electrónicos</li><li>Químicos del hogar, aparte</li></ul><p>Mantenga los montones fuera de la calle y lejos de buzones, hidrantes y cables eléctricos.</p>',
+      },
+    },
+  },
+  {
+    slug: 'legal-help',
+    type: 'program',
+    category: 'help',
+    ordering: 40,
+    status: 'published',
+    text: {
+      en: {
+        title: 'Free legal help after the storm',
+        summary:
+          'Volunteer attorneys answer questions about leases, insurance and repairs at no cost.',
+        bodyHtml:
+          '<p>Volunteer attorneys from Gateway Legal Aid answer questions about leases, insurance claims and repair contracts at no cost. Ask at any help site or call the county help line.</p>',
+      },
+      es: {
+        title: 'Ayuda legal gratuita después de la tormenta',
+        summary:
+          'Abogados voluntarios responden preguntas sobre contratos de alquiler, seguros y reparaciones sin costo.',
+        bodyHtml:
+          '<p>Abogados voluntarios de Gateway Legal Aid responden preguntas sobre contratos de alquiler, reclamos de seguro y contratos de reparación sin costo. Pregunte en cualquier sitio de ayuda o llame a la línea del condado.</p>',
+      },
+    },
+  },
+  {
+    slug: 'boil-water-notice',
+    type: 'guidance',
+    category: 'water',
+    ordering: 5,
+    status: 'expired',
+    expiresInDays: -2,
+    text: {
+      en: {
+        title: 'Boil water notice (ended)',
+        summary: 'The boil water notice for Cedar Ridge ended.',
+        bodyHtml: '<p>The boil water notice for Cedar Ridge has ended.</p>',
+      },
+      es: {
+        title: 'Aviso de hervir el agua (terminado)',
+        summary: 'El aviso de hervir el agua para Cedar Ridge terminó.',
+        bodyHtml: '<p>El aviso de hervir el agua para Cedar Ridge terminó.</p>',
+      },
+    },
+  },
+];
+
+/**
+ * Signed data-sharing agreements from the county to its partners (layer 1
+ * table, layer 3 use): the organization type the resident consents to and
+ * the service that fixes the minimum fields (NED-03/04).
+ */
+export const agreements = [
+  {
+    partner: 'cleanup',
+    orgType: 'volunteer_cleanup',
+    service: 'cleanup',
+    categories: ['contact', 'location_exact'],
+  },
+  {
+    partner: 'canteen',
+    orgType: 'relief_agencies',
+    service: 'feeding',
+    categories: ['location_exact', 'household'],
+  },
+  {
+    partner: 'shelter-ngo',
+    orgType: 'relief_agencies',
+    service: 'shelter',
+    categories: ['contact', 'access_needs'],
+  },
+  { partner: 'legal', orgType: 'relief_agencies', service: 'legal', categories: ['contact'] },
+  { partner: 'coad', orgType: 'community_groups', service: 'coordination', categories: [] },
+];

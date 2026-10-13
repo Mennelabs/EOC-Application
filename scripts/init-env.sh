@@ -27,5 +27,13 @@ RABBITMQ_PASSWORD=$(rand)
 MINIO_ROOT_PASSWORD=$(rand)
 CJIS_POSTGRES_PASSWORD=$(rand)
 CJIS_APP_PASSWORD=$(rand)
+RESIDENT_TOKEN_SECRET=$(rand)
+# Optional real texting (docs/06); empty keeps the simulator.
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+WEBHOOK_PUBLIC_BASE=
+# Abuse protection per address (SEC-17); raise the deny limit only for a load generator on one host.
+PUBLIC_IP_VERIFY_PER_10MIN=20
+PUBLIC_IP_DENY_PER_10MIN=120
 ENV
 echo "Wrote .env with fresh local secrets."

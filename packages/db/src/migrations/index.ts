@@ -9,6 +9,23 @@ import * as m0007 from './0007_data_protection.ts';
 import * as m0008 from './0008_execution.ts';
 import * as m0009 from './0009_data_dictionary_rows.ts';
 import * as m0010 from './0010_tenant_provisioning.ts';
+import * as m0011 from './0011_intake_graph.ts';
+import * as m0012 from './0012_parties_locations.ts';
+import * as m0013 from './0013_reports.ts';
+import * as m0014 from './0014_needs_consent.ts';
+import * as m0015 from './0015_channels.ts';
+import * as m0016 from './0016_ai_register.ts';
+import * as m0017 from './0017_public_tenant_lookup.ts';
+import * as m0018 from './0018_report_flags.ts';
+import * as m0019 from './0019_channel_numbers.ts';
+import * as m0020 from './0020_after_answers.ts';
+import * as m0021 from './0021_needs_board.ts';
+import * as m0022 from './0022_sharing.ts';
+import * as m0023 from './0023_sites.ts';
+import * as m0024 from './0024_resources.ts';
+import * as m0025 from './0025_publication.ts';
+import * as m0026 from './0026_message_direction.ts';
+import * as m0027 from './0027_reminders.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -22,4 +39,21 @@ export const migrations: Record<string, Migration> = {
   '0008_execution': m0008,
   '0009_data_dictionary_rows': m0009,
   '0010_tenant_provisioning': m0010,
+  '0011_intake_graph': m0011,
+  '0012_parties_locations': m0012,
+  '0013_reports': m0013,
+  '0014_needs_consent': m0014,
+  '0015_channels': m0015,
+  '0016_ai_register': m0016,
+  '0017_public_tenant_lookup': m0017,
+  '0018_report_flags': m0018,
+  '0019_channel_numbers': m0019,
+  '0020_after_answers': m0020,
+  '0021_needs_board': m0021,
+  '0022_sharing': m0022,
+  '0023_sites': m0023,
+  '0024_resources': m0024,
+  '0025_publication': m0025,
+  '0026_message_direction': m0026,
+  '0027_reminders': m0027,
 };

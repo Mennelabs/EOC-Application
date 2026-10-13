@@ -13,3 +13,8 @@ if (root) {
     </StrictMode>,
   );
 }
+
+// Installable and opens offline (CHN-02); registration failure changes nothing for the resident.
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+}

@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
+    "@cg/ai": "workspace:*",
     "@cg/authz": "workspace:*",
     "@cg/db": "workspace:*",
     "kysely": "0.29.6"

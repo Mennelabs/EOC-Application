@@ -153,7 +153,7 @@ A. `packages/intake`: graph schema, default WESTWIND graph (EN/ES), engine (bran
 3. **Witness reports (WIT-01):** stored as a separate relationship, never merged into an owner's record automatically; a reviewer may link them as evidence.
 4. **Organization reports (ORG-01):** each property is its own report with its own reference code; the organization is the reporter party, contact details are shared across them, and consent is per property.
 5. **Pause codes (INT-20):** six characters, hashed at rest, seven-day expiry, no personal data in the code; resuming shows nothing until the code matches.
-6. **Risk-based verification (SEC-17):** only when the score is high; the challenge is a one-time code to the contact given, never a puzzle; staff can see why a submission was challenged.
+6. **Risk-based verification (SEC-17):** a high score never blocks a submission (rule 8). The report is accepted, carries a "contact not verified" signal for reviewers with the reasons, and the resident can verify through the reference-code lookup (one-time code to the contact given, never a puzzle). Only a flood from one network address is refused, with a retryable 429 and the county help line.
 7. **Photos before blurring (PHO-07):** restricted to reviewer roles; the queue shows a placeholder and the reason; nothing is lost.
 8. **SMS keywords (CHN-03):** DANOS without the tilde is accepted as Spanish because many phones drop it; AYUDA stays the help keyword; SHELTER and REFUGIO reply with the help line until layer 3.
 

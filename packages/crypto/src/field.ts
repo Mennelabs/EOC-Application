@@ -30,13 +30,23 @@ const TAG_BYTES = 16;
 
 export class FieldCrypto {
   private readonly cache = new Map<string, Buffer>(); // `${tenant}:${version}` → data key
+  /**
+   * Which version is active per tenant, for a short while. Encryption runs
+   * inside request and job transactions; without this every encrypt would
+   * take a second database connection for the key record, and enough of
+   * them at once can exhaust the pool while each holds the first (SEC-10).
+   * A rotated key is picked up within the TTL; older versions stay readable.
+   */
+  private readonly active = new Map<string, { version: number; until: number }>();
 
   private readonly keys: KeyService;
   private readonly store: TenantKeyStore;
+  private readonly activeTtlMs: number;
 
-  constructor(keys: KeyService, store: TenantKeyStore) {
+  constructor(keys: KeyService, store: TenantKeyStore, opts: { activeTtlMs?: number } = {}) {
     this.keys = keys;
     this.store = store;
+    this.activeTtlMs = opts.activeTtlMs ?? 60_000;
   }
 
   private cacheKey(tenantId: string, version: number): string {
@@ -45,6 +55,11 @@ export class FieldCrypto {
 
   /** The tenant's active data key, creating the first one on demand. */
   private async activeKey(tenantId: string): Promise<{ version: number; dek: Buffer }> {
+    const known = this.active.get(tenantId);
+    if (known && known.until > Date.now()) {
+      const dek = this.cache.get(this.cacheKey(tenantId, known.version));
+      if (dek) return { version: known.version, dek };
+    }
     let record = await this.store.getActive(tenantId);
     if (!record) {
       const name = await this.keys.ensureTenantKey(tenantId);
@@ -52,9 +67,12 @@ export class FieldCrypto {
       record = { version: 1, wrapped: fresh.wrapped };
       await this.store.insert(tenantId, { ...record, kekName: name });
       this.cache.set(this.cacheKey(tenantId, 1), fresh.plaintext);
+      this.active.set(tenantId, { version: 1, until: Date.now() + this.activeTtlMs });
       return { version: 1, dek: fresh.plaintext };
     }
-    return { version: record.version, dek: await this.dekFor(tenantId, record) };
+    const dek = await this.dekFor(tenantId, record);
+    this.active.set(tenantId, { version: record.version, until: Date.now() + this.activeTtlMs });
+    return { version: record.version, dek };
   }
 
   private async dekFor(tenantId: string, record: TenantKeyRecord): Promise<Buffer> {
@@ -84,9 +102,13 @@ export class FieldCrypto {
       throw new Error('unrecognised ciphertext');
     }
     const version = blob.readUInt16BE(1);
-    const record = await this.store.get(tenantId, version);
-    if (!record) throw new Error('data key version not found');
-    const dek = await this.dekFor(tenantId, record);
+    // A version's data key never changes, so a known one needs no lookup.
+    let dek = this.cache.get(this.cacheKey(tenantId, version));
+    if (!dek) {
+      const record = await this.store.get(tenantId, version);
+      if (!record) throw new Error('data key version not found');
+      dek = await this.dekFor(tenantId, record);
+    }
     const iv = blob.subarray(3, 3 + IV_BYTES);
     const tag = blob.subarray(3 + IV_BYTES, 3 + IV_BYTES + TAG_BYTES);
     const ct = blob.subarray(3 + IV_BYTES + TAG_BYTES);

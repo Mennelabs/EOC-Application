@@ -76,7 +76,9 @@ export function DataTable<T>({
 }) {
   if (rows.length === 0) return <p className="empty">{empty}</p>;
   return (
-    <div className="table-wrap">
+    // A wide table scrolls sideways on a phone; the region takes keyboard focus so the
+    // arrow keys can scroll it, and is named after its caption (ACC-07, ACC-10, WCAG 2.1.1).
+    <div className="table-wrap" role="region" aria-label={caption} tabIndex={0}>
       <table>
         <caption>{caption}</caption>
         <thead>
@@ -107,7 +109,7 @@ export function ConfirmDialog({
   request,
   onDone,
 }: {
-  request: { action: string; description: string } | null;
+  request: { action: string; description: string; draft?: string | undefined } | null;
   onDone: (c: Confirmation) => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -117,7 +119,7 @@ export function ConfirmDialog({
     const d = ref.current;
     if (!d) return;
     if (request && !d.open) {
-      setReason('');
+      setReason(request.draft ?? '');
       setError(undefined);
       d.showModal();
     } else if (!request && d.open) d.close();
@@ -144,7 +146,11 @@ export function ConfirmDialog({
         <p>{request?.description}</p>
         <Field
           label="Reason"
-          hint="Recorded in the audit log with your name and the time."
+          hint={
+            request?.draft
+              ? 'Taken from the form. Recorded in the audit log with your name and the time; change it if it is not what you checked.'
+              : 'Recorded in the audit log with your name and the time.'
+          }
           {...(error ? { error } : {})}
         >
           {({ id, describedBy, invalid }) => (

@@ -4,7 +4,7 @@ import { gradeTable, lintGraph } from './lint.ts';
 
 const findings = lintGraph(westwindGraph);
 for (const row of gradeTable(westwindGraph)) {
-  console.log(`${row.grade.toFixed(1).padStart(5)}  ${row.id.padEnd(22)} ${row.prompt}`); // eslint-disable-line no-console
+  console.log(`${row.grade.toFixed(1).padStart(5)}  ${row.id.padEnd(22)} ${row.prompt}`);
 }
 if (findings.length > 0) {
   console.error(`\n${findings.length} finding(s):`);
@@ -12,4 +12,4 @@ if (findings.length > 0) {
     console.error(`- ${f.nodeId} ${f.field} [${f.locale}] ${f.rule}: ${f.detail}`);
   process.exit(1);
 }
-console.log('\nAll strings pass the intake lint (INT-08, INT-17, INT-18).'); // eslint-disable-line no-console
+console.log('\nAll strings pass the intake lint (INT-08, INT-17, INT-18).');

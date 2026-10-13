@@ -3,9 +3,25 @@
  * work already done and records nothing new (BRD:FR-00.06).
  */
 import { roleTemplates } from '@cg/authz';
-import { ensureRetentionDefaults, ensureTemplateRoles } from '@cg/provisioning';
+import { evaluateProvider, fakeProvider } from '@cg/ai';
+import { westwindGraph } from '@cg/intake';
+import {
+  ensureAiRegister,
+  ensureIntakeGraph,
+  ensureRetentionDefaults,
+  ensureTemplateRoles,
+} from '@cg/provisioning';
 import { sql } from 'kysely';
 import { allTenantIds, asSystem, systemAudit } from '../system.ts';
+import { messageSend } from './messages.ts';
+import { photoProcess } from './photos.ts';
+import { referralCreated } from './referrals.ts';
+import {
+  consentChanged,
+  correctionRequested,
+  reportCorrected,
+  reportWithdrawn,
+} from './reports.ts';
 import type { JobContext, OutboxMessage, TopicHandler } from './types.ts';
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : String(v ?? ''));
@@ -24,6 +40,8 @@ export const tenantProvision: TopicHandler = async (ctx, msg) => {
   await asSystem(ctx.db, tenantId, async (trx) => {
     await ensureRetentionDefaults(trx, tenantId);
     await ensureTemplateRoles(trx, tenantId);
+    await ensureIntakeGraph(trx, tenantId, westwindGraph);
+    await ensureAiRegister(trx, tenantId, fakeProvider, await evaluateProvider(fakeProvider));
     await systemAudit(trx, tenantId, 'tenant.provision', {
       action: 'tenant.provision',
       targetType: 'tenant',
@@ -32,6 +50,7 @@ export const tenantProvision: TopicHandler = async (ctx, msg) => {
         fields: [
           { name: 'roles_from_templates', to: roleTemplates.length },
           { name: 'retention_defaults', to: true },
+          { name: 'intake_graph', to: `${westwindGraph.key}@${westwindGraph.version}` },
         ],
       },
       executionId: msg.executionId,
@@ -221,7 +240,14 @@ export const topicHandlers: Record<string, TopicHandler> = {
   'account.status': accountStatus,
   'event.participant.add': eventParticipantAdd,
   'break_glass.started': breakGlassStarted,
-  'event.opened': async () => undefined, // layer 2: publish intake link/keyword to channels
+  'event.opened': async () => undefined, // channels announce the keyword and link in F
+  'photo.process': photoProcess,
+  'message.send': messageSend,
+  'correction.requested': correctionRequested,
+  'report.withdrawn': reportWithdrawn,
+  'report.corrected': reportCorrected,
+  'consent.changed': consentChanged,
+  'referral.created': referralCreated,
 };
 
 // ---- schedules --------------------------------------------------------------

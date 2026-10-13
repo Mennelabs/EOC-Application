@@ -7,7 +7,7 @@
  */
 import fp from 'fastify-plugin';
 import type { FastifyRequest } from 'fastify';
-import type { Kysely, Transaction } from 'kysely';
+import { sql, type Kysely, type Transaction } from 'kysely';
 import { withTenant, type Database } from '@cg/db';
 import { recordAudit, type AuditInput, type AuditReceipt } from '@cg/audit';
 import type { AccountSubject, PublicSubject } from '@cg/authz';
@@ -26,6 +26,13 @@ declare module 'fastify' {
   interface FastifyRequest {
     subject: RequestSubject;
     tx<T>(fn: (trx: Transaction<Database>) => Promise<T>): Promise<T>;
+    /**
+     * Runs fn inside another tenant's RLS context, attributed to this account.
+     * Only for a record a share grant covers (a partner claiming a shared need,
+     * NED-07): the route verifies the grant in its own context first and names
+     * the one record it acts on. Never for reads of the other tenant's tables.
+     */
+    txAs<T>(tenantId: string, fn: (trx: Transaction<Database>) => Promise<T>): Promise<T>;
     audit(trx: Transaction<Database>, input: AuditCall): Promise<AuditReceipt>;
     executionId: string | null;
   }
@@ -96,6 +103,30 @@ export const contextPlugin = fp<ContextOptions>(
           },
           fn,
         );
+      },
+    );
+
+    app.decorateRequest(
+      'txAs',
+      function (
+        this: FastifyRequest,
+        tenantId: string,
+        fn: (trx: Transaction<Database>) => Promise<unknown>,
+      ): Promise<unknown> {
+        const db = opts.db;
+        if (!db) throw new Error('database not configured');
+        const s = this.subject;
+        if (s.kind !== 'account') throw errors.unauthorized();
+        return withTenant(db, { tenantId, accountId: s.accountId }, async (trx) => {
+          // The county's own path, so its subtree (its partner organizations) is visible as it is to its staff.
+          const t = await trx
+            .selectFrom('cg.tenant')
+            .select('path')
+            .where('id', '=', tenantId)
+            .executeTakeFirst();
+          await sql`select set_config('app.tenant_path', ${t?.path ?? ''}, true)`.execute(trx);
+          return fn(trx);
+        });
       },
     );
 

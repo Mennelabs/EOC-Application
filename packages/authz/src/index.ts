@@ -17,3 +17,22 @@ export {
 } from './templates.ts';
 export { validateGrants, asGrants, grantSchema, grantsSchema } from './grants.ts';
 export { previewRole, type RolePreview } from './preview.ts';
+export {
+  SHARING_SERVICES,
+  SECTION_CATEGORY,
+  SECTIONS_BY_SERVICE,
+  RESTRICTED_SECTIONS,
+  isSharingService,
+  sectionsFor,
+  deriveGrants,
+  householdBand,
+  project,
+  type SharingService,
+  type SharingSection,
+  type SharingAgreement,
+  type SharingConsent,
+  type SharingSubject,
+  type DerivedGrant,
+  type SharingFacts,
+  type Projection,
+} from './sharing.ts';

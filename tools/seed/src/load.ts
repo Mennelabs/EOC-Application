@@ -13,9 +13,22 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'kysely';
 import { createDb, withTenant, type Database } from '@cg/db';
-import { ensureRetentionDefaults, ensureTemplateRoles } from '@cg/provisioning';
+import { evaluateProvider, fakeProvider } from '@cg/ai';
+import { westwindGraph } from '@cg/intake';
+import {
+  ensureAiRegister,
+  ensureIntakeGraph,
+  ensureRetentionDefaults,
+  ensureTemplateRoles,
+} from '@cg/provisioning';
 import type { Kysely, Transaction } from 'kysely';
-import { tenants as tenantSpecs } from './county.ts';
+import {
+  tenants as tenantSpecs,
+  agreements as agreementSpecs,
+  resources as resourceSpecs,
+  sites as siteSpecs,
+  zipCentroids,
+} from './county.ts';
 
 export const DEV_PASSWORD = 'Westwind-Exercise-2026!';
 /** Fixed ids so re-runs and tests can refer to the seed actors. */
@@ -176,8 +189,262 @@ async function ensureAccount(
   return { id: account.id, created: true };
 }
 
+/** The WESTWIND tornado exercise event with its public intake link and keywords (docs/02, CHN-08). */
+async function ensureExerciseEvent(trx: Transaction<Database>, tenantId: string): Promise<void> {
+  const existing = await trx
+    .selectFrom('cg.event')
+    .select('id')
+    .where('tenant_id', '=', tenantId)
+    .where('intake_slug', '=', 'westwind')
+    .executeTakeFirst();
+  if (existing) return;
+  await trx
+    .insertInto('cg.event')
+    .values({
+      tenant_id: tenantId,
+      name: 'Exercise WESTWIND tornado',
+      hazard_type: 'tornado',
+      status: 'active',
+      intake_slug: 'westwind',
+      intake_keywords: ['DAMAGE', 'DANOS', 'DAÑOS'],
+      opened_at: new Date(),
+      created_by: SEED_ACTOR_A,
+      updated_by: SEED_ACTOR_A,
+    })
+    .execute();
+}
+
+/** The county's text and voice number: a fictional 555 number on the simulator (docs/06, CHN-03). */
+export const SEED_COUNTY_NUMBER = '+13145550100';
+
+async function ensureChannelNumber(trx: Transaction<Database>, tenantId: string): Promise<void> {
+  await trx
+    .insertInto('cg.channel_number')
+    .values({
+      tenant_id: tenantId,
+      number: SEED_COUNTY_NUMBER,
+      provider: 'simulator',
+      label: 'Exercise toll-free number (simulator)',
+      verified_at: new Date(),
+      created_by: SEED_ACTOR_A,
+      updated_by: SEED_ACTOR_A,
+    })
+    .onConflict((oc) => oc.doNothing())
+    .execute();
+  await trx
+    .insertInto('cg.tenant_config')
+    .values({
+      tenant_id: tenantId,
+      key: 'intake.help_phone',
+      value: JSON.stringify('(314) 555-0142'),
+      created_by: SEED_ACTOR_A,
+      updated_by: SEED_ACTOR_A,
+    })
+    .onConflict((oc) => oc.doNothing())
+    .execute();
+}
+
+/** Sites with their locations, published ones with a publication row (CON-09, PUB-06). */
+async function ensureSites(trx: Transaction<Database>, tenantId: string): Promise<void> {
+  for (const spec of siteSpecs) {
+    const existing = await trx
+      .selectFrom('cg.site')
+      .select('id')
+      .where('tenant_id', '=', tenantId)
+      .where('slug', '=', spec.slug)
+      .executeTakeFirst();
+    if (existing) continue;
+    const location = await trx
+      .insertInto('cg.location')
+      .values({
+        tenant_id: tenantId,
+        line1: spec.address.line1,
+        city: spec.address.city,
+        state: 'MO',
+        postal: spec.address.postal,
+        geom: sql`ST_SetSRID(ST_MakePoint(${spec.location[0]}, ${spec.location[1]}), 4326)`,
+        precision: 'exact',
+        source: 'reviewer',
+        created_by: SEED_ACTOR_A,
+        updated_by: SEED_ACTOR_A,
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    const now = new Date();
+    const site = await trx
+      .insertInto('cg.site')
+      .values({
+        tenant_id: tenantId,
+        kind: spec.kind,
+        name: spec.name,
+        slug: spec.slug,
+        location_id: location.id,
+        status: spec.status,
+        capacity: spec.capacity ?? null,
+        occupancy: spec.occupancy ?? null,
+        hours: JSON.stringify(spec.hours),
+        services: spec.services,
+        pets: spec.pets,
+        accessibility: JSON.stringify(spec.accessibility),
+        medical_power: spec.medicalPower,
+        languages: spec.languages,
+        transit: spec.transit ?? null,
+        directions: spec.directions ?? null,
+        confidential: spec.confidential ?? false,
+        confirm_every_hours: 12,
+        last_confirmed_at: now,
+        last_confirmed_by: SEED_ACTOR_A,
+        published_version: spec.publish ? 1 : null,
+        published_at: spec.publish ? now : null,
+        created_by: SEED_ACTOR_A,
+        updated_by: SEED_ACTOR_A,
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    if (spec.publish) {
+      await trx
+        .insertInto('cg.publication')
+        .values({
+          tenant_id: tenantId,
+          subject_kind: 'site',
+          subject_id: site.id,
+          subject_version: 1,
+          snapshot: JSON.stringify({ ...spec, address: spec.address }),
+          approved_by: SEED_ACTOR_A,
+          reason: 'synthetic WESTWIND seed',
+        })
+        .execute();
+    }
+  }
+}
+
+async function ensureZipCentroids(trx: Transaction<Database>, tenantId: string): Promise<void> {
+  for (const z of zipCentroids) {
+    await trx
+      .insertInto('cg.zip_centroid')
+      .values({
+        tenant_id: tenantId,
+        postal: z.postal,
+        name: z.name,
+        geom: sql`ST_SetSRID(ST_MakePoint(${z.location[0]}, ${z.location[1]}), 4326)`,
+      })
+      .onConflict((oc) => oc.doNothing())
+      .execute();
+  }
+}
+
+/** Resources with English and Spanish text; published ones get a publication row (F16, PUB-18). */
+async function ensureResources(trx: Transaction<Database>, tenantId: string): Promise<void> {
+  for (const spec of resourceSpecs) {
+    const existing = await trx
+      .selectFrom('cg.resource')
+      .select('id')
+      .where('tenant_id', '=', tenantId)
+      .where('slug', '=', spec.slug)
+      .executeTakeFirst();
+    if (existing) continue;
+    const now = new Date();
+    const expires =
+      spec.expiresInDays === undefined
+        ? null
+        : new Date(now.getTime() + spec.expiresInDays * 86_400_000);
+    const published = spec.status !== 'draft';
+    const resource = await trx
+      .insertInto('cg.resource')
+      .values({
+        tenant_id: tenantId,
+        slug: spec.slug,
+        type: spec.type,
+        category: spec.category,
+        ordering: spec.ordering,
+        owner_account_id: SEED_ACTOR_A,
+        status: spec.status,
+        expires_at: expires,
+        reference_url: spec.referenceUrl ?? null,
+        link_status: spec.referenceUrl ? 'unchecked' : 'ok',
+        published_version: published ? 1 : null,
+        published_at: published ? now : null,
+        created_by: SEED_ACTOR_A,
+        updated_by: SEED_ACTOR_A,
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    for (const [locale, text] of Object.entries(spec.text)) {
+      await trx
+        .insertInto('cg.resource_text')
+        .values({
+          tenant_id: tenantId,
+          resource_id: resource.id,
+          locale,
+          title: text.title,
+          summary: text.summary,
+          body_html: text.bodyHtml,
+          human_reviewed_by: SEED_ACTOR_A,
+          reviewed_at: now,
+          created_by: SEED_ACTOR_A,
+          updated_by: SEED_ACTOR_A,
+        })
+        .execute();
+    }
+    if (published) {
+      await trx
+        .insertInto('cg.publication')
+        .values({
+          tenant_id: tenantId,
+          subject_kind: 'resource',
+          subject_id: resource.id,
+          subject_version: 1,
+          snapshot: JSON.stringify(spec),
+          approved_by: SEED_ACTOR_A,
+          reason: 'synthetic WESTWIND seed',
+        })
+        .execute();
+    }
+  }
+}
+
+/** Signed agreements county → partner organizations (SCL-01, NED-03/04). */
+async function ensureAgreements(
+  trx: Transaction<Database>,
+  countyId: string,
+  tenantIds: Record<string, string>,
+): Promise<void> {
+  for (const spec of agreementSpecs) {
+    const partnerId = tenantIds[spec.partner];
+    if (!partnerId) continue;
+    const existing = await trx
+      .selectFrom('cg.data_sharing_agreement')
+      .select('id')
+      .where('from_tenant_id', '=', countyId)
+      .where('to_tenant_id', '=', partnerId)
+      .executeTakeFirst();
+    if (existing) continue;
+    await trx
+      .insertInto('cg.data_sharing_agreement')
+      .values({
+        from_tenant_id: countyId,
+        to_tenant_id: partnerId,
+        scope: 'consented_records',
+        data_categories: spec.categories,
+        status: 'signed',
+        terms: JSON.stringify({
+          orgType: spec.orgType,
+          service: spec.service,
+          recallOnWithdrawal: true,
+          deleteOnRecall: true,
+        }),
+        signed_at: new Date(),
+        signed_by: SEED_ACTOR_A,
+        created_by: SEED_ACTOR_A,
+        updated_by: SEED_ACTOR_A,
+      })
+      .execute();
+  }
+}
+
 export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
   const tenantIds: Record<string, string> = {};
+  const evaluation = await evaluateProvider(fakeProvider);
   const accountIds: Record<string, string> = {};
 
   // Hierarchy in dependency order (parents first, as listed in county.ts).
@@ -188,6 +455,15 @@ export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
     await withTenant(db, { tenantId: id }, async (trx) => {
       await ensureRetentionDefaults(trx, id);
       await ensureTemplateRoles(trx, id);
+      await ensureIntakeGraph(trx, id, westwindGraph);
+      await ensureAiRegister(trx, id, fakeProvider, evaluation);
+      if (spec.key === 'county') {
+        await ensureExerciseEvent(trx, id);
+        await ensureChannelNumber(trx, id);
+        await ensureZipCentroids(trx, id);
+        await ensureSites(trx, id);
+        await ensureResources(trx, id);
+      }
       if (created) {
         await trx
           .insertInto('cg.outbox')
@@ -220,6 +496,12 @@ export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
       const { id } = await ensureAccount(trx, tenantId, member, role.id);
       accountIds[member.email] = id;
     });
+  }
+  const countyId = tenantIds['county'];
+  if (countyId) {
+    await withTenant(db, { tenantId: countyId }, (trx) =>
+      ensureAgreements(trx, countyId, tenantIds),
+    );
   }
   return { tenants: tenantIds, accounts: accountIds };
 }

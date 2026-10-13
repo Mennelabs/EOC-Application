@@ -10,6 +10,13 @@ import {
   RetentionScreen,
   RolesScreen,
 } from './screens/permissions.tsx';
+import { AiRegisterScreen, AssistedScreen, IntakeSetupScreen } from './screens/intake.tsx';
+import { ContactsScreen } from './screens/contacts.tsx';
+import { KeyCounts, NeedsBoardScreen, PartnerScreen } from './screens/needs.tsx';
+import { PartnersScreen } from './screens/partners.tsx';
+import { ResourcesScreen } from './screens/resources.tsx';
+import { ReportDetailScreen, ReviewQueueScreen } from './screens/review.tsx';
+import { PublicationsScreen, SitesScreen } from './screens/sites.tsx';
 import { ConfirmDialog, Field, Status } from './ui/primitives.tsx';
 
 /**
@@ -20,6 +27,16 @@ import { ConfirmDialog, Field, Status } from './ui/primitives.tsx';
  */
 const routes = [
   { path: '/console/', label: 'Home', layer: 1 },
+  { path: '/console/reports', label: 'Review queue', layer: 2 },
+  { path: '/console/assist', label: 'Assisted report', layer: 2 },
+  { path: '/console/intake', label: 'Intake setup', layer: 2 },
+  { path: '/console/needs', label: 'Needs board', layer: 3 },
+  { path: '/console/partner', label: 'Partner workspace', layer: 3 },
+  { path: '/console/sites', label: 'Sites', layer: 3 },
+  { path: '/console/resources', label: 'Resources', layer: 3 },
+  { path: '/console/publications', label: 'Publication log', layer: 3 },
+  { path: '/console/contacts', label: 'Contacts', layer: 3 },
+  { path: '/console/partners', label: 'Partner agreements', layer: 3 },
   { path: '/console/events', label: 'Events', layer: 1 },
   { path: '/console/tenants', label: 'Organizations', layer: 1 },
   { path: '/console/accounts', label: 'Staff accounts', layer: 1 },
@@ -29,11 +46,13 @@ const routes = [
   { path: '/console/audit', label: 'Audit log', layer: 1 },
   { path: '/console/break-glass', label: 'Emergency access', layer: 1 },
   { path: '/console/retention', label: 'Retention', layer: 1 },
+  { path: '/console/ai-register', label: 'AI use register', layer: 2 },
 ] as const;
 
 interface Me {
   accountId: string;
   tenantId: string;
+  tenantKind?: string;
   roles: { key: string; version: number }[];
   breakGlass: { id: string; expiresAt: string } | null;
 }
@@ -101,6 +120,7 @@ export function App({ config }: { config: RuntimeConfig }) {
   const [confirm, setConfirm] = useState<{
     action: string;
     description: string;
+    draft?: string | undefined;
     resolve: (c: Confirmation) => void;
   } | null>(null);
   const product = config.productName || 'Console';
@@ -111,8 +131,8 @@ export function App({ config }: { config: RuntimeConfig }) {
 
   useEffect(() => {
     setConfirmHandler(
-      (action, description) =>
-        new Promise((resolve) => setConfirm({ action, description, resolve })),
+      (action, description, draft) =>
+        new Promise((resolve) => setConfirm({ action, description, draft, resolve })),
     );
   }, []);
 
@@ -163,7 +183,31 @@ export function App({ config }: { config: RuntimeConfig }) {
   }
 
   const screen = (() => {
+    if (path.startsWith('/console/reports/'))
+      return <ReportDetailScreen id={path.slice('/console/reports/'.length)} navigate={navigate} />;
     switch (path) {
+      case '/console/reports':
+        return <ReviewQueueScreen navigate={navigate} />;
+      case '/console/assist':
+        return <AssistedScreen />;
+      case '/console/intake':
+        return <IntakeSetupScreen />;
+      case '/console/ai-register':
+        return <AiRegisterScreen />;
+      case '/console/needs':
+        return <NeedsBoardScreen me={me} />;
+      case '/console/partner':
+        return <PartnerScreen me={me} />;
+      case '/console/sites':
+        return <SitesScreen />;
+      case '/console/resources':
+        return <ResourcesScreen />;
+      case '/console/publications':
+        return <PublicationsScreen />;
+      case '/console/contacts':
+        return <ContactsScreen />;
+      case '/console/partners':
+        return <PartnersScreen me={me} />;
       case '/console/events':
         return <EventsScreen />;
       case '/console/tenants':
@@ -199,6 +243,7 @@ export function App({ config }: { config: RuntimeConfig }) {
             ) : (
               <p role="status">Loading your account…</p>
             )}
+            {me ? <KeyCounts /> : null}
           </section>
         );
     }
@@ -254,7 +299,11 @@ export function App({ config }: { config: RuntimeConfig }) {
         </main>
       </div>
       <ConfirmDialog
-        request={confirm ? { action: confirm.action, description: confirm.description } : null}
+        request={
+          confirm
+            ? { action: confirm.action, description: confirm.description, draft: confirm.draft }
+            : null
+        }
         onDone={(c) => {
           confirm?.resolve(c);
           setConfirm(null);

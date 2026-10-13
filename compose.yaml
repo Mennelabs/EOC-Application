@@ -20,6 +20,8 @@ x-node-env: &node-env
   S3_ACCESS_KEY_ID: cg-local
   S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?}
   S3_BUCKET: cg-local
+  # Browsers upload photos straight to object storage through the gateway's objects host (SCL-04).
+  S3_PUBLIC_ENDPOINT: https://objects.${GATEWAY_HOST:-localhost}
   KEYS_PROVIDER: openbao
   OPENBAO_ADDR: http://keys:8200
   OPENBAO_TOKEN_FILE: /bao-init/app-token
@@ -27,6 +29,14 @@ x-node-env: &node-env
   IDP_PUBLIC_BASE: https://${GATEWAY_HOST:-localhost}/auth
   IDP_HEALTH_URL: http://idp:9000/auth/health/ready
   SMTP_URL: smtp://mail:1025
+  RESIDENT_TOKEN_SECRET: ${RESIDENT_TOKEN_SECRET:?}
+  # Optional real texting (docs/06); empty keeps the simulator.
+  TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+  TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+  WEBHOOK_PUBLIC_BASE: ${WEBHOOK_PUBLIC_BASE:-}
+  # Abuse protection per address (SEC-17); raise the deny limit only for a load generator on one host.
+  PUBLIC_IP_VERIFY_PER_10MIN: ${PUBLIC_IP_VERIFY_PER_10MIN:-20}
+  PUBLIC_IP_DENY_PER_10MIN: ${PUBLIC_IP_DENY_PER_10MIN:-120}
 
 x-node-health: &node-health
   test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/health/ready']
@@ -64,6 +74,9 @@ services:
       PRODUCT_NAME: ${PRODUCT_NAME:?}
       COUNTY_NAME: ${COUNTY_NAME:-Westwind County}
       HELP_PHONE: ${HELP_PHONE:-(314) 555-0142}
+      # The root address forwards to this tenant and event (the exercise locally).
+      DEFAULT_TENANT: ${DEFAULT_TENANT:-county}
+      DEFAULT_EVENT: ${DEFAULT_EVENT:-westwind}
     networks: [platform]
 
   api:
@@ -184,6 +197,8 @@ services:
     environment:
       MINIO_ROOT_USER: cg-local
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+      # Direct browser uploads (SCL-04): only the resident app's origin may call the object API.
+      MINIO_API_CORS_ALLOW_ORIGIN: https://${GATEWAY_HOST:-localhost}
     volumes:
       - objects_data:/data
     ports:

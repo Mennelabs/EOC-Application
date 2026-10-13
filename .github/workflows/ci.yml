@@ -32,6 +32,8 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm check:product-name
       - run: pnpm test
+      - name: Public help page builds inside its first-load budget (PUB-07)
+        run: pnpm --filter @cg/web-help build && pnpm --filter @cg/web-help check:size
       - name: Requirements index is up to date
         run: pnpm reqindex && git diff --exit-code -- docs/requirements-index.md
 
@@ -49,14 +51,28 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: scripts/init-env.sh
+      - name: One runner address sends every suite and the load smoke; the per-address flood limit (SEC-17) is unit-tested, so it is raised here
+        run: echo "PUBLIC_IP_DENY_PER_10MIN=100000" >> .env
       - run: docker compose build
       - run: docker compose up -d --wait --wait-timeout 600
       - name: Show status on failure
         if: failure()
         run: docker compose ps -a && docker compose logs --no-color | tail -n 300
       - run: pnpm test:integration
+      - name: Public API, channels, worker filing, staff review, partner sharing, the needs board, public information, resident updates, referrals and reminders against the compose database (AC-11B, INT-20, RULE-17, PHO-15, CHN-03/05, FR-12, G4, NED-02/04/05/07, AC-17B/C, CON-08/15, PUB-01–06/08–11/13/16–18, CNT-01, FL-10/11, F09, AC-16B)
+        run: |
+          set -a; . ./.env; set +a
+          export API_DB_TEST_APP_URL="postgres://cg_app:${CG_APP_PASSWORD}@127.0.0.1:5432/cg"
+          export API_DB_TEST_WORKER_URL="postgres://cg_worker:${CG_WORKER_PASSWORD}@127.0.0.1:5432/cg"
+          # One database for every suite: run the files one after another (a sweep or a photo job in one file touches rows another file is mid-way through).
+          pnpm vitest run --project unit --no-file-parallelism services/api/test/public.db.test.ts services/api/test/channels.db.test.ts services/api/test/reports.db.test.ts services/api/test/sharing.db.test.ts services/api/test/needs.db.test.ts services/api/test/help.db.test.ts services/api/test/updates.db.test.ts services/worker/test/intake.db.test.ts services/worker/test/reminders.db.test.ts
       - run: npx playwright install --with-deps chromium
       - run: pnpm test:e2e
+      - name: Load smoke profiles through the k6 container (SCL-03)
+        run: |
+          tests/load/run.sh submissions smoke
+          tests/load/run.sh sms-sessions smoke
+          tests/load/run.sh help smoke
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:

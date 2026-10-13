@@ -1,0 +1,790 @@
+{
+  "_about": "Evidence per requirement ID for layer 2 (resident intake, review queue, verification), plus layer-1 rows that layer 2 completes. status: pass | partial | deferred | designed. Later layers add trace-layer<N>.json; tools/reqindex/traceability.py merges them in order.",
+  "INT-01": [
+    "pass",
+    "packages/intake/src/schema.ts, graphs/westwind.ts, migration 0011 (cg.intake_graph versions), services/api/src/routes/intake-graphs.ts",
+    "packages/intake/test/graph.test.ts (schema and cross-checks), services/api/test/reports.db.test.ts (draft refused by the string rules, published with confirmation, served publicly)",
+    "Every question carries its FEMA/PDA field (femaField) and classification; versions never change once published."
+  ],
+  "INT-02": [
+    "pass",
+    "packages/intake/src/engine.ts (one node at a time), apps/web-resident/src/screens/Flow.tsx, packages/intake/src/dialogue.ts (SMS/voice)",
+    "packages/intake/test/graph.test.ts, tests/e2e/resident.spec.ts, services/api/test/channels.db.test.ts",
+    "Only street + city/ZIP and the contact fields are grouped."
+  ],
+  "INT-03": [
+    "pass",
+    "engine.ts visibleNodes/isAsked (showWhen, hazards), graphs/westwind.ts",
+    "packages/intake/test/graph.test.ts (renters never see owner-only questions; flood waterline; wind roof), tests/integration/layer2.int.test.ts (AC-11D)",
+    ""
+  ],
+  "INT-04": [
+    "partial",
+    "graphs/westwind.ts (shortest paths), engine.ts",
+    "packages/intake/test/graph.test.ts (at most 12 required questions on every relationship's shortest path; 7 for an own home)",
+    "The 5-minute median on a mid-range phone over 3G is measured by hand in the pilot; not automated."
+  ],
+  "INT-05": [
+    "pass",
+    "engine.ts answer kinds value/unknown/skipped, Flow.tsx, dialogue.ts (* or 0 = don't know, SKIP/OMITIR)",
+    "packages/intake/test/graph.test.ts (unknown accepted on required questions, skip refused only there), packages/intake/test/dialogue.test.ts, services/api/test/channels.db.test.ts",
+    ""
+  ],
+  "INT-06": [
+    "pass",
+    "engine.ts remaining-questions count, apps/web-resident/src/ui/primitives.tsx Progress (role=status), dialogue.ts",
+    "packages/intake/test/graph.test.ts (words, not percent), tests/e2e/a11y.spec.ts (announced after Start)",
+    ""
+  ],
+  "INT-07": [
+    "pass",
+    "graphs/westwind.ts danger_now first, Flow.tsx emergency instructions, dialogue.ts, worker templates (911 line)",
+    "packages/intake/test/graph.test.ts (safety first, instructions after a yes), tests/e2e/resident.spec.ts (danger), apps/web-resident/test/state.test.ts, services/api/test/channels.db.test.ts",
+    ""
+  ],
+  "INT-08": [
+    "pass",
+    "packages/intake/src/lint.ts (grade ≤ 5), lint-cli.ts, CI (pnpm --filter @cg/intake lint:strings), routes/intake-graphs.ts refuses drafts that fail",
+    "packages/intake/test/lint.test.ts, services/api/test/reports.db.test.ts (400 string_rules)",
+    "A person (the PIO) still reviews wording before publishing: the publish action asks for confirmation and a reason."
+  ],
+  "INT-09": [
+    "pass",
+    "graphs/westwind.ts plain prompts with picture choices (apps/web-resident/src/ui/icons.tsx)",
+    "packages/intake/test/lint.test.ts (tone and grade), packages/intake/test/graph.test.ts",
+    "Illustrations are inline line icons; community-reviewed photography is EQ-04 (deferred)."
+  ],
+  "INT-10": [
+    "pass",
+    "schema.ts (why + example per question), Flow.tsx",
+    "packages/intake/test/graph.test.ts (every question has one example and one reason in each language)",
+    ""
+  ],
+  "INT-11": [
+    "pass",
+    "graphs/westwind.ts damage_types picture choices, icons.tsx",
+    "tests/e2e/resident.spec.ts (journey answers them by keyboard)",
+    ""
+  ],
+  "INT-12": [
+    "partial",
+    "Flow.tsx own words typed or dictated (browser speech), services/api/src/public/routes.ts /extract, packages/ai/src/extraction.ts",
+    "services/api/test/public.db.test.ts (extraction through the fake provider), packages/ai/test/ai.test.ts, tests/e2e/resident.spec.ts (own words)",
+    "Server-side speech-to-text needs a paid provider (layer 7, ask Adam); browser dictation ships now."
+  ],
+  "INT-13": [
+    "pass",
+    "Flow.tsx candidates shown as \"You said … is that right?\", packages/ai/src/extraction.ts schema",
+    "packages/ai/test/ai.test.ts (drops unknown/invalid/restricted/duplicate candidates), apps/web-resident/test/state.test.ts (confirmed extraction answers flagged)",
+    ""
+  ],
+  "INT-14": [
+    "pass",
+    "apps/web-resident/src/intake/state.ts (confirmed extraction skips the question), Flow.tsx review marks \"From your words\"",
+    "apps/web-resident/test/state.test.ts",
+    ""
+  ],
+  "INT-15": [
+    "pass",
+    "cg.report.original_text_enc + language (migration 0012), services/worker/src/jobs/intake.ts",
+    "services/worker/test/intake.db.test.ts, services/api/test/reports.db.test.ts (translation keeps the original)",
+    ""
+  ],
+  "INT-16": [
+    "pass",
+    "Flow.tsx (the graph runs with AI off; the extraction button degrades to typing), services/api/src/main.ts ai.providerFor",
+    "tests/e2e/resident.spec.ts (journey without AI), packages/ai/test/ai.test.ts",
+    ""
+  ],
+  "INT-17": [
+    "pass",
+    "lint.ts tone rules (no exclamation marks, emoji, blame)",
+    "packages/intake/test/lint.test.ts",
+    ""
+  ],
+  "INT-18": [
+    "pass",
+    "graphs/westwind.ts (no evacuation, insurance or preparation blame), lint.ts blame words",
+    "packages/intake/test/lint.test.ts, packages/intake/test/graph.test.ts",
+    ""
+  ],
+  "INT-19": [
+    "pass",
+    "graphs/westwind.ts afterSubmission (optional, with purpose), routes.ts …/after, packages/db/src/after-answers.ts (restricted ones encrypted)",
+    "tests/integration/layer2.int.test.ts (AC-10A after-saving answers), services/api/test/reports.db.test.ts (access needs hidden from roles without the category)",
+    ""
+  ],
+  "INT-20": [
+    "pass",
+    "routes.ts /drafts and /drafts/:code (hashed six-character codes, seven-day expiry), apps/web-resident/src/screens/Resume.tsx",
+    "services/api/test/public.db.test.ts (pause and resume), tests/e2e/resident.spec.ts (pause and resume)",
+    ""
+  ],
+  "INT-21": [
+    "pass",
+    "engine.ts summary() grouped by section, Flow.tsx review (each item editable)",
+    "packages/intake/test/graph.test.ts (summary grouped with editable items), tests/e2e/resident.spec.ts (review headings)",
+    ""
+  ],
+  "INT-22": [
+    "pass",
+    "services/api/src/public/reference-codes.ts + packages/db/src/reference-codes.ts, worker templates (SMS/email confirmation), apps/web-resident/src/screens/Submit.tsx (text + QR)",
+    "services/api/test/public-units.test.ts (alphabet, normalisation), services/worker/test/templates.test.ts, tests/integration/layer2.int.test.ts (confirmation email carries the code)",
+    ""
+  ],
+  "DCL:DEC-01": [
+    "pass",
+    "graphs/westwind.ts (home type, primary residence, occupancy, units, pre-existing, utilities, access, insurance, cause, each with \"I don't know\")",
+    "packages/intake/test/graph.test.ts (every DCL:DEC-01 field with a FEMA mapping and an unknown option)",
+    ""
+  ],
+  "DCL:DEC-02": [
+    "pass",
+    "services/api/src/routes/reports.ts /fema-degree (reviewers only, confirmation + reason), apps/web-console/src/screens/fema-matrix.ts; residents are never asked",
+    "services/api/test/reports.db.test.ts, tests/integration/layer2.int.test.ts (DEC-02/03), tests/e2e/console.spec.ts (console journey)",
+    ""
+  ],
+  "DCL:DEC-03": [
+    "partial",
+    "cg.report.verification_level, routes/reports.ts /verification",
+    "services/api/test/reports.db.test.ts, tests/integration/layer2.int.test.ts",
+    "Levels recorded now; \"only verified reports count in official totals\" is applied by the FEMA package (layer 6)."
+  ],
+  "DCL:DEC-04": [
+    "partial",
+    "pre_existing and primary_residence captured (graph, cg.report columns)",
+    "packages/intake/test/graph.test.ts",
+    "Exclusion from IA totals is applied in layer 6; the record keeps them."
+  ],
+  "DCL:DEC-17": [
+    "partial",
+    "graphs/westwind.ts (units, home type incl. condo and manufactured, utilities, access, business impact)",
+    "packages/intake/test/graph.test.ts (organization buildings with unit counts)",
+    "Field-app depths and Public Assistance flags arrive in layers 4 and 6."
+  ],
+  "EQ-01": [
+    "partial",
+    "graphs/westwind.ts persona paths (renter, manufactured home, organization, helper), address accepts descriptions",
+    "packages/intake/test/graph.test.ts (renter branch), tests/integration/layer2.int.test.ts (AC-11D)",
+    "Persona walkthroughs with community members are recorded in the layer report as pending (process, not code)."
+  ],
+  "EQ-02": [
+    "pass",
+    "graphs/westwind.ts asks for no proof; services/api/src/public/submit.ts validateAnswers requires only the shortest path",
+    "packages/intake/test/graph.test.ts",
+    ""
+  ],
+  "EQ-03": [
+    "pass",
+    "address question: free text line, unit, city/ZIP optional, Unicode names; worker address_key normalisation",
+    "tests/e2e/resident.spec.ts, services/worker/test/intake-units.test.ts (address keys keep the unit)",
+    ""
+  ],
+  "EQ-04": [
+    "deferred",
+    "",
+    "",
+    "Imagery review by community members before go-live (GATE-10); line icons ship now."
+  ],
+  "EQ-05": [
+    "pass",
+    "public routes.ts: faith-based consent types appear only when intake.faith_partners is on, always opt-in",
+    "",
+    "Config default off; covered by the graph route code path, no dedicated test yet."
+  ],
+  "EQ-06": [
+    "pass",
+    "graphs/westwind.ts EN/ES, apps/web-resident/src/i18n/messages.ts, dialogue.ts keywords in both languages, worker templates",
+    "tests/e2e/resident.spec.ts (Spanish run), services/api/test/channels.db.test.ts (DAÑOS), packages/intake/test/dialogue.test.ts, services/worker/test/templates.test.ts",
+    ""
+  ],
+  "EQ-07": [
+    "partial",
+    "",
+    "",
+    "Spanish ships as reviewed drafts, marked as such in messages.ts; professional translation and community review are a go-live gate."
+  ],
+  "EQ-08": [
+    "pass",
+    "routes/reports.ts /translate (labelled, provider recorded, original kept), packages/ai translation interface",
+    "services/api/test/reports.db.test.ts (translation labelled, original kept, refused without free text)",
+    "The fake provider labels its output; a real provider is a layer 7 decision."
+  ],
+  "EQ-09": [
+    "partial",
+    "apps/web-resident/src/styles.css uses logical properties (inline-start/end) throughout",
+    "",
+    "No RTL language is enabled yet; the layout is ready for `dir=\"rtl\"`."
+  ],
+  "EQ-10": [
+    "pass",
+    "apps/web-resident/src/App.tsx detectLocale(navigator.languages), first-screen picker in each language's own script, SMS keywords per language",
+    "tests/e2e/a11y.spec.ts (picker switches the whole page), packages/intake/test/dialogue.test.ts",
+    ""
+  ],
+  "EQ-13": [
+    "pass",
+    "afterSubmission questions optional and after saving; packages/db/src/after-answers.ts keeps aggregate answers apart from restricted ones",
+    "services/worker/test/intake.db.test.ts, tests/integration/layer2.int.test.ts (AC-10A)",
+    "Minimum cell size 11 applies to the equity reports (metrics, later layer)."
+  ],
+  "NED-01": [
+    "pass",
+    "graphs/westwind.ts needs step after the damage questions, cg.need rows (worker intake.ts)",
+    "services/worker/test/intake.db.test.ts, services/api/test/reports.db.test.ts (needs on the detail)",
+    ""
+  ],
+  "NED-02": [
+    "partial",
+    "cg.need is its own table linked to the report (migration 0013)",
+    "tests/integration/layer2.int.test.ts (NED-02: needs with the report or none)",
+    "Asking for help without a damage report (needs-only entry) arrives with the needs board (layer 3); in intake a household with no damage answers \"outside only\" and still records needs."
+  ],
+  "NED-03": [
+    "pass",
+    "consent step naming each organization type, default no; cg.consent with withdrawn_at; /me/consent",
+    "tests/integration/layer2.int.test.ts (NED-03), services/api/test/reports.db.test.ts",
+    "Enforcement on sharing is layer 3."
+  ],
+  "NED-09": [
+    "pass",
+    "graphs/westwind.ts has no citizenship, immigration, criminal-history or income question",
+    "packages/intake/test/graph.test.ts (schema cross-checks list every question)",
+    "By construction; a lint rule for these topics is a cheap addition when a tenant edits graphs."
+  ],
+  "WIT-01": [
+    "pass",
+    "relationship \"witness\" path (graphs/westwind.ts), stored as its own relationship",
+    "packages/intake/test/graph.test.ts (a witness is asked only what was seen)",
+    ""
+  ],
+  "HLP-01": [
+    "pass",
+    "helper path, cg.party rows keep the helper and the person apart (worker intake.ts), assisted mode records consent",
+    "packages/intake/test/graph.test.ts (helper kept apart), services/worker/test/intake.db.test.ts (parties), services/api/test/reports.db.test.ts (assisted intake)",
+    ""
+  ],
+  "ORG-01": [
+    "partial",
+    "organization path per property (org_name, units, employees affected)",
+    "packages/intake/test/graph.test.ts (organization reports buildings with unit counts)",
+    "Each property is one report with its own code; a bulk entry screen for many properties is not built."
+  ],
+  "ACM-01": [
+    "pass",
+    "access_needs after-submission question, restricted; templates give the category to AFN roles only",
+    "services/api/test/reports.db.test.ts (accessNeeds hidden from the assessment role)",
+    ""
+  ],
+  "RULE-16": [
+    "pass",
+    "same as ACM-01: optional, restricted, no diagnosis asked",
+    "services/api/test/reports.db.test.ts",
+    ""
+  ],
+  "RULE-17": [
+    "pass",
+    "public routes.ts lookup/start + verify (code + contact → one-time code), services/api/src/public/resident-token.ts",
+    "services/api/test/public.db.test.ts (code alone retrieves nothing), tests/integration/layer2.int.test.ts (AC-11C)",
+    ""
+  ],
+  "RULE-08": [
+    "pass",
+    "review states incl. rejected, duplicate, superseded with duplicate_of/supersedes links (routes/reports.ts)",
+    "services/api/test/reports.db.test.ts (decisions), tests/integration/layer2.int.test.ts",
+    "Rejected is its own state; links keep both records."
+  ],
+  "RULE-09": [
+    "pass",
+    "public routes.ts /me/corrections reopens an approved report with a snapshot; detail shows reReview",
+    "services/api/test/reports.db.test.ts, tests/integration/layer2.int.test.ts (AC-12C)",
+    ""
+  ],
+  "RULE-01": [
+    "pass",
+    "cg.report review_state (staff decision) separate from verification_level and channel_of_origin (source)",
+    "services/api/test/reports.db.test.ts, tests/integration/layer2.int.test.ts (DEC-02/03)",
+    ""
+  ],
+  "RULE-02": [
+    "pass",
+    "answer kind unknown distinct from value 0 across intake and after-saving answers",
+    "packages/intake/test/graph.test.ts (zero vs unknown in the FEMA mapping), tests/integration/layer2.int.test.ts (AC-10A)",
+    ""
+  ],
+  "BRD:FR-00.04": [
+    "pass",
+    "services/api states (201/202/409/428/503), apps/web-resident/src/intake/outbox.ts (Not sent yet / Sending / Received / Failed)",
+    "apps/web-resident/test/outbox.test.ts, tests/e2e/resident.spec.ts",
+    ""
+  ],
+  "CON-01": [
+    "pass",
+    "apps/web-console (role workspaces; review, intake setup, assisted, AI register added)",
+    "tests/e2e/console.spec.ts",
+    ""
+  ],
+  "CON-02": [
+    "partial",
+    "per-event intake slug, keywords and graph version (routes/events.ts /intake, apps/web-console/src/screens/intake.tsx)",
+    "services/api/test/reports.db.test.ts (event intake facts), tests/e2e/console.spec.ts (intake setup with the QR code)",
+    "Hazard templates presetting map layers and public messages arrive with layers 3 and 8."
+  ],
+  "CON-05": [
+    "partial",
+    "review queue with need-signal order and filters (routes/reports.ts, apps/web-console/src/screens/review.tsx)",
+    "services/api/test/reports.db.test.ts (queue order and filters), tests/e2e/console.spec.ts (review journey)",
+    "Field-team routing is layer 4."
+  ],
+  "CON-10": [
+    "pass",
+    "cg.report.danger_flag + told_to_call_911_at, console shows \"Not dispatched — told to call 911\", templates carry the 911 line, no hand-off",
+    "tests/integration/layer2.int.test.ts (CON-10), packages/intake/test/graph.test.ts (instructions after a yes), services/worker/test/templates.test.ts",
+    ""
+  ],
+  "AIG-01": [
+    "pass",
+    "cg.ai_register (migration 0014), packages/ai/src/registry.ts, routes/ai-register.ts, console AI use register",
+    "packages/ai/test/ai.test.ts (register lists every feature with a human checkpoint), services/api/test/public.db.test.ts (register seeded), tests/e2e/console.spec.ts",
+    ""
+  ],
+  "AIG-02": [
+    "pass",
+    "packages/ai/src/prompt.ts (delimited data fields, instructions ignored inside)",
+    "packages/ai/test/ai.test.ts (injection cases), services/api/test/public.db.test.ts (injection blocked)",
+    ""
+  ],
+  "AIG-03": [
+    "pass",
+    "packages/ai/src/extraction.ts (fixed JSON schema validated server side; no tools)",
+    "packages/ai/test/ai.test.ts",
+    ""
+  ],
+  "AIG-05": [
+    "pass",
+    "packages/ai/src/redact.ts (tokens for phones, emails, addresses, identifiers)",
+    "packages/ai/test/ai.test.ts",
+    ""
+  ],
+  "AIG-06": [
+    "partial",
+    "registry.ts provider flags usRegion/zeroRetention/noTraining gate enablement",
+    "packages/ai/test/ai.test.ts (a feature can be enabled only for a compliant, evaluated provider)",
+    "Only the fake provider exists; each real provider's terms are recorded when added (layer 7)."
+  ],
+  "AIG-07": [
+    "pass",
+    "packages/ai/src/filter.ts",
+    "packages/ai/test/ai.test.ts (blocks eligibility, promises, medical and legal advice, contact data)",
+    ""
+  ],
+  "AIG-08": [
+    "pass",
+    "packages/ai/src/evaluation (labelled set in both launch languages), pnpm --filter @cg/ai evaluate",
+    "packages/ai/test/ai.test.ts (passes the labelled set, blocks every injection case)",
+    "Runs as a unit test on every push."
+  ],
+  "AIG-10": [
+    "pass",
+    "Flow.tsx notice \"A computer helped fill in these answers\" with an off switch for the session",
+    "services/api/test/public.db.test.ts (AIG-10), apps/web-resident/test/state.test.ts",
+    ""
+  ],
+  "AIG-12": [
+    "pass",
+    "packages/ai/src/types.ts (LLM, speech, translation, image interfaces), providers/fake.ts, per-tenant providerFor",
+    "packages/ai/test/ai.test.ts",
+    ""
+  ],
+  "BRD:INT-04": [
+    "partial",
+    "packages/ai interfaces with the deterministic fake provider; register records languages and evaluation",
+    "",
+    "Timeouts, quotas and approved retention are recorded per real provider when one is enabled (layer 7)."
+  ],
+  "BRD:FR-11.01": [
+    "pass",
+    "services/api/src/public/routes.ts (no staff session)",
+    "services/api/test/public.db.test.ts, tests/integration/layer2.int.test.ts, tests/e2e/resident.spec.ts",
+    ""
+  ],
+  "BRD:FR-11.02": [
+    "pass",
+    "question graph with guidance, unknown answers, contact and location",
+    "packages/intake/test/graph.test.ts, tests/e2e/resident.spec.ts",
+    ""
+  ],
+  "BRD:FR-11.03": [
+    "pass",
+    "welcome facts (911 line first, privacy, no aid promised), consent wording, confirmation templates",
+    "tests/e2e/a11y.spec.ts (safety first), services/worker/test/templates.test.ts (911 line, no promise)",
+    ""
+  ],
+  "BRD:FR-11.04": [
+    "pass",
+    "submit.ts (persist once: queue with confirms, stored fallback, honest 503), 202 with the reference",
+    "services/api/test/public.db.test.ts (stored when the queue is down, same reference on retry), tests/integration/layer2.int.test.ts (queue stopped and restarted)",
+    ""
+  ],
+  "BRD:FR-11.05": [
+    "pass",
+    "services/api/src/public/abuse.ts (rate limits, risk score, no CAPTCHA), duplicate flags for a person (worker intake.ts)",
+    "services/api/test/public-units.test.ts (windows, subject hashes), services/worker/test/intake.db.test.ts (possible_duplicate flags)",
+    ""
+  ],
+  "BRD:FR-11.06": [
+    "partial",
+    "channel_of_origin and review_state explicit on every report",
+    "services/api/test/reports.db.test.ts",
+    "Approved public resources (\"Find help\") arrive in layer 3."
+  ],
+  "BRD:FR-11.07": [
+    "pass",
+    "/me status, corrections, withdrawal and consent with the resident token; assisted consent recorded; resume codes",
+    "services/api/test/public.db.test.ts, tests/integration/layer2.int.test.ts (AC-11C, AC-12C, NED-03), tests/e2e/resident.spec.ts (my report, withdrawal)",
+    ""
+  ],
+  "AC-11A": [
+    "pass",
+    "apps/web-resident",
+    "tests/e2e/resident.spec.ts (keyboard only from the deep link to the saved reference, desktop and phone)",
+    ""
+  ],
+  "AC-11B": [
+    "pass",
+    "Idempotency-Key = execution id end to end (submit.ts, outbox.ts, worker fileSubmission)",
+    "services/api/test/public.db.test.ts, tests/integration/layer2.int.test.ts, apps/web-resident/test/outbox.test.ts (one send per execution id)",
+    ""
+  ],
+  "AC-11C": [
+    "pass",
+    "lookup needs the code and the contact on file",
+    "tests/integration/layer2.int.test.ts, services/api/test/public.db.test.ts",
+    ""
+  ],
+  "AC-11D": [
+    "pass",
+    "occupancy \"rent\" with unknown owner-side answers",
+    "tests/integration/layer2.int.test.ts, packages/intake/test/graph.test.ts",
+    ""
+  ],
+  "SEC-09": [
+    "pass",
+    "lookup/start + verify, resident-token.ts, OTP by SMS or email",
+    "services/api/test/public.db.test.ts, tests/integration/layer2.int.test.ts, services/api/test/public-units.test.ts (token)",
+    ""
+  ],
+  "SEC-17": [
+    "pass",
+    "abuse.ts: risk scoring, windows per IP and per content, verification signal instead of a block; 429 only for a flood from one address",
+    "services/api/test/public-units.test.ts, services/api/test/public.db.test.ts",
+    ""
+  ],
+  "RES-01": [
+    "pass",
+    "/me and /me/consent with the resident token",
+    "tests/integration/layer2.int.test.ts, tests/e2e/resident.spec.ts",
+    ""
+  ],
+  "RES-02": [
+    "pass",
+    "/me/corrections, /me/withdraw; approved reports reopen for review with history",
+    "tests/integration/layer2.int.test.ts (AC-12C), tests/e2e/resident.spec.ts (withdrawal), services/worker/test/intake.db.test.ts",
+    ""
+  ],
+  "FL-01": [
+    "partial",
+    "reference code in text and as a scannable code on the confirmation; SMS confirmation carries it",
+    "apps/web-resident/test/state.test.ts (code spelled for screen readers), tests/e2e/resident.spec.ts",
+    "Printed cards, wristbands and scanning into a staff record arrive with the field app (layer 4)."
+  ],
+  "CHN-01": [
+    "pass",
+    "one cg.report per submission with channel_of_origin; parties and messages record the channels used",
+    "services/worker/test/intake.db.test.ts, tests/integration/layer2.int.test.ts (web, assisted, sms)",
+    ""
+  ],
+  "CHN-02": [
+    "pass",
+    "apps/web-resident PWA (manifest, shell service worker, no account)",
+    "tests/e2e/resident.spec.ts, tests/e2e/a11y.spec.ts",
+    "Browser-version coverage (two most recent iOS Safari and Android Chrome) is checked by hand."
+  ],
+  "CHN-03": [
+    "pass",
+    "packages/intake/src/dialogue.ts, services/api/src/channels/session.ts (keywords, numbered answers, BACK/SKIP/HELP/STOP, MMS)",
+    "packages/intake/test/dialogue.test.ts, services/api/test/channels.db.test.ts, tests/integration/layer2.int.test.ts (a whole report by text with a photo)",
+    ""
+  ],
+  "CHN-04": [
+    "partial",
+    "STOP/HELP and carrier words, no marketing wording, docs/06 templates and toll-free verification answers",
+    "packages/intake/test/dialogue.test.ts, services/api/test/channels.db.test.ts (STOP)",
+    "Toll-free verification itself is a Twilio process step for the county."
+  ],
+  "CHN-05": [
+    "pass",
+    "session.ts handleVoice + channels/twilio.ts TwiML (speech or keypad, 0 = agent), assisted entry in the console",
+    "services/api/test/channels.db.test.ts (voice), services/api/test/channels-units.test.ts, services/api/test/reports.db.test.ts (assisted intake)",
+    ""
+  ],
+  "CHN-06": [
+    "pass",
+    "assisted mode records the helper (created_by) and consent; helper cannot approve (G4); kiosk clears",
+    "services/api/test/reports.db.test.ts, tests/integration/layer2.int.test.ts (AC-12B), tests/e2e/a11y.spec.ts (kiosk banner)",
+    ""
+  ],
+  "CHN-07": [
+    "pass",
+    "encrypted local storage with a persistent kiosk key, outbox states, one report per execution id",
+    "apps/web-resident/test/storage.test.ts, outbox.test.ts",
+    ""
+  ],
+  "CHN-08": [
+    "pass",
+    "deep links /<tenant>/<event>, QR code and keywords on the intake setup screen",
+    "services/api/test/reports.db.test.ts (event intake facts), tests/e2e/console.spec.ts (QR image), apps/web-resident/test/state.test.ts (deep links)",
+    ""
+  ],
+  "CHN-09": [
+    "partial",
+    "reference code binds a report across channels (lookup, my report)",
+    "",
+    "Adding photos on the web to a report started by SMS is not built; my report allows corrections, not photos."
+  ],
+  "SCL-03": [
+    "partial",
+    "queue with publisher confirms, stored fallback, pre-leased reference codes; k6 profiles in tests/load",
+    "tests/load (smoke in CI)",
+    "Full-profile runs (28/s sustained, 20,000 text sessions) need a sized host; results are recorded in the layer report when run."
+  ],
+  "SCL-04": [
+    "partial",
+    "direct presigned upload to object storage, asynchronous processing; same-origin fallback through the gateway when the objects host is unreachable from the browser (routes.ts …/photos/:id/content)",
+    "services/worker/test/photos.test.ts, apps/web-resident/test/photos.test.ts, services/api/test/public.db.test.ts (honest answer when storage is down), tests/e2e/resident.spec.ts (objects host blocked → photo through the gateway)",
+    "Resumable multipart is not needed at the 1.5 MB cap (ADR-0028)."
+  ],
+  "SCL-06": [
+    "pass",
+    "AI off → photos deferred → maps off → text accepted; queue down → stored (submit.ts, worker sweep)",
+    "tests/integration/layer2.int.test.ts (queue stopped), services/api/test/public.db.test.ts, tests/e2e/resident.spec.ts (no AI, no photos)",
+    ""
+  ],
+  "SCL-08": [
+    "partial",
+    "tenant branding (name, colours, sender name) in the public graph response and templates",
+    "services/api/test/public.db.test.ts (branding)",
+    "Custom domains at the cloud move."
+  ],
+  "SCL-13": [
+    "partial",
+    "MapLibre + OpenStreetMap decision, opt-in self-hosted geocoder profile (compose.yaml maps profile)",
+    "",
+    "Intake has no map by design in this layer; address search and the map arrive with the needs board (layer 3) and offline packages with the field app (layer 4)."
+  ],
+  "BRD:INT-02": [
+    "partial",
+    "self-hosted geocoder behind an adapter, opt-in; manual address entry always",
+    "",
+    "A licensed provider is a paid service (ask Adam)."
+  ],
+  "BRD:INT-03": [
+    "partial",
+    "restricted object prefix, derivatives, type and decode validation (sharp), presigned links only for roles with the category, retention category",
+    "services/worker/test/photos.test.ts, services/api/test/reports.db.test.ts (photos 404 without the category)",
+    "No antivirus scanning of uploads yet; images are decoded and re-encoded, which drops anything that is not pixels."
+  ],
+  "BRD:INT-05": [
+    "pass",
+    "packages/adapters/src/comms.ts (simulator + Twilio), channels/twilio.ts signature checks, status callback → message states",
+    "services/api/test/channels-units.test.ts, services/worker/test/intake.db.test.ts (message states), tests/integration/layer2.int.test.ts",
+    ""
+  ],
+  "NFR-06": [
+    "partial",
+    "targets from SCL-03; k6 profiles",
+    "tests/load",
+    "Slow-network and older-device profiles are measured by hand."
+  ],
+  "PHO-01": [
+    "pass",
+    "Flow.tsx photos step: shot list by hazard (whole home, worst damage, waterline for flood, interior)",
+    "tests/e2e/resident.spec.ts (photos step)",
+    ""
+  ],
+  "PHO-02": ["pass", "illustrated example per shot (icons.tsx) and the safety line", "", ""],
+  "PHO-03": [
+    "pass",
+    "apps/web-resident/src/intake/photos.ts dark/flat frame check with one retake suggestion",
+    "apps/web-resident/test/photos.test.ts",
+    ""
+  ],
+  "PHO-04": [
+    "pass",
+    "photos optional; a report without photos files normally",
+    "tests/e2e/resident.spec.ts, services/worker/test/intake.db.test.ts",
+    ""
+  ],
+  "PHO-05": [
+    "pass",
+    "camera or gallery, MMS on the text channel, client compression under the tenant cap",
+    "apps/web-resident/test/photos.test.ts, services/api/test/channels.db.test.ts (MMS), tests/integration/layer2.int.test.ts",
+    ""
+  ],
+  "PHO-06": [
+    "pass",
+    "EXIF read only for suggestions then stripped by redrawing (browser) and by the worker (sharp)",
+    "apps/web-resident/test/photos.test.ts, services/worker/test/photos.test.ts, tests/integration/layer2.int.test.ts (exif_stripped)",
+    ""
+  ],
+  "PHO-07": [
+    "partial",
+    "pipeline with blur_status, originals restricted, links only for roles with the evidence category",
+    "services/api/test/reports.db.test.ts, tests/integration/layer2.int.test.ts, services/worker/test/photos.test.ts (blurs the regions a detector reports)",
+    "The detector is the image-analysis provider (layer 7); until then derivatives stay restricted and the status says so."
+  ],
+  "PHO-08": [
+    "pass",
+    "no public photo route; staff photo route needs photo.read",
+    "services/api/test/reports.db.test.ts (director 404)",
+    ""
+  ],
+  "PHO-14": [
+    "pass",
+    "queue ordered by need signals first (routes/reports.ts)",
+    "services/api/test/reports.db.test.ts, packages/intake/test/graph.test.ts (need signals)",
+    "AI severity as a tie-break arrives with the classifier."
+  ],
+  "PHO-15": [
+    "partial",
+    "exact-image hash and address duplicates flagged for a person (worker intake.ts, photos.ts)",
+    "services/worker/test/intake.db.test.ts, services/worker/test/photos.test.ts",
+    "Image similarity and reverse-image matching need the image provider (layer 7)."
+  ],
+  "BRD:FR-17.05": [
+    "pass",
+    "cg.message states queued/sent/delivered/failed with provider evidence; Twilio status callback",
+    "services/worker/test/intake.db.test.ts, tests/integration/layer2.int.test.ts (confirmation recorded as sent)",
+    "\"Acknowledged\" is recorded where a channel reports it (none yet)."
+  ],
+  "BRD:FR-10.01": [
+    "pass",
+    "cg.report with event, location, parties, contact, created_by, submitted_at (migration 0012)",
+    "services/worker/test/intake.db.test.ts, services/api/test/reports.db.test.ts",
+    ""
+  ],
+  "BRD:FR-10.02": [
+    "pass",
+    "home type, occupancy, primary residence, insurance, unknown states",
+    "packages/intake/test/graph.test.ts, tests/integration/layer2.int.test.ts (AC-11D)",
+    ""
+  ],
+  "BRD:FR-10.03": [
+    "pass",
+    "cause, damage types, roof state, own words, reviewer reason",
+    "packages/intake/test/graph.test.ts, services/api/test/reports.db.test.ts",
+    ""
+  ],
+  "BRD:FR-10.04": [
+    "partial",
+    "utilities, access, needs, displacement (tonight), evidence (photos)",
+    "packages/intake/test/graph.test.ts, services/worker/test/intake.db.test.ts",
+    "Cost estimates are not asked of residents (DEC-02); assessor estimates arrive with the field app."
+  ],
+  "BRD:FR-10.05": [
+    "partial",
+    "review_state vs verification_level; unknown vs value in every answer",
+    "tests/integration/layer2.int.test.ts (AC-10A), services/api/test/reports.db.test.ts",
+    "Estimates vs verified costs arrive with field findings (layer 4)."
+  ],
+  "BRD:FR-10.06": [
+    "pass",
+    "cg.report_version snapshots with changed_by and reason; supersedes/duplicate_of links",
+    "services/api/test/reports.db.test.ts (versions), tests/integration/layer2.int.test.ts (AC-10B)",
+    ""
+  ],
+  "BRD:FR-10.07": [
+    "pass",
+    "submit.ts validateAnswers: invalid enumerations and negative counts refused with field errors, input kept",
+    "packages/intake/test/graph.test.ts (rejects invalid enumerations and negative counts), services/api/test/public.db.test.ts (missing answers reported without losing input)",
+    ""
+  ],
+  "AC-10A": [
+    "pass",
+    "",
+    "tests/integration/layer2.int.test.ts (zero vs unknown occupants), packages/intake/test/graph.test.ts",
+    ""
+  ],
+  "AC-10B": [
+    "pass",
+    "",
+    "tests/integration/layer2.int.test.ts, services/api/test/reports.db.test.ts (versions keep who and why)",
+    ""
+  ],
+  "AC-10C": [
+    "pass",
+    "",
+    "tests/integration/layer2.int.test.ts (MMS photo on the right report, restricted), services/api/test/reports.db.test.ts",
+    ""
+  ],
+  "BRD:FR-12.01": [
+    "pass",
+    "review states submitted/under_review/needs_information/approved/rejected/duplicate/superseded (routes/reports.ts)",
+    "services/api/test/reports.db.test.ts, tests/integration/layer2.int.test.ts",
+    ""
+  ],
+  "BRD:FR-12.02": [
+    "pass",
+    "cg.review_decision (reviewer, time, reason, report_version, evidence_refs)",
+    "services/api/test/reports.db.test.ts, tests/integration/layer2.int.test.ts",
+    ""
+  ],
+  "BRD:FR-12.03": [
+    "pass",
+    "correction requests (cg.correction_request, correction.requested message), resident resubmission with history",
+    "services/api/test/reports.db.test.ts (needs-information queues the message), tests/integration/layer2.int.test.ts (AC-12C)",
+    ""
+  ],
+  "BRD:FR-12.04": [
+    "pass",
+    "report.review grant, guardrail G4 (no self-review) through the engine, 403 the helper may see",
+    "services/api/test/reports.db.test.ts, tests/integration/layer2.int.test.ts (AC-12B), packages/authz/test/guardrail-G4.test.ts",
+    ""
+  ],
+  "BRD:FR-12.05": [
+    "partial",
+    "approved report changed by the resident → submitted with reReview",
+    "tests/integration/layer2.int.test.ts (AC-12C)",
+    "Official totals arrive with the FEMA package (layer 6), which reads only approved versions."
+  ],
+  "BRD:FR-12.06": [
+    "pass",
+    "duplicate/supersede decisions link records without deleting either",
+    "services/api/test/reports.db.test.ts",
+    ""
+  ],
+  "AC-12A": [
+    "pass",
+    "",
+    "tests/integration/layer2.int.test.ts (approve), services/api/test/reports.db.test.ts (reject is its own state)",
+    ""
+  ],
+  "AC-12B": [
+    "pass",
+    "",
+    "tests/integration/layer2.int.test.ts, services/api/test/reports.db.test.ts",
+    "No AI command surface exists yet; the direct request is refused by G4."
+  ],
+  "AC-12C": [
+    "pass",
+    "",
+    "tests/integration/layer2.int.test.ts, services/api/test/reports.db.test.ts",
+    ""
+  ],
+  "FL:FR-31": [
+    "deferred",
+    "",
+    "",
+    "Unit-by-unit status for property managers arrives with the needs board and missions; ORG-01 multi-property reporting ships now."
+  ]
+}

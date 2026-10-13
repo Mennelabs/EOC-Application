@@ -26,6 +26,16 @@ export default tseslint.config(
     },
   },
   {
+    // k6 load profiles run inside k6, with its globals (SCL-03).
+    files: ['tests/load/**/*.js'],
+    languageOptions: { globals: { __ENV: 'readonly', __VU: 'readonly', __ITER: 'readonly' } },
+  },
+  {
+    // Service workers run in their own global scope.
+    files: ['apps/web-*/public/sw.js'],
+    languageOptions: { globals: { ...globals.serviceworker } },
+  },
+  {
     files: ['apps/web-*/**/*.{ts,tsx}'],
     languageOptions: { globals: { ...globals.browser } },
     plugins: { 'react-hooks': reactHooks },
@@ -33,7 +43,14 @@ export default tseslint.config(
   },
   {
     // CLIs and migration runners print one JSON line per result by design.
-    files: ['tools/**/*.ts', 'packages/db/src/migrate.ts', 'tools/**/*.mjs'],
+    files: [
+      'tools/**/*.ts',
+      'packages/db/src/migrate.ts',
+      'packages/db/src/migrate-check.ts',
+      'packages/intake/src/lint-cli.ts',
+      'packages/ai/src/evaluation/cli.ts',
+      'tools/**/*.mjs',
+    ],
     rules: { 'no-console': 'off' },
   },
 );

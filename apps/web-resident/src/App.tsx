@@ -1,38 +1,114 @@
-import { useEffect, useState } from 'react';
-import { IntlProvider, FormattedMessage, useIntl } from 'react-intl';
-import { detectLocale, localeNames, locales, messages, type Locale } from './i18n/messages.ts';
+/**
+ * Resident app shell (CHN-02, CHN-08, EQ-06/10): one small router, the
+ * language, the county's name from runtime config, an offline notice, and
+ * the screens. Routes carry the tenant and event (deep links from QR codes
+ * and short URLs); the root forwards to the configured exercise event.
+ */
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { IntlProvider, useIntl } from 'react-intl';
+import {
+  detectLocale,
+  localeNames,
+  locales,
+  messages,
+  type Locale,
+  type MessageId,
+} from './i18n/messages.ts';
+import { localStore, type LocalStore } from './intake/storage.ts';
+import { Outbox } from './intake/outbox.ts';
 import type { RuntimeConfig } from './runtime-config.ts';
+import { Welcome } from './screens/Welcome.tsx';
+import { Flow } from './screens/Flow.tsx';
+import { MyReport } from './screens/MyReport.tsx';
+import { Resume } from './screens/Resume.tsx';
+import { Help } from './screens/Help.tsx';
 
-function Welcome({
-  config,
-  locale,
-  onLocale,
-}: {
+export interface Route {
+  name: 'home' | 'welcome' | 'report' | 'kiosk' | 'resume' | 'my-report' | 'help' | 'unknown';
+  tenant?: string;
+  event?: string;
+}
+
+export function parseRoute(pathname: string): Route {
+  const parts = pathname.replace(/\/+$/, '').split('/').filter(Boolean);
+  if (parts.length === 0) return { name: 'home' };
+  const [tenant, second, third] = parts;
+  if (!tenant) return { name: 'home' };
+  if (second === 'my-report') return { name: 'my-report', tenant };
+  if (second === 'help') return { name: 'help', tenant };
+  if (second && !third) return { name: 'welcome', tenant, event: second };
+  if (second && third === 'report') return { name: 'report', tenant, event: second };
+  if (second && third === 'kiosk') return { name: 'kiosk', tenant, event: second };
+  if (second && third === 'resume') return { name: 'resume', tenant, event: second };
+  return { name: 'unknown' };
+}
+
+export function useT() {
+  const intl = useIntl();
+  return useCallback(
+    (id: MessageId, values?: Record<string, string | number>) => intl.formatMessage({ id }, values),
+    [intl],
+  );
+}
+
+export interface Shell {
   config: RuntimeConfig;
   locale: Locale;
-  onLocale: (l: Locale) => void;
-}) {
-  const intl = useIntl();
-  const [notice, setNotice] = useState(false);
-  const county = config.countyName || intl.formatMessage({ id: 'county.fallback' });
-  const phone = config.helpPhone || intl.formatMessage({ id: 'phone.fallback' });
+  setLocale: (l: Locale) => void;
+  navigate: (to: string) => void;
+  store: LocalStore;
+  outbox: Outbox;
+  online: boolean;
+}
 
+function usePath() {
+  const [path, setPath] = useState(location.pathname);
   useEffect(() => {
-    document.title = intl.formatMessage({ id: 'page.title' }, { county });
-    document.documentElement.lang = locale;
-  }, [intl, county, locale]);
+    const onPop = () => setPath(location.pathname);
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+  const navigate = useCallback((to: string) => {
+    history.pushState(null, '', to);
+    setPath(to);
+    window.scrollTo(0, 0);
+    document.getElementById('main')?.focus();
+  }, []);
+  return { path, navigate };
+}
 
+function useOnline() {
+  const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
+  useEffect(() => {
+    const up = () => setOnline(true);
+    const down = () => setOnline(false);
+    window.addEventListener('online', up);
+    window.addEventListener('offline', down);
+    return () => {
+      window.removeEventListener('online', up);
+      window.removeEventListener('offline', down);
+    };
+  }, []);
+  return online;
+}
+
+function Layout({ shell, children }: { shell: Shell; children: ReactNode }) {
+  const t = useT();
+  const county = shell.config.countyName || t('county.fallback');
+  const phone = shell.config.helpPhone || t('phone.fallback');
+  useEffect(() => {
+    document.documentElement.lang = shell.locale;
+  }, [shell.locale]);
   return (
     <>
+      <a className="skip" href="#main">
+        {t('skip.toContent')}
+      </a>
       <header className="banner">
-        <p className="agency">
-          <FormattedMessage id="header.agency" values={{ county }} />
-        </p>
+        <p className="agency">{t('header.agency', { county })}</p>
         <label className="lang">
-          <span>
-            <FormattedMessage id="language.label" />
-          </span>
-          <select value={locale} onChange={(e) => onLocale(e.target.value as Locale)}>
+          <span>{t('language.label')}</span>
+          <select value={shell.locale} onChange={(e) => shell.setLocale(e.target.value as Locale)}>
             {locales.map((l) => (
               <option key={l} value={l} lang={l}>
                 {localeNames[l]}
@@ -41,64 +117,111 @@ function Welcome({
           </select>
         </label>
       </header>
-
-      <main id="main">
-        {/* INT-07 / CON-10: safety first, 911 instruction before anything else. */}
-        <section className="safety" aria-labelledby="safety-heading">
-          <h2 id="safety-heading">
-            <FormattedMessage id="safety.heading" />
-          </h2>
-          <p>
-            <FormattedMessage id="safety.body" />
-          </p>
-        </section>
-
-        <h1>
-          <FormattedMessage id="intro.heading" />
-        </h1>
-        <p>
-          <FormattedMessage id="intro.body" />
+      {!shell.online ? (
+        <p className="offline" role="status">
+          {t('offline.banner')}
         </p>
-        <ul className="facts">
-          <li>
-            <FormattedMessage id="facts.time" />
-          </li>
-          <li>
-            <FormattedMessage id="facts.noAccount" />
-          </li>
-          <li>
-            <FormattedMessage id="facts.everyone" />
-          </li>
-        </ul>
-
-        <button type="button" className="primary" onClick={() => setNotice(true)}>
-          <FormattedMessage id="start.button" />
-        </button>
-        <p role="status" className="notice">
-          {notice ? <FormattedMessage id="start.notYet" values={{ phone }} /> : null}
-        </p>
-      </main>
-
+      ) : null}
+      {children}
       <footer>
         <p>
-          <FormattedMessage id="footer.noDecision" />{' '}
-          <FormattedMessage id="footer.talk" values={{ phone }} />
+          {t('footer.noDecision')} {t('footer.talk', { phone })}
         </p>
-        {config.productName ? (
-          <p className="powered">
-            <FormattedMessage id="footer.poweredBy" values={{ product: config.productName }} />
-          </p>
+        {shell.config.productName ? (
+          <p className="powered">{t('footer.poweredBy', { product: shell.config.productName })}</p>
         ) : null}
       </footer>
     </>
   );
 }
 
+function Screens({ shell, route }: { shell: Shell; route: Route }) {
+  const t = useT();
+  const phone = shell.config.helpPhone || t('phone.fallback');
+  switch (route.name) {
+    case 'home': {
+      if (shell.config.tenant && shell.config.event)
+        return <Welcome shell={shell} tenant={shell.config.tenant} event={shell.config.event} />;
+      return (
+        <main id="main" tabIndex={-1}>
+          <section className="card safety" aria-labelledby="safety-heading">
+            <h2 id="safety-heading">{t('safety.heading')}</h2>
+            <p>{t('safety.body')}</p>
+          </section>
+          <h1>{t('intro.heading')}</h1>
+          <p>{t('start.noLink', { phone })}</p>
+        </main>
+      );
+    }
+    case 'welcome':
+      return <Welcome shell={shell} tenant={route.tenant!} event={route.event!} />;
+    case 'report':
+      return <Flow shell={shell} tenant={route.tenant!} event={route.event!} kiosk={false} />;
+    case 'kiosk':
+      return <Flow shell={shell} tenant={route.tenant!} event={route.event!} kiosk={true} />;
+    case 'resume':
+      return <Resume shell={shell} tenant={route.tenant!} event={route.event!} />;
+    case 'my-report':
+      return <MyReport shell={shell} tenant={route.tenant!} />;
+    case 'help':
+      return <Help shell={shell} />;
+    default:
+      return (
+        <main id="main" tabIndex={-1}>
+          <h1>{t('intro.heading')}</h1>
+          <p>{t('start.noLink', { phone })}</p>
+        </main>
+      );
+  }
+}
+
 export function App({ config }: { config: RuntimeConfig }) {
-  const [locale, setLocale] = useState<Locale>(() => detectLocale(navigator.languages));
+  const { path, navigate } = usePath();
+  const route = useMemo(() => parseRoute(path), [path]);
+  const [locale, setLocale] = useState<Locale>(() => {
+    const saved = (() => {
+      try {
+        return localStorage.getItem('cg.locale');
+      } catch {
+        return null;
+      }
+    })();
+    return saved && (locales as readonly string[]).includes(saved)
+      ? (saved as Locale)
+      : detectLocale(navigator.languages);
+  });
+  const online = useOnline();
+  const kiosk = route.name === 'kiosk';
+  const store = useMemo(() => localStore({ persistentKey: kiosk }), [kiosk]);
+  const outbox = useMemo(() => new Outbox(store), [store]);
+  useEffect(() => {
+    void outbox.load();
+  }, [outbox]);
+  useEffect(() => {
+    if (online) void outbox.flush();
+  }, [online, outbox]);
+  const setLocaleSaved = useCallback((l: Locale) => {
+    setLocale(l);
+    try {
+      localStorage.setItem('cg.locale', l);
+    } catch {
+      // private mode: the choice lasts for this page only
+    }
+  }, []);
+  const shell: Shell = {
+    config,
+    locale,
+    setLocale: setLocaleSaved,
+    navigate,
+    store,
+    outbox,
+    online,
+  };
   return (
     <IntlProvider locale={locale} messages={messages[locale]} defaultLocale="en">
-      <Welcome config={config} locale={locale} onLocale={setLocale} />
+      <Layout shell={shell}>
+        <Screens shell={shell} route={route} />
+      </Layout>
     </IntlProvider>
   );
 }

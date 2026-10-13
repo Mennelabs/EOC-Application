@@ -73,7 +73,7 @@ export function createSubjectLoader(db: Kysely<Database>, settings: IdpSettings)
       const tenant = await withTenant(db, { tenantId }, (trx) =>
         trx
           .selectFrom('cg.tenant')
-          .select(['id', 'slug', 'path', 'status'])
+          .select(['id', 'slug', 'path', 'status', 'kind'])
           .where('id', '=', tenantId)
           .executeTakeFirst(),
       );
@@ -139,6 +139,9 @@ export function createSubjectLoader(db: Kysely<Database>, settings: IdpSettings)
           .select('from_tenant_id')
           .where('to_tenant_id', '=', tenantId)
           .where('status', '=', 'signed')
+          // Consented-record agreements share through share_grant projections only (NED-04,
+          // SEC-05/06); only a full-records agreement opens the other tenant's tables (SCL-01).
+          .where('scope', '=', 'full_records')
           .execute();
 
         const breakGlass = await trx
@@ -155,6 +158,7 @@ export function createSubjectLoader(db: Kysely<Database>, settings: IdpSettings)
           accountId: account.id,
           tenantId,
           tenantPath: tenant.path,
+          tenantKind: tenant.kind,
           status: account.status,
           roles,
           agreementTenantIds: agreements.map((a) => a.from_tenant_id),

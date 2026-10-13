@@ -7,6 +7,9 @@ export interface RuntimeConfig {
   productName: string;
   countyName: string;
   helpPhone: string;
+  /** Where the root address forwards (the exercise event locally; a county's live event in production). */
+  tenant?: string;
+  event?: string;
 }
 
 const fallback: RuntimeConfig = { productName: '', countyName: '', helpPhone: '' };

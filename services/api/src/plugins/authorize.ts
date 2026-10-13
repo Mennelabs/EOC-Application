@@ -75,7 +75,11 @@ export const authorizePlugin = fp<{ db?: Kysely<Database> }>(
             ).catch((err: unknown) => this.log.warn({ err }, 'could not audit denial'));
             this.log.info({ action, reason: decision.reason }, 'denied');
           }
-          throw options.asNotFound ? errors.notFound() : errors.forbidden();
+          // A guardrail on a record the subject holds the grant for (G4: no
+          // self-review) is a refusal the subject may see; a missing grant stays
+          // a 404 so the route does not reveal the record (default deny).
+          const hide = options.asNotFound && decision.guardrail !== 'G4';
+          throw hide ? errors.notFound() : errors.forbidden();
         }
 
         if (decision.consequential) {

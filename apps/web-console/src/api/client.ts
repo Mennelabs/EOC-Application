@@ -32,7 +32,11 @@ export interface Confirmation {
 }
 
 /** Set by the app shell: shows the confirmation dialog and resolves with the answer. */
-let confirmHandler: (action: string, description: string) => Promise<Confirmation> = async () => ({
+let confirmHandler: (
+  action: string,
+  description: string,
+  draft?: string,
+) => Promise<Confirmation> = async () => ({
   confirmed: false,
   reason: '',
 });
@@ -79,7 +83,10 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   const envelope = json as Envelope;
   if (res.status === 428 && !options.confirmation) {
     const details = (envelope.details ?? {}) as { action?: string };
-    const confirmation = await confirmHandler(details.action ?? '', envelope.message);
+    // A reason already written on the form seeds the dialog; the person still confirms it.
+    const body = options.body as { reason?: unknown } | undefined;
+    const draft = typeof body?.reason === 'string' ? body.reason : undefined;
+    const confirmation = await confirmHandler(details.action ?? '', envelope.message, draft);
     if (!confirmation.confirmed)
       throw new ApiFailure(428, { ...envelope, code: 'cancelled', message: 'Cancelled.' });
     // Same Idempotency-Key semantics: the retried request is the same intent.
@@ -95,3 +102,44 @@ export const describeFailure = (err: unknown): string => {
   }
   return err instanceof Error ? err.message : 'Something went wrong.';
 };
+
+/**
+ * Downloads a file the API produces (NED-07 CSV export): same bearer token, the
+ * same confirmation on 428, then a browser download of the response body.
+ */
+export async function download(
+  path: string,
+  filename: string,
+  confirmation?: Confirmation,
+): Promise<void> {
+  const token = await accessToken();
+  if (!token)
+    throw new ApiFailure(401, {
+      code: 'signed_out',
+      message: 'Your session ended. Sign in again.',
+      fields: [],
+      retryable: false,
+    });
+  const headers: Record<string, string> = { authorization: `Bearer ${token}` };
+  if (confirmation?.confirmed) {
+    headers['x-confirm'] = 'true';
+    headers['x-reason'] = confirmation.reason;
+  }
+  const res = await fetch(`/api/v1${path}`, { headers });
+  if (res.status === 428 && !confirmation) {
+    const envelope = (await res.json()) as Envelope;
+    const details = (envelope.details ?? {}) as { action?: string };
+    const answer = await confirmHandler(details.action ?? '', envelope.message);
+    if (!answer.confirmed)
+      throw new ApiFailure(428, { ...envelope, code: 'cancelled', message: 'Cancelled.' });
+    return download(path, filename, answer);
+  }
+  if (!res.ok) throw new ApiFailure(res.status, (await res.json()) as Envelope);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}

@@ -12,13 +12,25 @@
 	handle /config.json {
 		header Content-Type "application/json"
 		header Cache-Control "no-store"
-		respond `{"productName":"{$PRODUCT_NAME}","countyName":"{$COUNTY_NAME}","helpPhone":"{$HELP_PHONE}"}` 200
+		respond `{"productName":"{$PRODUCT_NAME}","countyName":"{$COUNTY_NAME}","helpPhone":"{$HELP_PHONE}","tenant":"{$DEFAULT_TENANT}","event":"{$DEFAULT_EVENT}"}` 200
 	}
 
 	redir /console /console/
 	handle_path /console/* {
 		root * /srv/console
 		try_files {path} /index.html
+		file_server
+	}
+
+	# Public "Find help" (PUB-07): /<county>/help opens the page; its assets live under /help/.
+	handle_path /help/* {
+		root * /srv/help
+		try_files {path} /index.html
+		file_server
+	}
+	handle /*/help {
+		root * /srv/help
+		rewrite * /index.html
 		file_server
 	}
 

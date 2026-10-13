@@ -132,6 +132,65 @@ export const eventRoutes: FastifyPluginAsync = async (raw) => {
     },
   );
 
+  /** CHN-08, CON-02: everything a flyer or a kiosk needs for this event. */
+  app.get(
+    '/events/:id/intake',
+    {
+      schema: {
+        tags: ['events'],
+        params: uuidParam,
+        response: {
+          200: z.object({
+            slug: z.string().nullable(),
+            keywords: z.array(z.string()),
+            url: z.string().nullable(),
+            kioskUrl: z.string().nullable(),
+            smsNumber: z.string().nullable(),
+            graph: z.object({ key: z.string(), version: z.number().int() }).nullable(),
+          }),
+        },
+      },
+    },
+    async (request) => {
+      const s = request.subject;
+      if (s.kind !== 'account') throw errors.unauthorized();
+      const row = await load(request, request.params.id);
+      await request.authorize(
+        'event.read',
+        { type: 'event', id: row.id, tenantId: row.tenant_id, eventId: row.id },
+        { asNotFound: true },
+      );
+      return request.tx(async (trx) => {
+        const tenant = await trx
+          .selectFrom('cg.tenant')
+          .select('slug')
+          .where('id', '=', row.tenant_id)
+          .executeTakeFirstOrThrow();
+        const number = await trx
+          .selectFrom('cg.channel_number')
+          .select('number')
+          .where('tenant_id', '=', row.tenant_id)
+          .orderBy('created_at')
+          .executeTakeFirst();
+        const graph = await trx
+          .selectFrom('cg.intake_graph')
+          .select(['key', 'graph_version'])
+          .where('status', '=', 'published')
+          .orderBy('published_at', 'desc')
+          .executeTakeFirst();
+        const base = `${request.protocol}://${request.hostname}`;
+        return {
+          slug: row.intake_slug,
+          keywords: row.intake_keywords,
+          url: row.intake_slug ? `${base}/${tenant.slug}/${row.intake_slug}` : null,
+          kioskUrl: row.intake_slug ? `${base}/${tenant.slug}/${row.intake_slug}/kiosk` : null,
+          smsNumber: number?.number ?? null,
+          graph: graph ? { key: graph.key, version: graph.graph_version } : null,
+        };
+      });
+    },
+  );
+
   app.post(
     '/events',
     {

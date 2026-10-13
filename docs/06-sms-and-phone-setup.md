@@ -76,6 +76,8 @@ Use Twilio for both texting and the phone line, and give each county its own ver
 | Opt-in keywords | DAMAGE, SHELTER, START | DAÑOS, DANOS, REFUGIO (AYUDA is reserved for help) |
 | Opt-out keywords | STOP, END, CANCEL, UNSUBSCRIBE, QUIT, STOPALL | ALTO, PARAR, CANCELAR |
 | Help keywords | HELP, INFO | AYUDA |
+| Sharing withdrawal keyword (layer 3, **pending Adam's review before the carrier submission**) | NOSHARE + reference number, e.g. NOSHARE ABCD-2345 | NOCOMPARTIR + número de referencia (NOSHARE also works) |
+| NOSHARE reply | \[County\] Emergency Mgmt: Your report ABCD-2345 is no longer shared with partner organizations. Any that had it were told to delete it. Reply STOP to opt out. | \[Condado\]: Su reporte ABCD-2345 ya no se comparte con organizaciones asociadas. A las que lo tenían se les pidió borrarlo. Responda ALTO para cancelar. |
 
 Spanish characters such as ñ and accents switch a text to a shorter segment length (70 characters), so Spanish replies cost more segments; keep them short.
 

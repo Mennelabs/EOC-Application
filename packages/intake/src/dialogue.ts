@@ -59,6 +59,8 @@ const UNKNOWN = ['0', '*', '?', 'DONT KNOW', "DON'T KNOW", 'NO SE', 'UNKNOWN', '
 const SEND = ['SEND', 'ENVIAR', 'YES', 'SI', 'Y', 'OK', '1'];
 const NONE = ['0', 'NONE', 'NINGUNO', 'NINGUNA', 'NO'];
 const AGENT = ['AGENT', 'AGENTE', 'PERSON', 'PERSONA', 'OPERATOR', 'OPERADOR'];
+/** Sharing withdrawal by text: the keyword followed by the reference number (NED-05, docs/06). */
+const NOSHARE = ['NOSHARE', 'NO SHARE', 'NOCOMPARTIR', 'NO COMPARTIR'];
 
 export type Command =
   | { kind: 'start'; locale: DialogueLocale }
@@ -68,11 +70,15 @@ export type Command =
   | { kind: 'back' }
   | { kind: 'skip' }
   | { kind: 'agent' }
+  | { kind: 'noshare'; code: string | null }
   | { kind: 'none' };
 
 /** Keywords always work, whatever the current question (CHN-03). */
 export function command(input: string): Command {
   const k = normaliseKeyword(input);
+  for (const word of NOSHARE)
+    if (k === word || k.startsWith(`${word} `))
+      return { kind: 'noshare', code: k.slice(word.length).trim() || null };
   if (START_EN.includes(k)) return { kind: 'start', locale: 'en' };
   if (START_ES.includes(k)) return { kind: 'start', locale: 'es' };
   if (SHELTER_EN.includes(k)) return { kind: 'shelter', locale: 'en' };
@@ -116,6 +122,8 @@ interface Strings {
   optInConfirmation: (county: string) => string;
   help: (county: string, helpPhone: string | null) => string;
   stop: (county: string) => string;
+  noshare: (county: string, code: string) => string;
+  noshareUnknown: (county: string) => string;
   shelter: (county: string, helpPhone: string | null, url: string | null) => string;
   confirmation: (county: string, code: string) => string;
   tooMany: string;
@@ -164,6 +172,10 @@ const EN: Strings = {
     `${county} Emergency Mgmt disaster help line.${phone ? ` Call ${phone}.` : ''} In danger now, call 911. Reply DAMAGE to report damage, STOP to opt out.`,
   stop: (county) =>
     `${county} Emergency Mgmt: You're unsubscribed and will get no more messages. Reply START to rejoin.`,
+  noshare: (county, code) =>
+    `${county} Emergency Mgmt: Your report ${code} is no longer shared with partner organizations. Any that had it were told to delete it. Reply STOP to opt out.`,
+  noshareUnknown: (county) =>
+    `${county} Emergency Mgmt: We found no report with that reference number from this phone. Text NOSHARE then your reference number, like NOSHARE ABCD-2345. Reply STOP to opt out.`,
   shelter: (county, phone, url) =>
     `${county} Emergency Mgmt: For open shelters and help sites,${phone ? ` call ${phone}` : ''}${phone && url ? ' or' : ''}${url ? ` visit ${url}` : ''}. In danger now, call 911. Reply STOP to opt out.`,
   confirmation: (county, code) =>
@@ -220,6 +232,10 @@ const ES: Strings = {
   help: (county, phone) =>
     `Línea de ayuda de ${county}.${phone ? ` Llame al ${phone}.` : ''} En peligro, llame al 911. Responda DANOS para reportar daños, ALTO para cancelar.`,
   stop: (county) => `${county}: Ya no recibirá mensajes. Responda START para volver.`,
+  noshare: (county, code) =>
+    `${county}: Su reporte ${code} ya no se comparte con organizaciones asociadas. A las que lo tenían se les pidió borrarlo. Responda ALTO para cancelar.`,
+  noshareUnknown: (county) =>
+    `${county}: No encontramos un reporte con ese número desde este teléfono. Envíe NOSHARE y su número de referencia, como NOSHARE ABCD-2345. Responda ALTO para cancelar.`,
   shelter: (county, phone, url) =>
     `${county}: Para albergues y sitios de ayuda abiertos,${phone ? ` llame al ${phone}` : ''}${phone && url ? ' o' : ''}${url ? ` visite ${url}` : ''}. En peligro, llame al 911. Responda ALTO para cancelar.`,
   confirmation: (county, code) =>

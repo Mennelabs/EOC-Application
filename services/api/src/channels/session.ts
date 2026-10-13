@@ -13,7 +13,7 @@ import { PutObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 import type { Transaction } from 'kysely';
 import type { FieldCrypto } from '@cg/crypto';
 import { normalisePhone } from '@cg/crypto';
-import type { Database } from '@cg/db';
+import { normaliseCode, type Database } from '@cg/db';
 import {
   command,
   hazardsForEvent,
@@ -167,6 +167,8 @@ export class ChannelSessions {
         const url = this.deps.publicBase ? `${this.deps.publicBase}/${tenant.slug}/help` : null;
         return { texts: [strings(cmd.locale).shelter(tenant.name, helpPhone, url)] };
       }
+      if (cmd.kind === 'noshare')
+        return { texts: [await this.withdrawSharing(req, trx, tenant, bidx, cmd.code, S)] };
 
       if (cmd.kind === 'start' || !session) {
         const lang = cmd.kind === 'start' ? cmd.locale : locale;
@@ -831,6 +833,56 @@ export class ChannelSessions {
       executionId: session.executionId,
       ...(optOut ? { reason: 'STOP keyword' } : {}),
     });
+  }
+
+  /**
+   * NOSHARE <code> (NED-05): the sender's number must be the reporter's on that
+   * report; then every sharing consent on it is withdrawn and the worker revokes
+   * the grants and recalls the record from the partners. A wrong code or another
+   * phone gets the same answer, so the keyword reveals nothing about other reports.
+   */
+  private async withdrawSharing(
+    req: SubmitRequest,
+    trx: Transaction<Database>,
+    tenant: ChannelTenant,
+    bidx: Buffer,
+    rawCode: string | null,
+    S: Strings,
+  ): Promise<string> {
+    const code = rawCode ? normaliseCode(rawCode) : null;
+    if (!code) return S.noshareUnknown(tenant.name);
+    const report = await trx
+      .selectFrom('cg.report')
+      .innerJoin('cg.party', 'cg.party.id', 'cg.report.reporter_party_id')
+      .select(['cg.report.id as id', 'cg.report.execution_id as execution_id'])
+      .where('cg.report.reference_code', '=', code)
+      .where('cg.party.phone_bidx', '=', bidx)
+      .where('cg.report.withdrawn_at', 'is', null)
+      .executeTakeFirst();
+    if (!report) return S.noshareUnknown(tenant.name);
+    const changed = await trx
+      .updateTable('cg.consent')
+      .set({ granted: false, withdrawn_at: this.now(), channel: 'sms' })
+      .where('report_id', '=', report.id)
+      .where('granted', '=', true)
+      .returning('org_type')
+      .execute();
+    await req.audit(trx, {
+      action: 'report.self_update',
+      targetType: 'consent',
+      targetId: report.id,
+      executionId: report.execution_id,
+      reason: 'NOSHARE keyword',
+      changes: { fields: changed.map((c) => ({ name: c.org_type, from: true, to: false })) },
+    });
+    await enqueueOutbox(
+      trx,
+      tenant.id,
+      'consent.changed',
+      { reportId: report.id, orgType: '*', granted: false },
+      report.execution_id,
+    );
+    return S.noshare(tenant.name, code);
   }
 
   private async phoneOf(trx: Transaction<Database>, session: Session): Promise<string> {

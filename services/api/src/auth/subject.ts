@@ -139,6 +139,9 @@ export function createSubjectLoader(db: Kysely<Database>, settings: IdpSettings)
           .select('from_tenant_id')
           .where('to_tenant_id', '=', tenantId)
           .where('status', '=', 'signed')
+          // Consented-record agreements share through share_grant projections only (NED-04,
+          // SEC-05/06); only a full-records agreement opens the other tenant's tables (SCL-01).
+          .where('scope', '=', 'full_records')
           .execute();
 
         const breakGlass = await trx

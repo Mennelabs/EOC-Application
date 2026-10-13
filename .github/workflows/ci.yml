@@ -57,12 +57,12 @@ jobs:
         if: failure()
         run: docker compose ps -a && docker compose logs --no-color | tail -n 300
       - run: pnpm test:integration
-      - name: Public API, channels, worker filing and staff review against the compose database (AC-11B, INT-20, RULE-17, PHO-15, CHN-03/05, FR-12, G4)
+      - name: Public API, channels, worker filing, staff review and partner sharing against the compose database (AC-11B, INT-20, RULE-17, PHO-15, CHN-03/05, FR-12, G4, NED-04/05, AC-17C)
         run: |
           set -a; . ./.env; set +a
           export API_DB_TEST_APP_URL="postgres://cg_app:${CG_APP_PASSWORD}@127.0.0.1:5432/cg"
           export API_DB_TEST_WORKER_URL="postgres://cg_worker:${CG_WORKER_PASSWORD}@127.0.0.1:5432/cg"
-          pnpm vitest run --project unit services/api/test/public.db.test.ts services/api/test/channels.db.test.ts services/api/test/reports.db.test.ts services/worker/test/intake.db.test.ts
+          pnpm vitest run --project unit services/api/test/public.db.test.ts services/api/test/channels.db.test.ts services/api/test/reports.db.test.ts services/api/test/sharing.db.test.ts services/worker/test/intake.db.test.ts
       - run: npx playwright install --with-deps chromium
       - run: pnpm test:e2e
       - name: Load smoke profiles through the k6 container (SCL-03)

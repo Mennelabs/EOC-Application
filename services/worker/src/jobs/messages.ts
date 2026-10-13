@@ -20,6 +20,8 @@ export const messagePayloadSchema = z.object({
   language: z.string().default('en'),
   reportId: z.uuid().optional(),
   partyId: z.uuid().optional(),
+  /** A recall notice names the grant it recalls; the grant records the message (NED-05). */
+  shareGrantId: z.uuid().optional(),
   variables: z.record(z.string(), z.string()).default({}),
 });
 
@@ -100,6 +102,13 @@ export const messageSend: TopicHandler = async (ctx, msg) => {
           .returning('id')
           .executeTakeFirstOrThrow()
       ).id;
+    if (p.shareGrantId)
+      await trx
+        .updateTable('cg.share_grant')
+        .set({ recall_notice_message_id: id })
+        .where('id', '=', p.shareGrantId)
+        .where('recall_notice_message_id', 'is', null)
+        .execute();
     // docs/06: no texts without opt-in; the one-time code is the resident's own request.
     if (p.channel === 'sms' && party && !party.sms_opt_in && template !== 'otp') {
       await trx

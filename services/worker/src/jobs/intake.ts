@@ -28,6 +28,7 @@ import {
   type QuestionNode,
 } from '@cg/intake';
 import { allTenantIds, asSystem, enqueueOutbox, systemAudit } from '../system.ts';
+import { syncShareGrants } from './sharing.ts';
 import type { JobContext } from './types.ts';
 
 const answerValueSchema: z.ZodType<AnswerValue> = z.union([
@@ -567,6 +568,9 @@ export async function fileSubmission(ctx: JobContext, input: FilingInput): Promi
         });
       }
 
+      // Partner sharing follows the consents just recorded (NED-04).
+      await syncShareGrants(ctx, trx, tenantId, report.id, 'filed');
+
       await systemAudit(trx, tenantId, 'intake.file', {
         action: 'report.filed',
         targetType: 'report',
@@ -707,6 +711,7 @@ export async function mergeLateAnswers(ctx: JobContext, limit = 50): Promise<num
         .set({ after_merged_at: new Date() })
         .where('execution_id', '=', row.execution_id)
         .execute();
+      await syncShareGrants(ctx, trx, row.tenant_id, row.report_id, 'after_answers');
       await systemAudit(trx, row.tenant_id, 'intake.after_answers', {
         action: 'report.after_answers_merged',
         targetType: 'report',

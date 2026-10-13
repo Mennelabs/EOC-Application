@@ -203,7 +203,7 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('need.assign'),
       g('need.release'),
       g('need.done'),
-      g('shared.read'),
+      g('shared.read', ['contact', 'location_exact']),
       g('referral.create'),
       g('referral.respond'),
       g('dashboard.read'),
@@ -225,7 +225,7 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('need.claim'),
       g('need.release'),
       g('need.done'),
-      g('shared.read'),
+      g('shared.read', ['contact', 'location_exact', 'household']),
       g('referral.create'),
       g('referral.respond'),
       g('message.send'),
@@ -367,7 +367,7 @@ export const roleTemplates: readonly RoleTemplate[] = [
     description: 'Work orders, right-of-entry, before and after photos.',
     source: 'frontline',
     grants: [
-      g('shared.read'),
+      g('shared.read', ['contact', 'location_exact']),
       g('need.read'),
       g('need.claim'),
       g('need.release'),
@@ -398,6 +398,8 @@ export const roleTemplates: readonly RoleTemplate[] = [
     grants: [
       g('me.read'),
       { action: 'event.read', events: 'assigned', dataCategories: ['contact'] },
+      // Shelter partners: the shared record's contact; access needs come with the template (NED-04, FL-03, ADM-05).
+      g('shared.read', ['contact']),
     ],
   },
   {
@@ -406,7 +408,7 @@ export const roleTemplates: readonly RoleTemplate[] = [
     description: 'Contact log only; no content recorded; scribe off (FL:FR-16).',
     source: 'frontline',
     grants: [
-      g('shared.read'),
+      g('shared.read', ['contact']),
       g('referral.respond'),
       g('me.read'),
       { action: 'event.read', events: 'assigned' },
@@ -418,7 +420,7 @@ export const roleTemplates: readonly RoleTemplate[] = [
     description: 'Accepts referrals; notes stay outside the shared record (FL:FR-23).',
     source: 'frontline',
     grants: [
-      g('shared.read'),
+      g('shared.read', ['contact']),
       g('referral.respond'),
       g('me.read'),
       { action: 'event.read', events: 'assigned' },
@@ -430,7 +432,7 @@ export const roleTemplates: readonly RoleTemplate[] = [
     description: 'Consented access-needs list; equipment loans; accessible transport (FL:FR-25).',
     source: 'frontline',
     grants: [
-      g('shared.read'),
+      g('shared.read', ['contact']), // access needs come with the template (ADM-05)
       g('need.read'),
       g('referral.respond'),
       g('me.read'),
@@ -443,7 +445,7 @@ export const roleTemplates: readonly RoleTemplate[] = [
     description: 'Shared survivor record, recovery plan, help received (FL:FR-18).',
     source: 'frontline',
     grants: [
-      g('shared.read'),
+      g('shared.read', ['contact', 'location_exact', 'household']),
       g('referral.create'),
       g('referral.respond'),
       g('message.send'),

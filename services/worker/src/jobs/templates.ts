@@ -6,7 +6,12 @@
  * texts are drafts pending professional translation (EQ-07).
  */
 export type TemplateName =
-  'confirmation' | 'opt_in_confirmation' | 'otp' | 'correction_request' | 'withdrawn';
+  | 'confirmation'
+  | 'opt_in_confirmation'
+  | 'otp'
+  | 'correction_request'
+  | 'withdrawn'
+  | 'sharing_recall';
 
 export const TEMPLATE_NAMES: readonly TemplateName[] = [
   'confirmation',
@@ -14,6 +19,7 @@ export const TEMPLATE_NAMES: readonly TemplateName[] = [
   'otp',
   'correction_request',
   'withdrawn',
+  'sharing_recall',
 ];
 
 export interface TemplateVars {
@@ -26,6 +32,11 @@ export interface TemplateVars {
   url?: string;
   /** A reviewer's plain-language note, when they wrote one. */
   note?: string;
+  /** Recall notice to a partner organization (NED-05): who, what sections, since when, why. */
+  partner?: string;
+  sections?: string;
+  sharedSince?: string;
+  why?: string;
 }
 
 export interface Rendered {
@@ -46,6 +57,8 @@ const EN = {
       `${v.county} Emergency Mgmt: We have a question about your damage report ${v.referenceCode}. ${v.url ? `Open your report at ${v.url}` : `Call ${v.helpPhone ?? 'the county help line'}`}. Reply STOP to opt out.`,
     withdrawn: (v: TemplateVars) =>
       `${v.county} Emergency Mgmt: Your damage report ${v.referenceCode} was withdrawn as you asked.${v.helpPhone ? ` If this was a mistake, call ${v.helpPhone}.` : ''}`,
+    sharing_recall: (v: TemplateVars) =>
+      `${v.county} Emergency Mgmt: Record ${v.referenceCode} shared with ${v.partner ?? 'your organization'} is recalled (${v.why ?? 'consent withdrawn'}). Delete what you hold of it, as your agreement requires.`,
   },
   email: {
     confirmation: (v: TemplateVars) => ({
@@ -80,6 +93,15 @@ const EN = {
         (v.helpPhone ? ` If this was a mistake, call ${v.helpPhone}.` : '') +
         '\n',
     }),
+    sharing_recall: (v: TemplateVars) => ({
+      subject: `${v.county}: shared record ${v.referenceCode} recalled`,
+      body:
+        `${v.county} Emergency Management recalled the record ${v.referenceCode} that was shared with ${v.partner ?? 'your organization'} because ${v.why ?? 'the resident withdrew consent'}.\n\n` +
+        `Sections shared: ${v.sections ?? 'none'}. Shared since: ${v.sharedSince ?? 'unknown'}.\n\n` +
+        `The record is no longer visible to your organization. Your data-sharing agreement requires you to delete any copy or export you hold of it and to stop contacting the resident about it.` +
+        (v.helpPhone ? ` Questions? Call ${v.helpPhone}.` : '') +
+        '\n',
+    }),
   },
 };
 
@@ -95,6 +117,8 @@ const ES: typeof EN = {
       `${v.county} Manejo de Emergencias: Tenemos una pregunta sobre su reporte ${v.referenceCode}. ${v.url ? `Ábralo en ${v.url}` : `Llame al ${v.helpPhone ?? 'la línea de ayuda del condado'}`}. Responda ALTO para cancelar.`,
     withdrawn: (v) =>
       `${v.county} Manejo de Emergencias: Su reporte ${v.referenceCode} fue retirado como pidió.${v.helpPhone ? ` Si fue un error, llame al ${v.helpPhone}.` : ''}`,
+    sharing_recall: (v) =>
+      `${v.county} Manejo de Emergencias: El registro ${v.referenceCode} compartido con ${v.partner ?? 'su organización'} fue retirado (${v.why ?? 'consentimiento retirado'}). Borre lo que tenga de él, como exige su acuerdo.`,
   },
   email: {
     confirmation: (v) => ({
@@ -127,6 +151,15 @@ const ES: typeof EN = {
       body:
         `Manejo de Emergencias de ${v.county}: su reporte de daños ${v.referenceCode} fue retirado como pidió.` +
         (v.helpPhone ? ` Si fue un error, llame al ${v.helpPhone}.` : '') +
+        '\n',
+    }),
+    sharing_recall: (v) => ({
+      subject: `${v.county}: registro compartido ${v.referenceCode} retirado`,
+      body:
+        `Manejo de Emergencias de ${v.county} retiró el registro ${v.referenceCode} compartido con ${v.partner ?? 'su organización'} porque ${v.why ?? 'el residente retiró su consentimiento'}.\n\n` +
+        `Secciones compartidas: ${v.sections ?? 'ninguna'}. Compartido desde: ${v.sharedSince ?? 'desconocido'}.\n\n` +
+        `Su organización ya no puede ver el registro. Su acuerdo de intercambio de datos le obliga a borrar cualquier copia o exportación y a no contactar al residente sobre él.` +
+        (v.helpPhone ? ` ¿Preguntas? Llame al ${v.helpPhone}.` : '') +
         '\n',
     }),
   },

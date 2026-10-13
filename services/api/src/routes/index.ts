@@ -10,6 +10,7 @@ import { meRoutes } from './me.ts';
 import { personnelRoutes } from './personnel.ts';
 import { reportRoutes } from './reports.ts';
 import { roleRoutes } from './roles.ts';
+import { sharedRoutes } from './shared.ts';
 import { tenantRoutes } from './tenants.ts';
 
 /** Route plugins mounted under /api/v1. Each layer adds its modules here. */
@@ -26,4 +27,5 @@ export const routes: FastifyPluginAsync[] = [
   aiRegisterRoutes,
   reportRoutes,
   intakeGraphRoutes,
+  sharedRoutes,
 ];

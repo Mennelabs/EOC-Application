@@ -1,13 +1,14 @@
 /**
  * Report follow-ups from the outbox (RES-01/02, RULE-09, NED-03,
  * BRD:FR-12.03): a reviewer's request for information reaches the resident
- * on the channel they opted into; a withdrawal is acknowledged; consent and
- * correction events are recorded here for the layers that act on them
- * (partner sharing in layer 3, reviewer notices in the console).
+ * on the channel they opted into; a withdrawal is acknowledged; consent,
+ * correction and withdrawal events bring the partner share grants in line
+ * (NED-04/05, see ./sharing.ts).
  */
 import type { Transaction } from 'kysely';
 import type { Database } from '@cg/db';
 import { asSystem, enqueueOutbox } from '../system.ts';
+import { syncShareGrants } from './sharing.ts';
 import type { JobContext, TopicHandler } from './types.ts';
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : String(v ?? ''));
@@ -108,26 +109,29 @@ export const correctionRequested: TopicHandler = async (ctx, msg) => {
   });
 };
 
-/** report.withdrawn: acknowledge on the resident's channel (RES-02). */
+/** report.withdrawn: acknowledge on the resident's channel (RES-02); every share grant goes (NED-05). */
 export const reportWithdrawn: TopicHandler = async (ctx, msg) => {
   const reportId = str(msg.payload['reportId']);
   await asSystem(ctx.db, msg.tenantId, async (trx) => {
     await notifyReporter(ctx, trx, msg.tenantId, reportId, 'withdrawn', {});
+    await syncShareGrants(ctx, trx, msg.tenantId, reportId, 'withdrawn');
   });
 };
 
-/** consent.changed: nothing is shared yet (partner sharing is layer 3); the change is already audited. */
+/** consent.changed: grants follow the consents; a withdrawal revokes and recalls at once (NED-04/05). */
 export const consentChanged: TopicHandler = async (ctx, msg) => {
-  ctx.log.debug(
-    { reportId: msg.payload['reportId'], orgType: msg.payload['orgType'] },
-    'consent changed; sharing adjusts in layer 3',
+  const reportId = str(msg.payload['reportId']);
+  const result = await asSystem(ctx.db, msg.tenantId, (trx) =>
+    syncShareGrants(ctx, trx, msg.tenantId, reportId, 'consent'),
   );
+  ctx.log.info({ reportId, orgType: msg.payload['orgType'], ...result }, 'sharing synced');
 };
 
-/** report.corrected: the resident changed answers; a reopened report is back in the queue by state. */
+/** report.corrected: the shared projection follows the corrected answers (NED-04). */
 export const reportCorrected: TopicHandler = async (ctx, msg) => {
-  ctx.log.debug(
-    { reportId: msg.payload['reportId'], reopened: msg.payload['reopened'] },
-    'report corrected',
+  const reportId = str(msg.payload['reportId']);
+  const result = await asSystem(ctx.db, msg.tenantId, (trx) =>
+    syncShareGrants(ctx, trx, msg.tenantId, reportId, 'corrected'),
   );
+  ctx.log.info({ reportId, reopened: msg.payload['reopened'], ...result }, 'report corrected');
 };

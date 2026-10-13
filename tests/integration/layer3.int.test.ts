@@ -282,8 +282,8 @@ describe('consent withdrawal (NED-05, RULE-12)', () => {
     const reply = await text(residentPhone, `NOSHARE ${code}`);
     expect(reply[0]).toContain('no longer shared');
     await waitFor(async () => (activeGrants(reportId) === 0 ? true : undefined), 90_000);
-    // Nobody at the cleanup partner holds a role yet: the notice goes to its security contact.
-    expect(await mailFor('security+cleanup@example.org', 'recalled', code)).toContain(
+    // The cleanup partner has no role holder with shared.read yet, so its administrators are told.
+    expect(await mailFor('admin.cleanup@example.org', 'recalled', code)).toContain(
       'Gateway Cleanup Volunteers',
     );
   }, 300_000);

@@ -4,7 +4,7 @@ A disaster community-response platform for county and city emergency management,
 
 The product name is configuration (`PRODUCT_NAME`, ADM-03). "Common Ground" is the current working name.
 
-**Status:** layer 1 (platform foundations) and layer 2 (resident intake, review, verification) built, tested and approved 2026-10-12; layer 3 (needs board, partner sharing with consent, public "Find help") built and under review. See `docs/plans/layer-3-status.md`, `docs/plans/layer-3-report.md` and `docs/traceability.md`. Build order follows SCL-14, one layer at a time; `CLAUDE.md` has the rules for resuming work.
+**Status:** layers 1 (platform foundations), 2 (resident intake, review, verification) and 3 (needs board, partner sharing with consent, public "Find help") built, tested and approved (2026-10-12 and 2026-10-13); layer 4 (missions, dispatch board, field app) next. See `docs/plans/layer-3-report.md`, `docs/traceability.md` and the newest `docs/plans/layer-N-status.md`. Build order follows SCL-14, one layer at a time; `CLAUDE.md` has the rules for resuming work.
 
 ## Where things live
 
@@ -69,7 +69,7 @@ curl -sk https://localhost/api/webhooks/simulator/sms -H 'content-type: applicat
 # → {"replies":["Westwind County Emergency Mgmt: You're signed up …","… Is anyone in danger right now?\n1 Yes …"]}
 ```
 
-Reply with the numbers (`2`, `1`, …), `BACK`, `SKIP`, `HELP`, `STOP`, or `DAÑOS` for Spanish; `SEND` at the end returns the reference code. `SHELTER 63001` (or `REFUGIO 63001`) answers with the three nearest open sites; `NOSHARE KXMR-4827` from the reporter's phone stops sharing that report with partner organizations (both keywords are pending Adam's carrier review, `docs/06`). A plain text from a phone that received a staff update in the last week is kept on the report as a reply. A call starts with `{"from":"+13145550199","to":"+13145550100","step":"start"}` on `/api/webhooks/simulator/voice` and continues with `step` from the answer plus `digits` or `speech`. Texts the worker sends (confirmations, one-time codes) go to the in-process simulator and are recorded in `cg.message`. To use real numbers set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `WEBHOOK_PUBLIC_BASE` in `.env`, add the county's verified number to `cg.channel_number`, and point Twilio's webhooks at `/api/webhooks/twilio/sms`, `/voice` and `/status` through a secured tunnel (`docs/06`).
+Reply with the numbers (`2`, `1`, …), `BACK`, `SKIP`, `HELP`, `STOP`, or `DAÑOS` for Spanish; `SEND` at the end returns the reference code. `SHELTER 63001` (or `REFUGIO 63001`) answers with the three nearest open sites; `NOSHARE KXMR-4827` from the reporter's phone stops sharing that report with partner organizations (both keywords approved for the carrier submission, `docs/06`). A plain text from a phone that received a staff update in the last week is kept on the report as a reply. A call starts with `{"from":"+13145550199","to":"+13145550100","step":"start"}` on `/api/webhooks/simulator/voice` and continues with `step` from the answer plus `digits` or `speech`. Texts the worker sends (confirmations, one-time codes) go to the in-process simulator and are recorded in `cg.message`. To use real numbers set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `WEBHOOK_PUBLIC_BASE` in `.env`, add the county's verified number to `cg.channel_number`, and point Twilio's webhooks at `/api/webhooks/twilio/sms`, `/voice` and `/status` through a secured tunnel (`docs/06`).
 
 ## Sign in to the console
 

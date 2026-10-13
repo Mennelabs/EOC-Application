@@ -7,7 +7,7 @@ The coordination record for layer 3 (needs board, partner sharing with consent, 
 1. `pnpm install && pnpm typecheck && pnpm test && pnpm lint && pnpm check:product-name` green before new work.
 2. Stack for integration work: `scripts/init-env.sh` (or `scripts\init-env.ps1`) then `docker compose up -d --wait`; `COMPOSE_PROFILES=maps` for the tiles and geocoder.
 3. Pick the first task below that is not `done`, finish it to green, commit citing requirement IDs, update this file, push.
-4. Every task A–J is `done` (2026-10-13). Layer 3 waits for Adam's review of [`layer-3-report.md`](layer-3-report.md); on "Approved, next layer", write `layer-4.md` (missions, dispatch board, React Native field app) before any layer-4 code. Decisions from Adam go into `docs/decisions.md` first.
+4. Every task A–J is `done` (2026-10-13). **Layer 3 approved by Adam on 2026-10-13** with the report's recommendations (`docs/decisions.md`); layers 2 and 3 merge into `main`; layer 4 continues in `layer-4-status.md`.
 
 ## Tasks
 
@@ -29,7 +29,7 @@ The coordination record for layer 3 (needs board, partner sharing with consent, 
 - CI: the last run recorded here is the one on the layer's final commit; see the row at the end of this list.
 
 - See `layer-3.md` §11 for deferred IDs and §12 for the readings taken in the residents' favour.
-- Two text keywords are new (`NOSHARE`, and `SHELTER`/`REFUGIO` now answer with sites): `docs/06` carries the NOSHARE row since task B (flagged for Adam before the carrier submission); the SHELTER/REFUGIO change lands in task E.
+- Two text keywords are new (`NOSHARE`, and `SHELTER`/`REFUGIO` now answer with sites): approved by Adam for the carrier submission on 2026-10-13 (`docs/06`, `docs/decisions.md`).
 - Partner reads are audited in the partner's tenant; the county's audit log shows grants, updates and revocations but not each partner read. A county-side read ledger (one row per partner read on the grant) is deferred to layer 4 with the field app's read receipts (DSP-06), since both need the same cross-tenant audit relay.
 - The partner workspace browser journey (plan §9) waits for partner onboarding through the console (ADM-02 with a partner administrator in the seed); the API paths it uses are covered by the stack suite.
 - Reminders (task H) email in English only; a per-account language for staff is not modelled yet (the resident side is bilingual). The weekly contact digest and the site reminders name agencies, sites and dates, never contact names or numbers (SEC-18).

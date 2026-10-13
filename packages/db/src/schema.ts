@@ -572,7 +572,20 @@ export interface PhotoTable extends Stamped {
   uploaded_at: TsNullable;
   processed_at: TsNullable;
   field_record_type:
-    'field_assessment' | 'hazard' | 'mission' | 'need' | 'search_mark' | 'placard' | 'site' | null;
+    | 'field_assessment'
+    | 'hazard'
+    | 'mission'
+    | 'need'
+    | 'search_mark'
+    | 'placard'
+    | 'site'
+    | 'pet_intake'
+    | 'site_walkthrough'
+    | 'debris_ticket'
+    | 'inspection'
+    | 'road_status'
+    | 'canvass_visit'
+    | null;
   field_record_id: Uuid | null;
 }
 

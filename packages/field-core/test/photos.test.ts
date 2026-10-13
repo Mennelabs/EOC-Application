@@ -7,7 +7,13 @@
  */
 import { describe, expect, it } from 'vitest';
 import { Outbox } from '../src/outbox.ts';
-import { PHOTOS, PhotoQueue, type PhotoApi, type PhotoDoc } from '../src/photos.ts';
+import {
+  PHOTOS,
+  PhotoQueue,
+  recordTypeForCommand,
+  type PhotoApi,
+  type PhotoDoc,
+} from '../src/photos.ts';
 import { MemoryStore } from '../src/storage.ts';
 
 class Offline extends Error {}
@@ -126,5 +132,14 @@ describe('photo queue', () => {
     expect((await queue.all())[0]).toMatchObject({ stage: 'failed', data: jpeg });
     expect(await queue.remove(p.id)).toBe(true);
     expect(await queue.all()).toEqual([]);
+  });
+
+  it('names the record a command saves, including frontline role records (record.<kind>)', () => {
+    expect(recordTypeForCommand('assessment.record')).toBe('field_assessment');
+    expect(recordTypeForCommand('record.pet_intake')).toBe('pet_intake');
+    expect(recordTypeForCommand('record.search_mark')).toBe('search_mark');
+    // Records that never carry photos (children's records, health notes) name nothing (FR-26).
+    expect(recordTypeForCommand('record.child_check_in')).toBeNull();
+    expect(recordTypeForCommand('record.health_note')).toBeNull();
   });
 });

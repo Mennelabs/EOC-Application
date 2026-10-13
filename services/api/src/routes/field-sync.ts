@@ -69,6 +69,48 @@ export const FIELD_COMMANDS: Record<
   'service_log.record': { method: 'POST', path: () => '/api/v1/service-logs', needsTarget: false },
   'need.done': { method: 'POST', path: (id) => `/api/v1/needs/${id}/done`, needsTarget: true },
   'site.census': { method: 'POST', path: (id) => `/api/v1/sites/${id}/confirm`, needsTarget: true },
+  // Layer 4 task J: frontline role records (routes/field-records.ts), one command per kind.
+  ...Object.fromEntries(
+    [
+      'search_mark',
+      'placard',
+      'road_status',
+      'debris_ticket',
+      'inspection',
+      'pet_intake',
+      'site_walkthrough',
+      'right_of_entry',
+      'interpreter_request',
+      'child_check_in',
+      'canvass_visit',
+      'shelter_stay',
+      'shelter_incident',
+      'health_note',
+    ].map((k) => [
+      `record.${k}`,
+      { method: 'POST' as const, path: () => `/api/v1/field-records/${k}`, needsTarget: false },
+    ]),
+  ),
+  'record.stock_movement': {
+    method: 'POST',
+    path: () => '/api/v1/field-records/stock_movement',
+    needsTarget: false,
+  },
+  'record.road_status.clear': {
+    method: 'POST',
+    path: (id) => `/api/v1/field-records/road_status/${id}/clear`,
+    needsTarget: true,
+  },
+  'record.shelter_stay.check_out': {
+    method: 'POST',
+    path: (id) => `/api/v1/field-records/shelter_stay/${id}/check-out`,
+    needsTarget: true,
+  },
+  'record.interpreter_request.respond': {
+    method: 'POST',
+    path: (id) => `/api/v1/field-records/interpreter_request/${id}/respond`,
+    needsTarget: true,
+  },
   'reminder.acknowledge': {
     method: 'POST',
     path: (id) => `/api/v1/reminders/${id}/acknowledge`,
@@ -80,6 +122,12 @@ export const FIELD_COMMANDS: Record<
     needsTarget: true,
   },
 };
+
+/** The record a command touches, as the result names it: `record.<kind>[.<step>]` names the kind. */
+export function recordTypeOf(kind: string): string | null {
+  const parts = kind.split('.');
+  return (parts[0] === 'record' ? parts[1] : parts[0]) ?? null;
+}
 
 const commandIn = z.object({
   /** The phone's UUID for this command: its idempotency key here and on the route it replays. */
@@ -145,6 +193,12 @@ const fieldRecordTypes = [
   'search_mark',
   'placard',
   'site',
+  'pet_intake',
+  'site_walkthrough',
+  'debris_ticket',
+  'inspection',
+  'road_status',
+  'canvass_visit',
 ] as const;
 const imageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'] as const;
 
@@ -448,7 +502,8 @@ export const fieldSyncRoutes =
             const payload: Record<string, unknown> = { ...c.body };
             // Records keyed by the phone's id take the command id, so the record and the command agree (FLD-13).
             if (
-              ['safety_alert.raise', 'assessment.record', 'service_log.record'].includes(c.kind) &&
+              (['safety_alert.raise', 'assessment.record', 'service_log.record'].includes(c.kind) ||
+                /^record\.[a-z_]+$/.test(c.kind)) &&
               !payload['clientUuid']
             )
               payload['clientUuid'] = c.id;
@@ -490,7 +545,7 @@ export const fieldSyncRoutes =
                 record:
                   typeof rec.id === 'string'
                     ? {
-                        type: c.kind.split('.')[0] ?? null,
+                        type: recordTypeOf(c.kind),
                         id: rec.id,
                         version: typeof rec.version === 'number' ? rec.version : null,
                       }
@@ -504,7 +559,7 @@ export const fieldSyncRoutes =
                 status: 409,
                 record: c.targetId
                   ? {
-                      type: c.kind.split('.')[0] ?? null,
+                      type: recordTypeOf(c.kind),
                       id: c.targetId,
                       version: (rec.details as { version?: number } | undefined)?.version ?? null,
                     }

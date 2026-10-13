@@ -9,6 +9,7 @@ import { dispatchRoutes, type DispatchDeps } from './dispatch.ts';
 import { eventRoutes } from './events.ts';
 import { fieldAssessmentRoutes } from './field-assessments.ts';
 import { fieldOpsRoutes } from './field-ops.ts';
+import { fieldRecordRoutes, type FieldRecordDeps } from './field-records.ts';
 import { fieldSyncRoutes, type FieldSyncDeps } from './field-sync.ts';
 import { fieldVoiceRoutes, type FieldVoiceDeps } from './field-voice.ts';
 import { intakeGraphRoutes } from './intake-graphs.ts';
@@ -31,6 +32,7 @@ export interface RouteDeps {
   dispatch?: DispatchDeps;
   fieldSync?: FieldSyncDeps;
   fieldVoice?: FieldVoiceDeps;
+  fieldRecords?: FieldRecordDeps;
 }
 
 /** Route plugins mounted under /api/v1. Each layer adds its modules here. */
@@ -55,6 +57,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   fieldOpsRoutes,
   fieldAssessmentRoutes,
   fieldVoiceRoutes(deps.fieldVoice),
+  fieldRecordRoutes(deps.fieldRecords ?? deps.fieldSync),
   dispatchRoutes(deps.dispatch),
   fieldSyncRoutes(deps.fieldSync),
   resourceRoutes(),

@@ -4,7 +4,8 @@
  * "We're OK" (team leads; others see who confirms), hazard warnings near the
  * current position, the work assigned to this person or team with
  * "Got it", the latest message from dispatch, and how many records are
- * still on the phone. The help button is on every screen (ui.tsx).
+ * still on the phone. "What you can do" lists only the modules the role
+ * allows (FLD-01; the server checks again). The help button is on every screen (ui.tsx).
  */
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -12,6 +13,7 @@ import { View } from 'react-native';
 import { timerLabel, timerPhase } from '@cg/field-core';
 import { useField, useHazardWarnings } from '../src/field';
 import { clock, duration } from '../src/format';
+import { MODULES } from '../src/records';
 import { label } from '../src/vocab';
 import { Alert, Body, Button, Card, Heading, NavBar, Page, SyncBadge } from '../src/ui';
 
@@ -137,6 +139,49 @@ export default function Home() {
               kind="secondary"
               label={t('needs.heading')}
               onPress={() => router.push('/needs')}
+            />
+          ) : null}
+          {MODULES.filter((m) => f.can(m.action)).map((m) => (
+            <Button
+              key={m.kind}
+              kind="secondary"
+              label={m.title[locale]}
+              onPress={() => router.push({ pathname: '/record/[kind]', params: { kind: m.kind } })}
+            />
+          ))}
+          {f.can('shelter_stay.write') ? (
+            <Button
+              kind="secondary"
+              label={t('shelter.heading')}
+              onPress={() => router.push('/shelter')}
+            />
+          ) : null}
+          {f.can('child_check_in.write') ? (
+            <Button
+              kind="secondary"
+              label={t('child.heading')}
+              onPress={() => router.push('/child')}
+            />
+          ) : null}
+          {f.can('stock.write') ? (
+            <Button
+              kind="secondary"
+              label={t('stock.heading')}
+              onPress={() => router.push('/stock')}
+            />
+          ) : null}
+          {f.can('interpreter.respond') ? (
+            <Button
+              kind="secondary"
+              label={t('interp.heading')}
+              onPress={() => router.push('/interpreter')}
+            />
+          ) : null}
+          {f.can('badge.verify') ? (
+            <Button
+              kind="secondary"
+              label={t('check.heading')}
+              onPress={() => router.push('/checkpoint')}
             />
           ) : null}
           {f.can('job_aid.read') ? (

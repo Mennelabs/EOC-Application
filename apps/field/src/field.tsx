@@ -168,6 +168,22 @@ interface FieldActions {
   needDone(needId: string, note: string, photoIds?: string[]): Promise<void>;
   /** Online lists the phone does not keep (needs held by the crew's organization). */
   online<T>(path: string): Promise<T>;
+  /** Online steps that must be checked by the server before anyone acts on them (a child's pickup code). */
+  send<T>(
+    method: 'POST' | 'PATCH',
+    path: string,
+    body?: unknown,
+    headers?: Record<string, string>,
+  ): Promise<T>;
+  /** A frontline role record (task J), kept on the phone and sent as `record.<kind>`. */
+  saveRecord(
+    kind: string,
+    body: Record<string, unknown>,
+    summary: string,
+    opts?: { photoIds?: string[]; attachPosition?: boolean },
+  ): Promise<string>;
+  /** A next step on a record the server already has (a road reopens, an interpreter accepts). */
+  recordStep(kind: string, targetId: string, body?: Record<string, unknown>): Promise<void>;
 }
 
 export interface AssessmentInput {
@@ -789,6 +805,49 @@ export function FieldProvider({ children }: { children: ReactNode }) {
       await enqueue({ id, kind: 'need.done', targetId: needId, body: { note } });
     },
     online: <T,>(path: string) => api.current.call<T>('GET', path),
+    send: <T,>(
+      method: 'POST' | 'PATCH',
+      path: string,
+      body?: unknown,
+      headers?: Record<string, string>,
+    ) => api.current.call<T>(method, path, body ?? {}, headers),
+    async saveRecord(kind, body, summary, opts) {
+      const s = store.current;
+      if (!s) throw new Error('locked');
+      const id = globalThis.crypto.randomUUID();
+      // The phone keeps a plain line to show; the details travel encrypted in the outbox (FLD-14).
+      await s.put('role_records', {
+        id,
+        kind,
+        summary,
+        at: new Date().toISOString(),
+        syncState: 'on_this_phone',
+      });
+      if (opts?.photoIds?.length) await photoQueue.current?.tag(opts.photoIds, id);
+      const f = opts?.attachPosition ? (fix ?? (await currentFix())) : null;
+      await enqueue({
+        id,
+        kind: `record.${kind}`,
+        body: {
+          ...body,
+          ...(checkIn?.eventId && !body['eventId'] ? { eventId: checkIn.eventId } : {}),
+          ...(f && body['position'] === undefined
+            ? {
+                position: {
+                  lat: f.lat,
+                  lon: f.lon,
+                  ...(f.accuracyM !== null ? { accuracyM: f.accuracyM } : {}),
+                },
+              }
+            : {}),
+        },
+        localRef: { collection: 'role_records', id },
+      });
+      return id;
+    },
+    async recordStep(kind, targetId, body) {
+      await enqueue({ kind: `record.${kind}`, targetId, body: body ?? {} });
+    },
   };
 
   const value: FieldState & FieldActions = {

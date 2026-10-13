@@ -408,14 +408,18 @@ export function ReportDetailScreen({
     };
   }, [id, tick]);
 
+  // FR-00.05: the next step must carry the version this one produced, so "Done" shows only once
+  // the changed report is on screen; acting on the old version would be refused as a conflict.
   const run = async (fn: () => Promise<unknown>, ok: string) => {
     setMsg(null);
     try {
       await fn();
+      setReport(await api<Detail>(`/reports/${id}`));
       setMsg(ok);
       reload();
     } catch (err) {
       setMsg(describeFailure(err));
+      reload();
     }
   };
 

@@ -8,13 +8,33 @@ import type { Channel, ConfirmChannel, ConsumeMessage } from 'amqplib';
 import type { Kysely } from 'kysely';
 import type { Logger } from 'pino';
 import type { Database } from '@cg/db';
-import { TOPOLOGY } from '@cg/adapters';
+import { publishConfirmed, TOPOLOGY } from '@cg/adapters';
 import { describeMessage, topicHandlers } from './handlers.ts';
 import { fileSubmission } from './intake.ts';
 import type { JobContext, OutboxMessage } from './types.ts';
 
 const QUEUE = TOPOLOGY.queues[1]; // jobs.default
 const INTAKE_QUEUE = TOPOLOGY.queues[0]; // intake.submissions
+
+/**
+ * Acknowledges on a channel that may have died meanwhile (SCL-06). A broker that shut
+ * down closes the channel under a job in flight; acking then throws. The broker
+ * redelivers whatever was not acknowledged, so the right move is to log and let the
+ * supervisor reconnect, never to throw out of the consumer (which would end the worker).
+ */
+export function settle(
+  channel: Pick<Channel, 'ack' | 'nack'>,
+  raw: ConsumeMessage,
+  how: 'ack' | 'requeue',
+  log: JobContext['log'],
+): void {
+  try {
+    if (how === 'ack') channel.ack(raw);
+    else channel.nack(raw, false, true);
+  } catch (err) {
+    log.warn({ err, how }, 'channel gone before the message was settled; the broker redelivers it');
+  }
+}
 
 /** What the API publishes for a submission (public/routes.ts IntakeQueueMessage). */
 interface IntakeQueueMessage {
@@ -48,19 +68,11 @@ export async function relayOnce(
       payload: (row.payload as Record<string, unknown>) ?? {},
       executionId: row.execution_id,
     };
-    await new Promise<void>((resolve, reject) => {
-      channel.publish(
-        '',
-        QUEUE,
-        Buffer.from(JSON.stringify(msg)),
-        {
-          persistent: true,
-          contentType: 'application/json',
-          messageId: `outbox-${msg.id}`,
-          type: msg.topic,
-        },
-        (err) => (err ? reject(err) : resolve()),
-      );
+    await publishConfirmed(channel, '', QUEUE, Buffer.from(JSON.stringify(msg)), {
+      persistent: true,
+      contentType: 'application/json',
+      messageId: `outbox-${msg.id}`,
+      type: msg.topic,
     });
     await db
       .updateTable('cg.outbox')
@@ -84,18 +96,18 @@ export async function consume(ctx: JobContext, channel: ConfirmChannel): Promise
         const handler = topicHandlers[msg.topic];
         if (!handler) {
           ctx.log.warn({ topic: msg.topic }, 'no handler for topic; dropping');
-          channel.ack(raw);
+          settle(channel, raw, 'ack', ctx.log);
           return;
         }
         await handler(ctx, msg);
-        channel.ack(raw);
+        settle(channel, raw, 'ack', ctx.log);
       } catch (err) {
         ctx.log.error(
           { err, msg: msg ? describeMessage(msg) : 'unparseable' },
           'job failed; requeue',
         );
         // requeue=true → the broker's x-delivery-limit dead-letters it after 10 tries.
-        channel.nack(raw, false, true);
+        settle(channel, raw, 'requeue', ctx.log);
       }
     })();
   });
@@ -126,7 +138,7 @@ export async function consumeIntake(
             { v: msg.v, executionId },
             'unknown intake message version; the sweep files it',
           );
-          channel.ack(raw);
+          settle(channel, raw, 'ack', ctx.log);
           return;
         }
         await fileSubmission(ctx, {
@@ -138,10 +150,10 @@ export async function consumeIntake(
           payloadEnc: Buffer.from(msg.payloadEnc, 'base64'),
           path: 'queue',
         });
-        channel.ack(raw);
+        settle(channel, raw, 'ack', ctx.log);
       } catch (err) {
         ctx.log.error({ err, executionId }, 'filing a queued submission failed; requeue');
-        channel.nack(raw, false, true);
+        settle(channel, raw, 'requeue', ctx.log);
       }
     })();
   });

@@ -9,6 +9,7 @@ import { dispatchRoutes, type DispatchDeps } from './dispatch.ts';
 import { eventRoutes } from './events.ts';
 import { fieldAssessmentRoutes } from './field-assessments.ts';
 import { fieldOpsRoutes } from './field-ops.ts';
+import { fieldRecordRoutes, type FieldRecordDeps } from './field-records.ts';
 import { fieldSyncRoutes, type FieldSyncDeps } from './field-sync.ts';
 import { fieldVoiceRoutes, type FieldVoiceDeps } from './field-voice.ts';
 import { intakeGraphRoutes } from './intake-graphs.ts';
@@ -24,13 +25,16 @@ import { roleRoutes } from './roles.ts';
 import { rosterRoutes } from './roster.ts';
 import { siteRoutes } from './sites.ts';
 import { sharedRoutes } from './shared.ts';
+import { situationRoutes } from './situation.ts';
 import { tenantRoutes } from './tenants.ts';
+import { volunteerRoutes } from './volunteers.ts';
 
 /** What the server gives the routes that talk to the broker, object storage or the AI provider (absent in tests: poll fallback, no map extracts). */
 export interface RouteDeps {
   dispatch?: DispatchDeps;
   fieldSync?: FieldSyncDeps;
   fieldVoice?: FieldVoiceDeps;
+  fieldRecords?: FieldRecordDeps;
 }
 
 /** Route plugins mounted under /api/v1. Each layer adds its modules here. */
@@ -52,10 +56,13 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   siteRoutes,
   missionRoutes,
   rosterRoutes,
+  volunteerRoutes,
   fieldOpsRoutes,
   fieldAssessmentRoutes,
   fieldVoiceRoutes(deps.fieldVoice),
+  fieldRecordRoutes(deps.fieldRecords ?? deps.fieldSync),
   dispatchRoutes(deps.dispatch),
+  situationRoutes,
   fieldSyncRoutes(deps.fieldSync),
   resourceRoutes(),
   contactRoutes,

@@ -356,3 +356,125 @@ fieldset {
   margin: 0.5rem 0;
   grid-column: 1 / -1;
 }
+
+/* Layer 4: dispatch board, markers and alerts (DSP-01, CON-03; never colour alone) */
+.map {
+  height: 420px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f3f1ec;
+}
+.marker {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 2px 4px;
+  font:
+    700 12px/1 system-ui,
+    sans-serif;
+  border: 3px solid #111;
+  background: #fff;
+  color: #111;
+  cursor: pointer;
+}
+.marker:focus-visible {
+  outline: 3px solid #6b2fd6;
+  outline-offset: 2px;
+}
+.shape-circle {
+  border-radius: 999px;
+}
+.shape-square {
+  border-radius: 2px;
+}
+.shape-diamond {
+  transform: rotate(45deg);
+}
+.shape-triangle {
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  border-width: 0;
+  min-width: 32px;
+  min-height: 30px;
+  padding-top: 10px;
+}
+.tone-ok {
+  background: #d8f0de;
+}
+.tone-busy {
+  background: #fde9c2;
+}
+.tone-warn {
+  background: #fff3b0;
+}
+.tone-danger {
+  background: #f8d0d0;
+  border-color: #7a0000;
+}
+.tone-info {
+  background: #d6e6f5;
+}
+.layer-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.layer-toggles button[aria-pressed='true'] {
+  font-weight: 700;
+  outline: 2px solid var(--brand);
+}
+.takeover {
+  border: 4px solid #9a1b1b;
+  border-radius: 8px;
+  padding: 1rem;
+  max-width: 40rem;
+}
+.takeover::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin: 0.5rem 0;
+  background: var(--panel);
+}
+.drop-target {
+  outline: 3px dashed var(--brand);
+}
+.badge-team-available {
+  color: #1b6e3a;
+}
+.badge-team-en_route,
+.badge-team-on_task,
+.badge-team-break {
+  color: #8a5a00;
+}
+.badge-team-overdue,
+.badge-team-out_of_service {
+  color: #9a1b1b;
+}
+.badge-card {
+  border: 2px solid #111;
+  border-radius: 8px;
+  padding: 1rem;
+  max-width: 22rem;
+  background: #fff;
+  color: #111;
+}
+.badge-name {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .badge-print,
+  .badge-print .badge-card,
+  .badge-print .badge-card * {
+    visibility: visible;
+  }
+  .badge-print .actions,
+  .badge-print .hint {
+    display: none;
+  }
+}

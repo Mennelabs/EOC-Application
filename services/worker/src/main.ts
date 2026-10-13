@@ -16,8 +16,9 @@ import {
   queueProbe,
   runProbes,
   SimulatorSms,
+  superviseQueue,
   TwilioSms,
-  type QueueConnection,
+  type QueueSupervisor,
 } from '@cg/adapters';
 import { fakeProvider, providerByName } from '@cg/ai';
 import { FieldCrypto, OpenBaoKeyService, dbKeyStore } from '@cg/crypto';
@@ -42,7 +43,6 @@ const config = loadConfig(workerSchema);
 const log = pino({ level: config.LOG_LEVEL, base: { service: 'worker' } });
 const pool = createPool(config.DATABASE_URL, 5);
 const db = createDb(config.DATABASE_URL, 5);
-let queue: QueueConnection | undefined;
 // Key-service token is injected as a file by the keys-init container (ADR-0009).
 const keyToken = readFileSync(config.OPENBAO_TOKEN_FILE, 'utf8').trim();
 const fieldCrypto = new FieldCrypto(
@@ -153,30 +153,32 @@ const schedules: Schedule[] = [
   { name: 'position-trails', everyMs: 24 * 3600_000, run: dropPositionTrails },
 ];
 
-const probes = [postgresProbe('db', pool), queueProbe('queue', () => queue)];
+const probes = [postgresProbe('db', pool), queueProbe('queue', queueNow)];
 
-async function keepQueueConnected(attempt = 0): Promise<void> {
-  try {
-    queue = await connectQueue(config.AMQP_URL);
-    await assertTopology(queue.channel);
-    queue.connection.on('close', () => {
-      queue = undefined;
-      void keepQueueConnected();
-    });
-    await consume(ctx, queue.channel);
-    await consumeIntake(ctx, await queue.connection.createChannel());
-    log.info('queue connected; consuming jobs and submissions');
-  } catch (err) {
-    queue = undefined;
-    const delay = Math.min(30_000, 500 * 2 ** attempt);
-    log.warn({ err, delay }, 'queue unavailable, retrying');
-    setTimeout(() => void keepQueueConnected(attempt + 1), delay);
-  }
+// SCL-06: one supervised connection; a dead channel, a closed connection or a failed check
+// rebuilds it with both consumers (packages/adapters/src/queue.ts superviseQueue).
+let supervisor: QueueSupervisor | undefined;
+function keepQueueConnected(): void {
+  supervisor = superviseQueue({
+    connect: () => connectQueue(config.AMQP_URL),
+    onReady: async (q) => {
+      await assertTopology(q.channel);
+      await consume(ctx, q.channel);
+      const intake = await q.connection.createChannel();
+      await consumeIntake(ctx, intake);
+      return [intake];
+    },
+    log,
+  });
+}
+function queueNow() {
+  return supervisor?.current();
 }
 
 async function relayLoop(): Promise<void> {
   for (;;) {
     try {
+      const queue = queueNow();
       if (queue) {
         const n = await relayOnce(db, queue.channel, log);
         if (n > 0) continue; // drain quickly under load
@@ -193,6 +195,7 @@ const changeRelay: ChangeRelayState = { last: null };
 async function changeLoop(): Promise<void> {
   for (;;) {
     try {
+      const queue = queueNow();
       if (queue) {
         const n = await relayChangesOnce(db, queue.channel, log, changeRelay);
         if (n > 0) continue;
@@ -235,16 +238,22 @@ const server = createServer((req, res) => {
   res.writeHead(404).end();
 });
 
-void keepQueueConnected();
+keepQueueConnected();
 void relayLoop();
 void changeLoop();
 startSchedules();
 server.listen(config.PORT, '0.0.0.0', () => log.info({ port: config.PORT }, 'worker listening'));
 
+// SCL-06: a stray rejection (a broker or provider gone mid-call) is logged; the loops,
+// schedules and the queue supervisor keep the worker going rather than letting it exit.
+process.on('unhandledRejection', (err) => {
+  log.error({ err }, 'unhandled rejection; the worker carries on');
+});
+
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.once(signal, async () => {
     server.close();
-    await queue?.close();
+    await supervisor?.stop();
     await db.destroy();
     await pool.end();
     process.exit(0);

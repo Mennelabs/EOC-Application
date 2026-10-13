@@ -82,6 +82,8 @@ services:
   api:
     build: { context: ., dockerfile: infra/node/Dockerfile, args: { APP: services/api } }
     image: common-ground/api:local
+    # SCL-06: a crash (a dependency gone mid-call) restarts the process; state is in the database.
+    restart: unless-stopped
     environment: *node-env
     volumes:
       - keys_init:/bao-init:ro
@@ -96,6 +98,8 @@ services:
   worker:
     build: { context: ., dockerfile: infra/node/Dockerfile, args: { APP: services/worker } }
     image: common-ground/worker:local
+    # SCL-06: a crash (a dependency gone mid-call) restarts the process; state is in the database.
+    restart: unless-stopped
     environment:
       <<: *node-env
       DATABASE_URL: postgres://cg_worker:${CG_WORKER_PASSWORD:?}@db:5432/cg

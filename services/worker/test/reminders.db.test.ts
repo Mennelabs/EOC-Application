@@ -62,6 +62,16 @@ describe.skipIf(!workerUrl)('worker reminders (database-backed)', () => {
     const before = mails.length;
     for (const row of rows) {
       lastOutboxId = Math.max(lastOutboxId, Number(row.id));
+      // In CI the stack's own worker shares this database and queues messages under the stack's
+      // key; those are not this suite's, and only this suite's key can read its own (SEC-10).
+      const toEnc = (row.payload as { toEnc?: string }).toEnc;
+      if (toEnc) {
+        const readable = await ctx.crypto
+          .decrypt(row.tenant_id, Buffer.from(toEnc, 'base64'))
+          .then(() => true)
+          .catch(() => false);
+        if (!readable) continue;
+      }
       await messageSend(ctx, {
         id: Number(row.id),
         tenantId: row.tenant_id,

@@ -13,7 +13,7 @@ import type { ConfirmChannel } from 'amqplib';
 import type { Kysely } from 'kysely';
 import type { Logger } from 'pino';
 import type { Database } from '@cg/db';
-import { TOPOLOGY } from '@cg/adapters';
+import { publishConfirmed, TOPOLOGY } from '@cg/adapters';
 
 export interface ChangeRelayState {
   /** Last feed seq published; null until the first run reads the head. */
@@ -45,15 +45,13 @@ export async function relayChangesOnce(
     .execute();
   for (const r of rows) {
     const notice = { seq: Number(r.seq), tenantId: r.tenant_id, tenantPath: r.path };
-    await new Promise<void>((resolve, reject) => {
-      channel.publish(
-        TOPOLOGY.changesExchange,
-        '',
-        Buffer.from(JSON.stringify(notice)),
-        { persistent: false, contentType: 'application/json', type: r.record_type },
-        (err) => (err ? reject(err) : resolve()),
-      );
-    });
+    await publishConfirmed(
+      channel,
+      TOPOLOGY.changesExchange,
+      '',
+      Buffer.from(JSON.stringify(notice)),
+      { persistent: false, contentType: 'application/json', type: r.record_type },
+    );
     state.last = notice.seq;
   }
   if (rows.length) log.debug({ relayed: rows.length, last: state.last }, 'changes relayed');

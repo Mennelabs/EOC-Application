@@ -55,6 +55,14 @@
           "photosPermission": "Choose a photo of damage or a hazard to attach to a record.",
           "microphonePermission": false
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "The camera reads badge and wristband codes, and takes photos you attach to records.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
       ]
     ],
     "extra": {

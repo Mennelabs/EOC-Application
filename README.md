@@ -4,7 +4,7 @@ A disaster community-response platform for county and city emergency management,
 
 The product name is configuration (`PRODUCT_NAME`, ADM-03). "Common Ground" is the current working name.
 
-**Status:** layers 1 (platform foundations), 2 (resident intake, review, verification) and 3 (needs board, partner sharing with consent, public "Find help") built, tested and approved (2026-10-12 and 2026-10-13); layer 4 (missions, dispatch board, field app) next. See `docs/plans/layer-3-report.md`, `docs/traceability.md` and the newest `docs/plans/layer-N-status.md`. Build order follows SCL-14, one layer at a time; `CLAUDE.md` has the rules for resuming work.
+**Status:** layers 1 (platform foundations), 2 (resident intake, review, verification) and 3 (needs board, partner sharing with consent, public "Find help") built, tested and approved (2026-10-12 and 2026-10-13); layer 4 (missions, dispatch board, field app) built and in review. See `docs/plans/layer-4-report.md`, `docs/traceability.md` and the newest `docs/plans/layer-N-status.md`. Build order follows SCL-14, one layer at a time; `CLAUDE.md` has the rules for resuming work.
 
 ## Where things live
 
@@ -101,6 +101,10 @@ Sign in as `priya.assessment@example.org` (`county`). **Review queue** lists rep
 
 Sign in as `luis.masscare@example.org` (`county`) for the **Needs board**: open, claimed and done needs with filters, claim, assign to a consented partner, release, done and reopen with a note, overlap warnings when another organization holds a need at the same household or address, who holds a claim as the visibility rules allow, a CSV export through the confirmation dialog, and the key counts on home. `tomas.pio@example.org` manages **Sites** (open, capacity, confirm, close, publish or unpublish through the dialog with a named reason, confidential sites that never publish, alert drafts sized for WEA and the mass-notification system), **Resources** (English and Spanish text marked human-reviewed, review and expiry dates, an outside-link check, publish only when the HTML passes the accessibility check), the **Publication log** and the **Contacts** registry (names and numbers only for roles with the contact category, verification dates, a weekly re-verification digest). **Partner agreements** are drafted by the county and signed by the partner. A partner organization's own staff (`ruth.canteen@example.org` in realm `canteen`, `nurse@example.org` in `shelter-ngo`; each partner also has `admin.<org>@example.org` and `security.<org>@example.org` to invite and approve its own people) use the **Partner workspace**: the consented records with only the sections their service is allowed, their claims, referrals in and out, and "send an update" to the resident. Residents hear by text (with opt-in) or email; replies by text land on the report. The worker reminds site leads before a confirmation window lapses, expires resources past their date, checks outside links daily and notices every publication (`services/worker/src/jobs/reminders.ts`).
 
+### Missions, dispatch and the field (layer 4)
+
+`casey.dispatch@example.org` (`county`, field coordinator) runs the **Dispatch board** (live teams, the queue, keyboard or drag assignment with suggested teams, alerts that take over the screen until acknowledged), **Missions** (phone and walk-in requests, detail, people involved, narratives, closure), **Board replay**, the **Situation map** (layers checked per role, rounded points unless the role sees exact locations), **Roster and check-in**, **Messages to the field**, **Badges**, **Reminders** and **Field devices**. `luis.masscare@example.org` has **Shelters** (choose a partner as operator, the census, sending it to the county); shelter workers register households with wristband codes there, and the volunteer reception role uses **Volunteer reception** (a walk-up registered, checked in and badged in one step). Neither role has a seeded account; invite one from Administration. Field accounts: `rowan.field@example.org` (team lead of the Field Exercise Team, FX-1), `pat.netcontrol@example.org` (net control) and `dispatch.cleanup@example.org` (realm `cleanup`, agency dispatcher for the chainsaw crews). The field app's web build is at https://localhost/field/: sign in as the field lead, set a PIN, check in with `WESTWIND`.
+
 The CJIS enclave (`cjis-*` services) starts on its own internal network. It has no published ports on purpose: `docker compose exec cjis-api wget -qO- http://127.0.0.1:8080/health/ready`.
 
 Maps (SCL-13) are opt-in because the first build downloads the Missouri OpenStreetMap extract: set `COMPOSE_PROFILES=maps` in `.env` for the geocoder and run `docker compose --profile maps-build run --rm tiles-build` once for vector tiles.
@@ -166,7 +170,7 @@ pnpm seed                      # -> tools/seed/out/
 pnpm seed -- --seed 7 --reports 5000
 ```
 
-Since layer 4 the loader also fills the field roster (`tools/seed/src/county.ts`, `teams`): damage assessment teams, the CERT canvass team, a Guard traffic-control unit and ARES net control for the county; chainsaw crews, canteens, shelter staff and an outreach pair for the partner organizations, each member with recorded, verified credentials (DSP-02, PER-01); the county's parcel grid (`cg.parcel`, FLD-04); and the exercise event's check-in code `WESTWIND` (FLD-03). Everything it produces is invented and marked `synthetic: true`. **Only synthetic or exercise data ever goes into this stack (SCL-12).**
+Since layer 4 the loader also fills the field roster (`tools/seed/src/county.ts`, `teams`): damage assessment teams, the CERT canvass team, a Guard traffic-control unit and ARES net control for the county; chainsaw crews, canteens, shelter staff and an outreach pair for the partner organizations, each member with recorded, verified credentials (DSP-02, PER-01), and a Field Exercise Team whose lead has a sign-in for the field app and the stack suites; the county's parcel grid (`cg.parcel`, FLD-04); and the exercise event's check-in code `WESTWIND` (FLD-03). Everything it produces is invented and marked `synthetic: true`. **Only synthetic or exercise data ever goes into this stack (SCL-12).**
 
 ## Run the checks
 
@@ -176,9 +180,9 @@ pnpm lint              # eslint + prettier
 pnpm typecheck
 pnpm check:product-name   # ADM-03: product name never hardcoded
 pnpm test              # unit tests (vitest)
-pnpm test:integration  # against the running stack (STACK_URL, COMPOSE_FILES to override): layer 1, 2 and 3 acceptance cases
-pnpm test:e2e          # Playwright + axe: resident flow, kiosk, console onboarding, review, needs board and sites journeys, the public help page (npx playwright install chromium first)
-tests/load/run.sh submissions smoke   # k6 load profiles (SCL-03) through the pinned k6 container; also sms-sessions and help; `full` is the target profile, see tests/load/README.md
+pnpm test:integration  # against the running stack (STACK_URL, COMPOSE_FILES to override): layer 1 to 4 acceptance cases
+pnpm test:e2e          # Playwright + axe: resident flow, kiosk, console onboarding, review, needs board, sites, dispatch and missions journeys, the field app's web build, the public help page (npx playwright install chromium first)
+tests/load/run.sh submissions smoke   # k6 load profiles (SCL-03) through the pinned k6 container; also sms-sessions, help and field (positions and the live stream); `full` is the target profile, see tests/load/README.md
 pnpm --filter @cg/web-help build && pnpm --filter @cg/web-help check:size   # PUB-07: the public page's first load against its 300 KB budget
 scripts/backup.sh && scripts/restore.sh backups/<stamp>   # NFR-05; drills in tests/drills/
 DATABASE_MIGRATOR_URL=... pnpm --filter @cg/db check:migrations 3   # newest migrations up, down, up; dictionary and RLS checks (SEC-05/11)

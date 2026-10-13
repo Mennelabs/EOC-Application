@@ -572,7 +572,20 @@ export interface PhotoTable extends Stamped {
   uploaded_at: TsNullable;
   processed_at: TsNullable;
   field_record_type:
-    'field_assessment' | 'hazard' | 'mission' | 'need' | 'search_mark' | 'placard' | 'site' | null;
+    | 'field_assessment'
+    | 'hazard'
+    | 'mission'
+    | 'need'
+    | 'search_mark'
+    | 'placard'
+    | 'site'
+    | 'pet_intake'
+    | 'site_walkthrough'
+    | 'debris_ticket'
+    | 'inspection'
+    | 'road_status'
+    | 'canvass_visit'
+    | null;
   field_record_id: Uuid | null;
 }
 
@@ -731,6 +744,8 @@ export interface SiteTable extends Stamped {
   published_at: TsNullable;
   unpublished_at: TsNullable;
   usng: string | null;
+  /** CON-16: the partner organization that runs the site. */
+  operator_tenant_id: Uuid | null;
 }
 
 export interface ZipCentroidTable {

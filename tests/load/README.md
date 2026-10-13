@@ -7,11 +7,13 @@ k6 scripts against a running stack. `smoke` runs in CI on every push; `full` is 
 | `submissions`  | 28 submissions/s sustained (2 × 50,000 per hour) with two bursts to 60/s   | 5/s for 30 s     | every submission accepted with a code, p95 < 1 s, no 5xx |
 | `sms-sessions` | 20,000 concurrent text sessions, each walking the dialogue to a code       | 5 sessions, 30 s | every session reaches a code, reply p95 < 2 s, no 5xx    |
 | `help`         | 200 "Find help" requests/s by ZIP in both languages, plus the GeoJSON feed | 10/s for 30 s    | every answer 200 with sites, p95 < 800 ms, no 5xx        |
+| `field`        | 100 position batches/s for 5 min with 300 dispatch screens on the stream   | 10/s, 20 readers | every batch 202, p95 < 1 s; every stream ready < 2 s     |
 
 ```
 tests/load/run.sh submissions smoke
 tests/load/run.sh sms-sessions smoke
 tests/load/run.sh help smoke
+tests/load/run.sh field smoke
 BASE_URL=https://stack.example.test tests/load/run.sh submissions full
 ```
 

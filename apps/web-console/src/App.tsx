@@ -12,6 +12,18 @@ import {
 } from './screens/permissions.tsx';
 import { AiRegisterScreen, AssistedScreen, IntakeSetupScreen } from './screens/intake.tsx';
 import { ContactsScreen } from './screens/contacts.tsx';
+import { DispatchScreen, ReplayScreen } from './screens/dispatch.tsx';
+import { SheltersScreen, VolunteerReceptionScreen } from './screens/masscare.tsx';
+import { SituationScreen } from './screens/situation.tsx';
+import {
+  BadgesScreen,
+  DevicesScreen,
+  FieldMessagesScreen,
+  NetControlScreen,
+  RemindersScreen,
+  RosterScreen,
+} from './screens/fieldops.tsx';
+import { MissionDetailScreen, MissionsScreen } from './screens/missions.tsx';
 import { KeyCounts, NeedsBoardScreen, PartnerScreen } from './screens/needs.tsx';
 import { PartnersScreen } from './screens/partners.tsx';
 import { ResourcesScreen } from './screens/resources.tsx';
@@ -37,6 +49,18 @@ const routes = [
   { path: '/console/publications', label: 'Publication log', layer: 3 },
   { path: '/console/contacts', label: 'Contacts', layer: 3 },
   { path: '/console/partners', label: 'Partner agreements', layer: 3 },
+  { path: '/console/dispatch', label: 'Dispatch board', layer: 4 },
+  { path: '/console/missions', label: 'Missions', layer: 4 },
+  { path: '/console/replay', label: 'Board replay', layer: 4 },
+  { path: '/console/situation', label: 'Situation map', layer: 4 },
+  { path: '/console/shelters', label: 'Shelters', layer: 4 },
+  { path: '/console/reception', label: 'Volunteer reception', layer: 4 },
+  { path: '/console/roster', label: 'Roster and check-in', layer: 4 },
+  { path: '/console/net-control', label: 'Net control log', layer: 4 },
+  { path: '/console/field-messages', label: 'Messages to the field', layer: 4 },
+  { path: '/console/badges', label: 'Badges', layer: 4 },
+  { path: '/console/reminders', label: 'Reminders', layer: 4 },
+  { path: '/console/devices', label: 'Field devices', layer: 4 },
   { path: '/console/events', label: 'Events', layer: 1 },
   { path: '/console/tenants', label: 'Organizations', layer: 1 },
   { path: '/console/accounts', label: 'Staff accounts', layer: 1 },
@@ -183,9 +207,35 @@ export function App({ config }: { config: RuntimeConfig }) {
   }
 
   const screen = (() => {
+    if (path.startsWith('/console/missions/'))
+      return <MissionDetailScreen id={path.slice('/console/missions/'.length)} />;
     if (path.startsWith('/console/reports/'))
       return <ReportDetailScreen id={path.slice('/console/reports/'.length)} navigate={navigate} />;
     switch (path) {
+      case '/console/dispatch':
+        return <DispatchScreen />;
+      case '/console/missions':
+        return <MissionsScreen navigate={navigate} />;
+      case '/console/replay':
+        return <ReplayScreen />;
+      case '/console/situation':
+        return <SituationScreen />;
+      case '/console/shelters':
+        return <SheltersScreen me={me} />;
+      case '/console/reception':
+        return <VolunteerReceptionScreen />;
+      case '/console/roster':
+        return <RosterScreen />;
+      case '/console/net-control':
+        return <NetControlScreen />;
+      case '/console/field-messages':
+        return <FieldMessagesScreen />;
+      case '/console/badges':
+        return <BadgesScreen />;
+      case '/console/reminders':
+        return <RemindersScreen />;
+      case '/console/devices':
+        return <DevicesScreen />;
       case '/console/reports':
         return <ReviewQueueScreen navigate={navigate} />;
       case '/console/assist':

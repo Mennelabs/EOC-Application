@@ -21,7 +21,19 @@ export type PhotoStage = 'on_this_phone' | 'ticketed' | 'uploaded' | 'received' 
 
 /** The server's record types a field photo can document (services/api routes/field-sync.ts). */
 export type PhotoRecordType =
-  'field_assessment' | 'hazard' | 'mission' | 'need' | 'search_mark' | 'placard' | 'site';
+  | 'field_assessment'
+  | 'hazard'
+  | 'mission'
+  | 'need'
+  | 'search_mark'
+  | 'placard'
+  | 'site'
+  | 'pet_intake'
+  | 'site_walkthrough'
+  | 'debris_ticket'
+  | 'inspection'
+  | 'road_status'
+  | 'canvass_visit';
 
 export interface PhotoDoc extends StoredDoc {
   id: string;
@@ -67,8 +79,22 @@ const RECORD_TYPES: Record<string, PhotoRecordType> = {
   mission: 'mission',
 };
 
+/** Frontline role records travel as `record.<kind>` (services/api routes/field-records.ts). */
+const RECORD_KINDS: readonly PhotoRecordType[] = [
+  'search_mark',
+  'placard',
+  'pet_intake',
+  'site_walkthrough',
+  'debris_ticket',
+  'inspection',
+  'road_status',
+  'canvass_visit',
+];
+
 export function recordTypeForCommand(kind: string): PhotoRecordType | null {
-  return RECORD_TYPES[kind.split('.')[0] ?? ''] ?? null;
+  const [first, second] = kind.split('.');
+  if (first === 'record') return RECORD_KINDS.find((k) => k === second) ?? null;
+  return RECORD_TYPES[first ?? ''] ?? null;
 }
 
 function bytesOf(b64: string): Uint8Array {

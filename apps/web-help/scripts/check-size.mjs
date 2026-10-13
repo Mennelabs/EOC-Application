@@ -1,5 +1,5 @@
-// PUB-07: the first load of the public page stays under 300 KB (uncompressed, map chunk excluded:
-// it loads only when a visitor asks for the map). Fails the build when the budget is exceeded.
+// PUB-07: the first load of the public page stays under 300 KB (uncompressed, map chunk and its
+// worker excluded: they load only when a visitor asks for the map). Fails the build when the budget is exceeded.
 import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -12,7 +12,10 @@ const walk = (dir) => {
     const p = join(dir, name);
     const st = statSync(p);
     if (st.isDirectory()) walk(p);
-    else if (/\.(html|js|css)$/.test(name) && !/map-[\w-]+\.js$/.test(name)) {
+    else if (
+      /\.(html|js|css)$/.test(name) &&
+      !/(^|-)map-[\w-]+\.js$|^maplibre-gl-worker-[\w-]+\.js$/.test(name)
+    ) {
       total += st.size;
       rows.push([p.slice(dist.length), st.size]);
     }

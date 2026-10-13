@@ -179,7 +179,7 @@ describe('resident updates and referrals (FL-10, FL-11, AC-17A, FR-17.05)', () =
 });
 
 describe('needs board (CON-04, CON-08, CON-15, NED-07, AC-17B)', () => {
-  it('the county assigns a need to the cleanup partner; the canteen claiming at the same address is warned; a held need conflicts; the export is confirmed and audited; key counts carry an as-of time', async () => {
+  it('the county assigns a need to the cleanup partner; the canteen claiming in the same household is warned; a held need conflicts; the export is confirmed and audited; key counts carry an as-of time', async () => {
     const n = next();
     const s = await submit({
       answers: ownHome(n, {
@@ -213,9 +213,10 @@ describe('needs board (CON-04, CON-08, CON-15, NED-07, AC-17B)', () => {
       body: { note: 'Canteen covers Harmon City' },
     });
     expect(claim.status, JSON.stringify(claim.body)).toBe(200);
+    // Both needs come from one report, so the stronger match is reported (CON-08).
     expect(claim.body['warnings']).toEqual([
       {
-        kind: 'same_address',
+        kind: 'same_household',
         needId: tarp.id,
         category: 'cleanup_tarp',
         claimedByTenantName: 'Gateway Cleanup Volunteers',

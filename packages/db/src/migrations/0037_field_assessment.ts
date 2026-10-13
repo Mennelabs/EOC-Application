@@ -88,7 +88,11 @@ export async function up(db: Kysely<unknown>): Promise<void> {
 }
 
 export async function down(db: Kysely<unknown>): Promise<void> {
+  // Row security is forced on activity_entry and it has no delete policy, so the owner lifts the
+  // force for this one statement; otherwise the delete matches nothing and the old check fails.
+  await sql`alter table cg.activity_entry no force row level security`.execute(db);
   await sql`delete from cg.activity_entry where kind = 'assessment'`.execute(db);
+  await sql`alter table cg.activity_entry force row level security`.execute(db);
   await sql`alter table cg.activity_entry drop constraint activity_entry_kind_check`.execute(db);
   await sql`alter table cg.activity_entry add constraint activity_entry_kind_check check (kind in ('check_in', 'check_out', 'assigned', 'dispatched', 'acknowledged', 'en_route', 'on_scene', 'cleared', 'released', 'status', 'message', 'alert', 'service', 'hazard', 'note'))`.execute(
     db,

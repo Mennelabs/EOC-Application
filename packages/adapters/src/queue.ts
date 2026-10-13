@@ -227,3 +227,34 @@ export function superviseQueue(opts: QueueSupervisorOptions): QueueSupervisor {
     },
   };
 }
+
+/**
+ * Publishes and waits for the broker's confirm, with a deadline (SCL-06). A channel that
+ * closes under the publish, or a confirm that never comes, becomes an error the caller's
+ * loop retries after the supervisor reconnects, instead of a wait that never ends.
+ */
+export function publishConfirmed(
+  channel: Pick<amqp.ConfirmChannel, 'publish'>,
+  exchange: string,
+  routingKey: string,
+  body: Buffer,
+  options: amqp.Options.Publish,
+  timeoutMs = 15_000,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`no publish confirm within ${timeoutMs} ms`)),
+      timeoutMs,
+    );
+    try {
+      channel.publish(exchange, routingKey, body, options, (err) => {
+        clearTimeout(timer);
+        if (err) reject(err instanceof Error ? err : new Error(String(err)));
+        else resolve();
+      });
+    } catch (err) {
+      clearTimeout(timer);
+      reject(err instanceof Error ? err : new Error(String(err)));
+    }
+  });
+}

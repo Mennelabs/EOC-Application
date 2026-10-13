@@ -244,6 +244,12 @@ void changeLoop();
 startSchedules();
 server.listen(config.PORT, '0.0.0.0', () => log.info({ port: config.PORT }, 'worker listening'));
 
+// SCL-06: a stray rejection (a broker or provider gone mid-call) is logged; the loops,
+// schedules and the queue supervisor keep the worker going rather than letting it exit.
+process.on('unhandledRejection', (err) => {
+  log.error({ err }, 'unhandled rejection; the worker carries on');
+});
+
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.once(signal, async () => {
     server.close();

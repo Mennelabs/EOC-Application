@@ -23,7 +23,9 @@ describe('field app strings', () => {
     for (const l of ['en', 'es'] as const) {
       const all = Object.values(catalogFor(l)).join('\n');
       expect(all).not.toMatch(/!|¡/);
-      expect(all).not.toMatch(/common ground/i);
+      // ADM-03: the product name is configuration; the CI check sets PRODUCT_NAME.
+      const product = (process.env['PRODUCT_NAME'] ?? 'Test Product').toLowerCase();
+      expect(all.toLowerCase()).not.toContain(product);
       expect(all).not.toMatch(/emergency alert/i);
       expect(translate(l, 'emergency.call911')).toMatch(/911/);
     }

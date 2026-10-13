@@ -105,6 +105,8 @@ test.describe('field app (web build)', () => {
       await api(staff, `/safety-alerts/${a.id}/acknowledge`, { body: {}, version: a.version });
 
     // FLD-14: check-out ends the shift and clears resident details from the phone.
+    await page.getByRole('button', { name: 'Back' }).click();
+    await expect(page.getByRole('heading', { name: 'My shift' })).toBeVisible({ timeout: 30_000 });
     await page.getByRole('link', { name: 'Settings' }).click();
     await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
     await expectNoViolations(page);

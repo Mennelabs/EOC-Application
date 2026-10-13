@@ -4,7 +4,7 @@ A disaster community-response platform for county and city emergency management,
 
 The product name is configuration (`PRODUCT_NAME`, ADM-03). "Common Ground" is the current working name.
 
-**Status:** layer 1 (platform foundations) built, tested and approved 2026-10-12; layer 2 (resident intake) in progress. See `docs/plans/layer-2-status.md`, `docs/plans/layer-1-report.md` and `docs/traceability.md`. Build order follows SCL-14, one layer at a time; `CLAUDE.md` has the rules for resuming work.
+**Status:** layer 1 (platform foundations) and layer 2 (resident intake, review, verification) built, tested and approved 2026-10-12; layer 3 (needs board, partner sharing with consent, public "Find help") built and under review. See `docs/plans/layer-3-status.md`, `docs/plans/layer-3-report.md` and `docs/traceability.md`. Build order follows SCL-14, one layer at a time; `CLAUDE.md` has the rules for resuming work.
 
 ## Where things live
 
@@ -18,6 +18,7 @@ The product name is configuration (`PRODUCT_NAME`, ADM-03). "Common Ground" is t
 | `docs/plans/layer-N.md`                                | Plan per build layer; `docs/traceability.md` after each layer                                                       |
 | `docs/a11y/`                                           | Manual accessibility checklist and per-screen records                                                               |
 | `apps/web-resident`, `apps/web-console`                | Resident PWA and staff console (React + Vite)                                                                       |
+| `apps/web-help`                                        | Public "Find help" page (plain TypeScript, under 50 KB first load, optional MapLibre map)                           |
 | `apps/field`                                           | React Native field app (layer 4)                                                                                    |
 | `services/api`, `services/worker`, `services/cjis-api` | Fastify API, queue worker, CJIS enclave API                                                                         |
 | `packages/config`, `packages/adapters`, `packages/db`  | Typed config, dependency adapters, database client and migrations                                                   |
@@ -25,7 +26,7 @@ The product name is configuration (`PRODUCT_NAME`, ADM-03). "Common Ground" is t
 | `tools/reqindex`                                       | Requirements index generator                                                                                        |
 | `infra/`                                               | Dockerfiles, gateway and web Caddyfiles, database and key-service init                                              |
 | `compose.yaml`, `compose.cjis.yaml`                    | The local stack and the separate CJIS enclave set                                                                   |
-| `tests/`                                               | Integration (`tests/integration`) and end-to-end + accessibility (`tests/e2e`)                                      |
+| `tests/`                                               | Integration (`tests/integration`), end-to-end + accessibility (`tests/e2e`), load profiles (`tests/load`)           |
 
 ## Start the stack
 
@@ -54,6 +55,10 @@ Then open:
 
 Open `https://localhost/county/westwind` (the root forwards there; `DEFAULT_TENANT` and `DEFAULT_EVENT` in `.env` change it). The flow asks one question at a time from the published graph, keeps answers on the device encrypted, works offline until it can send, and ends with a reference number such as `KXMR-4827`. Other entry points: `…/westwind/kiosk` (assisted entry by a helper, cleared from the device when done), `…/westwind/resume` (continue a paused report with its code), `/county/my-report` (reference number + the phone or email given → one-time code → status, consent, corrections, withdrawal; one-time codes to email land in Mailpit at `http://localhost:8025`). Photos upload straight to object storage through `https://objects.localhost` (trust the same local CA; browsers resolve `*.localhost` themselves). A browser that cannot reach that host, because its certificate is not trusted or a network blocks it, sends the photo through the gateway instead, so photos still arrive; trusting the local CA makes the direct path work.
 
+### Find help as the public
+
+Open `https://localhost/county/help` (no sign-in). It lists open shelters, feeding sites, PODs and other published sites nearest to a ZIP code, an address or the browser's location, with status, hours, services, pets, accessibility, power for medical devices, languages, transit and when each was last confirmed; a full or closed site names the next nearest open one. The map loads only when asked. `?lang=es` switches to Spanish; the print and poster views are buttons on the page. The same records feed `/api/public/help/county` (JSON), `/sites.geojson`, `/hsds.json` (Open Referral for 211 centers), `/widget.js`, `/media?lang=en` (media sheet) and `/resources/<slug>` (published resources with their own pages). Confidential sites and sites past their confirmation window appear on none of them (PUB-03, PUB-05).
+
 ## Text and call the county (simulator)
 
 Without Twilio, the API plays the phone on synthetic data. Text the exercise county's number (`+13145550100`) from any number:
@@ -64,7 +69,7 @@ curl -sk https://localhost/api/webhooks/simulator/sms -H 'content-type: applicat
 # → {"replies":["Westwind County Emergency Mgmt: You're signed up …","… Is anyone in danger right now?\n1 Yes …"]}
 ```
 
-Reply with the numbers (`2`, `1`, …), `BACK`, `SKIP`, `HELP`, `STOP`, or `DAÑOS` for Spanish; `SEND` at the end returns the reference code. A call starts with `{"from":"+13145550199","to":"+13145550100","step":"start"}` on `/api/webhooks/simulator/voice` and continues with `step` from the answer plus `digits` or `speech`. Texts the worker sends (confirmations, one-time codes) go to the in-process simulator and are recorded in `cg.message`. To use real numbers set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `WEBHOOK_PUBLIC_BASE` in `.env`, add the county's verified number to `cg.channel_number`, and point Twilio's webhooks at `/api/webhooks/twilio/sms`, `/voice` and `/status` through a secured tunnel (`docs/06`).
+Reply with the numbers (`2`, `1`, …), `BACK`, `SKIP`, `HELP`, `STOP`, or `DAÑOS` for Spanish; `SEND` at the end returns the reference code. `SHELTER 63001` (or `REFUGIO 63001`) answers with the three nearest open sites; `NOSHARE KXMR-4827` from the reporter's phone stops sharing that report with partner organizations (both keywords are pending Adam's carrier review, `docs/06`). A plain text from a phone that received a staff update in the last week is kept on the report as a reply. A call starts with `{"from":"+13145550199","to":"+13145550100","step":"start"}` on `/api/webhooks/simulator/voice` and continues with `step` from the answer plus `digits` or `speech`. Texts the worker sends (confirmations, one-time codes) go to the in-process simulator and are recorded in `cg.message`. To use real numbers set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `WEBHOOK_PUBLIC_BASE` in `.env`, add the county's verified number to `cg.channel_number`, and point Twilio's webhooks at `/api/webhooks/twilio/sms`, `/voice` and `/status` through a secured tunnel (`docs/06`).
 
 ## Sign in to the console
 
@@ -90,6 +95,10 @@ Interactive sign-in is password **and** passkey (SEC-07). The first sign-in of e
 ### Review reports as staff
 
 Sign in as `priya.assessment@example.org` (`county`). **Review queue** lists reports with need signals first (unsafe, no shelter tonight, medical, displaced), then the oldest; filters cover event, state, verification, channel, flags and a reference number. A report opens to its answers grouped as the resident saw them, photos (links only for roles with the evidence category, blurred faces and plates when a detector is configured), needs, consent and the version history. Decisions (approve, reject, needs information, duplicate, supersede, reopen), the verification level and the FEMA degree of damage each ask for confirmation and a reason; the FEMA matrix next to the form is the official wording (DEC-03). A helper cannot approve a report they entered (guardrail G4). **Intake setup** shows each open event's resident link, kiosk link, text keywords and a QR code to print, and the question-graph versions: a new draft must pass the reading-level and tone rules before it can be published. **Assisted report** opens the kiosk flow for an event in a new tab. **AI use register** is the read-only list of every AI feature, its provider and its human checkpoint.
+
+### Needs, partners and public information (layer 3)
+
+Sign in as `luis.masscare@example.org` (`county`) for the **Needs board**: open, claimed and done needs with filters, claim, assign to a consented partner, release, done and reopen with a note, overlap warnings when another organization holds a need at the same household or address, who holds a claim as the visibility rules allow, a CSV export through the confirmation dialog, and the key counts on home. `tomas.pio@example.org` manages **Sites** (open, capacity, confirm, close, publish or unpublish through the dialog with a named reason, confidential sites that never publish, alert drafts sized for WEA and the mass-notification system), **Resources** (English and Spanish text marked human-reviewed, review and expiry dates, an outside-link check, publish only when the HTML passes the accessibility check), the **Publication log** and the **Contacts** registry (names and numbers only for roles with the contact category, verification dates, a weekly re-verification digest). **Partner agreements** are drafted by the county and signed by the partner. A partner organization's own staff (`ruth.canteen@example.org` in realm `canteen`, `nurse@example.org` in `shelter-ngo`) use the **Partner workspace**: the consented records with only the sections their service is allowed, their claims, referrals in and out, and "send an update" to the resident. Residents hear by text (with opt-in) or email; replies by text land on the report. The worker reminds site leads before a confirmation window lapses, expires resources past their date, checks outside links daily and notices every publication (`services/worker/src/jobs/reminders.ts`).
 
 The CJIS enclave (`cjis-*` services) starts on its own internal network. It has no published ports on purpose: `docker compose exec cjis-api wget -qO- http://127.0.0.1:8080/health/ready`.
 
@@ -166,9 +175,10 @@ pnpm lint              # eslint + prettier
 pnpm typecheck
 pnpm check:product-name   # ADM-03: product name never hardcoded
 pnpm test              # unit tests (vitest)
-pnpm test:integration  # against the running stack (STACK_URL, COMPOSE_FILES to override)
-pnpm test:e2e          # Playwright + axe: resident flow, kiosk, console onboarding and review journeys (npx playwright install chromium first)
-tests/load/run.sh submissions smoke   # k6 load profiles (SCL-03) through the pinned k6 container; `full` is the target profile, see tests/load/README.md
+pnpm test:integration  # against the running stack (STACK_URL, COMPOSE_FILES to override): layer 1, 2 and 3 acceptance cases
+pnpm test:e2e          # Playwright + axe: resident flow, kiosk, console onboarding, review, needs board and sites journeys, the public help page (npx playwright install chromium first)
+tests/load/run.sh submissions smoke   # k6 load profiles (SCL-03) through the pinned k6 container; also sms-sessions and help; `full` is the target profile, see tests/load/README.md
+pnpm --filter @cg/web-help build && pnpm --filter @cg/web-help check:size   # PUB-07: the public page's first load against its 300 KB budget
 scripts/backup.sh && scripts/restore.sh backups/<stamp>   # NFR-05; drills in tests/drills/
 DATABASE_MIGRATOR_URL=... pnpm --filter @cg/db check:migrations 3   # newest migrations up, down, up; dictionary and RLS checks (SEC-05/11)
 pnpm --filter @cg/intake lint:strings   # INT-08: reading-grade table and tone findings for the question graph

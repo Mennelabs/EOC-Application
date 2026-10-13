@@ -94,7 +94,7 @@ describe('sharing through grants (NED-04, AC-17C, SEC-05/06)', () => {
       }),
       needs: ['cleanup_tarp', 'food_water', 'shelter_tonight'],
       consent: { volunteer_cleanup: true, relief_agencies: true },
-      afterSubmission: { household_size: v('5'), access_needs: v(['mobility']) },
+      afterSubmission: { household_size: v(5), access_needs: v(['mobility']) },
       ownWords: 'The roof is open over the kitchen.',
     });
     code = s.code;

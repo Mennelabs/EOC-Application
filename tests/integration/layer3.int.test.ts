@@ -230,7 +230,7 @@ describe('needs board (CON-04, CON-08, CON-15, NED-07, AC-17B)', () => {
       body: { note: 'Meals delivered twice daily' },
     });
     expect(done.status, JSON.stringify(done.body)).toBe(200);
-    expect((done.body['need'] as Need).status).toBe('done');
+    expect((done.body['need'] as Need).status).toBe('met'); // a finished need is met (NED-07)
 
     expect((await api(l, `/needs.csv?reference=${s.code}`)).status).toBe(428);
     const csv = await api(l, `/needs.csv?reference=${s.code}`, { confirm: 'Weekly VOAD call' });

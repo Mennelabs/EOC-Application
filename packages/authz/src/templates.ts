@@ -27,7 +27,12 @@ const g = (action: string, dataCategories?: DataCategory[]): Grant =>
   dataCategories ? { action, dataCategories } : { action };
 
 /** A frontline role in the field app: the common field grants plus its own records (layer-4 plan §8). */
-function frontline(key: string, name: string, description: string, own: string[]): RoleTemplate[] {
+function frontline(
+  key: string,
+  name: string,
+  description: string,
+  own: (string | Grant)[],
+): RoleTemplate[] {
   return [
     {
       key,
@@ -59,7 +64,7 @@ function frontline(key: string, name: string, description: string, own: string[]
         g('field.command'),
         g('field.photo'),
         g('field.area'),
-        ...own.map((action) => g(action)),
+        ...own.map((x) => (typeof x === 'string' ? g(x) : x)),
       ],
     },
   ];
@@ -969,7 +974,8 @@ export const roleTemplates: readonly RoleTemplate[] = [
       'badge.generate',
       'badge.print',
       'badge.read',
-      'personnel.create',
+      // FL:FR-20: a walk-up's phone or email is how reception reaches them; contact only.
+      g('personnel.create', ['contact']),
       'personnel.read',
       'credential.record',
       'team.manage',

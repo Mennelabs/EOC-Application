@@ -2,6 +2,7 @@
  * Shared pieces for route modules: schemas, the data-dictionary classifier
  * for audit diffs, and the outbox writer (ADR-0007).
  */
+import { createHash } from 'node:crypto';
 import type { Transaction } from 'kysely';
 import { z } from 'zod';
 import { dictionary, type Database } from '@cg/db';
@@ -61,4 +62,13 @@ export function pickDefined<T extends Record<string, unknown>>(
     if (v !== undefined && column) out[column] = v;
   }
   return out;
+}
+
+/**
+ * A stable UUID for one step of a client's request (an internal replay of a console route keyed
+ * like the field commands, FR-00.06): the same client id and step always give the same key.
+ */
+export function stepKey(clientUuid: string, step: string): string {
+  const h = createHash('sha256').update(`${clientUuid}:${step}`).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }

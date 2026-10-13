@@ -104,6 +104,8 @@ describe.skipIf(!appUrl || !workerUrl)('frontline role records (database-backed)
       ['interp', 'interpreter'],
       ['pets', 'animal_services'],
       ['pio', 'public_information_officer'],
+      ['reception', 'volunteer_reception'],
+      ['inspector', 'building_inspector'],
     ] as const) {
       const email = `${who}.fieldrecords@example.org`;
       const existing = await dbWorker
@@ -534,5 +536,86 @@ describe.skipIf(!appUrl || !workerUrl)('frontline role records (database-backed)
       recordId: pet['id'],
     });
     expect(ticket.status, ticket.body).toBe(201);
+  });
+
+  it('FL:FR-20, PER-01, BDG-01: a walk-up volunteer is registered in one step, once; skills stay unverified; the badge code is shown once', async () => {
+    const team = await dbWorker
+      .selectFrom('cg.team')
+      .select('id')
+      .where('tenant_id', '=', county)
+      .where('key', '=', 'da-2')
+      .executeTakeFirstOrThrow();
+    const clientUuid = randomUUID();
+    const body = {
+      clientUuid,
+      eventId,
+      person: { name: `Exercise Walk-up ${clientUuid.slice(0, 4)}`, phone: '3145550199' },
+      skills: ['chainsaw'],
+      waiverSigned: true,
+      waiverVersion: 'exercise-2026-1',
+      backgroundCheckStatus: 'pending',
+      teamId: team.id,
+      badge: { roleLabel: 'Volunteer' },
+    };
+    const r = await call('reception', 'POST', '/api/v1/volunteer-registrations', body);
+    expect(r.status, r.body).toBe(201);
+    const reg = r.json();
+    expect(reg['badgeCode']).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+    expect(reg['checkInId']).toBeTruthy();
+    expect(reg).toMatchObject({
+      backgroundCheckStatus: 'pending',
+      waiverVersion: 'exercise-2026-1',
+      assignedTeamId: team.id,
+    });
+    // The resend answers with the same registration and no second badge code.
+    const again = await call('reception', 'POST', '/api/v1/volunteer-registrations', body);
+    expect(again.status).toBe(200);
+    expect(again.json()['id']).toBe(reg['id']);
+    expect(again.json()['badgeCode']).toBeUndefined();
+    const cred = await dbWorker
+      .selectFrom('cg.credential')
+      .select(['kind', 'status'])
+      .where('personnel_id', '=', reg['personnelId'] as string)
+      .execute();
+    expect(cred).toEqual([{ kind: 'chainsaw', status: 'recorded' }]);
+    const person = await dbWorker
+      .selectFrom('cg.personnel')
+      .select('contact_enc')
+      .where('id', '=', reg['personnelId'] as string)
+      .executeTakeFirstOrThrow();
+    expect(person.contact_enc!.toString('utf8')).not.toContain('3145550199');
+    // RULE-11: the background check is a status only.
+    const cleared = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/volunteer-registrations/${reg['id'] as string}`,
+      headers: { authorization: 'Bearer reception', 'if-match': String(reg['version']) },
+      payload: { backgroundCheckStatus: 'cleared' },
+    });
+    expect(cleared.statusCode, cleared.body).toBe(200);
+    expect(cleared.json()['backgroundCheckStatus']).toBe('cleared');
+    expect(
+      (await call('pio', 'GET', `/api/v1/volunteer-registrations?eventId=${eventId}`)).status,
+    ).toBe(403);
+  });
+
+  it('FL:FR-04: a placard on a reported home tells the resident what it means, in their language, when they can be reached', async () => {
+    const report = await dbWorker
+      .selectFrom('cg.report')
+      .select('id')
+      .where('tenant_id', '=', county)
+      .where('withdrawn_at', 'is', null)
+      .orderBy('submitted_at', 'desc')
+      .executeTakeFirstOrThrow();
+    const r = await create('inspector', 'placard', {
+      clientUuid: randomUUID(),
+      eventId,
+      parcelId: 'SYN-PLC-1',
+      reportId: report.id,
+      kind: 'unsafe',
+    });
+    expect(r['kind']).toBe('unsafe');
+    // Queued when the resident opted in; otherwise the reason why not. Never refused for the role.
+    expect(r['residentMessage']).toBeDefined();
+    expect(r['residentMessage']).not.toBe('not_allowed');
   });
 });

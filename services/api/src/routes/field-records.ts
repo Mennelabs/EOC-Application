@@ -28,7 +28,7 @@ import type { Database } from '@cg/db';
 import { toUsng } from '@cg/field-core';
 import { ApiError, errors } from '../errors.ts';
 import { sha } from '../public/submit.ts';
-import { iso, listQuery, uuidParam } from './helpers.ts';
+import { iso, listQuery, stepKey, uuidParam } from './helpers.ts';
 
 type Trx = Transaction<Database>;
 /** The record tables are reached by name from the spec table; columns are checked by the database. */
@@ -96,7 +96,33 @@ interface Spec {
   summary?: (b: Record<string, unknown>) => string;
   /** An activity entry kind for the ICS 214 log (FLD-03). */
   activity?: 'note' | 'service' | 'hazard' | 'status';
+  /** After the record is committed: a follow-up that may fail without undoing it. */
+  afterCommit?: (
+    b: Record<string, unknown>,
+    out: Record<string, unknown>,
+    request: FastifyRequest,
+    instance: import('fastify').FastifyInstance,
+  ) => Promise<Record<string, unknown>>;
 }
+
+/**
+ * FL:FR-04: what a posted placard means, in the resident's language, plain and
+ * short; never alert wording (docs/06), never the product name (ADM-03).
+ */
+export const PLACARD_TEXT: Record<string, { en: string; es: string }> = {
+  inspected: {
+    en: 'A building inspector checked your home and posted a green placard: it was inspected and you may use it. Reply to this message with any questions.',
+    es: 'Un inspector revisó su vivienda y colocó un aviso verde: fue inspeccionada y puede usarla. Responda a este mensaje si tiene preguntas.',
+  },
+  restricted_use: {
+    en: 'A building inspector posted a yellow placard on your home: you may go in only as the placard says, for example briefly to get belongings. Do not stay overnight. Reply to this message with any questions.',
+    es: 'Un inspector colocó un aviso amarillo en su vivienda: puede entrar solo como indica el aviso, por ejemplo un momento para sacar sus pertenencias. No pase la noche allí. Responda a este mensaje si tiene preguntas.',
+  },
+  unsafe: {
+    en: 'A building inspector posted a red placard on your home: it is not safe to enter. Please stay out. Reply to this message if you need help finding a place to stay.',
+    es: 'Un inspector colocó un aviso rojo en su vivienda: no es seguro entrar. Por favor no entre. Responda a este mensaje si necesita ayuda para encontrar dónde quedarse.',
+  },
+};
 
 const str = (v: unknown) => (typeof v === 'string' ? v : null);
 const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
@@ -255,6 +281,40 @@ const SPECS: Record<string, Spec> = {
     },
     summary: (b) => `Placard ${String(b['kind'])} ${String(b['parcelId'] ?? '')}`.trim(),
     activity: 'note',
+    // FL:FR-04: the resident hears what the placard means, in their language, if they can be reached.
+    async afterCommit(b, _out, request, instance) {
+      if (!b['reportId']) return {};
+      const report = await request.tx((trx) =>
+        trx
+          .selectFrom('cg.report')
+          .select('original_lang')
+          .where('id', '=', b['reportId'] as string)
+          .executeTakeFirst(),
+      );
+      const lang = report?.original_lang?.startsWith('es') ? 'es' : 'en';
+      const text = PLACARD_TEXT[String(b['kind'])]?.[lang];
+      if (!text) return {};
+      const res = await instance.inject({
+        method: 'POST',
+        url: `/api/v1/reports/${String(b['reportId'])}/messages`,
+        headers: {
+          authorization: String(request.headers['authorization'] ?? ''),
+          'idempotency-key': stepKey(String(b['clientUuid']), 'placard-message'),
+        },
+        payload: { text },
+      });
+      const body = res.body
+        ? (JSON.parse(res.body) as { queued?: boolean; reason?: string | null })
+        : {};
+      return {
+        residentMessage:
+          res.statusCode < 300 && body.queued
+            ? 'queued'
+            : res.statusCode === 403
+              ? 'not_allowed'
+              : (body.reason ?? 'not_sent'),
+      };
+    },
   },
 
   // FL:FR-05: road status in one tap.
@@ -1135,6 +1195,13 @@ export const fieldRecordRoutes =
           });
           return { out: await spec.out(row, ctx), created: true };
         });
+        if (created && spec.afterCommit) {
+          try {
+            Object.assign(extra, await spec.afterCommit(b, out, request, instance));
+          } catch (err) {
+            request.log.warn({ err }, 'a follow-up after a field record did not run');
+          }
+        }
         return reply.code(created ? 201 : 200).send({ ...out, ...extra });
       },
     );

@@ -311,6 +311,13 @@ export async function scheduleReferencePulls(ctx: JobContext): Promise<void> {
   const now = ctx.now?.() ?? new Date();
   for (const tenantId of await allTenantIds(ctx.db)) {
     await asSystem(ctx.db, tenantId, async (trx) => {
+      // Two schedulers at once (worker replicas) would queue the same pulls twice: one
+      // takes the tenant, the other skips it; after the commit the queued pulls are seen.
+      const lock = await sql<{ ok: boolean }>`
+        select pg_try_advisory_xact_lock(hashtext(${`refdata-schedule:${tenantId}`})) as ok`.execute(
+        trx,
+      );
+      if (!lock.rows[0]?.ok) return;
       if ((await configValue(trx, tenantId, 'refdata.enabled')) === false) return;
       const scope = await referenceScope(trx, tenantId);
       if (!scope) return;

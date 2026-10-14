@@ -77,6 +77,12 @@ describe.skipIf(!appUrl || !workerUrl)('reference snapshots (database-backed)', 
   });
 
   afterAll(async () => {
+    // Closed tenants drop out of schedules and listings; tenants are never deleted.
+    await worker
+      ?.updateTable('cg.tenant')
+      .set({ status: 'closed' })
+      .where('slug', 'like', `exercise-refdata-%-${run}`)
+      .execute();
     await worker?.destroy();
     await app?.destroy();
   });

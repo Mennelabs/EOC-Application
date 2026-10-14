@@ -129,6 +129,12 @@ describe.skipIf(!workerUrl)('reference data jobs (database-backed)', () => {
   });
 
   afterAll(async () => {
+    // Closed tenants drop out of schedules and listings; tenants are never deleted.
+    await db
+      ?.updateTable('cg.tenant')
+      .set({ status: 'closed' })
+      .where('slug', 'like', `exercise-ref-%-${run}`)
+      .execute();
     await db?.destroy();
   });
 
@@ -181,10 +187,10 @@ describe.skipIf(!workerUrl)('reference data jobs (database-backed)', () => {
     await tx(partner, async (trx) => expect(await referenceScope(trx, partner)).toBeNull());
   });
 
-  it('the schedule queues one pull per due dataset, and none for a tenant without geography', async () => {
+  it('the schedule queues one pull per due dataset, even when two run at once, and none for a tenant without geography', async () => {
     const c = await county('schedule', '29999', false);
     const none = await county('schedule-none', null, false);
-    await scheduleReferencePulls(ctx);
+    await Promise.all([scheduleReferencePulls(ctx), scheduleReferencePulls(ctx)]);
     await scheduleReferencePulls(ctx);
     const queued = await db
       .selectFrom('cg.outbox')
@@ -192,13 +198,15 @@ describe.skipIf(!workerUrl)('reference data jobs (database-backed)', () => {
       .where('tenant_id', 'in', [c, none])
       .where('topic', '=', 'refdata.pull')
       .execute();
-    // Every dataset with a pull source once; flood zones wait for the tract outline.
-    expect(
-      queued
-        .filter((q) => q.tenant_id === c)
-        .map((q) => (q.payload as { dataset: string }).dataset)
-        .sort(),
-    ).toEqual(
+    // Every dataset with a pull source, each once. Flood zones wait for the tract outline: on a
+    // stack whose own worker already pulled this county's tracts (CI), they follow; never before.
+    const datasets = queued
+      .filter((q) => q.tenant_id === c)
+      .map((q) => (q.payload as { dataset: string }).dataset)
+      .sort();
+    expect(new Set(datasets).size).toBe(datasets.length);
+    const hasOutline = await current(c, 'tract');
+    expect(datasets.filter((d) => d !== 'flood_zone')).toEqual(
       [
         'alert',
         'declaration',
@@ -209,6 +217,7 @@ describe.skipIf(!workerUrl)('reference data jobs (database-backed)', () => {
         'tract_profile',
       ].sort(),
     );
+    if (!hasOutline) expect(datasets).not.toContain('flood_zone');
     expect(queued.filter((q) => q.tenant_id === none)).toHaveLength(0);
   });
 

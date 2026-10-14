@@ -17,3 +17,6 @@ tests/load/out/
 apps/field/android/
 apps/field/ios/
 apps/field/expo-env.d.ts
+
+# Python bytecode (tools/reqindex)
+__pycache__/

@@ -5,7 +5,12 @@
 FROM golang:1.24-alpine AS build
 ARG MINIO_RELEASE=RELEASE.2025-04-22T22-12-26Z
 ENV CGO_ENABLED=0 GOFLAGS=-mod=mod
-RUN go install github.com/minio/minio@${MINIO_RELEASE}
+# Checksums stay verified (sum.golang.org); a dropped connection to it is retried
+# with backoff instead of failing the build, and the module cache carries over.
+RUN for attempt in 1 2 3 4; do \
+      go install github.com/minio/minio@${MINIO_RELEASE} && exit 0; \
+      echo "go install failed (attempt $attempt of 4); retrying" >&2; sleep $((attempt * 15)); \
+    done; exit 1
 
 FROM alpine:3.22
 RUN apk add --no-cache ca-certificates curl \

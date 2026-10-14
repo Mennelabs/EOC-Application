@@ -2090,6 +2090,24 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
   ),
 };
 
+/**
+ * Entries for columns a later migration drops (SEC-11). They describe the
+ * schema between the migration that adds a column and the one that drops it,
+ * so a database migrated from empty documents every column at every step;
+ * they are loaded only while the column exists and never describe the final
+ * schema (the drill refuses them there like any stale entry).
+ */
+export const retiredColumns: Record<string, Record<string, ColumnEntry>> = {
+  // 0030 adds it, 0041 drops it: law-enforcement people live only in the CJIS enclave (SEC-12, PPL-01).
+  mission_person: {
+    enclave_reference: {
+      c: 'cji',
+      r: 'records',
+      d: 'SEC-12: reference into the CJIS enclave, never the detail',
+    },
+  },
+};
+
 /** Columns that must be encrypted at the application layer (SEC-10). */
 export function restrictedColumns(): { table: string; column: string }[] {
   return Object.entries(dictionary).flatMap(([t, cols]) =>

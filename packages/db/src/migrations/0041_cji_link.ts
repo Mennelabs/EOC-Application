@@ -55,11 +55,6 @@ export async function down(db: Kysely<unknown>): Promise<void> {
     drop column if exists cji_linked_by,
     drop column if exists cji_linked_at,
     drop column if exists cji_ref`.execute(db);
-  // The dictionary in code describes the schema after this migration; going back restores
-  // the earlier rows by hand (SEC-11: no column undocumented at any step).
-  await sql`delete from cg.data_dictionary where table_name = 'mission'
-    and column_name in ('cji_ref', 'cji_linked_at', 'cji_linked_by')`.execute(db);
-  await sql`insert into cg.data_dictionary (table_name, column_name, classification, retention_category, description)
-    values ('mission_person', 'enclave_reference', 'cji', 'records', 'SEC-12: reference into the CJIS enclave, never the detail')
-    on conflict do nothing`.execute(db);
+  // The retired entry describes the restored column again (SEC-11: no column undocumented at any step).
+  await loadDictionary(db);
 }

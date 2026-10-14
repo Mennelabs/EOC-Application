@@ -6,7 +6,7 @@
  * this test fails the build when it is.
  */
 import { describe, expect, it } from 'vitest';
-import { dictionary } from '../src/dictionary.ts';
+import { dictionary, retiredColumns } from '../src/dictionary.ts';
 
 describe('platform data dictionary (SEC-12, SEC-11)', () => {
   it('classifies no platform column as criminal-justice information', () => {
@@ -29,5 +29,15 @@ describe('platform data dictionary (SEC-12, SEC-11)', () => {
       'mission.cji_linked_by',
       'mission.cji_ref',
     ]);
+  });
+
+  it('keeps retired entries out of the live dictionary', () => {
+    // A retired entry describes a dropped column for the migrations in between only.
+    const overlap = Object.entries(retiredColumns).flatMap(([table, cols]) =>
+      Object.keys(cols)
+        .filter((c) => dictionary[table]?.[c] !== undefined)
+        .map((c) => `${table}.${c}`),
+    );
+    expect(overlap).toEqual([]);
   });
 });

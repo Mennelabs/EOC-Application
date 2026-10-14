@@ -163,6 +163,90 @@ export function homeKeyOf(r: DamageRecord): string {
   return `record:${r.id}`;
 }
 
+export type ApartStatus = keyof DamageTotals['shownSeparately'];
+/** Counted, or why a home is shown apart (never added in). */
+export type HomeStatus = 'counted' | ApartStatus;
+
+export interface ClassifiedHome {
+  /** The record that stands for the home (the best of its records). */
+  record: DamageRecord;
+  status: HomeStatus;
+}
+
+export interface Classification {
+  homes: ClassifiedHome[];
+  merged: number;
+  excluded: { withdrawn: number; rejected: number };
+}
+
+function statusOf(r: DamageRecord): HomeStatus {
+  if (r.relationship === 'witness') return 'witness';
+  if (r.verification === 'cannot_verify') return 'inaccessible';
+  if (!isVerified(r)) return 'selfReported';
+  if (r.reviewState !== 'approved') return 'awaitingReview';
+  if (r.homeType === 'non_residential') return 'nonResidential';
+  if (r.preExisting === true) return 'preExisting';
+  if (r.primaryResidence === false) return 'notPrimaryResidence';
+  if (r.degree === 'no_damage') return 'noDamage';
+  if (r.degree === null || r.degree === 'cannot_tell') return 'degreeNotSet';
+  return 'counted';
+}
+
+/**
+ * Each home once, with the record that stands for it and whether it is
+ * counted or why it is shown apart: the rows of a street sheet, and the
+ * basis of every total (countDamage).
+ */
+export function classifyHomes(records: readonly DamageRecord[]): Classification {
+  const out: Classification = { homes: [], merged: 0, excluded: { withdrawn: 0, rejected: 0 } };
+
+  // 1. Leave out withdrawn and rejected records; merge marked duplicates.
+  const live: DamageRecord[] = [];
+  for (const r of records) {
+    if (r.withdrawn) out.excluded.withdrawn++;
+    else if (r.reviewState === 'rejected') out.excluded.rejected++;
+    else if (r.reviewState === 'duplicate' || r.reviewState === 'superseded' || r.duplicateOf)
+      out.merged++;
+    else live.push(r);
+  }
+
+  // 2. An assessment made for a report describes that report's home.
+  const byId = new Map(live.map((r) => [r.id, r]));
+  const keyOf = (r: DamageRecord): string => {
+    const linked = r.kind === 'assessment' && r.reportId ? byId.get(r.reportId) : undefined;
+    return linked && !r.wholeBuilding ? homeKeyOf(linked) : homeKeyOf(r);
+  };
+
+  // 3. One home, one count.
+  const homes = new Map<string, DamageRecord>();
+  for (const r of live) {
+    const key = keyOf(r);
+    const held = homes.get(key);
+    if (held) out.merged++;
+    homes.set(key, held ? better(held, r) : r);
+  }
+
+  // 4. A counted whole-building assessment absorbs the unit reports on its parcel.
+  const buildings = new Set(
+    [...homes.values()]
+      .filter((r) => r.wholeBuilding && r.parcelId && isCountable(r))
+      .map((r) => r.parcelId!),
+  );
+  for (const r of homes.values()) {
+    if (
+      !r.wholeBuilding &&
+      r.homeType === 'multi_family' &&
+      r.parcelId &&
+      buildings.has(r.parcelId)
+    ) {
+      out.merged++;
+      continue;
+    }
+    out.homes.push({ record: r, status: statusOf(r) });
+  }
+  return out;
+}
+
 export function countDamage(records: readonly DamageRecord[]): DamageTotals {
   const totals: DamageTotals = {
     counted: {
@@ -189,90 +273,27 @@ export function countDamage(records: readonly DamageRecord[]): DamageTotals {
     excluded: { withdrawn: 0, rejected: 0 },
   };
 
-  // 1. Leave out withdrawn and rejected records; merge marked duplicates.
-  const live: DamageRecord[] = [];
-  for (const r of records) {
-    if (r.withdrawn) totals.excluded.withdrawn++;
-    else if (r.reviewState === 'rejected') totals.excluded.rejected++;
-    else if (r.reviewState === 'duplicate' || r.reviewState === 'superseded' || r.duplicateOf)
-      totals.merged++;
-    else live.push(r);
-  }
-
-  // 2. An assessment made for a report describes that report's home.
-  const byId = new Map(live.map((r) => [r.id, r]));
-  const keyOf = (r: DamageRecord): string => {
-    const linked = r.kind === 'assessment' && r.reportId ? byId.get(r.reportId) : undefined;
-    return linked && !r.wholeBuilding ? homeKeyOf(linked) : homeKeyOf(r);
-  };
-
-  // 3. One home, one count.
-  const homes = new Map<string, DamageRecord>();
-  for (const r of live) {
-    const key = keyOf(r);
-    const held = homes.get(key);
-    if (held) totals.merged++;
-    homes.set(key, held ? better(held, r) : r);
-  }
-
-  // 4. A counted whole-building assessment absorbs the unit reports on its parcel.
-  const buildings = new Set(
-    [...homes.values()]
-      .filter((r) => r.wholeBuilding && r.parcelId && isCountable(r))
-      .map((r) => r.parcelId!),
-  );
+  const c = classifyHomes(records);
+  totals.merged = c.merged;
+  totals.excluded = c.excluded;
   const tracts = new Map<string | null, { units: number; byDegree: Record<Degree, number> }>();
   const cells = new Map<string, CountedCell>();
   const s = totals.shownSeparately;
 
-  for (const r of homes.values()) {
-    if (
-      !r.wholeBuilding &&
-      r.homeType === 'multi_family' &&
-      r.parcelId &&
-      buildings.has(r.parcelId)
-    ) {
-      totals.merged++;
-      continue;
-    }
-    if (r.relationship === 'witness') {
-      s.witness++;
-      continue;
-    }
-    if (r.verification === 'cannot_verify') {
+  for (const { record: r, status } of c.homes) {
+    if (status === 'inaccessible') {
       s.inaccessible.total++;
       const reason = r.inaccessibleReason ?? 'not given';
       s.inaccessible.byReason[reason] = (s.inaccessible.byReason[reason] ?? 0) + 1;
       continue;
     }
-    if (!isVerified(r)) {
-      s.selfReported++;
+    if (status !== 'counted') {
+      s[status]++;
       continue;
     }
-    if (r.reviewState !== 'approved') {
-      s.awaitingReview++;
-      continue;
-    }
-    if (r.homeType === 'non_residential') {
-      s.nonResidential++;
-      continue;
-    }
-    if (r.preExisting === true) {
-      s.preExisting++;
-      continue;
-    }
-    if (r.primaryResidence === false) {
-      s.notPrimaryResidence++;
-      continue;
-    }
-    if (r.degree === 'no_damage') {
-      s.noDamage++;
-      continue;
-    }
-    if (r.degree === null || r.degree === 'cannot_tell') {
-      s.degreeNotSet++;
-      continue;
-    }
+    // Counted means a residence with a degree; the checks narrow the types.
+    if (r.degree === null || r.degree === 'cannot_tell' || r.degree === 'no_damage') continue;
+    if (r.homeType === 'non_residential') continue;
     const units = r.units ?? 1;
     if (r.units === null) totals.counted.unknownUnitBuildings++;
     totals.counted.units += units;

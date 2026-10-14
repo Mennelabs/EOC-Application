@@ -3,8 +3,8 @@
  * federal services. A recording directory holds `index.json` and one file
  * per response, in the source's real format but filled with synthetic values
  * for the fictional WESTWIND county. A request matches an entry by host, path
- * and the query parameters the entry names (other parameters are ignored, so
- * a key or paging parameter does not break the match). A request with no
+ * and the query parameters the entry names, exactly or by a part of their
+ * value (other parameters are ignored, so a key does not break the match). A request with no
  * recording fails loudly instead of reaching the network.
  */
 import { readFileSync } from 'node:fs';
@@ -14,7 +14,10 @@ import type { EgressHttp } from './http.ts';
 export interface Recording {
   host: string;
   path: string;
+  /** Parameters that must equal these values. */
   query?: Record<string, string>;
+  /** Parameters that must contain these texts (a filter that also names today's date). */
+  contains?: Record<string, string>;
   file: string;
 }
 
@@ -32,7 +35,10 @@ export function matchRecording(recordings: readonly Recording[], url: string): R
       (r) =>
         r.host === u.hostname &&
         r.path === u.pathname &&
-        Object.entries(r.query ?? {}).every(([k, v]) => u.searchParams.get(k) === v),
+        Object.entries(r.query ?? {}).every(([k, v]) => u.searchParams.get(k) === v) &&
+        Object.entries(r.contains ?? {}).every(([k, v]) =>
+          (u.searchParams.get(k) ?? '').includes(v),
+        ),
     ) ?? null
   );
 }

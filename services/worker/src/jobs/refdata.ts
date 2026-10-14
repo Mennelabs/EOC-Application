@@ -20,6 +20,7 @@ import { diffForAudit } from '@cg/audit';
 import type { Database } from '@cg/db';
 import {
   connectorFor,
+  countyNameKey,
   DATASETS,
   parseImport,
   runPull,
@@ -61,13 +62,37 @@ async function configValue(trx: Trx, tenantId: string, key: string): Promise<unk
 /**
  * The geography a tenant's reference data covers: `refdata.scope` in its
  * configuration when set, else its jurisdiction's FIPS code (a county), its
- * county's (a city), or the counties below it (a state or region). Partner
- * organizations have none.
+ * county's (a city), or the distinct counties below it (a state or region).
+ * County names (for sources that filter by name) come from the same place
+ * or the county tenants' names; the bounding box from the tenant's current
+ * tract snapshot, else its jurisdiction outline. Partner organizations have
+ * none.
  */
 export async function referenceScope(trx: Trx, tenantId: string): Promise<Scope | null> {
+  const base = await baseScope(trx, tenantId);
+  if (!base) return null;
+  const box = await sql<{ w: number | null; s: number | null; e: number | null; n: number | null }>`
+    with outline as (
+      select 1 as rank, st_extent(t.geom) as b from cg.ref_tract t
+      join cg.refdata_current c on c.snapshot_id = t.snapshot_id
+      where c.tenant_id = ${tenantId} and c.dataset = 'tract'
+      union all
+      select 2, st_extent(geom) from cg.jurisdiction where tenant_id = ${tenantId} and geom is not null
+    )
+    select st_xmin(b) as w, st_ymin(b) as s, st_xmax(b) as e, st_ymax(b) as n
+    from outline where b is not null order by rank limit 1`.execute(trx);
+  const b = box.rows[0];
+  const r6 = (v: number) => Math.round(v * 1e6) / 1e6;
+  return b && b.w !== null && b.s !== null && b.e !== null && b.n !== null
+    ? { ...base, bbox: [r6(b.w), r6(b.s), r6(b.e), r6(b.n)] }
+    : base;
+}
+
+async function baseScope(trx: Trx, tenantId: string): Promise<Scope | null> {
   const configured = (await configValue(trx, tenantId, 'refdata.scope')) as {
     stateFips?: unknown;
     countyFips?: unknown;
+    countyNames?: unknown;
   } | null;
   if (
     configured &&
@@ -76,8 +101,16 @@ export async function referenceScope(trx: Trx, tenantId: string): Promise<Scope 
     Array.isArray(configured.countyFips) &&
     configured.countyFips.length > 0 &&
     configured.countyFips.every((c) => typeof c === 'string' && /^[0-9]{5}$/.test(c))
-  )
-    return { stateFips: configured.stateFips, countyFips: configured.countyFips as string[] };
+  ) {
+    const names = Array.isArray(configured.countyNames)
+      ? configured.countyNames.filter((n): n is string => typeof n === 'string' && n.trim() !== '')
+      : [];
+    return {
+      stateFips: configured.stateFips,
+      countyFips: configured.countyFips as string[],
+      ...(names.length ? { countyNames: names.map(countyNameKey) } : {}),
+    };
+  }
 
   const tenant = await trx
     .selectFrom('cg.tenant')
@@ -85,36 +118,51 @@ export async function referenceScope(trx: Trx, tenantId: string): Promise<Scope 
     .where('id', '=', tenantId)
     .executeTakeFirst();
   if (!tenant) return null;
-  const fipsOf = async (id: string) =>
-    (
-      await trx
-        .selectFrom('cg.jurisdiction')
-        .select('fips')
-        .where('tenant_id', '=', id)
-        .executeTakeFirst()
-    )?.fips ?? null;
-  const county = (fips: string | null): Scope | null =>
-    fips && /^[0-9]{5}$/.test(fips) ? { stateFips: fips.slice(0, 2), countyFips: [fips] } : null;
+  const countyOf = async (id: string): Promise<Scope | null> => {
+    const row = await trx
+      .selectFrom('cg.jurisdiction as j')
+      .innerJoin('cg.tenant as t', 't.id', 'j.tenant_id')
+      .select(['j.fips', 't.name'])
+      .where('j.tenant_id', '=', id)
+      .executeTakeFirst();
+    return row?.fips && /^[0-9]{5}$/.test(row.fips)
+      ? {
+          stateFips: row.fips.slice(0, 2),
+          countyFips: [row.fips],
+          countyNames: [countyNameKey(row.name)],
+        }
+      : null;
+  };
 
-  if (tenant.kind === 'county') return county(await fipsOf(tenantId));
-  if (tenant.kind === 'city')
-    return tenant.parent_id ? county(await fipsOf(tenant.parent_id)) : null;
+  if (tenant.kind === 'county') return countyOf(tenantId);
+  if (tenant.kind === 'city') return tenant.parent_id ? countyOf(tenant.parent_id) : null;
   if (tenant.kind === 'state' || tenant.kind === 'region') {
-    const below = await sql<{ fips: string }>`
+    const below = await sql<{ fips: string; name: string }>`
       with recursive sub as (
         select id from cg.tenant where parent_id = ${tenantId}
         union all
         select t.id from cg.tenant t join sub on t.parent_id = sub.id
       )
-      select distinct j.fips from sub join cg.tenant t on t.id = sub.id
+      select distinct on (j.fips) j.fips, t.name from sub join cg.tenant t on t.id = sub.id
       join cg.jurisdiction j on j.tenant_id = t.id
       where t.kind = 'county' and t.status <> 'closed' and j.fips ~ '^[0-9]{5}$'
-      order by j.fips`.execute(trx);
-    const counties = below.rows.map((r) => r.fips);
-    const own = await fipsOf(tenantId);
-    const stateFips = own && /^[0-9]{2}$/.test(own) ? own : counties[0]?.slice(0, 2);
-    const inState = counties.filter((c) => c.startsWith(stateFips ?? '--'));
-    return stateFips && inState.length ? { stateFips, countyFips: inState } : null;
+      order by j.fips, t.created_at`.execute(trx);
+    const own = (
+      await trx
+        .selectFrom('cg.jurisdiction')
+        .select('fips')
+        .where('tenant_id', '=', tenantId)
+        .executeTakeFirst()
+    )?.fips;
+    const stateFips = own && /^[0-9]{2}$/.test(own) ? own : below.rows[0]?.fips.slice(0, 2);
+    const inState = below.rows.filter((r) => r.fips.startsWith(stateFips ?? '--'));
+    return stateFips && inState.length
+      ? {
+          stateFips,
+          countyFips: inState.map((r) => r.fips),
+          countyNames: [...new Set(inState.map((r) => countyNameKey(r.name)))],
+        }
+      : null;
   }
   return null;
 }
@@ -196,7 +244,7 @@ export const refdataImport: TopicHandler = async (ctx, msg) => {
   if (!row || (row.status !== 'validating' && row.status !== 'applying')) return;
   const apply = row.status === 'applying';
   const file = await objects.get(row.object_key);
-  const parsed = parseImport(row.dataset, row.format, file.body.toString('utf8'), row.mapping);
+  const parsed = parseImport(row.dataset, row.format, file.body, row.mapping);
 
   let status: 'validated' | 'invalid' | 'applied' | 'failed';
   let errors = parsed.errors;
@@ -264,10 +312,13 @@ export async function scheduleReferencePulls(ctx: JobContext): Promise<void> {
   for (const tenantId of await allTenantIds(ctx.db)) {
     await asSystem(ctx.db, tenantId, async (trx) => {
       if ((await configValue(trx, tenantId, 'refdata.enabled')) === false) return;
-      if (!(await referenceScope(trx, tenantId))) return;
+      const scope = await referenceScope(trx, tenantId);
+      if (!scope) return;
       for (const dataset of DATASETS) {
         const connector = await tenantConnector(trx, tenantId, dataset);
         if (!connector || connector === 'import') continue;
+        // A source that needs the outline or county names waits until the tenant has them.
+        if (connector.requires?.some((need) => !scope[need])) continue;
         const latest = await trx
           .selectFrom('cg.refdata_snapshot')
           .select([

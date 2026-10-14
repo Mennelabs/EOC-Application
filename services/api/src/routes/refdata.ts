@@ -5,8 +5,8 @@
  *
  * An import is a small state machine, each step saved and resumable:
  * the console asks for an import with its own id (a resend answers the same
- * import, FR-00.06), sends the file's bytes (CSV or GeoJSON; the columns
- * found come back), saves a column mapping (the worker validates it and
+ * import, FR-00.06), sends the file's bytes (CSV, GeoJSON, a GeoPackage or
+ * a zipped Shapefile; the columns found come back), saves a column mapping (the worker validates it and
  * reports errors by row and field), then applies it (the worker writes a
  * snapshot that becomes current). Only the worker writes snapshots. The
  * files are public reference data, never resident records.
@@ -18,7 +18,15 @@ import { PutObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 import { sql } from 'kysely';
 import { z } from 'zod';
 import { diffForAudit } from '@cg/audit';
-import { connectors, DATASETS, importFields, parseCsv, type Dataset } from '@cg/refdata';
+import {
+  connectors,
+  DATASETS,
+  IMPORT_FORMATS,
+  importColumns,
+  importFields,
+  type Dataset,
+  type ImportFormat,
+} from '@cg/refdata';
 import { ApiError, errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
 import { classifierFor, enqueueOutbox, iso, uuidParam } from './helpers.ts';
@@ -35,7 +43,19 @@ export interface RefdataDeps {
 }
 
 const dataset = z.enum(DATASETS);
-const importTypes = ['text/csv', 'application/geo+json', 'application/octet-stream'] as const;
+const importTypes = [
+  'text/csv',
+  'application/geo+json',
+  'application/geopackage+sqlite3',
+  'application/zip',
+  'application/octet-stream',
+] as const;
+const STORED_TYPE: Record<ImportFormat, string> = {
+  csv: 'text/csv',
+  geojson: 'application/geo+json',
+  gpkg: 'application/geopackage+sqlite3',
+  shapefile: 'application/zip',
+};
 
 const snapshotOut = z.object({
   id: z.uuid(),
@@ -60,7 +80,7 @@ const importOut = z.object({
   version: z.number().int(),
   dataset,
   fileName: z.string(),
-  format: z.enum(['csv', 'geojson']),
+  format: z.enum(IMPORT_FORMATS),
   bytes: z.number().int(),
   columns: z.array(z.string()),
   fields: z.array(
@@ -140,7 +160,7 @@ type ImportRow = {
   version: number;
   dataset: Dataset;
   file_name: string;
-  format: 'csv' | 'geojson';
+  format: ImportFormat;
   bytes: number;
   columns: string[];
   mapping: Record<string, string>;
@@ -175,30 +195,6 @@ function importView(r: ImportRow): z.infer<typeof importOut> {
     createdAt: iso(r.created_at)!,
     updatedAt: iso(r.updated_at)!,
   };
-}
-
-/** Column names in a file: a CSV's header, or the properties of a GeoJSON file's first features. */
-export function columnsOf(format: 'csv' | 'geojson', text: string): string[] | null {
-  if (format === 'csv') {
-    const firstLines = text.slice(0, 64 * 1024);
-    const header = parseCsv(firstLines)[0];
-    return header && header.length ? header.map((h) => h.trim()) : null;
-  }
-  let doc: unknown;
-  try {
-    doc = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
-  } catch {
-    return null;
-  }
-  const features = (doc as { type?: unknown; features?: unknown }).features;
-  if ((doc as { type?: unknown }).type !== 'FeatureCollection' || !Array.isArray(features))
-    return null;
-  const names = new Set<string>();
-  for (const f of features.slice(0, 100)) {
-    const props = (f as { properties?: unknown }).properties;
-    if (props && typeof props === 'object') for (const k of Object.keys(props)) names.add(k);
-  }
-  return [...names];
 }
 
 export const refdataRoutes =
@@ -398,7 +394,7 @@ export const refdataRoutes =
           body: z.object({
             clientUuid: z.uuid(),
             dataset,
-            format: z.enum(['csv', 'geojson']),
+            format: z.enum(IMPORT_FORMATS),
             fileName: z
               .string()
               .trim()
@@ -503,15 +499,18 @@ export const refdataRoutes =
           throw new ApiError(409, 'import_in_progress', 'This file has already been checked.', {
             details: importView(row as ImportRow),
           });
-        const columns = columnsOf(row.format, body.toString('utf8'));
+        const columns = importColumns(row.format, body);
         if (!columns || columns.length === 0)
           throw errors.validation([
             {
               name: 'file',
-              message:
-                row.format === 'csv'
-                  ? 'The file has no header row.'
-                  : 'The file is not a GeoJSON FeatureCollection with properties.',
+              message: {
+                csv: 'The file has no header row.',
+                geojson: 'The file is not a GeoJSON FeatureCollection with properties.',
+                gpkg: 'The file is not a GeoPackage with a feature table in WGS 84.',
+                shapefile:
+                  'The file is not a zipped Shapefile in WGS 84 (with its .shp, .dbf and .prj).',
+              }[row.format],
             },
           ]);
         await objects.client.send(
@@ -519,7 +518,7 @@ export const refdataRoutes =
             Bucket: objects.bucket,
             Key: row.object_key,
             Body: body,
-            ContentType: row.format === 'csv' ? 'text/csv' : 'application/geo+json',
+            ContentType: STORED_TYPE[row.format],
           }),
         );
         const updated = await request.tx(async (trx) => {

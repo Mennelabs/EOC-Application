@@ -1,5 +1,62 @@
 [
   {
+    "host": "tigerweb.geo.census.gov",
+    "path": "/arcgis/rest/services/TIGERweb/Tracts_Blocks/MapServer/0/query",
+    "query": {
+      "where": "STATE='29' AND COUNTY IN ('999')",
+      "resultOffset": "0"
+    },
+    "file": "tigerweb-tracts-29999.json"
+  },
+  {
+    "host": "api.census.gov",
+    "path": "/data/2024/acs/acs5",
+    "query": {
+      "for": "tract:*",
+      "in": "state:29 county:999"
+    },
+    "file": "acs5-tract-profile-29999.json"
+  },
+  {
+    "host": "nsi.sec.usace.army.mil",
+    "path": "/nsiapi/structures",
+    "query": {
+      "fips": "29999"
+    },
+    "file": "nsi-structures-29999.json"
+  },
+  {
+    "host": "hazards.fema.gov",
+    "path": "/arcgis/rest/services/public/NFHL/MapServer/28/query",
+    "query": {
+      "resultOffset": "0"
+    },
+    "contains": {
+      "geometry": "-90.95"
+    },
+    "file": "nfhl-flood-zones-29999.json"
+  },
+  {
+    "host": "data.cms.gov",
+    "path": "/provider-data/api/1/datastore/query/xubh-q36u/0",
+    "query": {
+      "conditions[0][value]": "MO",
+      "conditions[1][value]": "WESTWIND",
+      "offset": "0"
+    },
+    "file": "cms-hospitals-westwind.json"
+  },
+  {
+    "host": "data.cms.gov",
+    "path": "/provider-data/api/1/datastore/query/4pq5-n9py/0",
+    "query": {
+      "conditions[0][value]": "MO",
+      "conditions[1][value]": "WESTWIND",
+      "offset": "0"
+    },
+    "file": "cms-nursing-homes-westwind.json"
+  },
+  {
     "host": "www.fema.gov",
     "path": "/api/open/v2/DisasterDeclarationsSummaries",
     "query": {
@@ -7,5 +64,24 @@
       "$skip": "0"
     },
     "file": "openfema-declarations-29999.json"
+  },
+  {
+    "host": "www.fema.gov",
+    "path": "/api/open/v2/FimaNfipPolicies",
+    "query": {
+      "$skip": "0"
+    },
+    "contains": {
+      "$filter": "countyCode eq '29999'"
+    },
+    "file": "openfema-nfip-policies-29999.json"
+  },
+  {
+    "host": "api.weather.gov",
+    "path": "/alerts/active",
+    "query": {
+      "zone": "MOC999"
+    },
+    "file": "nws-alerts-29999.json"
   }
 ]

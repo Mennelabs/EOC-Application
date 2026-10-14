@@ -6,10 +6,32 @@
  */
 import { fileURLToPath } from 'node:url';
 import type { Connector } from './connector.ts';
-import { openFemaDeclarations } from './connectors/openfema.ts';
+import { acsTractProfile, tigerwebTracts } from './connectors/census.ts';
+import { cmsFacilities } from './connectors/cms.ts';
+import { nfhlFloodZones } from './connectors/nfhl.ts';
+import { nsiStructures } from './connectors/nsi.ts';
+import { nwsAlerts } from './connectors/nws.ts';
+import { openFemaDeclarations, openFemaNfip } from './connectors/openfema.ts';
 import type { Dataset } from './datasets.ts';
 
-export const connectors: readonly Connector[] = [openFemaDeclarations];
+/**
+ * In dataset order, so a tenant's tracts (whose outline other sources need)
+ * are asked for first. Not pulled, import only: National Risk Index and SVI
+ * (released as files), FEMA USA Structures (served from ArcGIS Online, not a
+ * source here; decision 2026-10-14), power outages (the ODIN feed's format
+ * could not be checked from the build environment; it gets a connector
+ * once verified).
+ */
+export const connectors: readonly Connector[] = [
+  tigerwebTracts,
+  acsTractProfile,
+  nsiStructures,
+  nfhlFloodZones,
+  cmsFacilities,
+  openFemaDeclarations,
+  openFemaNfip,
+  nwsAlerts,
+];
 
 /** Recorded synthetic WESTWIND responses shipped for development and CI (SCL-12). */
 export const recordingsDir = fileURLToPath(new URL('../recordings', import.meta.url));

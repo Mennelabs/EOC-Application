@@ -12,8 +12,10 @@ export interface Scope {
   stateFips: string;
   /** Five-digit county FIPS codes covered by the tenant. */
   countyFips: string[];
-  /** [west, south, east, north] in WGS84, when the source answers by area. */
+  /** [west, south, east, north] in WGS84, when the source answers by area (from the tract outline). */
   bbox?: [number, number, number, number];
+  /** County names as sources that filter by name use them ("WESTWIND"), one per county code. */
+  countyNames?: string[];
 }
 
 export interface ConnectorContext {
@@ -42,5 +44,7 @@ export interface Connector {
   hosts: readonly string[];
   /** How often the worker refreshes it by default. */
   refreshMs: number;
+  /** Geography beyond the FIPS codes the request needs; the schedule waits until the tenant has it. */
+  requires?: readonly ('bbox' | 'countyNames')[];
   fetch(ctx: ConnectorContext): Promise<FetchResult>;
 }

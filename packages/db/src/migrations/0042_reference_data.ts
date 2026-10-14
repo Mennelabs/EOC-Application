@@ -82,7 +82,8 @@ async function systemWritten(db: Kysely<unknown>, name: string): Promise<void> {
 }
 
 export async function up(db: Kysely<unknown>): Promise<void> {
-  // Uploaded files (CSV, GeoJSON): staff upload and map columns; the worker validates and applies.
+  // Uploaded files (CSV, GeoJSON, GeoPackage, zipped Shapefile): staff upload and map columns;
+  // the worker validates and applies.
   // The client's own id makes a resent upload request return the same import (FR-00.06).
   await sql
     .raw(
@@ -93,7 +94,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       execution_id uuid not null,
       file_name text not null,
       object_key text not null,
-      format text not null check (format in ('csv', 'geojson')),
+      format text not null check (format in ('csv', 'geojson', 'gpkg', 'shapefile')),
       bytes integer not null check (bytes > 0),
       columns jsonb not null default '[]'::jsonb,
       mapping jsonb not null default '{}'::jsonb,

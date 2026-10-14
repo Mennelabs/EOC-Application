@@ -545,6 +545,9 @@ importers:
       '@cg/provisioning':
         specifier: workspace:*
         version: link:../../packages/provisioning
+      '@cg/refdata':
+        specifier: workspace:*
+        version: link:../../packages/refdata
       kysely:
         specifier: 0.29.6
         version: 0.29.6

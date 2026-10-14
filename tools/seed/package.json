@@ -6,13 +6,15 @@
   "scripts": {
     "generate": "node src/cli.ts",
     "typecheck": "tsc --noEmit -p .",
-    "load": "node src/load.ts"
+    "load": "node src/load.ts",
+    "recordings": "node src/recordings.ts"
   },
   "dependencies": {
     "@cg/ai": "workspace:*",
     "@cg/db": "workspace:*",
     "@cg/intake": "workspace:*",
     "@cg/provisioning": "workspace:*",
+    "@cg/refdata": "workspace:*",
     "kysely": "0.29.6"
   }
 }

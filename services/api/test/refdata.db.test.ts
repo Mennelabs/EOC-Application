@@ -280,7 +280,7 @@ describe.skipIf(!appUrl || !workerUrl)('reference data routes (database-backed)'
       expect(await audited(action, imp.id)).toEqual([{ action, actor_kind: 'account' }]);
   });
 
-  it('refuses a GeoJSON file that is not a FeatureCollection, and answers 404 for an import it cannot see', async () => {
+  it('refuses a GeoJSON file that is not a FeatureCollection or a GeoPackage that is not one, and answers 404 for an import it cannot see', async () => {
     const created = await call('gis', 'POST', '/refdata/imports', {
       clientUuid: randomUUID(),
       dataset: 'tract',
@@ -298,6 +298,26 @@ describe.skipIf(!appUrl || !workerUrl)('reference data routes (database-backed)'
       { 'content-type': 'application/geo+json' },
     );
     expect(bad.status).toBe(400);
+    const gpkg = await call('gis', 'POST', '/refdata/imports', {
+      clientUuid: randomUUID(),
+      dataset: 'facility',
+      format: 'gpkg',
+      fileName: 'facilities.gpkg',
+      bytes: 40,
+      licence: 'Exercise data (synthetic)',
+    });
+    expect(gpkg.status).toBe(201);
+    const notGpkg = await call(
+      'gis',
+      'PUT',
+      `/refdata/imports/${gpkg.json<ImportBody>().id}/content`,
+      Buffer.from('this is not a GeoPackage'),
+      { 'content-type': 'application/geopackage+sqlite3' },
+    );
+    expect(notGpkg.status).toBe(400);
+    expect(notGpkg.json<{ fields: { message: string }[] }>().fields[0]!.message).toMatch(
+      /GeoPackage/,
+    );
     expect((await call('gis', 'GET', `/refdata/imports/${randomUUID()}`)).status).toBe(404);
     expect((await call('director', 'GET', `/refdata/imports/${imp.id}`)).status).toBe(200);
   });

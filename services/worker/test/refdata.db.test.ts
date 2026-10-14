@@ -13,7 +13,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import pino from 'pino';
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import { SimulatorSms } from '@cg/adapters';
 import { fakeProvider } from '@cg/ai';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
@@ -136,12 +136,20 @@ describe.skipIf(!workerUrl)('reference data jobs (database-backed)', () => {
     const c = await county('scope', '29999');
     const none = await county('noscope', null);
     await tx(c, async (trx) => {
-      expect(await referenceScope(trx, c)).toEqual({ stateFips: '29', countyFips: ['29999'] });
+      expect(await referenceScope(trx, c)).toEqual({
+        stateFips: '29',
+        countyFips: ['29999'],
+        countyNames: [`EXERCISE REFERENCE SCOPE ${run.toUpperCase()}`],
+      });
     });
     await tx(none, async (trx) => expect(await referenceScope(trx, none)).toBeNull());
     const city = seeded.tenants['city']!;
     await tx(city, async (trx) =>
-      expect(await referenceScope(trx, city)).toEqual({ stateFips: '29', countyFips: ['29999'] }),
+      expect(await referenceScope(trx, city)).toMatchObject({
+        stateFips: '29',
+        countyFips: ['29999'],
+        countyNames: ['WESTWIND'],
+      }),
     );
     // Several county tenants may share a code (exercise tenants here); the state asks once.
     const state = seeded.tenants['state']!;
@@ -156,19 +164,24 @@ describe.skipIf(!workerUrl)('reference data jobs (database-backed)', () => {
         .values({
           tenant_id: none,
           key: 'refdata.scope',
-          value: JSON.stringify({ stateFips: '29', countyFips: ['29998', '29999'] }),
+          value: JSON.stringify({
+            stateFips: '29',
+            countyFips: ['29998', '29999'],
+            countyNames: ['Northfield County', 'Westwind County'],
+          }),
         })
         .execute();
       expect(await referenceScope(trx, none)).toEqual({
         stateFips: '29',
         countyFips: ['29998', '29999'],
+        countyNames: ['NORTHFIELD', 'WESTWIND'],
       });
     });
     const partner = seeded.tenants['coad']!;
     await tx(partner, async (trx) => expect(await referenceScope(trx, partner)).toBeNull());
   });
 
-  it('the schedule queues one pull for a due dataset, and none for a tenant without geography', async () => {
+  it('the schedule queues one pull per due dataset, and none for a tenant without geography', async () => {
     const c = await county('schedule', '29999', false);
     const none = await county('schedule-none', null, false);
     await scheduleReferencePulls(ctx);
@@ -179,8 +192,23 @@ describe.skipIf(!workerUrl)('reference data jobs (database-backed)', () => {
       .where('tenant_id', 'in', [c, none])
       .where('topic', '=', 'refdata.pull')
       .execute();
-    expect(queued.filter((q) => q.tenant_id === c)).toHaveLength(1);
-    expect(queued[0]?.payload).toMatchObject({ dataset: 'declaration' });
+    // Every dataset with a pull source once; flood zones wait for the tract outline.
+    expect(
+      queued
+        .filter((q) => q.tenant_id === c)
+        .map((q) => (q.payload as { dataset: string }).dataset)
+        .sort(),
+    ).toEqual(
+      [
+        'alert',
+        'declaration',
+        'facility',
+        'nfip_summary',
+        'structure',
+        'tract',
+        'tract_profile',
+      ].sort(),
+    );
     expect(queued.filter((q) => q.tenant_id === none)).toHaveLength(0);
   });
 
@@ -230,6 +258,78 @@ describe.skipIf(!workerUrl)('reference data jobs (database-backed)', () => {
     );
     expect(last.status).toBe('failed');
     expect(last.error).toContain('503');
+  });
+
+  it('pulls every dataset for a county from the recordings; the outline from its tracts lets the flood zones follow (ADR-0039)', async () => {
+    const c = await county('all', '29999');
+    // CMS filters by county name; this exercise tenant answers to the seed county's.
+    await tx(c, (trx) =>
+      trx
+        .insertInto('cg.tenant_config')
+        .values({
+          tenant_id: c,
+          key: 'refdata.scope',
+          value: JSON.stringify({
+            stateFips: '29',
+            countyFips: ['29999'],
+            countyNames: ['Westwind County'],
+          }),
+        })
+        .execute(),
+    );
+    const pullAll = async () => {
+      for (const dataset of [
+        'tract',
+        'tract_profile',
+        'structure',
+        'flood_zone',
+        'facility',
+        'declaration',
+        'nfip_summary',
+        'alert',
+      ])
+        await refdataPull(ctx, msg(c, 'refdata.pull', { dataset }));
+    };
+    await pullAll();
+    const counts = await tx(c, (trx) =>
+      trx
+        .selectFrom('cg.refdata_current as cur')
+        .innerJoin('cg.refdata_snapshot as s', 's.id', 'cur.snapshot_id')
+        .select(['s.dataset', 's.row_count', 's.status'])
+        .where('cur.tenant_id', '=', c)
+        .execute(),
+    );
+    const byDataset = Object.fromEntries(counts.map((r) => [r.dataset, r.row_count]));
+    expect(byDataset).toMatchObject({
+      tract: 5,
+      tract_profile: 5,
+      structure: 548,
+      flood_zone: 4,
+      facility: 3,
+      declaration: 3,
+      nfip_summary: 6,
+      alert: 2,
+    });
+    await tx(c, async (trx) => {
+      expect((await referenceScope(trx, c))?.bbox).toEqual([-90.95, 38.76, -90.75, 38.84]);
+      // Structures fall in the tracts the Census drew (the seed's areas).
+      const misplaced = await trx
+        .selectFrom('cg.ref_structure as s')
+        .innerJoin('cg.refdata_current as cs', (j) =>
+          j.onRef('cs.snapshot_id', '=', 's.snapshot_id').on('cs.dataset', '=', 'structure'),
+        )
+        .innerJoin('cg.refdata_current as ct', (j) =>
+          j.onRef('ct.tenant_id', '=', 'cs.tenant_id').on('ct.dataset', '=', 'tract'),
+        )
+        .innerJoin('cg.ref_tract as t', (j) =>
+          j.onRef('t.snapshot_id', '=', 'ct.snapshot_id').onRef('t.geoid', '=', 's.tract_geoid'),
+        )
+        .select((eb) => eb.fn.countAll<string>().as('n'))
+        .where('cs.tenant_id', '=', c)
+        .where(sql<boolean>`not st_contains(t.geom, s.geom)`)
+        .executeTakeFirstOrThrow();
+      expect(Number(misplaced.n)).toBe(0);
+    });
   });
 
   it('pulls nothing when reference pulls are off or the tenant imports only', async () => {

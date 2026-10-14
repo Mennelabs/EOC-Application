@@ -1,17 +1,27 @@
 /**
- * File import for every reference dataset (ADR-0039): a county's own GIS
- * data, a release file (National Risk Index, SVI) or a source without an API
- * (the HIFLD archive) arrives as CSV or GeoJSON. Staff map the file's columns
- * (or GeoJSON properties) to the dataset's fields; points in a CSV come from
- * latitude and longitude columns, areas need GeoJSON. Values are coerced by
+ * File import for every reference dataset (ADR-0039, ADR-0041): a county's
+ * own GIS data, a release file (National Risk Index, SVI, FEMA USA
+ * Structures) or a source without a pull arrives as CSV, GeoJSON, a
+ * GeoPackage or a zipped Shapefile. Staff map the file's columns (or feature
+ * properties) to the dataset's fields; points in a CSV come from latitude
+ * and longitude columns, areas need one of the geometry formats. Values are coerced by
  * the target field's type (numbers, booleans, lists); empty cells become
  * null, never zero (RULE-02). The result is the rows ready for the snapshot
  * writer plus errors by row and field, never echoing cell values.
  */
 import { z } from 'zod';
 import { checkRow, ROW_SCHEMAS, type Dataset, type RawRow } from './datasets.ts';
+import { FormatError, readGeoPackage, type SourceFeature } from './formats/gpkg.ts';
+import { readZippedShapefile } from './formats/shapefile.ts';
 
-export type ImportFormat = 'csv' | 'geojson';
+export type ImportFormat = 'csv' | 'geojson' | 'gpkg' | 'shapefile';
+export const IMPORT_FORMATS = [
+  'csv',
+  'geojson',
+  'gpkg',
+  'shapefile',
+] as const satisfies readonly ImportFormat[];
+export { FormatError };
 
 /** Target field → source column (CSV header or GeoJSON property). */
 export type ColumnMapping = Record<string, string>;
@@ -190,10 +200,54 @@ function finish(dataset: Dataset, mapped: RawRow[], errors: ImportError[]): Pars
   return { rows: errors.length ? [] : rows, errors, total: mapped.length };
 }
 
+const text = (body: string | Buffer) => (typeof body === 'string' ? body : body.toString('utf8'));
+const stripBom = (t: string) => (t.charCodeAt(0) === 0xfeff ? t.slice(1) : t);
+
+/** Features of a GeoJSON, GeoPackage or zipped Shapefile body, with the property names found. */
+function readFeatures(
+  format: Exclude<ImportFormat, 'csv'>,
+  body: string | Buffer,
+): { columns: string[]; features: SourceFeature[] } {
+  if (format === 'gpkg') return readGeoPackage(Buffer.isBuffer(body) ? body : Buffer.from(body));
+  if (format === 'shapefile')
+    return readZippedShapefile(Buffer.isBuffer(body) ? body : Buffer.from(body, 'latin1'));
+  let doc: unknown;
+  try {
+    doc = JSON.parse(stripBom(text(body)));
+  } catch {
+    throw new FormatError('not valid JSON');
+  }
+  const features = (doc as { type?: unknown; features?: unknown }).features;
+  if ((doc as { type?: unknown }).type !== 'FeatureCollection' || !Array.isArray(features))
+    throw new FormatError('not a GeoJSON FeatureCollection');
+  const names = new Set<string>();
+  const out: SourceFeature[] = features.map((f) => {
+    const props = (f as { properties?: unknown }).properties;
+    const properties = props && typeof props === 'object' ? (props as Record<string, unknown>) : {};
+    for (const k of Object.keys(properties)) names.add(k);
+    return { properties, geometry: ((f as { geometry?: unknown }).geometry ?? null) as never };
+  });
+  return { columns: [...names], features: out };
+}
+
+/** The column or property names in a file, for the mapping step; null when it cannot be read. */
+export function importColumns(format: ImportFormat, body: string | Buffer): string[] | null {
+  try {
+    if (format === 'csv') {
+      const header = parseCsv(text(body).slice(0, 64 * 1024))[0];
+      return header?.length ? header.map((h) => h.trim()) : null;
+    }
+    const { columns } = readFeatures(format, body);
+    return columns.length ? columns : null;
+  } catch {
+    return null;
+  }
+}
+
 export function parseImport(
   dataset: Dataset,
   format: ImportFormat,
-  body: string,
+  body: string | Buffer,
   mapping: ColumnMapping,
 ): ParsedImport {
   const kinds = fieldKinds(dataset);
@@ -209,7 +263,7 @@ export function parseImport(
   const errors: ImportError[] = [];
 
   if (format === 'csv') {
-    const table = parseCsv(body);
+    const table = parseCsv(text(body));
     const header = table.shift() ?? [];
     if (table.length > MAX_ROWS)
       return { rows: [], errors: [{ message: `more than ${MAX_ROWS} rows` }], total: table.length };
@@ -226,7 +280,8 @@ export function parseImport(
         errors: [
           {
             field: 'geometry',
-            message: 'map latitude and longitude columns, or import GeoJSON for areas',
+            message:
+              'map latitude and longitude columns, or import GeoJSON, a GeoPackage or a Shapefile for areas',
           },
         ],
         total: table.length,
@@ -243,15 +298,14 @@ export function parseImport(
     return finish(dataset, mapped, errors);
   }
 
-  let doc: unknown;
+  let features: SourceFeature[];
   try {
-    doc = JSON.parse(body.charCodeAt(0) === 0xfeff ? body.slice(1) : body);
-  } catch {
-    return { rows: [], errors: [{ message: 'not valid JSON' }], total: 0 };
+    features = readFeatures(format, body).features;
+  } catch (err) {
+    if (err instanceof FormatError)
+      return { rows: [], errors: [{ message: err.message }], total: 0 };
+    throw err;
   }
-  const features = (doc as { type?: string; features?: unknown[] }).features;
-  if ((doc as { type?: string }).type !== 'FeatureCollection' || !Array.isArray(features))
-    return { rows: [], errors: [{ message: 'not a GeoJSON FeatureCollection' }], total: 0 };
   if (features.length > MAX_ROWS)
     return {
       rows: [],
@@ -259,10 +313,8 @@ export function parseImport(
       total: features.length,
     };
   const mapped = features.map((f) => {
-    const feature = f as { properties?: Record<string, unknown>; geometry?: unknown };
-    const props = feature.properties ?? {};
-    const row = mapRecord(dataset, kinds, mapping, (c) => props[c]);
-    if ('geometry' in kinds && feature.geometry) row['geometry'] = feature.geometry;
+    const row = mapRecord(dataset, kinds, mapping, (c) => f.properties[c]);
+    if ('geometry' in kinds && f.geometry) row['geometry'] = f.geometry;
     return row;
   });
   return finish(dataset, mapped, errors);

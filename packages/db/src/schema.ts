@@ -2256,7 +2256,7 @@ export interface RefdataImportTable extends Stamped {
   execution_id: Uuid;
   file_name: string;
   object_key: string;
-  format: 'csv' | 'geojson';
+  format: 'csv' | 'geojson' | 'gpkg' | 'shapefile';
   bytes: number;
   columns: JsonGen<string[]>;
   mapping: JsonGen<Record<string, string>>;

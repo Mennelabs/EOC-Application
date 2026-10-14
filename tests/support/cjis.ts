@@ -5,8 +5,10 @@
  * and a one-time code (the browser flow uses a passkey instead). Keycloak
  * refuses a code twice for an account, and each refusal counts toward the
  * account's lockout, so test processes (Playwright workers, vitest pools)
- * share which code each account last used through a lock file and wait for
- * the next code instead of colliding. Synthetic accounts only (SCL-12).
+ * share, under a lock file, which code each account last used and the tokens
+ * they obtained: a process reuses or refreshes a token another one got, and
+ * only asks for a new one with a code nobody has used. Synthetic accounts
+ * only (SCL-12).
  */
 import { createHmac } from 'node:crypto';
 import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -69,14 +71,28 @@ export async function enclaveGrant(
   return { status: res.status, ...((await res.json()) as Omit<GrantResult, 'status'>) };
 }
 
-const cache = new Map<string, { token: string; refresh: string; exp: number }>();
+interface Held {
+  token: string;
+  refresh: string;
+  exp: number;
+}
 
+const cache = new Map<string, Held>();
+
+/*
+ * Shared between test processes (Playwright workers, vitest pools): which code
+ * each account used last, and the tokens obtained, so a process that finds a
+ * fresh token reuses it instead of needing a code of its own. One code per
+ * account per 30 seconds otherwise starves a worker that keeps losing the race
+ * for the next code. Synthetic accounts of the development realm only; the
+ * file is readable by its owner only.
+ */
 const OTP_LOCK = join(tmpdir(), 'cg-enclave-otp.lock');
-const OTP_USED = join(tmpdir(), 'cg-enclave-otp-used.json');
+const OTP_STATE = join(tmpdir(), 'cg-enclave-otp-state.json');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const untilNextCode = () => sleep(30_000 - (Date.now() % 30_000) + 250);
 
-/** One process at a time picks and uses a code; a lock older than a minute is a dead process's. */
+/** One process at a time reads and writes the shared state; a lock older than a minute is a dead process's. */
 async function withOtpLock<T>(fn: () => Promise<T>): Promise<T> {
   for (;;) {
     try {
@@ -99,28 +115,22 @@ async function withOtpLock<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-function usedCodes(): Record<string, string> {
+interface SharedState {
+  used: Record<string, string>;
+  tokens: Record<string, Held>;
+}
+
+function readState(): SharedState {
   try {
-    return JSON.parse(readFileSync(OTP_USED, 'utf8')) as Record<string, string>;
+    const s = JSON.parse(readFileSync(OTP_STATE, 'utf8')) as Partial<SharedState>;
+    return { used: s.used ?? {}, tokens: s.tokens ?? {} };
   } catch {
-    return {};
+    return { used: {}, tokens: {} };
   }
 }
 
-/** A grant with a code this account has not used yet: the current one, or the next. */
-async function grantWithFreshCode(username: string): Promise<GrantResult> {
-  for (;;) {
-    const result = await withOtpLock(async () => {
-      const code = totp(CJIS_OTP_SECRET);
-      const used = usedCodes();
-      if (used[username] === code) return null;
-      used[username] = code;
-      writeFileSync(OTP_USED, JSON.stringify(used));
-      return enclaveGrant(username, { totp: code });
-    });
-    if (result) return result;
-    await untilNextCode();
-  }
+function writeState(state: SharedState): void {
+  writeFileSync(OTP_STATE, JSON.stringify(state), { mode: 0o600 });
 }
 
 export function claims(token: string): Record<string, unknown> {
@@ -130,40 +140,85 @@ export function claims(token: string): Record<string, unknown> {
   >;
 }
 
-/** An enclave access token with the second factor, cached and refreshed per account. */
+function held(t: GrantResult): Held | null {
+  if (!t.access_token || !t.refresh_token) return null;
+  return {
+    token: t.access_token,
+    refresh: t.refresh_token,
+    exp: Number(claims(t.access_token)['exp'] ?? 0) * 1000,
+  };
+}
+
+async function refreshGrant(refresh: string): Promise<GrantResult | null> {
+  const res = await fetch(`${CJIS_URL}/auth/realms/cjis/protocol/openid-connect/token`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: CJIS_TEST_CLIENT.id,
+      client_secret: CJIS_TEST_CLIENT.secret,
+      refresh_token: refresh,
+    }),
+  });
+  return res.ok
+    ? { ...((await res.json()) as Omit<GrantResult, 'status'>), status: res.status }
+    : null;
+}
+
+type Step = { token: Held } | { wait: true } | { failed: GrantResult };
+
+/**
+ * Under the lock: a token another process left that is still fresh, else a
+ * refresh of it, else a grant with a code this account has not used yet.
+ */
+function nextStep(username: string): Promise<Step> {
+  return withOtpLock(async () => {
+    const state = readState();
+    const shared = state.tokens[username];
+    if (shared && shared.exp > Date.now() + 30_000) return { token: shared };
+    if (shared) {
+      const refreshed = await refreshGrant(shared.refresh);
+      const h = refreshed && held(refreshed);
+      if (h) {
+        state.tokens[username] = h;
+        writeState(state);
+        return { token: h };
+      }
+    }
+    const code = totp(CJIS_OTP_SECRET);
+    if (state.used[username] === code) return { wait: true };
+    state.used[username] = code;
+    writeState(state);
+    const granted = await enclaveGrant(username, { totp: code });
+    const h = held(granted);
+    if (!h) return { failed: granted };
+    state.tokens[username] = h;
+    writeState(state);
+    return { token: h };
+  });
+}
+
+/** An enclave access token with the second factor, shared and refreshed per account. */
 export async function enclaveToken(username: string): Promise<string> {
   process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0'; // the enclave gateway's local CA (development only)
   const hit = cache.get(username);
   if (hit && hit.exp > Date.now() + 30_000) return hit.token;
-  if (hit) {
-    const res = await fetch(`${CJIS_URL}/auth/realms/cjis/protocol/openid-connect/token`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        client_id: CJIS_TEST_CLIENT.id,
-        client_secret: CJIS_TEST_CLIENT.secret,
-        refresh_token: hit.refresh,
-      }),
-    });
-    if (res.ok) return remember(username, (await res.json()) as GrantResult);
-  }
   let last: GrantResult | undefined;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    last = await grantWithFreshCode(username);
-    if (last.access_token) return remember(username, last);
+  for (let failures = 0; failures < 3;) {
+    const step = await nextStep(username);
+    if ('token' in step) {
+      cache.set(username, step.token);
+      return step.token.token;
+    }
+    if ('failed' in step) {
+      last = step.failed;
+      failures++;
+    }
     await untilNextCode();
   }
   throw new Error(
     `no enclave token for ${username}: ${last?.error ?? last?.status} ${last?.error_description ?? ''}`,
   );
-}
-
-function remember(username: string, t: GrantResult): string {
-  if (!t.access_token || !t.refresh_token) throw new Error('enclave token response incomplete');
-  const exp = Number(claims(t.access_token)['exp'] ?? 0) * 1000;
-  cache.set(username, { token: t.access_token, refresh: t.refresh_token, exp });
-  return t.access_token;
 }
 
 export interface EnclaveCall {

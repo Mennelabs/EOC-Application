@@ -521,6 +521,20 @@ export const actions = {
     'Issue a reviewed report someone else drafted; it is frozen and corrected only by amendment',
     { consequential: true, explicit: true },
   ),
+
+  // Layer 6 FEMA form mappings (DCL:DEC-12, DEC-15): changed without a release.
+  'fema_mapping.read': a('read', 'fema_form_mapping', 'See FEMA form mappings and their versions'),
+  'fema_mapping.write': a(
+    'write',
+    'fema_form_mapping',
+    'Draft and edit a new version of a FEMA form mapping',
+  ),
+  'fema_mapping.activate': a(
+    'admin',
+    'fema_form_mapping',
+    'Put a FEMA form mapping version in force for every export that follows',
+    { consequential: true },
+  ),
 } as const satisfies Record<string, ActionMeta>;
 
 export type ActionKey = keyof typeof actions;

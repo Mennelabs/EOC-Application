@@ -2398,6 +2398,22 @@ export interface OfficialReportLockTable {
   written_at: TsGen;
 }
 
+export interface FemaFormMappingTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  form: string;
+  fema_form_version: string;
+  mapping_version: number;
+  status: Generated<'draft' | 'active' | 'retired'>;
+  scope: JsonGen<Record<string, unknown>>;
+  fields: ColumnType<unknown[], string, string>;
+  source_document: string | null;
+  note: string | null;
+  activated_by: Uuid | null;
+  activated_at: TsNullable;
+  activation_reason: string | null;
+}
+
 export interface LocationGeoTable {
   location_id: Uuid;
   tenant_id: Uuid;
@@ -2711,6 +2727,7 @@ export interface Database {
   'cg.official_report_section': OfficialReportSectionTable;
   'cg.official_report_snapshot': OfficialReportSnapshotTable;
   'cg.official_report_lock': OfficialReportLockTable;
+  'cg.fema_form_mapping': FemaFormMappingTable;
   'cg.refdata_import': RefdataImportTable;
   'cg.refdata_snapshot': RefdataSnapshotTable;
   'cg.refdata_current': RefdataCurrentTable;

@@ -5,3 +5,4 @@
 export * from './counting.ts';
 export * from './load.ts';
 export * from './facts.ts';
+export * from './fema/index.ts';

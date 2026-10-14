@@ -2223,6 +2223,28 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     },
     { standard: false },
   ),
+  fema_form_mapping: table({
+    form: { c: 'internal', d: 'FEMA form the mapping is for (DEC-12)' },
+    fema_form_version: { c: 'internal', d: 'Which FEMA edition of the form it follows (DEC-15)' },
+    mapping_version: {
+      c: 'internal',
+      d: 'Version 1 ships with the platform; county versions from 2',
+    },
+    status: { c: 'internal', d: 'Draft, active or retired' },
+    scope: { c: 'internal', d: 'Which homes a per-home form lists' },
+    fields: {
+      c: 'internal',
+      d: 'Form fields mapped to data elements; no personal details (DEC-13)',
+    },
+    source_document: { c: 'internal' },
+    note: { c: 'internal' },
+    activated_by: { c: 'internal' },
+    activated_at: { c: 'internal' },
+    activation_reason: {
+      c: 'internal',
+      d: 'Reason given in the activation confirmation (RULE-14)',
+    },
+  }),
   location_geo: table(
     {
       location_id: { c: 'internal' },

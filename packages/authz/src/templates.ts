@@ -147,6 +147,7 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('official_report.draft'),
       g('official_report.review'),
       g('official_report.issue'),
+      g('fema_mapping.*'),
       g('break_glass.start'),
       g('break_glass.end'),
       g('break_glass.read'),
@@ -437,6 +438,8 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('declaration.read'),
       g('official_report.read'),
       g('official_report.draft'),
+      g('fema_mapping.read'),
+      g('fema_mapping.write'),
     ],
   },
   {

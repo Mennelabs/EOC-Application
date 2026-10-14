@@ -5,6 +5,7 @@ import { auditRoutes } from './audit.ts';
 import { breakGlassRoutes } from './breakglass.ts';
 import { contactRoutes } from './contacts.ts';
 import { declarationRoutes } from './declaration.ts';
+import { femaMappingRoutes } from './fema-mappings.ts';
 import { officialReportRoutes } from './official-reports.ts';
 import { definitionRoutes } from './definitions.ts';
 import { dispatchRoutes, type DispatchDeps } from './dispatch.ts';
@@ -76,6 +77,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   refdataRoutes(deps.refdata),
   declarationRoutes,
   officialReportRoutes,
+  femaMappingRoutes,
 ];
 
 /** The default set, as the tests mount it. */

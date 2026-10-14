@@ -31,18 +31,19 @@ See `docs/plans/layer-4-report.md`, "What did not pass, or is not yet proven" it
 
 Plan: [`layer-5.md`](layer-5.md). One task per commit; each ends green, pushed, and recorded here.
 
-| Task | What                                                                                                        | State | Commits     | Notes |
-| ---- | ----------------------------------------------------------------------------------------------------------- | ----- | ----------- | ----- |
-| P    | Plan `docs/plans/layer-5.md`                                                                                | done  | 3335213     |       |
-| A    | Enclave containers and identity (`cjis-idp`, `cjis-provision`, `cjis-web`, `cjis-gateway`, secrets, guard)  | done  | d0b21df     |       |
-| B    | Enclave database `packages/cjis-db` (migrations, dictionary, RLS, audit chain, retention, synthetic agency) | done  | 7a30a0a     |       |
-| C    | Enclave API (auth, qualification, policy, audit, encryption, routes, jobs)                                  | done  | 435f204     |       |
-| D    | Platform side (migration 0041, actions, template, mission routes, seed liaison, dictionary guard)           | done  | 5310f2b     |       |
-| E    | Enclave web app `apps/web-cjis`                                                                             | done  | 168ad5d     |       |
-| F    | Console CJIS panel and link action                                                                          | done  | f060b6f     |       |
-| G    | Tests and CI (stack suite, browser journeys, enclave database suites, image scans)                          | done  | 31b5a21     |       |
-| H    | Docs (ADRs 0021/0036–0038, architecture, traceability, report, README, accessibility records)               | done  | this commit |       |
-| PR   | Pull request into `main`; merge when CI is green end to end                                                 | next  |             |       |
+| Task | What                                                                                                        | State | Commits | Notes |
+| ---- | ----------------------------------------------------------------------------------------------------------- | ----- | ------- | ----- |
+| P    | Plan `docs/plans/layer-5.md`                                                                                | done  | 3335213 |       |
+| A    | Enclave containers and identity (`cjis-idp`, `cjis-provision`, `cjis-web`, `cjis-gateway`, secrets, guard)  | done  | d0b21df |       |
+| B    | Enclave database `packages/cjis-db` (migrations, dictionary, RLS, audit chain, retention, synthetic agency) | done  | 7a30a0a |       |
+| C    | Enclave API (auth, qualification, policy, audit, encryption, routes, jobs)                                  | done  | 435f204 |       |
+| D    | Platform side (migration 0041, actions, template, mission routes, seed liaison, dictionary guard)           | done  | 5310f2b |       |
+| E    | Enclave web app `apps/web-cjis`                                                                             | done  | 168ad5d |       |
+| F    | Console CJIS panel and link action                                                                          | done  | f060b6f |       |
+| G    | Tests and CI (stack suite, browser journeys, enclave database suites, image scans)                          | done  | 31b5a21 |       |
+| H    | Docs (ADRs 0021/0036–0038, architecture, traceability, report, README, accessibility records)               | done  | bf8b352 |       |
+| Fix  | A database migrated from empty documents `mission_person.enclave_reference` until 0041 drops it (CI)        | done  | 12b1944 |       |
+| PR   | Pull request into `main` (Mennelabs/EOC-Application#8); merge when CI is green end to end                   | open  |         |       |
 
 ## Verified by (task A)
 
@@ -97,6 +98,11 @@ Plan: [`layer-5.md`](layer-5.md). One task per commit; each ends green, pushed, 
 - `docs/architecture.md`: the container diagram, §2.2 (every enclave service and how the halves meet), §4.7a (enclave data model), §6 guardrail 3 (the enclave policy E1–E6), §12.
 - `tools/reqindex/trace-layer5.json` (28 rows: 21 pass, 6 partial, 1 deferred; earlier evidence kept and the enclave's appended) and `traceability.py` covering layers 1 to 5; `docs/traceability.md` regenerated (504 rows); `pnpm reqindex` leaves `docs/requirements-index.md` unchanged.
 - `docs/plans/layer-5-report.md`; `docs/a11y/screens/cjis-enclave.md` and the checklist row; README (the enclave section with the exercise accounts, checked against the stack: an exercise account's first browser sign-in goes to passkey registration; the enclave suites and drill commands).
+
+## Verified by (fix after H)
+
+- CI's stack job (runs on `31b5a21` and `bf8b352`) stopped at `docker compose up`: on an empty database, migration 0030 failed SEC-11's check for `mission_person.enclave_reference`, whose entry 0041 had removed. Reproduced with a throwaway platform database migrated from empty; `retiredColumns` in `packages/db/src/dictionary.ts` now describes dropped columns for the migrations in between, and 0041's rollback reloads the dictionary. The fresh database migrates to 0041; the drill runs 12 steps (0030–0041) down and up clean; `packages/db/test/dictionary.test.ts` keeps retired entries out of the live dictionary.
+- The whole stack from empty volumes (`docker compose down -v && up --wait`): integration suites 74 passed, platform database suites 130 passed, enclave database and API 39 passed with the enclave drill.
 
 ## Known issues and deferred items
 

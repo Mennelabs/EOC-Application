@@ -28,6 +28,7 @@ import { KeyCounts, NeedsBoardScreen, PartnerScreen } from './screens/needs.tsx'
 import { PartnersScreen } from './screens/partners.tsx';
 import { ResourcesScreen } from './screens/resources.tsx';
 import { DeclarationScreen } from './screens/declaration.tsx';
+import { OfficialReportScreen, OfficialReportsScreen } from './screens/official-reports.tsx';
 import { RefdataScreen } from './screens/refdata.tsx';
 import { ReportDetailScreen, ReviewQueueScreen } from './screens/review.tsx';
 import { PublicationsScreen, SitesScreen } from './screens/sites.tsx';
@@ -64,6 +65,7 @@ const routes = [
   { path: '/console/reminders', label: 'Reminders', layer: 4 },
   { path: '/console/devices', label: 'Field devices', layer: 4 },
   { path: '/console/declaration', label: 'Declaration data', layer: 6 },
+  { path: '/console/official-reports', label: 'Official reports', layer: 6 },
   { path: '/console/reference-data', label: 'Reference data', layer: 6 },
   { path: '/console/events', label: 'Events', layer: 1 },
   { path: '/console/tenants', label: 'Organizations', layer: 1 },
@@ -213,6 +215,13 @@ export function App({ config }: { config: RuntimeConfig }) {
   const screen = (() => {
     if (path.startsWith('/console/missions/'))
       return <MissionDetailScreen id={path.slice('/console/missions/'.length)} />;
+    if (path.startsWith('/console/official-reports/'))
+      return (
+        <OfficialReportScreen
+          id={path.slice('/console/official-reports/'.length)}
+          navigate={navigate}
+        />
+      );
     if (path.startsWith('/console/reports/'))
       return <ReportDetailScreen id={path.slice('/console/reports/'.length)} navigate={navigate} />;
     switch (path) {
@@ -244,6 +253,8 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <RefdataScreen />;
       case '/console/declaration':
         return <DeclarationScreen />;
+      case '/console/official-reports':
+        return <OfficialReportsScreen navigate={navigate} />;
       case '/console/reports':
         return <ReviewQueueScreen navigate={navigate} />;
       case '/console/assist':

@@ -478,3 +478,11 @@ fieldset {
     display: none;
   }
 }
+
+/* Official reports (layer 6): staff text keeps its line breaks; a hash wraps instead of scrolling. */
+.report-text {
+  white-space: pre-wrap;
+}
+code.hash {
+  overflow-wrap: anywhere;
+}

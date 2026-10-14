@@ -316,7 +316,7 @@ export function DeclarationScreen() {
       {!view && !error && eventId ? <p role="status">Loading the declaration data…</p> : null}
       {view ? (
         <>
-          <p className="meta">
+          <p className="hint">
             {view.declaration?.reviewLabel ?? 'Draft for state review'}. Figures as of{' '}
             {fmt(view.asOf)}.
           </p>

@@ -18,6 +18,19 @@ export async function expectNoViolations(page: Page) {
   expect(results.violations.map((v) => `${v.id}: ${v.help} (${v.nodes.length})`)).toEqual([]);
 }
 
+/**
+ * WCAG 1.4.10, ACC-07: nothing makes the page scroll sideways. Compared with the
+ * document's client width: under phone emulation `innerWidth` grows with
+ * overflowing content, so a check against it passes when the page is zoomed out.
+ */
+export async function expectReflow(page: Page) {
+  const { scroll, client } = await page.evaluate(() => ({
+    scroll: document.documentElement.scrollWidth,
+    client: document.documentElement.clientWidth,
+  }));
+  expect(scroll, 'page wider than the screen').toBeLessThanOrEqual(client + 1);
+}
+
 /** True once the element is visible, false after `ms`. `isVisible()` alone never waits. */
 export async function appears(locator: Locator, ms: number): Promise<boolean> {
   return locator.waitFor({ state: 'visible', timeout: ms }).then(

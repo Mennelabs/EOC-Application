@@ -10,10 +10,18 @@
  * the incident period and sees the 30-day clock, logs an outage that has run
  * past 72 hours and marks it restored, records an official casualty count
  * with its source, and adds a public damage site (a cost that is not an
- * amount is named back first) and withdraws it. Axe runs on each state.
+ * amount is named back first) and withdraws it. Then official reports
+ * (F15, RULE-10, RULE-14, A7): a reporting officer drafts a situation report
+ * for the current period, reads and saves the drafted summary and writes
+ * the outlook, and cannot review it; the EM director, in their own browser,
+ * approves it and issues it through the confirmation dialog; the issued copy
+ * shows its hash and, once the worker has written it, its object lock; an
+ * amendment is drafted from it. Axe runs on each state, and each layer-6
+ * screen is checked for reflow: no sideways scrolling at phone width
+ * (WCAG 1.4.10, ACC-07).
  */
-import { expect, test } from '@playwright/test';
-import { expectNoViolations, onboard } from './support/console.ts';
+import { devices, expect, test } from '@playwright/test';
+import { BASE, expectNoViolations, expectReflow, onboard } from './support/console.ts';
 
 const tag = Date.now().toString(36);
 
@@ -52,6 +60,7 @@ test.describe('layer 6 console: reference data', () => {
       table.getByRole('row').filter({ hasText: 'Risk and social vulnerability' }),
     ).toContainText('File import only');
     await expectNoViolations(page);
+    await expectReflow(page);
 
     await page.getByRole('button', { name: 'Pull census tracts now' }).click();
     await expect(page.getByRole('status').filter({ hasText: 'pull requested' })).toBeVisible();
@@ -138,6 +147,7 @@ test.describe('layer 6 console: reference data', () => {
     });
     await expect(page.getByRole('table', { name: 'Shown apart, not counted' })).toBeVisible();
     await expectNoViolations(page);
+    await expectReflow(page);
 
     // DEC-16: the incident end date starts the 30-day clock; an end before the start is refused.
     await page.getByLabel('Incident type').fill('Severe storms and flooding (exercise)');
@@ -205,5 +215,96 @@ test.describe('layer 6 console: reference data', () => {
     await expect(page.getByText(`${site} withdrawn.`)).toBeVisible();
     await expect(row).toContainText('Withdrawn');
     await expectNoViolations(page);
+    await expectReflow(page);
+  });
+
+  test('a reporting officer drafts a situation report; the EM director approves and issues it', async ({
+    page,
+    context,
+    browser,
+  }, testInfo) => {
+    test.setTimeout(300_000);
+    await onboard(
+      page,
+      context,
+      'reporting_planning',
+      `Reporting officer ${tag}`,
+      `l6e-${testInfo.project.name}`,
+    );
+    await page.goto('/console/official-reports');
+    await expect(page.getByRole('heading', { level: 1, name: 'Official reports' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Draft a report' })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expectNoViolations(page);
+    await expectReflow(page);
+    await page.getByLabel('Kind of report').selectOption({ label: 'Situation report' });
+    await page.getByRole('button', { name: 'Draft the report' }).click();
+    const title = page.getByRole('heading', { level: 1, name: /^Situation report \d+$/ });
+    await expect(title).toBeVisible({ timeout: 30_000 });
+    const reportUrl = page.url();
+    await expect(page.getByRole('table', { name: 'Verified damage to homes' })).toBeVisible();
+    await expect(page.getByText('Drafted from the facts.')).toBeVisible();
+    // A7: the author does not review their own report.
+    await expect(page.getByText('Someone other than you reviews this report.')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Approve the report' })).toHaveCount(0);
+    await expectNoViolations(page);
+    await expectReflow(page);
+    const summary = page.getByRole('textbox', { name: 'Summary', exact: true });
+    await summary.fill(`${await summary.inputValue()} Exercise: river crest expected Thursday.`);
+    await page.getByRole('button', { name: 'Save summary' }).click();
+    await expect(page.getByText('Summary saved.')).toBeVisible();
+    await page
+      .getByRole('textbox', { name: 'Outlook for the next period', exact: true })
+      .fill('Exercise: more rain on Thursday; the levee watch continues.');
+    await page.getByRole('button', { name: 'Save outlook for the next period' }).click();
+    await expect(page.getByText('Outlook for the next period saved.')).toBeVisible();
+    await expect(page.getByText(/Written by Reporting officer/).first()).toBeVisible();
+    await expectReflow(page);
+
+    // The director, in their own browser.
+    const project =
+      testInfo.project.name === 'phone' ? devices['Pixel 7'] : devices['Desktop Chrome'];
+    const second = await browser.newContext({ ...project, baseURL: BASE, ignoreHTTPSErrors: true });
+    try {
+      const director = await second.newPage();
+      await onboard(
+        director,
+        second,
+        'county_em_director',
+        `EM director E ${tag}`,
+        `l6e2-${testInfo.project.name}`,
+      );
+      await director.goto(reportUrl);
+      await expect(director.getByRole('button', { name: 'Approve the report' })).toBeVisible({
+        timeout: 30_000,
+      });
+      await expectNoViolations(director);
+      await expectReflow(director);
+      await director.getByRole('button', { name: 'Approve the report' }).click();
+      await expect(director.getByText(/^Approved\./)).toBeVisible();
+      await director.getByRole('button', { name: 'Issue the report' }).click();
+      const dialog = director.getByRole('dialog', { name: 'Please confirm' });
+      await expect(dialog).toBeVisible();
+      await expectNoViolations(director);
+      await dialog.getByLabel('Reason').fill('Exercise: approved for release to partners');
+      await dialog.getByRole('button', { name: 'Confirm' }).click();
+      await expect(director.getByText(/^Issued\. The report is frozen/)).toBeVisible();
+      await expect(director.getByRole('heading', { name: 'Issued copy' })).toBeVisible();
+      await expect(director.locator('code.hash')).toHaveText(/^[0-9a-f]{64}$/);
+      // RULE-10, ADR-0010: the worker writes the locked copy shortly after.
+      await expect(async () => {
+        await director.reload();
+        await expect(director.getByText(/Locked copy written/)).toBeVisible({ timeout: 2_000 });
+      }).toPass({ timeout: 90_000 });
+      await expectNoViolations(director);
+      await expectReflow(director);
+      await director.getByRole('button', { name: 'Draft an amendment' }).click();
+      await expect(
+        director.getByRole('heading', { level: 1, name: /^Situation report \d+, amendment 1$/ }),
+      ).toBeVisible({ timeout: 30_000 });
+    } finally {
+      await second.close();
+    }
   });
 });

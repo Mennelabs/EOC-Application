@@ -139,6 +139,8 @@ const changesOut = z.object({
 type Detail = z.infer<typeof detailOut>;
 
 const factContent = (f: Fact) => ({ rows: f.rows, note: f.note });
+/** What the figures describe: the cutoff, or now while the cutoff is still ahead. */
+const asOf = (cutoff: Date | string) => new Date(Math.min(new Date(cutoff).getTime(), Date.now()));
 const factSources = (f: Fact) => ({ definition: f.definition, records: f.records });
 
 export const officialReportRoutes: FastifyPluginAsync = async (raw) => {
@@ -325,7 +327,7 @@ export const officialReportRoutes: FastifyPluginAsync = async (raw) => {
         key: 'summary',
         kind: 'narrative' as const,
         title: 'Summary',
-        content: { text: draftSummary(facts, new Date(r.cutoff), r.time_zone) },
+        content: { text: draftSummary(facts, asOf(r.cutoff), r.time_zone) },
         sources: {},
         drafted: true,
         edited_by: null,
@@ -683,7 +685,7 @@ export const officialReportRoutes: FastifyPluginAsync = async (raw) => {
         await trx
           .updateTable('cg.official_report_section')
           .set({
-            content: JSON.stringify({ text: draftSummary(facts, new Date(r.cutoff), r.time_zone) }),
+            content: JSON.stringify({ text: draftSummary(facts, asOf(r.cutoff), r.time_zone) }),
             version: sql`version + 1`,
             updated_by: s.accountId,
           })

@@ -1,8 +1,9 @@
 /**
- * CJIS enclave API skeleton (SEC-12, ADR-0021). Runs only on the cg_cjis
- * network with its own database and key service. It holds no CJI: real
+ * CJIS enclave API (SEC-12, ADR-0021). Runs only on the cg_cjis network with
+ * its own database, keys and identity provider. It holds no real CJI: real
  * criminal-justice data is allowed only after the move to an authorized
- * government cloud and a passed state CJIS audit (SCL-12). Built in layer 5.
+ * government cloud and a passed state CJIS audit (SCL-12); the configuration
+ * refuses production mode without both declared.
  */
 import Fastify from 'fastify';
 import { cjisSchema, loadConfig } from '@cg/config';
@@ -24,7 +25,7 @@ app.get('/health/ready', async (_req, reply) => {
   return reply.code(ok ? 200 : 503).send({ status: ok ? 'ready' : 'degraded', checks });
 });
 
-// Default deny until layer 5 adds enclave identity and authorization (ADM-05).
+// Default deny until task C adds enclave identity and authorization (ADM-05).
 app.setNotFoundHandler((_req, reply) => reply.code(403).send({ error: 'forbidden' }));
 
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {

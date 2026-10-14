@@ -5,7 +5,7 @@
 name: common-ground
 
 include:
-  - compose.cjis.yaml # CJIS enclave skeleton on its own network (SEC-12, ADR-0021)
+  - compose.cjis.yaml # CJIS enclave on its own network (SEC-12, ADR-0021, ADR-0036–0038)
 
 x-node-env: &node-env
   NODE_ENV: production
@@ -37,6 +37,8 @@ x-node-env: &node-env
   # Abuse protection per address (SEC-17); raise the deny limit only for a load generator on one host.
   PUBLIC_IP_VERIFY_PER_10MIN: ${PUBLIC_IP_VERIFY_PER_10MIN:-20}
   PUBLIC_IP_DENY_PER_10MIN: ${PUBLIC_IP_DENY_PER_10MIN:-120}
+  # Where browsers reach the CJIS enclave; the console only links there (SEC-12, ADR-0038).
+  CJIS_PUBLIC_URL: https://${GATEWAY_HOST:-localhost}:${CJIS_HTTPS_PORT:-8443}
 
 x-node-health: &node-health
   test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/health/ready']

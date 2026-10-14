@@ -1,34 +1,144 @@
-# CJIS enclave skeleton (SEC-12, ADR-0021). Separate network, database,
-# keys and volumes; nothing here is reachable from cg_platform. The enclave's
-# own identity provider is added in layer 5. No real CJI on a laptop (SCL-12).
+# CJIS enclave (SEC-12, ADR-0021, ADR-0036–0038): its own network, database,
+# keys, identity provider, API, worker, web app and gateway. No enclave
+# container joins cg_platform and no platform container joins cg_cjis; the
+# only published port is the enclave gateway's, on the loopback address by
+# default. Synthetic data only until the enclave runs in an authorized
+# government cloud and has passed the state CJIS audit (SCL-12).
+
+x-cjis-node-env: &cjis-node-env
+  NODE_ENV: production
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  PRODUCT_NAME: ${PRODUCT_NAME:?run scripts/init-env.sh first}
+  DATA_CLASSIFICATION_MODE: synthetic
+  PORT: '8080'
+  CJIS_OPENBAO_ADDR: http://cjis-keys:8200
+  CJIS_OPENBAO_TOKEN_FILE: /bao-init/app-token
+  CJIS_IDP_INTERNAL_BASE: http://cjis-idp:8080/auth
+  CJIS_IDP_PUBLIC_BASE: https://${GATEWAY_HOST:-localhost}:${CJIS_HTTPS_PORT:-8443}/auth
+  # The development test client signs in with a one-time code; production counts the passkey only.
+  CJIS_SECOND_FACTORS: ${CJIS_SECOND_FACTORS:-hwk,otp}
+
+x-node-health: &cjis-node-health
+  test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/health/ready']
+  interval: 10s
+  timeout: 5s
+  retries: 12
+  start_period: 15s
+
 services:
+  cjis-gateway:
+    image: caddy:2.11.4-alpine
+    environment:
+      CJIS_HOST: ${GATEWAY_HOST:-localhost}
+    volumes:
+      - ./infra/cjis-gateway/Caddyfile:/etc/caddy/Caddyfile:ro
+      - cjis_caddy_data:/data
+    ports:
+      - '${CJIS_BIND_ADDRESS:-127.0.0.1}:${CJIS_HTTPS_PORT:-8443}:443'
+    depends_on:
+      cjis-web: { condition: service_healthy }
+      cjis-api: { condition: service_healthy }
+      cjis-idp: { condition: service_healthy }
+      # One-shots need a dependant so `up --wait` does not treat them as failed (docker/compose#10596).
+      cjis-provision: { condition: service_completed_successfully }
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8088/healthz']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    # The edge network exists only so the published port works; nothing else is on it.
+    networks: [cjis, cjis_edge]
+
+  cjis-web:
+    build: { context: ., dockerfile: infra/cjis-web/Dockerfile }
+    image: common-ground/cjis-web:local
+    networks: [cjis]
+
   cjis-api:
     build: { context: ., dockerfile: infra/node/Dockerfile, args: { APP: services/cjis-api } }
     image: common-ground/cjis-api:local
+    restart: unless-stopped
     environment:
-      NODE_ENV: production
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      PRODUCT_NAME: ${PRODUCT_NAME:?run scripts/init-env.sh first}
-      DATA_CLASSIFICATION_MODE: synthetic
-      PORT: '8080'
+      <<: *cjis-node-env
       CJIS_DATABASE_URL: postgres://cjis_app:${CJIS_APP_PASSWORD:?}@cjis-db:5432/cjis
-      CJIS_OPENBAO_ADDR: http://cjis-keys:8200
+    volumes:
+      - cjis_keys_init:/bao-init:ro
+    depends_on:
+      cjis-migrate: { condition: service_completed_successfully }
+      cjis-keys-init: { condition: service_completed_successfully }
+    healthcheck: *cjis-node-health
+    networks: [cjis]
+
+  cjis-migrate:
+    build: { context: ., dockerfile: infra/node/Dockerfile, args: { APP: packages/cjis-db } }
+    image: common-ground/cjis-migrate:local
+    environment:
+      ENTRY: migrate.ts
+      CJIS_DATABASE_MIGRATOR_URL: postgres://cjis_migrator:${CJIS_MIGRATOR_PASSWORD:?}@cjis-db:5432/cjis
     depends_on:
       cjis-db: { condition: service_healthy }
-      cjis-keys-init: { condition: service_completed_successfully }
+    restart: 'no'
+    networks: [cjis]
+
+  # Realm `cjis` (flows, CJIS lockout and session values, clients) and, on a
+  # synthetic stack, the exercise agencies and accounts. Re-runs are no-ops.
+  cjis-provision:
+    image: common-ground/cjis-api:local
+    environment:
+      <<: *cjis-node-env
+      ENTRY: provision.ts
+      CJIS_DATABASE_URL: postgres://cjis_job:${CJIS_JOB_PASSWORD:?}@cjis-db:5432/cjis
+      CJIS_KC_ADMIN_USER: cjis-admin
+      CJIS_KC_ADMIN_PASSWORD: ${CJIS_KEYCLOAK_ADMIN_PASSWORD:?}
+      CJIS_IDP_ADMIN_CLIENT_SECRET: ${CJIS_IDP_ADMIN_CLIENT_SECRET:?}
+      CJIS_PUBLIC_URL: https://${GATEWAY_HOST:-localhost}:${CJIS_HTTPS_PORT:-8443}
+      CJIS_DEV_ACCOUNTS: ${CJIS_DEV_ACCOUNTS:-true}
+    depends_on:
+      cjis-migrate: { condition: service_completed_successfully }
+      cjis-idp: { condition: service_healthy }
+    restart: 'no'
+    networks: [cjis]
+
+  cjis-idp:
+    image: keycloak/keycloak:26.0.7
+    command:
+      - start
+      - --http-enabled=true
+      - --hostname=https://${GATEWAY_HOST:-localhost}:${CJIS_HTTPS_PORT:-8443}/auth
+      - --hostname-backchannel-dynamic=true
+      - --proxy-headers=xforwarded
+      - --http-relative-path=/auth
+      - --health-enabled=true
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://cjis-db:5432/cjis_idp
+      KC_DB_USERNAME: cjis_idp
+      KC_DB_PASSWORD: ${CJIS_IDP_DB_PASSWORD:?}
+      KC_BOOTSTRAP_ADMIN_USERNAME: cjis-admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${CJIS_KEYCLOAK_ADMIN_PASSWORD:?}
+    depends_on:
+      cjis-db: { condition: service_healthy }
     healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/health/ready']
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /auth/health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"UP"' <&3
       interval: 10s
       timeout: 5s
-      retries: 12
-      start_period: 15s
+      retries: 30
+      start_period: 30s
     networks: [cjis]
 
   cjis-db:
     image: postgis/postgis:16-3.4-alpine
     environment:
       POSTGRES_PASSWORD: ${CJIS_POSTGRES_PASSWORD:?}
+      CJIS_MIGRATOR_PASSWORD: ${CJIS_MIGRATOR_PASSWORD:?}
       CJIS_APP_PASSWORD: ${CJIS_APP_PASSWORD:?}
+      CJIS_JOB_PASSWORD: ${CJIS_JOB_PASSWORD:?}
+      CJIS_IDP_DB_PASSWORD: ${CJIS_IDP_DB_PASSWORD:?}
     volumes:
       - cjis_db_data:/var/lib/postgresql/data
       - ./infra/cjis-postgres/init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
@@ -69,8 +179,11 @@ networks:
   cjis:
     name: cg_cjis
     internal: true
+  cjis_edge:
+    name: cg_cjis_edge
 
 volumes:
   cjis_db_data:
   cjis_keys_data:
   cjis_keys_init:
+  cjis_caddy_data:

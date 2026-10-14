@@ -33,8 +33,8 @@ Plan: [`layer-5.md`](layer-5.md). One task per commit; each ends green, pushed, 
 
 | Task | What                                                                                                        | State | Commits | Notes |
 | ---- | ----------------------------------------------------------------------------------------------------------- | ----- | ------- | ----- |
-| P    | Plan `docs/plans/layer-5.md`                                                                                | done  | this    |       |
-| A    | Enclave containers and identity (`cjis-idp`, `cjis-provision`, `cjis-web`, `cjis-gateway`, secrets, guard)  | todo  |         |       |
+| P    | Plan `docs/plans/layer-5.md`                                                                                | done  | 3335213 |       |
+| A    | Enclave containers and identity (`cjis-idp`, `cjis-provision`, `cjis-web`, `cjis-gateway`, secrets, guard)  | done  | this commit |       |
 | B    | Enclave database `packages/cjis-db` (migrations, dictionary, RLS, audit chain, retention, synthetic agency) | todo  |         |       |
 | C    | Enclave API (auth, qualification, policy, audit, encryption, routes, jobs)                                  | todo  |         |       |
 | D    | Platform side (migration 0041, actions, template, mission routes, seed liaison, dictionary guard)           | todo  |         |       |
@@ -42,6 +42,14 @@ Plan: [`layer-5.md`](layer-5.md). One task per commit; each ends green, pushed, 
 | F    | Console CJIS panel and link action                                                                          | todo  |         |       |
 | G    | Tests and CI (stack suite, browser journeys, enclave database suites, image scans)                          | todo  |         |       |
 | H    | Docs (ADRs 0021/0036–0038, architecture, traceability, report, README, accessibility records)               | todo  |         |       |
+
+## Verified by (task A)
+
+- Local stack (`docker compose up`): every enclave service healthy; `cjis-provision` builds realm `cjis` idempotently (two runs). The enclave gateway answers on `https://localhost:8443` with its own CA, the issuer `https://localhost:8443/auth/realms/cjis`, a strict CSP, and 404 for `/auth/admin` and the master realm; unknown API paths are denied (403).
+- `tests/integration/stack.int.test.ts` (28 cases locally): the platform API cannot open any enclave service (`cjis-idp`, `cjis-api`, `cjis-keys`, `cjis-gateway`, `cjis-web`, `cjis-db`); the enclave API cannot open the platform's database, identity provider, queue, keys, objects or API; only `cjis-gateway` publishes a port, on 127.0.0.1.
+- Second factor settled by experiment on Keycloak 26.0.7 (ADR-0036 to record): the AMR mapper with a method reference on each authenticator puts `amr: ["pwd","otp"]` (direct grant) or `["pwd","hwk"]` (browser, passkey) in the token, and it survives a refresh; a password-only direct grant is refused. The API will accept `amr` values from `CJIS_SECOND_FACTORS` (production `hwk`; the development stack adds `otp` for its test client).
+- Unit: `services/cjis-api/test/config.test.ts` (production mode refused without the authorized environment and the audit date, SCL-12), `realm.test.ts` (lockout 5 in 15 minutes for 10 minutes, 30-minute idle, 15-character passwords with history, no self-registration or email reset, events).
+- Sandbox notes (not repository changes): Docker Hub rate limits and a blocked Alpine CDN here, so images were pulled through a registry mirror and built with the proxy CA as the Dockerfiles' `extra_ca` secret; MinIO was built from the same pinned source without the `apk` step; RabbitMQ's cookie in a fresh volume needed its owner fixed. CI builds as before.
 
 ## Known issues and deferred items
 

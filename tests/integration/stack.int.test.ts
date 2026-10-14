@@ -10,6 +10,7 @@
 import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { migrations } from '../../packages/db/src/migrations/index.ts';
+import { CJIS_URL } from '../support/cjis.ts';
 
 const BASE = process.env['STACK_URL'] ?? 'https://localhost';
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0'; // Caddy local CA in development only.
@@ -83,6 +84,56 @@ describe('CJIS enclave isolation (SEC-12, ADR-0021)', () => {
     expect(out).toContain('BLOCKED');
   });
 
+  // Layer 5 (SEC-12, ADR-0021): every enclave service is off the platform network, and the
+  // enclave reaches nothing of the platform's.
+  it.each([
+    ['cjis-idp', 8080],
+    ['cjis-api', 8080],
+    ['cjis-keys', 8200],
+    ['cjis-gateway', 443],
+    ['cjis-web', 8080],
+  ])('platform api cannot open %s:%i', (host, port) => {
+    const out = compose(
+      'exec',
+      '-T',
+      'api',
+      'sh',
+      '-c',
+      `nc -zw2 ${host} ${port} && echo REACHABLE || echo BLOCKED`,
+    );
+    expect(out).toContain('BLOCKED');
+  });
+
+  it.each([
+    ['idp', 8080],
+    ['queue', 5672],
+    ['keys', 8200],
+    ['objects', 9000],
+    ['api', 8080],
+  ])('enclave api cannot open platform %s:%i', (host, port) => {
+    const out = compose(
+      'exec',
+      '-T',
+      'cjis-api',
+      'sh',
+      '-c',
+      `nc -zw2 ${host} ${port} && echo REACHABLE || echo BLOCKED`,
+    );
+    expect(out).toContain('BLOCKED');
+  });
+
+  it('only the enclave gateway publishes a port, on the loopback address', () => {
+    const rows = compose('ps', '--format', '{{.Service}}|{{.Ports}}')
+      .split('\n')
+      .filter((l) => l.startsWith('cjis-'));
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      const [service, ports = ''] = row.split('|');
+      if (service === 'cjis-gateway') expect(ports).toMatch(/127\.0\.0\.1:\d+->443/);
+      else expect(ports).not.toContain('->');
+    }
+  });
+
   it('enclave api answers 403 to anything but health (default deny, ADM-05)', () => {
     const out = compose(
       'exec',
@@ -93,6 +144,30 @@ describe('CJIS enclave isolation (SEC-12, ADR-0021)', () => {
       'wget -S -qO- http://127.0.0.1:8080/missions 2>&1 || true',
     );
     expect(out).toContain('403');
+  });
+});
+
+describe('CJIS enclave gateway and identity (SEC-12, ADR-0036)', () => {
+  it('the enclave realm is served on the enclave origin, never the platform gateway', async () => {
+    const res = await fetch(`${CJIS_URL}/auth/realms/cjis/.well-known/openid-configuration`);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { issuer: string }).issuer).toBe(`${CJIS_URL}/auth/realms/cjis`);
+    expect(
+      (await fetch(`${BASE}/auth/realms/cjis/.well-known/openid-configuration`)).status,
+    ).not.toBe(200);
+  });
+
+  it('hides the identity administration and the master realm', async () => {
+    expect((await fetch(`${CJIS_URL}/auth/admin/`)).status).toBe(404);
+    expect((await fetch(`${CJIS_URL}/auth/realms/master/`)).status).toBe(404);
+  });
+
+  it('serves the enclave app with a strict content security policy', async () => {
+    const res = await fetch(`${CJIS_URL}/`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
+    expect(res.headers.get('content-security-policy')).toContain("connect-src 'self'");
+    expect(res.headers.get('strict-transport-security')).toContain('max-age=');
   });
 });
 

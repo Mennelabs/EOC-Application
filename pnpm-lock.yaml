@@ -365,6 +365,18 @@ importers:
         specifier: 0.29.6
         version: 0.29.6
 
+  packages/refdata:
+    dependencies:
+      '@cg/db':
+        specifier: workspace:*
+        version: link:../db
+      kysely:
+        specifier: 0.29.6
+        version: 0.29.6
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+
   services/api:
     dependencies:
       '@aws-sdk/client-s3':

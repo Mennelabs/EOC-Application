@@ -1,0 +1,17 @@
+{
+  "name": "@cg/refdata",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@cg/db": "workspace:*",
+    "kysely": "0.29.6",
+    "zod": "4.6.5"
+  }
+}

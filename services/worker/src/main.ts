@@ -91,6 +91,7 @@ const AUDIT_ANCHOR_YEARS = 7;
 const ctx: JobContext = {
   db,
   log,
+  productName: config.PRODUCT_NAME,
   idp: new KeycloakAdmin({
     adminBase: config.IDP_INTERNAL_BASE,
     adminUser: config.KC_ADMIN_USER,

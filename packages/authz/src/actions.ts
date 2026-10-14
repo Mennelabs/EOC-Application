@@ -498,6 +498,11 @@ export const actions = {
     'pa_site',
     'Record public damage sites with category, cost and flags',
   ),
+  'declaration.export': a(
+    'export',
+    'declaration',
+    'Export the IDA package (PDF, CSV, GeoJSON): counts and generalized places, no personal details',
+  ),
 
   // Layer 6 official reports (F15, RULE-10, A7): drafted, reviewed and issued by different people.
   'official_report.read': a(
@@ -520,6 +525,11 @@ export const actions = {
     'official_report',
     'Issue a reviewed report someone else drafted; it is frozen and corrected only by amendment',
     { consequential: true, explicit: true },
+  ),
+  'official_report.export': a(
+    'export',
+    'official_report',
+    'Export an issued official report as PDF or CSV, drawn from its frozen copy',
   ),
 
   // Layer 6 FEMA form mappings (DCL:DEC-12, DEC-15): changed without a release.

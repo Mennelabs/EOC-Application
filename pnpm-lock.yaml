@@ -534,6 +534,9 @@ importers:
       '@cg/intake':
         specifier: workspace:*
         version: link:../../packages/intake
+      '@cg/pdf':
+        specifier: workspace:*
+        version: link:../../packages/pdf
       '@cg/provisioning':
         specifier: workspace:*
         version: link:../../packages/provisioning

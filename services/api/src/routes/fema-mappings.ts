@@ -10,26 +10,25 @@
  */
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { sql, type Selectable, type Transaction } from 'kysely';
+import { sql, type Selectable } from 'kysely';
 import { z } from 'zod';
 import { diffForAudit } from '@cg/audit';
-import type { Database, FemaFormMappingTable } from '@cg/db';
+import type { FemaFormMappingTable } from '@cg/db';
 import {
   ELEMENTS,
   FILTERS,
   FORM_KEYS,
   FORMS,
   SHIPPED,
+  mappingInForce,
   validateMapping,
   type FormKey,
-  type Mapping,
   type MappingField,
 } from '@cg/reporting';
 import { ApiError, errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
 import { classifierFor, iso } from './helpers.ts';
 
-type Trx = Transaction<Database>;
 type Row = Selectable<FemaFormMappingTable>;
 
 const formKey = z.enum(FORM_KEYS as [FormKey, ...FormKey[]]);
@@ -62,30 +61,8 @@ const mappingOut = versionOut.extend({
   fields: z.array(z.unknown()),
 });
 
-/** The county's active version of a form, or the shipped version 1. */
-export async function mappingInForce(
-  trx: Trx,
-  tenantId: string,
-  form: FormKey,
-): Promise<Mapping & { status: 'shipped' | 'active' }> {
-  const row = await trx
-    .selectFrom('cg.fema_form_mapping')
-    .selectAll()
-    .where('tenant_id', '=', tenantId)
-    .where('form', '=', form)
-    .where('status', '=', 'active')
-    .executeTakeFirst();
-  if (!row) return { ...SHIPPED[form], status: 'shipped' };
-  return {
-    form,
-    femaFormVersion: row.fema_form_version,
-    mappingVersion: row.mapping_version,
-    sourceDocument: row.source_document ?? '',
-    ...(row.scope ? { scope: row.scope as NonNullable<Mapping['scope']> } : {}),
-    fields: row.fields as MappingField[],
-    status: 'active',
-  };
-}
+// Exports use the same lookup from the worker; it lives in packages/reporting.
+export { mappingInForce };
 
 const shippedView = (form: FormKey) => ({
   id: null,

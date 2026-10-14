@@ -18,6 +18,7 @@
     "@cg/crypto": "workspace:*",
     "@cg/db": "workspace:*",
     "@cg/intake": "workspace:*",
+    "@cg/pdf": "workspace:*",
     "@cg/provisioning": "workspace:*",
     "@cg/refdata": "workspace:*",
     "@cg/reporting": "workspace:*",

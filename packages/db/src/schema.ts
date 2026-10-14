@@ -2414,6 +2414,29 @@ export interface FemaFormMappingTable extends Stamped {
   activation_reason: string | null;
 }
 
+export interface ExportFileTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  client_uuid: Uuid;
+  kind: 'ida_package' | 'official_report';
+  format: 'zip' | 'pdf' | 'csv';
+  report_id: Uuid | null;
+  jurisdiction_tenant_id: Uuid | null;
+  status: Generated<'queued' | 'ready' | 'failed'>;
+  mappings: JsonGen<Record<string, unknown>>;
+  figures: JsonGen<Record<string, unknown>>;
+  file_name: string | null;
+  object_key: string | null;
+  bytes: ColumnType<string | null, number | null, number | null>;
+  sha256: string | null;
+  error: string | null;
+  requested_by: Uuid;
+  reason: string | null;
+  created_at: TsGen;
+  ready_at: TsNullable;
+}
+
 export interface LocationGeoTable {
   location_id: Uuid;
   tenant_id: Uuid;
@@ -2728,6 +2751,7 @@ export interface Database {
   'cg.official_report_snapshot': OfficialReportSnapshotTable;
   'cg.official_report_lock': OfficialReportLockTable;
   'cg.fema_form_mapping': FemaFormMappingTable;
+  'cg.export_file': ExportFileTable;
   'cg.refdata_import': RefdataImportTable;
   'cg.refdata_snapshot': RefdataSnapshotTable;
   'cg.refdata_current': RefdataCurrentTable;

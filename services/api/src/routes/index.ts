@@ -10,6 +10,7 @@ import { officialReportRoutes } from './official-reports.ts';
 import { definitionRoutes } from './definitions.ts';
 import { dispatchRoutes, type DispatchDeps } from './dispatch.ts';
 import { eventRoutes } from './events.ts';
+import { exportRoutes, type ExportDeps } from './exports.ts';
 import { fieldAssessmentRoutes } from './field-assessments.ts';
 import { fieldOpsRoutes } from './field-ops.ts';
 import { fieldRecordRoutes, type FieldRecordDeps } from './field-records.ts';
@@ -36,6 +37,7 @@ import { volunteerRoutes } from './volunteers.ts';
 /** What the server gives the routes that talk to the broker, object storage or the AI provider (absent in tests: poll fallback, no map extracts). */
 export interface RouteDeps {
   dispatch?: DispatchDeps;
+  exports?: ExportDeps;
   fieldSync?: FieldSyncDeps;
   fieldVoice?: FieldVoiceDeps;
   fieldRecords?: FieldRecordDeps;
@@ -78,6 +80,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   declarationRoutes,
   officialReportRoutes,
   femaMappingRoutes,
+  exportRoutes(deps.exports),
 ];
 
 /** The default set, as the tests mount it. */

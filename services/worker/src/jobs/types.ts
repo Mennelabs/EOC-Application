@@ -44,6 +44,8 @@ export interface JobContext {
   /** Public URLs the worker needs to put into realms, emails and texts. */
   urls: { gatewayPublic: string; idpPublic: string; idpInternal: string };
   objects: ObjectStore | null;
+  /** The configured product name, for the files the worker writes (ADM-03). */
+  productName?: string;
   devDirectGrant: boolean;
   /** Provider in force for a tenant (AIG-12); the fake provider by default. */
   ai: { providerFor(tenantId: string, trx: Transaction<Database>): Promise<AiProvider> };

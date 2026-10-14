@@ -1,0 +1,171 @@
+{
+  "_about": "Evidence per requirement ID for layer 5 (the CJIS enclave beside the platform; layer-5 plan §1), plus earlier rows that layer 5 extends: for those the enclave's code and tests are appended to the earlier evidence. status: pass | partial | deferred | designed. The cited suites passed locally on the full compose stack and run in CI on every push (the enclave database suites on a throwaway enclave database); the layer merges only when CI is green. tools/reqindex/traceability.py merges trace-layer1..5.json in order.",
+  "SEC-12": [
+    "pass",
+    "compose.cjis.yaml (own internal network cg_cjis; cjis-db, cjis-keys, cjis-idp, cjis-api, cjis-worker, cjis-web, cjis-gateway on 127.0.0.1:8443 only); packages/cjis-db (own schema, roles, dictionary, RLS per agency); services/cjis-api (own token checks, policy E1–E6, audit, per-agency encryption); apps/web-cjis on its own origin (ADR-0038); platform holds only mission.cji_ref (packages/db 0041) and its dictionary refuses a cji column; ADR-0021, ADR-0036, ADR-0037",
+    "tests/integration/layer5.int.test.ts (marker absent from the platform database and every log, ciphertext only in the enclave database, tokens refused across the boundary, field sync carries no link), tests/integration/stack.int.test.ts (network isolation, password alone refused, lockout), services/cjis-api/test/api.db.test.ts, packages/cjis-db/test/enclave.db.test.ts, services/cjis-api/test/token.test.ts, services/cjis-api/test/policy.test.ts, services/cjis-api/test/realm.test.ts, services/api/test/cjislink.db.test.ts, packages/db/test/dictionary.test.ts, tests/e2e/cjis.spec.ts, tests/e2e/console-l5.spec.ts",
+    "Holds no real CJI until it runs in an authorized government cloud and has passed the state CJIS audit (SCL-12; production refuses to start without CJIS_AUTHORIZED_ENVIRONMENT and CJIS_STATE_AUDIT_PASSED_ON). FIPS 140-validated keys, mutual TLS and a separate cloud account come with that move (plan §11). The CJIS values (ADR-0036) are to be confirmed by the agency's CJIS Systems Officer."
+  ],
+  "SCL-12": [
+    "pass",
+    "tools/seed (synthetic only), compose.cjis.yaml (separate network); packages/config cjis schemas (production needs the authorized environment and the passed state audit); cjis-provision loads exercise agencies and accounts only when DATA_CLASSIFICATION_MODE=synthetic",
+    "tools/seed/test/county.test.ts, stack.int.test.ts (isolation); services/cjis-api/test/config.test.ts, services/cjis-api/test/exercise.test.ts",
+    ""
+  ],
+  "PPL-01": [
+    "pass",
+    "cjis.record_person (packages/cjis-db 0003) in law-enforcement roles with identifying fields encrypted per agency; services/cjis-api/src/routes/records.ts people; the platform's placeholder role and enclave_reference column retired (packages/db 0041); cg.mission_person keeps the other roles (0030)",
+    "services/api/test/missions.db.test.ts (people involved), services/cjis-api/test/api.db.test.ts (records), tests/integration/layer5.int.test.ts, tests/e2e/cjis.spec.ts",
+    ""
+  ],
+  "BRD:FR-07.01": [
+    "pass",
+    "mission_event narratives by role (call-taker, dispatcher, responder, supervisor, follow-up) and amendments with amends_event_id (0030, routes/missions.ts); enclave narratives and attributable amendments (cjis.record_event, routes/records.ts; amendments once closed)",
+    "services/api/test/missions.db.test.ts (narratives and amendments); services/cjis-api/test/api.db.test.ts (narratives and amendments)",
+    ""
+  ],
+  "BRD:FR-07.02": [
+    "pass",
+    "cg.mission_person: role, display label, details (a free-form block: name, gender if needed, contact, address) encrypted, injury, transport, behavioural health encrypted (0030); routes/missions.ts people; law-enforcement people recorded once, only in the enclave (cjis.record_person)",
+    "services/api/test/missions.db.test.ts (people involved by category, audited); services/cjis-api/test/api.db.test.ts",
+    "Law-enforcement roles and details go to the CJIS enclave (layer 5)."
+  ],
+  "BRD:FR-07.03": [
+    "pass",
+    "append-only mission_event timeline apart from the editable summary on cg.mission; restricted fields masked by category; enclave timeline append-only apart from the record's summary (cjis.record_event trigger)",
+    "services/api/test/missions.db.test.ts (an editable summary does not replace the history); packages/cjis-db/test/enclave.db.test.ts (timeline append-only)",
+    ""
+  ],
+  "BRD:FR-07.04": [
+    "partial",
+    "cg.mission_media references with source, uploader, time, access class, retention (0030); routes/missions.ts media (object key never returned); body-camera references only in the enclave (cjis.record_bodycam, evidence reference encrypted); the platform refuses body-camera media (422 cji_in_enclave)",
+    "services/api/test/cjislink.db.test.ts (bodycam media refused), services/cjis-api/test/api.db.test.ts (bodycam references), tests/e2e/cjis.spec.ts",
+    "Live feeds need separate approval (layer-4 plan §11); the platform's general media routes have no route-level test yet."
+  ],
+  "BRD:FR-07.05": [
+    "pass",
+    "disposition, note, case reference, report required/generated, reviewer and review time (0030); close route; enclave disposition with explanation and case number, recorder and a reviewer who is not the recorder (policy E6), reopen with a reason",
+    "services/api/test/missions.db.test.ts (closure needs a disposition); services/cjis-api/test/api.db.test.ts (disposition, no self-review), tests/e2e/cjis.spec.ts",
+    ""
+  ],
+  "BRD:FR-07.06": [
+    "pass",
+    "close validates disposition and required report (routes/missions.ts); state check closed ⇒ disposition (0030); changes audited; enclave removals keep the row with who, when and why; closed records accept amendments only; retention with holds (ADR-0037)",
+    "services/api/test/missions.db.test.ts (AC-07C); services/cjis-api/test/api.db.test.ts, packages/cjis-db/test/enclave.db.test.ts",
+    ""
+  ],
+  "BRD:FR-04.01": [
+    "pass",
+    "hazardKinds in routes/field-ops.ts (mental-health crisis, violence, child or elder, weapons, language barrier, hazmat, medical emergency, …); cg.hazard (0031); weapons detail (kind, description, serial number, disposition) only in the enclave (cjis.record_weapon); the platform keeps the awareness flag",
+    "services/api/test/fieldops.db.test.ts (hazards); services/cjis-api/test/api.db.test.ts, tests/integration/layer5.int.test.ts",
+    ""
+  ],
+  "ADM-05": [
+    "pass",
+    "packages/authz/src/guardrails.ts G1–G7; criminal-justice data only for CJIS-qualified users: services/cjis-api/src/policy.ts E1–E6 with qualification rebuilt from the enclave database on every request (fingerprint check, training, approved role, active agency, second factor); second administrator and SELF_FORBIDDEN for enclave roles; enclave audit immutable; no break-glass; platform actions mission.cji.link and mission.cji.open explicit only",
+    "one test file per guardrail, layer1.int.test.ts; services/cjis-api/test/policy.test.ts, services/cjis-api/test/api.db.test.ts (qualification, second administrator), packages/cjis-db/test/enclave.db.test.ts (decided_by <> requested_by, audit immutable), packages/authz/test/templates.test.ts",
+    ""
+  ],
+  "BRD:FR-00.01": [
+    "pass",
+    "packages/authz/src/engine.ts, services/api/src/plugins/authorize.ts; enclave default deny on the server (services/cjis-api/src/app.ts, plugins/context.ts authorize)",
+    "packages/authz/test/guardrail-G1.test.ts, tests/integration/layer1.int.test.ts (default deny); services/cjis-api/test/policy.test.ts",
+    "Every route calls request.authorize; subjects are rebuilt per request (AC-C05)."
+  ],
+  "BRD:FR-08.04": [
+    "pass",
+    "0006_audit.ts (revokes + triggers); enclave hash chain, immutable for every role, verify and weekly review (packages/cjis-db 0004)",
+    "stack.int.test.ts, tests/drills/audit-tamper.sh, tests/drills/restore-drill.sh; packages/cjis-db/test/enclave.db.test.ts (tamper detected), tests/integration/layer5.int.test.ts (chain verifies)",
+    "Superuser refused by trigger; tamper with trigger disabled detected with first_bad_seq."
+  ],
+  "SEC-06": [
+    "pass",
+    "role, organization, event and data category gate every layer-4 route; record scope 'own' for field roles (packages/authz engine.ts, templates.ts); enclave scope by agency (RLS forced per agency, record keyed by agency and reference)",
+    "packages/authz/test/engine.test.ts (record scope own), services/api/test/missions.db.test.ts (DSP-09), packages/authz/test/templates.test.ts; packages/cjis-db/test/enclave.db.test.ts (agency isolation), tests/integration/layer5.int.test.ts (city officer gets 404)",
+    ""
+  ],
+  "SEC-13": [
+    "partial",
+    "position_trail retention with daily partitions dropped whole and logged (worker dropPositionTrails, 0029); categories field_records, badges (3 years), safety, comms, child_records (1 year); phone purge (field-core purge.ts); enclave retention per agency and category with floors in the schema (records at least 1 year, audit at least 7 years), default 7 years, legal holds, deletion log, hourly sweep (services/cjis-api/src/jobs.ts sweepRetention)",
+    "services/api/test/field.db.test.ts (SEC-13 / DSP-08), services/api/test/roster.db.test.ts (a 40-day-old day dropped); packages/cjis-db/test/enclave.db.test.ts (floors, holds), services/cjis-api/test/api.db.test.ts (retention sweep honours holds)",
+    "No sweep yet deletes rows in the new field_records, badges, safety, comms or child_records categories, and cg.change_feed is never pruned."
+  ],
+  "SEC-10": [
+    "partial",
+    "restricted layer-4 fields encrypted per tenant (caller block, people involved, health notes, children, signatures, shelter access needs; dictionary.ts); phone stores sealed (apps/field/src/vault*.ts); enclave per-agency data keys wrapped by the enclave's own OpenBao, AES-256-GCM with the agency as additional data (services/cjis-api/src/crypto.ts); idempotent responses stored encrypted; TLS at cjis-gateway",
+    "services/api/test/fieldrecords.db.test.ts (FL:FR-19 signer and signature encrypted), services/api/test/missions.db.test.ts (caller block encrypted); tests/integration/layer5.int.test.ts (no plaintext marker in the enclave database), services/cjis-api/test/api.db.test.ts",
+    "The phone's encrypted stores are checked on a device only; volume encryption and service mTLS come from the cloud (layer 1 note)."
+  ],
+  "SEC-11": [
+    "pass",
+    "packages/db/src/dictionary.ts, 0009 (migration fails on undocumented columns), packages/authz masks; enclave dictionary for every column (packages/cjis-db/src/dictionary.ts) and its drill (migrate-check.ts); platform guard: no column classified cji",
+    "0009 check at migrate time, guardrail-G7.test.ts; CI enclave migration drill, packages/cjis-db/test/enclave.db.test.ts, packages/db/test/dictionary.test.ts",
+    ""
+  ],
+  "SEC-18": [
+    "pass",
+    "restricted reads audited: mission caller block and people involved, hazard details, health notes, children, signatures, exact situation points (routes/missions.ts, field-ops.ts, field-records.ts, situation.ts); enclave audit of every record read (field names), write, denial and sign-in event (services/cjis-api/src/audit.ts, jobs.ts copySignInEvents)",
+    "services/api/test/missions.db.test.ts (caller block and people reads audited), services/api/test/fieldops.db.test.ts (AC-04C), services/api/test/fieldrecords.db.test.ts (health notes, pickup code), services/api/test/siteoperator.db.test.ts (exact report points); services/cjis-api/test/api.db.test.ts, tests/integration/layer5.int.test.ts (reads and writes audited without values)",
+    "The county-side ledger of partner reads carried from layer 3 is not built."
+  ],
+  "SEC-07": [
+    "partial",
+    "Keycloak realm: password + passkey browser flow, no shared accounts; enclave: password then passkey with user verification, the second factor required in amr by the API (ADR-0036)",
+    "console.spec.ts (passkey on a virtual authenticator); services/cjis-api/test/token.test.ts, tests/integration/stack.int.test.ts (password alone refused), tests/e2e/cjis.spec.ts (passkey on a virtual authenticator)",
+    "SAML/OIDC brokering to a tenant's own IdP is configured per realm but not yet exercised by a test."
+  ],
+  "BRD:FR-00.05": [
+    "pass",
+    "services/api/src/plugins/versions.ts, cg.touch() in 0002_tenancy.ts; enclave writes check If-Match versions (plugins/context.ts expectedVersion)",
+    "services/api/test/errors.test.ts, app.test.ts (428), layer1.int.test.ts (409 with current record); services/cjis-api/test/api.db.test.ts (version conflict)",
+    ""
+  ],
+  "BRD:FR-00.06": [
+    "pass",
+    "services/api/src/plugins/idempotency.ts, cg.idempotency_key (0008); enclave creates are idempotent with the stored response encrypted",
+    "app.test.ts (key required), layer1.int.test.ts (replay, 422 on reuse); services/cjis-api/test/api.db.test.ts (idempotent create)",
+    ""
+  ],
+  "SEC-15": [
+    "partial",
+    ".github/workflows/ci.yml (lint, typecheck, unit, integration, e2e with axe, Semgrep, Trivy filesystem and images including cjis-api and cjis-web, SPDX SBOMs for api and cjis-api, the platform and enclave migration drills); actions pinned to commit SHAs (ADR-0019)",
+    "CI on every push",
+    "Threat models per feature, DAST and signed release builds are not in CI yet."
+  ],
+  "GATE-01": [
+    "pass",
+    "packages/authz/src/templates.ts, docs/requirements-index.md (public roles A–F); layer-5 plan §1 and §8 (enclave roles, the liaison template)",
+    "templates.test.ts; services/cjis-api/test/policy.test.ts",
+    ""
+  ],
+  "GATE-02": [
+    "pass",
+    "",
+    "layer 5 adds tests/integration/layer5.int.test.ts, services/cjis-api/test/api.db.test.ts, packages/cjis-db/test/enclave.db.test.ts, services/api/test/cjislink.db.test.ts, tests/e2e/cjis.spec.ts, tests/e2e/console-l5.spec.ts on top of the earlier suites",
+    "Acceptance cases listed in this table; the layer merges only on green CI."
+  ],
+  "GATE-03": [
+    "partial",
+    "",
+    "axe on every released screen, including the enclave screens and the console's CJIS panel (tests/e2e/cjis.spec.ts, tests/e2e/console-l5.spec.ts)",
+    "Manual assistive-technology evidence pending (docs/a11y, including docs/a11y/screens/cjis-enclave.md)."
+  ],
+  "GATE-04": [
+    "pass",
+    "",
+    "guardrail suites, layer1.int.test.ts, stack.int.test.ts; tests/integration/layer5.int.test.ts (no CJI across the boundary), services/api/test/cjislink.db.test.ts, services/cjis-api/test/api.db.test.ts (qualification and agency scope)",
+    "No known bypass in released functionality."
+  ],
+  "GATE-05": [
+    "pass",
+    "",
+    "layer1.int.test.ts (idempotency, versions), DB tests; services/cjis-api/test/api.db.test.ts (enclave versions and idempotency)",
+    ""
+  ],
+  "BRD:INT-07": [
+    "deferred",
+    "",
+    "",
+    "CAD, NCIC and records-management feeds only under separately approved contracts (decision 2026-10-13; layer-5 plan §11)."
+  ]
+}

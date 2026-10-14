@@ -6,7 +6,7 @@ Resume record for layer 5. Chat history is not the record; this file is.
 
 1. Read `CLAUDE.md`, then this file, then `docs/decisions.md` (the 2026-10-13 row that starts layer 5).
 2. Run `pnpm install && pnpm typecheck && pnpm test && pnpm lint && pnpm check:product-name` on `main` (layer 4 merged in Mennelabs/EOC-Application#7, `4e58689`). Do not build on a red tree.
-3. First task is the plan, `docs/plans/layer-5.md`, before any code (CLAUDE.md rule 5).
+3. First task is the plan, `docs/plans/layer-5.md`, before any code (CLAUDE.md rule 5). Tasks P to H are done (table below); what remains is the pull request into `main`, merged when CI is green. The report is `layer-5-report.md`.
 
 ## Scope (what layer 5 is)
 
@@ -40,8 +40,9 @@ Plan: [`layer-5.md`](layer-5.md). One task per commit; each ends green, pushed, 
 | D    | Platform side (migration 0041, actions, template, mission routes, seed liaison, dictionary guard)           | done  | 5310f2b     |       |
 | E    | Enclave web app `apps/web-cjis`                                                                             | done  | 168ad5d     |       |
 | F    | Console CJIS panel and link action                                                                          | done  | f060b6f     |       |
-| G    | Tests and CI (stack suite, browser journeys, enclave database suites, image scans)                          | done  | this commit |       |
-| H    | Docs (ADRs 0021/0036–0038, architecture, traceability, report, README, accessibility records)               | todo  |             |       |
+| G    | Tests and CI (stack suite, browser journeys, enclave database suites, image scans)                          | done  | 31b5a21     |       |
+| H    | Docs (ADRs 0021/0036–0038, architecture, traceability, report, README, accessibility records)               | done  | this commit |       |
+| PR   | Pull request into `main`; merge when CI is green end to end                                                 | next  |             |       |
 
 ## Verified by (task A)
 
@@ -89,6 +90,13 @@ Plan: [`layer-5.md`](layer-5.md). One task per commit; each ends green, pushed, 
 
 - `tests/integration/layer5.int.test.ts` (9 passes against the running stack): a coordinator creates a mission and the liaison links it (the platform answers a 43-character opaque reference and the enclave address; a reader sees only `{ restricted: true }`); an enclave officer records the case number, summary, a person, a weapon, a body-camera reference, a narrative and the disposition with a random marker string; the marker is absent from a full data dump of the platform database (only the opaque reference crossed over), absent from the enclave database dump (ciphertext only), and absent from the logs of `api`, `worker`, `gateway`, `cjis-api`, `cjis-worker` and `cjis-gateway`; a platform token gets 401 from the enclave and an enclave token 401 from the platform; the field sync for `rowan.field` carries no enclave reference; the enclave audit holds create, read, narrative and disposition for the reference without the marker, and the chain verifies; the seeded exercise mission and the sheriff's exercise record share one reference.
 - CI (`.github/workflows/ci.yml`): `services/api/test/cjislink.db.test.ts` joins the platform database suites; a new step starts the throwaway enclave database (`scripts/cjis-test-db.sh`), runs `packages/cjis-db/test/enclave.db.test.ts` and `services/cjis-api/test/api.db.test.ts` (39 passes locally) and the enclave migration drill with all 5 migrations down and up (no undocumented column, no table without forced row security); failure logs include the enclave services; the supply-chain job builds and scans `cjis-api` and `cjis-web` (Trivy, HIGH/CRITICAL gate, the upstream Caddy binary skipped as for `web`) and writes an SPDX SBOM for `cjis-api`. The stack job's `pnpm test:integration` and `pnpm test:e2e` already pick up the layer-5 suite and the two browser journeys.
+
+## Verified by (task H)
+
+- ADR-0021 accepted and refined (enclave on its own internal network with only the gateway reachable; the console only links); ADR-0036 (enclave identity, the second factor in `amr`, the `maxAge` and first-sign-in findings, the CJIS values), ADR-0037 (enclave data, per-agency keys, audit chain, retention, worker), ADR-0038 (the enclave app on its own origin); the ADR index.
+- `docs/architecture.md`: the container diagram, §2.2 (every enclave service and how the halves meet), §4.7a (enclave data model), §6 guardrail 3 (the enclave policy E1–E6), §12.
+- `tools/reqindex/trace-layer5.json` (28 rows: 21 pass, 6 partial, 1 deferred; earlier evidence kept and the enclave's appended) and `traceability.py` covering layers 1 to 5; `docs/traceability.md` regenerated (504 rows); `pnpm reqindex` leaves `docs/requirements-index.md` unchanged.
+- `docs/plans/layer-5-report.md`; `docs/a11y/screens/cjis-enclave.md` and the checklist row; README (the enclave section with the exercise accounts, checked against the stack: an exercise account's first browser sign-in goes to passkey registration; the enclave suites and drill commands).
 
 ## Known issues and deferred items
 

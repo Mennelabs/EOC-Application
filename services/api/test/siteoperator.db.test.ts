@@ -258,7 +258,7 @@ describe.skipIf(!appUrl || !workerUrl)('site operator (database-backed)', () => 
     expect(otherView.json<{ households: number }>().households).toBe(0);
   });
 
-  it('CON-03, PUB-05, RULE-16: the situation layers show exact report points only to roles with the exact-location category, and never a confidential site', async () => {
+  it('CON-03, PUB-05, RULE-16, DCL:DEC-03: the situation layers show exact report points only to roles with the exact-location category, never a confidential site, and verified damage only once approved', async () => {
     const county = (
       await dbWorker
         .selectFrom('cg.event')
@@ -342,5 +342,37 @@ describe.skipIf(!appUrl || !workerUrl)('site operator (database-backed)', () => 
     const shelter = await call('ngoShelter', 'GET', `/api/v1/situation?eventId=${eventId}`);
     if (shelter.status === 200)
       expect(shelter.json<Situation>().layers['reports']!.available).toBe(false);
+
+    // DCL:DEC-03, layer-6 plan §2: verified damage on the map is the counting rule's
+    // "approved and verified"; a verified finding still under review is not on it.
+    const before = await dbWorker
+      .selectFrom('cg.report')
+      .select(['review_state', 'verification_level', 'fema_degree'])
+      .where('id', '=', report.id)
+      .executeTakeFirstOrThrow();
+    const onLayer = async () =>
+      (await call('gis', 'GET', `/api/v1/situation?eventId=${eventId}`))
+        .json<Situation>()
+        .layers['verifiedDamage']!.items.some((i) => i.id === report.id);
+    try {
+      await dbWorker
+        .updateTable('cg.report')
+        .set({
+          review_state: 'under_review',
+          verification_level: 'desktop_verified',
+          fema_degree: 'major',
+        })
+        .where('id', '=', report.id)
+        .execute();
+      expect(await onLayer()).toBe(false);
+      await dbWorker
+        .updateTable('cg.report')
+        .set({ review_state: 'approved' })
+        .where('id', '=', report.id)
+        .execute();
+      expect(await onLayer()).toBe(true);
+    } finally {
+      await dbWorker.updateTable('cg.report').set(before).where('id', '=', report.id).execute();
+    }
   });
 });

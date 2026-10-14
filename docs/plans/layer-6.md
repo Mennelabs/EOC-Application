@@ -25,7 +25,7 @@ Not in this layer, with reasons, in §11.
 One function in `packages/reporting` decides what counts, so the screen, the CSV, the PDF and the package cannot disagree (AC-14C, MET-06, GATE-07):
 
 - **Counted toward degree-of-damage totals:** a report whose review state is `approved` **and** whose verification level is `desktop_verified` or `field_verified` (Section 29.2, DCL:DEC-03), read at its approved version (BRD:FR-12.05; a materially changed finding waits for re-review).
-- **Shown separately, never added in:** self-reported counts; `cannot_verify` as the "inaccessible" total with its reason (DEC-17); witness and helper reports (WIT-01); pre-existing damage and non-primary residences, which stay in the record but leave the IA totals (DEC-04).
+- **Shown separately, never added in:** self-reported counts; `cannot_verify` as the "inaccessible" total with its reason (DEC-17); witness observations (WIT-01; a helper's report about a specific home counts once approved and verified, because the home itself was checked: corrected 2026-10-14 during task C); pre-existing damage and non-primary residences, which stay in the record but leave the IA totals (DEC-04).
 - **One home, one count:** reports linked as duplicates or superseded count once (BRD:FR-12.06); several reports for the same address key or parcel count once, the approved finding with the highest verification winning.
 - **Multi-family counted per unit** (docs/05): a resident's report is one unit; a field assessment of an apartment building counts its recorded unit count.
 - **Unknown is a category, never zero** (RULE-02): unknown insurance, unknown tenure and unknown home type are reported as such.
@@ -150,6 +150,9 @@ Then the pull request into `main`, merged when CI is green.
 9. **The incident period is entered by staff**, separate from when the event was opened in the platform; the 30-day clock starts from the incident end date a person enters (DEC-14, DEC-16).
 10. **Reference data in the repository is synthetic**; only geography leaves the system when a real county pulls live data (ADR-0039).
 11. **The outage and Census map layers move from layer 8 into this layer** because their data arrives here (CON-03).
+12. **Helper reports count, witness observations do not** (task C): WIT-01 sets apart a third-party observation; a helper reports a specific home for its occupant, and once that home is approved and verified it is a damaged home like any other. Leaving helpers out would undercount the homes of people who needed help to report (older and disabled residents).
+13. **Building-level findings absorb unit reports** (task C): a field assessment of a whole apartment building counts its recorded units, and residents' unit reports in that building are not added on top (one home, one count). An unknown unit count is counted as one unit and reported as unknown.
+14. **Synthetic damage reports are opt-in in the stack** (`SEED_DAMAGE_REPORTS`, task C): the earlier layers' suites expect an empty review queue, so the seed files reviewed reports only when asked; the layer-6 tests file their own in their own exercise counties.
 
 ## 13. Gates claimed at the end of this layer
 

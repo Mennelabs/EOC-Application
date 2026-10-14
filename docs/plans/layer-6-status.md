@@ -32,7 +32,7 @@ Resume record for layer 6. Chat history is not the record; this file is.
 | Fix2 | Enclave sign-in e2e timed out about 1 in 12 (CI on #10): test workers starved each other of one-time codes; they now share tokens          | done  | `921583d`, `3bc8df5`            | GATE-05, SEC-12                                                    |
 | A    | Reference data foundation (snapshots, connectors, egress allowlist, import, recorded responses, schedules, admin API)                      | done  | `ccf8c9b`, `0b23f13`            | GeoPackage and Shapefile import move to B; the screen lands with B |
 | B    | Federal connectors, recorded WESTWIND responses, GeoPackage and Shapefile import, the reference data screen                                | done  | `5d9e802`, `6fa5dcf`, `feb40b3` | ODIN and USA Structures import only for now; see below             |
-| C    | Geography and the counting rule; seeded synthetic reports; situation-map approved-state fix                                                | todo  |                                 |                                                                    |
+| C    | Geography and the counting rule; seeded synthetic reports; situation-map approved-state fix                                                | done  | this commit                     | Helper reports count (reading 12); synthetic reports opt-in        |
 | D    | Declaration data: incident period, outage log, casualties, PA sites, FL-17 credit, DEC-17 field capture                                    | todo  |                                 |                                                                    |
 | E    | Official reports: drafts, review, issue, snapshots with object lock, amendments, what changed                                              | todo  |                                 |                                                                    |
 | F    | FEMA outputs: ADR-0040 (PDF), form mappings, forms, IDA package, exports, liaison view, joint assessment                                   | todo  |                                 |                                                                    |
@@ -73,6 +73,16 @@ Resume record for layer 6. Chat history is not the record; this file is.
 - GeoPackage and zipped Shapefile readers (ADR-0041): `packages/refdata/test/formats.test.ts` builds real files (a GeoPackage with `node:sqlite`, a zip with stored and deflated entries) and checks attributes, holes, deleted records and the refusal of other coordinate systems.
 - The reference data screen: `tests/e2e/console-l6.spec.ts` on desktop and phone with axe (data in use, pull now, a failed and a passed check, apply). The test found a real bug (nullable number fields were read as text); fixed in `6fa5dcf` with a test over every dataset's fields.
 - `pnpm --filter @cg/refdata smoke -- --state 29 --county 29189` is the manual live check; here it fails cleanly at the network (hosts blocked).
+
+## Verified by (task C)
+
+- Migration 0043 `location_geo` (tract, tract snapshot, most specific jurisdiction per located place), in the dictionary and under RLS (system-written); the fresh-database drill passed (127 tables). The seed gives the exercise county and Harmon City their outlines.
+- `services/worker/test/geography.db.test.ts` (3): tract from the county's snapshot or the nearest tenant above it; the city inside the county as the jurisdiction; nothing outside the county; reassignment on a new tract snapshot or moved coordinates; the run audited.
+- `packages/reporting` holds the counting rule (`countDamage`, pure) and its loader (`loadDamageRecords`, inside the caller's RLS transaction). `test/counting.test.ts` (19) pins each rule: what counts, every way a record is shown apart, one home one count (duplicates, field over desk, latest), apartments per unit, a building assessment absorbing unit reports, unknown unit counts, assessments made for a report, witnesses, cells and tracts that add up, order independence.
+- `packages/reporting/test/count.db.test.ts` (3): 160 synthetic reports filed and reviewed by `tools/seed/src/damage.ts`, assigned to tracts, read back as staff, give exactly the totals of an independent reading of the same reports (AC-14C); every exclusion occurs; another tenant reads nothing.
+- `services/api/test/tracts.db.test.ts` (2): `GET /refdata/tracts` with the snapshot ids to cite; `GET /refdata/profile?event=` by footprint (population-weighted shares) or by reports, none when neither; 403 and 404 where due.
+- The situation map's verified-damage layer now needs an approved review too; the existing situation test checks a verified finding under review stays off the layer until approved.
+- All 25 database suites as CI runs them: green.
 
 ## Known issues and open items
 

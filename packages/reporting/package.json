@@ -1,0 +1,19 @@
+{
+  "name": "@cg/reporting",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@cg/db": "workspace:*",
+    "kysely": "0.29.6"
+  },
+  "devDependencies": {
+    "@cg/refdata": "workspace:*"
+  }
+}

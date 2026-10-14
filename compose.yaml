@@ -160,6 +160,8 @@ services:
     environment:
       ENTRY: load.ts
       DATABASE_URL: postgres://cg_worker:${CG_WORKER_PASSWORD:?}@db:5432/cg
+      # Opt-in: that many reviewed synthetic damage reports in the exercise event (layer 6).
+      SEED_DAMAGE_REPORTS: ${SEED_DAMAGE_REPORTS:-0}
     depends_on:
       migrate: { condition: service_completed_successfully }
       seed: { condition: service_completed_successfully }

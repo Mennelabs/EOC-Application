@@ -154,7 +154,9 @@ export async function renderPdf(model: PdfDocumentModel): Promise<Buffer> {
   for (const b of model.blocks) {
     switch (b.kind) {
       case 'heading': {
-        if (b.level > 1) doc.moveDown(0.4);
+        // Keep a heading with what follows it: start a new page when little room is left.
+        if (doc.y > doc.page.height - doc.page.margins.bottom - 90) doc.addPage();
+        else if (b.level > 1) doc.moveDown(0.4);
         text(`H${b.level}`, b.text, {
           font: 'bold',
           size: b.level === 1 ? SIZE.h1 : b.level === 2 ? SIZE.h2 : SIZE.h3,

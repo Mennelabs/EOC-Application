@@ -398,6 +398,9 @@ importers:
       '@cg/field-core':
         specifier: workspace:*
         version: link:../field-core
+      '@cg/pdf':
+        specifier: workspace:*
+        version: link:../pdf
       kysely:
         specifier: 0.29.6
         version: 0.29.6

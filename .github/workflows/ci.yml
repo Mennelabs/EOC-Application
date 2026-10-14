@@ -35,7 +35,7 @@ jobs:
       - name: Public help page builds inside its first-load budget (PUB-07)
         run: pnpm --filter @cg/web-help build && pnpm --filter @cg/web-help check:size
       - name: Every PDF kind passes veraPDF as PDF/UA-1 (NFR-12, ACC-49, GATE-03, ADR-0040)
-        run: pnpm --filter @cg/pdf samples "$RUNNER_TEMP/pdf" && scripts/verapdf.sh "$RUNNER_TEMP/pdf"
+        run: pnpm --filter @cg/pdf samples "$RUNNER_TEMP/pdf" && pnpm --filter @cg/reporting samples "$RUNNER_TEMP/pdf" && scripts/verapdf.sh "$RUNNER_TEMP/pdf"
       - name: Requirements index is up to date
         run: pnpm reqindex && git diff --exit-code -- docs/requirements-index.md
 

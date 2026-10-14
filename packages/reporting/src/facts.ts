@@ -233,7 +233,8 @@ async function casualtiesFact(trx: Transaction<Database>, s: FactScope): Promise
   };
 }
 
-async function sheltersFact(trx: Transaction<Database>, s: FactScope): Promise<Fact> {
+/** Shelters open now with their reported occupancy and capacity; a total is unknown unless every open shelter gave its figure. */
+export async function shelterFigures(trx: Transaction<Database>, eventId: string) {
   const r = await sql<{
     open: string;
     reported: string;
@@ -246,11 +247,25 @@ async function sheltersFact(trx: Transaction<Database>, s: FactScope): Promise<F
       count(capacity) as with_capacity, sum(capacity) as capacity
     from cg.site
     where kind = 'shelter' and status in ('open', 'limited', 'full')
-      and (event_id = ${s.eventId} or event_id is null)`.execute(trx);
+      and (event_id = ${eventId} or event_id is null)`.execute(trx);
   const x = r.rows[0]!;
   const open = Number(x.open);
   const reported = Number(x.reported);
   const withCapacity = Number(x.with_capacity);
+  return {
+    open,
+    reported,
+    withCapacity,
+    occupancyKnown: Number(x.occupancy ?? 0),
+    capacityKnown: Number(x.capacity ?? 0),
+    occupancy: open > 0 && reported < open ? null : Number(x.occupancy ?? 0),
+    capacity: open > 0 && withCapacity < open ? null : Number(x.capacity ?? 0),
+  };
+}
+
+async function sheltersFact(trx: Transaction<Database>, s: FactScope): Promise<Fact> {
+  const f = await shelterFigures(trx, s.eventId);
+  const { open, reported, withCapacity } = f;
   return {
     key: 'shelters',
     title: 'Shelters',
@@ -260,17 +275,17 @@ async function sheltersFact(trx: Transaction<Database>, s: FactScope): Promise<F
         key: 'occupancy',
         label: 'People in shelters',
         // All open shelters reported, or the total is not known.
-        value: open > 0 && reported < open ? null : Number(x.occupancy ?? 0),
+        value: f.occupancy,
         ...(open > 0 && reported < open
           ? {
-              detail: `${reported} of ${open} shelters reported; at least ${Number(x.occupancy ?? 0)}`,
+              detail: `${reported} of ${open} shelters reported; at least ${f.occupancyKnown}`,
             }
           : {}),
       },
       {
         key: 'capacity',
         label: 'Shelter capacity',
-        value: open > 0 && withCapacity < open ? null : Number(x.capacity ?? 0),
+        value: f.capacity,
         ...(open > 0 && withCapacity < open
           ? { detail: `${withCapacity} of ${open} shelters gave a capacity` }
           : {}),

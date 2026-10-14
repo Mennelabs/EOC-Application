@@ -412,6 +412,9 @@ importers:
       '@cg/intake':
         specifier: workspace:*
         version: link:../../packages/intake
+      '@cg/refdata':
+        specifier: workspace:*
+        version: link:../../packages/refdata
       '@fastify/swagger':
         specifier: 9.9.0
         version: 9.9.0
@@ -499,6 +502,9 @@ importers:
       '@cg/provisioning':
         specifier: workspace:*
         version: link:../../packages/provisioning
+      '@cg/refdata':
+        specifier: workspace:*
+        version: link:../../packages/refdata
       amqplib:
         specifier: 2.0.1
         version: 2.0.1

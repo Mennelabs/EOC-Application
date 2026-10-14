@@ -27,6 +27,11 @@ export interface Tenant {
   parent: string | null;
   timezone: string;
   locales: string[];
+  /**
+   * Jurisdiction FIPS code: reference data is pulled for it (ADR-0039). The
+   * exercise county uses 29999, which no real county has (SCL-12).
+   */
+  fips?: string;
 }
 
 export interface Area {
@@ -48,6 +53,7 @@ export const tenants: Tenant[] = [
     parent: null,
     timezone: 'America/Chicago',
     locales: ['en', 'es'],
+    fips: '29',
   },
   {
     key: 'region',
@@ -64,6 +70,7 @@ export const tenants: Tenant[] = [
     parent: 'region',
     timezone: 'America/Chicago',
     locales: ['en', 'es'],
+    fips: '29999',
   },
   {
     key: 'city',

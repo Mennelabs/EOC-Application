@@ -132,6 +132,7 @@ const app = await buildApp({
     // SEC-12, ADR-0038: the console links to the enclave; the platform never calls it.
     missions: config.CJIS_PUBLIC_URL ? { cjisPublicUrl: config.CJIS_PUBLIC_URL } : {},
     fieldVoice: { ai, defaultGraph: westwindGraph },
+    refdata: { objects: { client: s3, bucket: config.S3_BUCKET } },
     fieldSync: {
       objects: {
         client: s3,

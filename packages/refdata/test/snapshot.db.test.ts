@@ -3,14 +3,24 @@
  * SCL-06, SEC-05): a good snapshot becomes current and supersedes the last;
  * a bad row fails the snapshot and leaves the current one in place; the
  * checksum depends on the rows, not on property order; staff sessions read
- * snapshots but cannot write them; tenants see only their own. Synthetic data.
+ * snapshots but cannot write them; tenants see only their own; a pull from
+ * the recorded responses lands, and a source that is down leaves a failed
+ * snapshot beside the last good one. Synthetic data.
  */
 import { randomUUID } from 'node:crypto';
 import { sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, withTenant, type Database } from '@cg/db';
 import type { Kysely } from 'kysely';
-import { writeSnapshot, type SnapshotMeta } from '../src/index.ts';
+import {
+  connectorFor,
+  createRecordedHttp,
+  recordingsDir,
+  runPull,
+  writeSnapshot,
+  type Connector,
+  type SnapshotMeta,
+} from '../src/index.ts';
 
 const appUrl = process.env['API_DB_TEST_APP_URL'];
 const workerUrl = process.env['API_DB_TEST_WORKER_URL'];
@@ -187,5 +197,52 @@ describe.skipIf(!appUrl || !workerUrl)('reference snapshots (database-backed)', 
           .execute(),
       ),
     ).rejects.toThrow(/row-level security/);
+  });
+
+  it('a pull from the recorded responses becomes current; a source that is down leaves a failed attempt (SCL-06)', async () => {
+    const declarations = connectorFor('declaration');
+    if (!declarations || declarations === 'import') throw new Error('no declaration connector');
+    const scope = { stateFips: '29', countyFips: ['29999'] };
+    const now = () => new Date();
+    const good = await runPull(worker, declarations, {
+      tenantId,
+      mode: 'recorded',
+      http: createRecordedHttp(recordingsDir),
+      scope,
+      secrets: {},
+      now,
+    });
+    expect(good).toMatchObject({ status: 'ready', rowCount: 3 });
+
+    const down: Connector = {
+      ...declarations,
+      fetch: () => Promise.reject(new Error('source unavailable (503)')),
+    };
+    const failed = await runPull(worker, down, {
+      tenantId,
+      mode: 'pull',
+      http: createRecordedHttp(recordingsDir),
+      scope,
+      secrets: {},
+      now,
+    });
+    expect(failed).toMatchObject({ status: 'failed', rowCount: 0 });
+    expect(failed.error).toContain('503');
+    const state = await withTenant(worker, { tenantId }, async (trx) => ({
+      current: await trx
+        .selectFrom('cg.refdata_current')
+        .select('snapshot_id')
+        .where('tenant_id', '=', tenantId)
+        .where('dataset', '=', 'declaration')
+        .executeTakeFirstOrThrow(),
+      good: await trx
+        .selectFrom('cg.refdata_snapshot')
+        .select(['source', 'source_url', 'licence', 'scope'])
+        .where('id', '=', good.snapshotId)
+        .executeTakeFirstOrThrow(),
+    }));
+    expect(state.current.snapshot_id).toBe(good.snapshotId);
+    expect(state.good).toMatchObject({ source: 'openfema.declarations', scope });
+    expect(state.good.source_url).toContain('https://www.fema.gov/');
   });
 });

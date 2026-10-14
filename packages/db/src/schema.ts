@@ -2253,13 +2253,25 @@ export interface RefdataImportTable extends Stamped {
   id: Generated<Uuid>;
   tenant_id: Uuid;
   dataset: ReferenceDataset;
+  execution_id: Uuid;
   file_name: string;
   object_key: string;
   format: 'csv' | 'geojson';
+  bytes: number;
+  columns: JsonGen<string[]>;
   mapping: JsonGen<Record<string, string>>;
   vintage: string | null;
   licence: string;
-  status: Generated<'uploaded' | 'validated' | 'invalid' | 'applied' | 'failed'>;
+  status: Generated<
+    | 'uploading'
+    | 'uploaded'
+    | 'validating'
+    | 'validated'
+    | 'invalid'
+    | 'applying'
+    | 'applied'
+    | 'failed'
+  >;
   errors: JsonGen<{ row?: number; field?: string; message: string }[]>;
   row_count: Generated<number>;
   snapshot_id: Uuid | null;

@@ -1,0 +1,11 @@
+[
+  {
+    "host": "www.fema.gov",
+    "path": "/api/open/v2/DisasterDeclarationsSummaries",
+    "query": {
+      "$filter": "fipsStateCode eq '29' and (fipsCountyCode eq '000' or fipsCountyCode eq '999')",
+      "$skip": "0"
+    },
+    "file": "openfema-declarations-29999.json"
+  }
+]

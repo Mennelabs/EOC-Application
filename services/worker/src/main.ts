@@ -24,6 +24,7 @@ import { fakeProvider, providerByName } from '@cg/ai';
 import { FieldCrypto, OpenBaoKeyService, dbKeyStore } from '@cg/crypto';
 import { westwindGraph } from '@cg/intake';
 import { createDb } from '@cg/db';
+import { connectorHosts, createEgressHttp, createRecordedHttp, recordingsDir } from '@cg/refdata';
 import { KeycloakAdmin } from './idp/keycloak.ts';
 import { anchorAuditChains, expireBreakGlass, retentionSweep } from './jobs/handlers.ts';
 import { mergeLateAnswers, sweepStoredSubmissions, topUpReferenceCodes } from './jobs/intake.ts';
@@ -35,6 +36,7 @@ import {
 } from './jobs/reminders.ts';
 import { relayChangesOnce, type ChangeRelayState } from './jobs/changes.ts';
 import { dropPositionTrails, watchFieldSafety, watchReminders } from './jobs/field.ts';
+import { pruneReferenceSnapshots, scheduleReferencePulls } from './jobs/refdata.ts';
 import { consume, consumeIntake, relayOnce } from './jobs/relay.ts';
 import type { JobContext, Schedule } from './jobs/types.ts';
 import { nullMailer, smtpMailer } from './mail.ts';
@@ -126,6 +128,22 @@ const ctx: JobContext = {
   },
   defaultGraph: westwindGraph,
   devDirectGrant: config.IDP_DEV_DIRECT_GRANT,
+  // ADR-0039, SCL-12: recorded synthetic responses unless configured live; only allowlisted hosts.
+  refdata: {
+    mode: config.REFDATA_MODE,
+    http(hosts) {
+      if (config.REFDATA_MODE !== 'live')
+        return createRecordedHttp(config.REFDATA_RECORDINGS_DIR ?? recordingsDir);
+      const narrowed = config.REFDATA_ALLOWED_HOSTS;
+      return createEgressHttp({
+        allowedHosts: hosts.filter(
+          (h) => connectorHosts().includes(h) && (!narrowed || narrowed.includes(h)),
+        ),
+        userAgent: `${config.PRODUCT_NAME} reference data${config.REFDATA_CONTACT ? ` (${config.REFDATA_CONTACT})` : ''}`,
+      });
+    },
+    secrets: config.CENSUS_API_KEY ? { censusApiKey: config.CENSUS_API_KEY } : {},
+  },
 };
 
 const schedules: Schedule[] = [
@@ -151,6 +169,9 @@ const schedules: Schedule[] = [
   { name: 'field-safety', everyMs: 60_000, run: watchFieldSafety },
   { name: 'reminders-f09', everyMs: 60_000, run: watchReminders }, // F09, FR-09.05/09.06
   { name: 'position-trails', everyMs: 24 * 3600_000, run: dropPositionTrails },
+  // ADR-0039, SCL-09: reference data refreshed per its source's period; old snapshots pruned (SEC-13).
+  { name: 'refdata-refresh', everyMs: 15 * 60_000, run: scheduleReferencePulls },
+  { name: 'refdata-prune', everyMs: 24 * 3600_000, run: pruneReferenceSnapshots },
 ];
 
 const probes = [postgresProbe('db', pool), queueProbe('queue', queueNow)];

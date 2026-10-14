@@ -8,3 +8,6 @@ export * from './recorded.ts';
 export * from './connector.ts';
 export * from './snapshot.ts';
 export * from './import.ts';
+export * from './pull.ts';
+export * from './registry.ts';
+export { declarationRow } from './connectors/openfema.ts';

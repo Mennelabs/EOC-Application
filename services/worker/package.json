@@ -19,6 +19,7 @@
     "@cg/db": "workspace:*",
     "@cg/intake": "workspace:*",
     "@cg/provisioning": "workspace:*",
+    "@cg/refdata": "workspace:*",
     "amqplib": "2.0.1",
     "kysely": "0.29.6",
     "nodemailer": "10.0.10",

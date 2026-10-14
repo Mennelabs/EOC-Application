@@ -19,6 +19,7 @@ import { missionRoutesWith, type MissionDeps } from './missions.ts';
 import { needRoutes } from './needs.ts';
 import { personnelRoutes } from './personnel.ts';
 import { referralRoutes } from './referrals.ts';
+import { refdataRoutes, type RefdataDeps } from './refdata.ts';
 import { reportRoutes } from './reports.ts';
 import { resourceRoutes } from './resources.ts';
 import { roleRoutes } from './roles.ts';
@@ -36,6 +37,7 @@ export interface RouteDeps {
   fieldVoice?: FieldVoiceDeps;
   fieldRecords?: FieldRecordDeps;
   missions?: MissionDeps;
+  refdata?: RefdataDeps;
 }
 
 /** Route plugins mounted under /api/v1. Each layer adds its modules here. */
@@ -69,6 +71,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   contactRoutes,
   messageRoutes,
   referralRoutes,
+  refdataRoutes(deps.refdata),
 ];
 
 /** The default set, as the tests mount it. */

@@ -1170,6 +1170,12 @@ export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
     tenantIds[spec.key] = id;
     await withTenant(db, { tenantId: id }, async (trx) => {
       await ensureRetentionDefaults(trx, id);
+      if (spec.fips)
+        await trx
+          .insertInto('cg.jurisdiction')
+          .values({ tenant_id: id, fips: spec.fips })
+          .onConflict((oc) => oc.column('tenant_id').doNothing())
+          .execute();
       await ensureTemplateRoles(trx, id);
       await ensureIntakeGraph(trx, id, westwindGraph);
       await ensureAiRegister(trx, id, fakeProvider, evaluation);

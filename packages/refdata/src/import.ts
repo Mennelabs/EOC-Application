@@ -64,7 +64,7 @@ export function parseCsv(text: string): string[][] {
   return out;
 }
 
-type FieldKind = 'number' | 'boolean' | 'list' | 'object' | 'text';
+export type FieldKind = 'number' | 'boolean' | 'list' | 'object' | 'text';
 
 /** The kind of value a dataset field takes, read from its schema's JSON Schema. */
 function fieldKinds(dataset: Dataset): Record<string, FieldKind> {
@@ -92,6 +92,38 @@ function fieldKinds(dataset: Dataset): Record<string, FieldKind> {
                 : 'text';
   }
   return kinds;
+}
+
+export interface ImportField {
+  name: string;
+  kind: FieldKind;
+  required: boolean;
+}
+
+/**
+ * The fields a file's columns can map to, for the import wizard. Point
+ * datasets also offer `latitude` and `longitude` for CSV files; areas need
+ * GeoJSON, whose geometry is taken as it is.
+ */
+export function importFields(dataset: Dataset): ImportField[] {
+  const shape = ROW_SCHEMAS[dataset].shape as Record<string, z.ZodType>;
+  const kinds = fieldKinds(dataset);
+  const fields: ImportField[] = Object.keys(shape)
+    .filter((name) => name !== 'geometry')
+    .map((name) => ({
+      name,
+      kind: kinds[name]!,
+      required: !shape[name]!.safeParse(undefined).success,
+    }));
+  const geometry = shape['geometry'];
+  if (geometry?.safeParse({ type: 'Point', coordinates: [0, 0] }).success) {
+    const required = needsGeometry(dataset);
+    fields.push(
+      { name: 'latitude', kind: 'number', required },
+      { name: 'longitude', kind: 'number', required },
+    );
+  }
+  return fields;
 }
 
 /** Whether a dataset's rows must carry a geometry. */

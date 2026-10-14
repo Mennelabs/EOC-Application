@@ -2093,9 +2093,12 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
   // imports (ADR-0039). Public facts about places, never about residents.
   refdata_import: table({
     dataset: { c: 'internal' },
+    execution_id: { c: 'internal', d: 'Client id of the upload request (FR-00.06)' },
     file_name: { c: 'internal' },
     object_key: { c: 'internal' },
     format: { c: 'internal' },
+    bytes: { c: 'internal' },
+    columns: { c: 'internal', d: 'Column or property names found in the file' },
     mapping: { c: 'internal', d: 'Column mapping chosen by staff' },
     vintage: { c: 'public' },
     licence: { c: 'public' },

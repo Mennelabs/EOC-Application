@@ -83,22 +83,27 @@ async function systemWritten(db: Kysely<unknown>, name: string): Promise<void> {
 
 export async function up(db: Kysely<unknown>): Promise<void> {
   // Uploaded files (CSV, GeoJSON): staff upload and map columns; the worker validates and applies.
+  // The client's own id makes a resent upload request return the same import (FR-00.06).
   await sql
     .raw(
       `create table cg.refdata_import (
       id uuid primary key default gen_random_uuid(),
       tenant_id uuid not null references cg.tenant(id),
       dataset text not null check (dataset in (${datasetCheck})),
+      execution_id uuid not null,
       file_name text not null,
       object_key text not null,
       format text not null check (format in ('csv', 'geojson')),
+      bytes integer not null check (bytes > 0),
+      columns jsonb not null default '[]'::jsonb,
       mapping jsonb not null default '{}'::jsonb,
       vintage text,
       licence text not null,
-      status text not null default 'uploaded' check (status in ('uploaded', 'validated', 'invalid', 'applied', 'failed')),
+      status text not null default 'uploading' check (status in ('uploading', 'uploaded', 'validating', 'validated', 'invalid', 'applying', 'applied', 'failed')),
       errors jsonb not null default '[]'::jsonb,
       row_count integer not null default 0,
-      snapshot_id uuid,${stamped}
+      snapshot_id uuid,${stamped},
+      unique (tenant_id, execution_id)
     )`,
     )
     .execute(db);
@@ -141,7 +146,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     db,
   );
   await systemWritten(db, 'refdata_snapshot');
-  await sql`alter table cg.refdata_import add constraint refdata_import_snapshot_fk foreign key (snapshot_id) references cg.refdata_snapshot(id)`.execute(
+  await sql`alter table cg.refdata_import add constraint refdata_import_snapshot_fk foreign key (snapshot_id) references cg.refdata_snapshot(id) on delete set null`.execute(
     db,
   );
 

@@ -12,6 +12,7 @@ import {
   createEgressHttp,
   createRecordedHttp,
   EgressRefused,
+  importFields,
   matchRecording,
   NoRecording,
   parseCsv,
@@ -194,6 +195,25 @@ describe('file import (ADR-0039: every dataset can be imported)', () => {
     expect(parseImport('tract', 'csv', 'g\n29999000100\n', { geoid: 'g' }).errors[0]!.field).toBe(
       'geometry',
     );
+  });
+
+  it('lists the fields a column can map to, with latitude and longitude for points only', () => {
+    const facility = importFields('facility');
+    expect(facility.find((f) => f.name === 'kind')).toEqual({
+      name: 'kind',
+      kind: 'text',
+      required: true,
+    });
+    expect(facility.find((f) => f.name === 'beds')).toMatchObject({
+      kind: 'number',
+      required: false,
+    });
+    expect(facility.find((f) => f.name === 'latitude')).toMatchObject({ required: false });
+    expect(importFields('structure').find((f) => f.name === 'latitude')).toMatchObject({
+      required: true,
+    });
+    expect(importFields('tract').map((f) => f.name)).not.toContain('latitude');
+    expect(importFields('tract').map((f) => f.name)).not.toContain('geometry');
   });
 
   it('maps GeoJSON properties and keeps the feature geometry', () => {

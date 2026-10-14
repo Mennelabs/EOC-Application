@@ -456,7 +456,8 @@ export const recordRoutes: FastifyPluginAsync = async (appBase) => {
       const s = request.person();
       await request.authorize('record.create', { type: 'record', agencyId: s.agencyId });
       const b = request.body;
-      return request.tx(async (trx) => {
+      // The answer leaves only after the commit, so a client's next request sees the record.
+      const out = await request.tx(async (trx) => {
         const existing = await trx
           .selectFrom('cjis.record')
           .select(['id', 'agency_id', 'cji_ref', 'state', 'version', 'disposition_by'])
@@ -472,7 +473,7 @@ export const recordRoutes: FastifyPluginAsync = async (appBase) => {
             fields: RECORD_READ_FIELDS,
             reason: 'create found the existing record',
           });
-          return reply.code(200).send(await present(trx, existing));
+          return { status: 200, body: await present(trx, existing) };
         }
         const row = await trx
           .insertInto('cjis.record')
@@ -501,8 +502,9 @@ export const recordRoutes: FastifyPluginAsync = async (appBase) => {
           targetVersion: row.version,
           fields: changedNames({ ...b, ref: undefined }),
         });
-        return reply.code(201).send(await present(trx, row));
+        return { status: 201, body: await present(trx, row) };
       });
+      return reply.code(out.status).send(out.body);
     },
   );
 
@@ -652,7 +654,7 @@ export const recordRoutes: FastifyPluginAsync = async (appBase) => {
         );
         const b = request.body;
         const expected = request.expectedVersion();
-        return request.tx(async (trx) => {
+        const added = await request.tx(async (trx) => {
           const r = await loadRecord(trx, request.params.ref);
           assertOpen(r);
           if (r.version !== expected) throw errors.conflict(await present(trx, r));
@@ -684,8 +686,9 @@ export const recordRoutes: FastifyPluginAsync = async (appBase) => {
             reason: `record ${r.cji_ref}`,
           });
           const updated = await loadRecord(trx, r.cji_ref);
-          return reply.code(201).send({ id: row.id, record: await present(trx, updated) });
+          return { id: row.id, record: await present(trx, updated) };
         });
+        return reply.code(201).send(added);
       },
     );
 

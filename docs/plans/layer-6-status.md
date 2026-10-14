@@ -25,25 +25,30 @@ Resume record for layer 6. Chat history is not the record; this file is.
 
 ## Tasks
 
-| Task | What                                                                                                          | State | Commits     | Notes                                    |
-| ---- | ------------------------------------------------------------------------------------------------------------- | ----- | ----------- | ---------------------------------------- |
-| P    | Plan `layer-6.md`; ADR-0039 accepted; decision log                                                            | done  | this commit | Goes in with Mennelabs/EOC-Application#9 |
-| A    | Reference data foundation (snapshots, connectors, egress allowlist, import, fakes, schedules, admin API)      | todo  |             |                                          |
-| B    | Federal connectors (Census ACS and TIGERweb, NSI and USA Structures, NFHL, OpenFEMA, NRI/SVI, CMS, NWS, ODIN) | todo  |             |                                          |
-| C    | Geography and the counting rule; seeded synthetic reports; situation-map approved-state fix                   | todo  |             |                                          |
-| D    | Declaration data: incident period, outage log, casualties, PA sites, FL-17 credit, DEC-17 field capture       | todo  |             |                                          |
-| E    | Official reports: drafts, review, issue, snapshots with object lock, amendments, what changed                 | todo  |             |                                          |
-| F    | FEMA outputs: ADR-0040 (PDF), form mappings, forms, IDA package, exports, liaison view, joint assessment      | todo  |             |                                          |
-| G    | Metrics and equity: definitions, engine, screens, alerts, CSV (formula guard incl. `/needs.csv`)              | todo  |             |                                          |
-| H    | SCL-09 outbound: API keys, webhooks, feature-service endpoint                                                 | todo  |             |                                          |
-| I    | Resident export (FL:FR-32) and media sheet PDF (PUB-13)                                                       | todo  |             |                                          |
-| J    | Tests and CI: stack suite, browser journeys with axe, veraPDF, load profile                                   | todo  |             |                                          |
-| K    | Docs: ADRs, architecture, traceability, report, README, accessibility records                                 | todo  |             |                                          |
+| Task | What                                                                                                                                       | State | Commits     | Notes                                    |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----- | ----------- | ---------------------------------------- |
+| P    | Plan `layer-6.md`; ADR-0039 accepted; decision log                                                                                         | done  | this commit | Goes in with Mennelabs/EOC-Application#9 |
+| Fix  | Enclave API answered some writes before their commit (CI flake on #9); replies now leave after the commit, with a guard test for both APIs | done  | this commit | FR-00.05/06, GATE-05                     |
+| A    | Reference data foundation (snapshots, connectors, egress allowlist, import, fakes, schedules, admin API)                                   | todo  |             |                                          |
+| B    | Federal connectors (Census ACS and TIGERweb, NSI and USA Structures, NFHL, OpenFEMA, NRI/SVI, CMS, NWS, ODIN)                              | todo  |             |                                          |
+| C    | Geography and the counting rule; seeded synthetic reports; situation-map approved-state fix                                                | todo  |             |                                          |
+| D    | Declaration data: incident period, outage log, casualties, PA sites, FL-17 credit, DEC-17 field capture                                    | todo  |             |                                          |
+| E    | Official reports: drafts, review, issue, snapshots with object lock, amendments, what changed                                              | todo  |             |                                          |
+| F    | FEMA outputs: ADR-0040 (PDF), form mappings, forms, IDA package, exports, liaison view, joint assessment                                   | todo  |             |                                          |
+| G    | Metrics and equity: definitions, engine, screens, alerts, CSV (formula guard incl. `/needs.csv`)                                           | todo  |             |                                          |
+| H    | SCL-09 outbound: API keys, webhooks, feature-service endpoint                                                                              | todo  |             |                                          |
+| I    | Resident export (FL:FR-32) and media sheet PDF (PUB-13)                                                                                    | todo  |             |                                          |
+| J    | Tests and CI: stack suite, browser journeys with axe, veraPDF, load profile                                                                | todo  |             |                                          |
+| K    | Docs: ADRs, architecture, traceability, report, README, accessibility records                                                              | todo  |             |                                          |
 
 ## Verified by (task P)
 
 - Requirements read from the index (52 IDs assigned to layer 6) plus the IDs earlier plans parked here; `docs/05` mappings; Sections 19, 20, 21, 29 and 30; F14, F15, D05, D14, BP-04 and the decision register; the existing schema and routes (summary in the plan).
 - Free sources checked on the web on 2026-10-14 (ADR-0039 lists them with their access terms); HIFLD Open is gone (August 2025), so critical facilities come from CMS and OpenStreetMap.
+
+## Verified by (fix before task A)
+
+- CI on #9 (`f572cdd`) failed in `services/cjis-api/test/api.db.test.ts`: recording an account's screening right after creating it answered 404, and activation then 409. Seven enclave routes (account create, permission request, audit review, legal hold, record create, record entries) called `reply.send` inside `request.tx(...)`, so the 201 could reach the client before the commit; the client's next request then found no row. Reproduced locally once in about 60 runs. The routes now return from the transaction and answer afterwards; the platform API already did. `services/cjis-api/test/reply-after-commit.test.ts` fails on the old routes (all seven found) and passes now, for both APIs; the enclave database and API suites passed 10 of 10 runs.
 
 ## Known issues and open items
 

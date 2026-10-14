@@ -36,7 +36,7 @@ Plan: [`layer-5.md`](layer-5.md). One task per commit; each ends green, pushed, 
 | P    | Plan `docs/plans/layer-5.md`                                                                                | done  | 3335213 |       |
 | A    | Enclave containers and identity (`cjis-idp`, `cjis-provision`, `cjis-web`, `cjis-gateway`, secrets, guard)  | done  | d0b21df |       |
 | B    | Enclave database `packages/cjis-db` (migrations, dictionary, RLS, audit chain, retention, synthetic agency) | done  | 7a30a0a |       |
-| C    | Enclave API (auth, qualification, policy, audit, encryption, routes, jobs)                                  | done  | this commit |       |
+| C    | Enclave API (auth, qualification, policy, audit, encryption, routes, jobs)                                  | done  | 435f204 |       |
 | D    | Platform side (migration 0041, actions, template, mission routes, seed liaison, dictionary guard)           | todo  |         |       |
 | E    | Enclave web app `apps/web-cjis`                                                                             | todo  |         |       |
 | F    | Console CJIS panel and link action                                                                          | todo  |         |       |

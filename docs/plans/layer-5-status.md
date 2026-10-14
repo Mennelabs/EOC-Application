@@ -6,7 +6,7 @@ Resume record for layer 5. Chat history is not the record; this file is.
 
 1. Read `CLAUDE.md`, then this file, then `docs/decisions.md` (the 2026-10-13 row that starts layer 5).
 2. Run `pnpm install && pnpm typecheck && pnpm test && pnpm lint && pnpm check:product-name` on `main` (layer 4 merged in Mennelabs/EOC-Application#7, `4e58689`). Do not build on a red tree.
-3. First task is the plan, `docs/plans/layer-5.md`, before any code (CLAUDE.md rule 5). Tasks P to H are done (table below); what remains is the pull request into `main`, merged when CI is green. The report is `layer-5-report.md`.
+3. First task is the plan, `docs/plans/layer-5.md`, before any code (CLAUDE.md rule 5). Layer 5 is done and merged into `main` (Mennelabs/EOC-Application#8, merge commit `f71e437`; CI green on `0eea28c`). The report is `layer-5-report.md`. Next is layer 6 (FEMA package and official reports), which starts with its own plan.
 
 ## Scope (what layer 5 is)
 
@@ -43,7 +43,7 @@ Plan: [`layer-5.md`](layer-5.md). One task per commit; each ends green, pushed, 
 | G    | Tests and CI (stack suite, browser journeys, enclave database suites, image scans)                          | done  | 31b5a21 |       |
 | H    | Docs (ADRs 0021/0036–0038, architecture, traceability, report, README, accessibility records)               | done  | bf8b352 |       |
 | Fix  | A database migrated from empty documents `mission_person.enclave_reference` until 0041 drops it (CI)        | done  | 12b1944 |       |
-| PR   | Pull request into `main` (Mennelabs/EOC-Application#8); merge when CI is green end to end                   | open  |         |       |
+| PR   | Pull request into `main` (Mennelabs/EOC-Application#8), merged when CI was green end to end on `0eea28c`    | done  | f71e437 |       |
 
 ## Verified by (task A)
 

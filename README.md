@@ -4,7 +4,7 @@ A disaster community-response platform for county and city emergency management,
 
 The product name is configuration (`PRODUCT_NAME`, ADM-03). "Common Ground" is the current working name.
 
-**Status:** layers 1 (platform foundations), 2 (resident intake, review, verification) and 3 (needs board, partner sharing with consent, public "Find help") built, tested and approved (2026-10-12 and 2026-10-13); layer 4 (missions, dispatch board, field app) merged; layer 5 (the CJIS enclave) built and in review. See `docs/plans/layer-5-report.md`, `docs/traceability.md` and the newest `docs/plans/layer-N-status.md`. Build order follows SCL-14, one layer at a time; `CLAUDE.md` has the rules for resuming work.
+**Status:** layers 1 (platform foundations), 2 (resident intake, review, verification) and 3 (needs board, partner sharing with consent, public "Find help") built, tested and approved (2026-10-12 and 2026-10-13); layer 4 (missions, dispatch board, field app) merged; layer 5 (the CJIS enclave) merged. See `docs/plans/layer-5-report.md`, `docs/traceability.md` and the newest `docs/plans/layer-N-status.md`. Build order follows SCL-14, one layer at a time; `CLAUDE.md` has the rules for resuming work.
 
 ## Where things live
 

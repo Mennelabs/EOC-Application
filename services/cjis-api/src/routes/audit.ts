@@ -263,7 +263,8 @@ export const auditRoutes: FastifyPluginAsync = async (appBase) => {
       const b = request.body;
       if (new Date(b.periodTo) <= new Date(b.periodFrom))
         throw errors.validation([{ name: 'periodTo', message: 'the period ends after it starts' }]);
-      return request.tx(async (trx) => {
+      // The answer leaves only after the commit.
+      const recorded = await request.tx(async (trx) => {
         const v = await verify(trx, s.agencyId);
         const row = await trx
           .insertInto('cjis.audit_review')
@@ -284,8 +285,9 @@ export const auditRoutes: FastifyPluginAsync = async (appBase) => {
           targetId: row.id,
           reason: `chain ${v.ok ? 'verified' : 'broken'} (${v.checked} rows)`,
         });
-        return reply.code(201).send({ id: row.id, chainOk: v.ok, checked: v.checked });
+        return { id: row.id, chainOk: v.ok, checked: v.checked };
       });
+      return reply.code(201).send(recorded);
     },
   );
 
@@ -433,7 +435,7 @@ export const auditRoutes: FastifyPluginAsync = async (appBase) => {
     async (request, reply) => {
       const s = request.person();
       const d = await request.authorize('hold.place', { type: 'legal_hold', agencyId: s.agencyId });
-      return request.tx(async (trx) => {
+      const placed = await request.tx(async (trx) => {
         let recordId: string | null = null;
         if (request.body.ref) {
           const r = await trx
@@ -460,8 +462,9 @@ export const auditRoutes: FastifyPluginAsync = async (appBase) => {
           targetId: row.id,
           reason: `${request.body.ref ? 'record' : 'agency'}: ${d.confirmedReason ?? ''}`,
         });
-        return reply.code(201).send({ id: row.id, version: row.version });
+        return { id: row.id, version: row.version };
       });
+      return reply.code(201).send(placed);
     },
   );
 

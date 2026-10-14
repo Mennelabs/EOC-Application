@@ -132,7 +132,8 @@ export const accountRoutes: FastifyPluginAsync = async (appBase) => {
     async (request, reply) => {
       const s = request.person();
       await request.authorize('account.create', { type: 'person', agencyId: s.agencyId });
-      return request.tx(async (trx) => {
+      // The answer leaves only after the commit, so a client's next request sees the row.
+      const created = await request.tx(async (trx) => {
         const taken = await trx
           .selectFrom('cjis.person')
           .select('id')
@@ -164,8 +165,9 @@ export const accountRoutes: FastifyPluginAsync = async (appBase) => {
           targetId: row.id,
           fields: ['email', 'display_name'],
         });
-        return reply.code(201).send(await present(trx, row.id));
+        return present(trx, row.id);
       });
+      return reply.code(201).send(created);
     },
   );
 
@@ -462,7 +464,7 @@ export const accountRoutes: FastifyPluginAsync = async (appBase) => {
         aboutPersonId: request.body.personId,
       });
       const b = request.body;
-      return request.tx(async (trx) => {
+      const created = await request.tx(async (trx) => {
         const person = await trx
           .selectFrom('cjis.person')
           .select(['id', 'status'])
@@ -501,8 +503,9 @@ export const accountRoutes: FastifyPluginAsync = async (appBase) => {
           targetId: row.id,
           reason: `${b.change} ${b.role} for ${b.personId}`,
         });
-        return reply.code(201).send(presentRequest(row));
+        return presentRequest(row);
       });
+      return reply.code(201).send(created);
     },
   );
 

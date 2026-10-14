@@ -143,3 +143,28 @@ export async function download(
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
+
+/**
+ * Sends a file's bytes as the request body (reference imports, ADR-0041):
+ * the same bearer token and error envelope as `api`, a PUT with the file's
+ * own content type.
+ */
+export async function upload<T>(path: string, file: Blob, contentType: string): Promise<T> {
+  const token = await accessToken();
+  if (!token)
+    throw new ApiFailure(401, {
+      code: 'signed_out',
+      message: 'Your session ended. Sign in again.',
+      fields: [],
+      retryable: false,
+    });
+  const res = await fetch(`/api/v1${path}`, {
+    method: 'PUT',
+    headers: { authorization: `Bearer ${token}`, 'content-type': contentType },
+    body: file,
+  });
+  const text = await res.text();
+  const json = text ? (JSON.parse(text) as unknown) : null;
+  if (res.ok) return json as T;
+  throw new ApiFailure(res.status, json as Envelope);
+}

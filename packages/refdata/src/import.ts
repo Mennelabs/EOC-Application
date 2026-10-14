@@ -76,31 +76,49 @@ export function parseCsv(text: string): string[][] {
 
 export type FieldKind = 'number' | 'boolean' | 'list' | 'object' | 'text';
 
-/** The kind of value a dataset field takes, read from its schema's JSON Schema. */
+interface ZodDef {
+  type: string;
+  innerType?: { _zod: { def: ZodDef } };
+  options?: { _zod: { def: ZodDef } }[];
+}
+
+/** The kind of value a schema takes, through its default, nullable and optional wrappers. */
+function kindOf(def: ZodDef): FieldKind {
+  if (
+    def.innerType &&
+    ['default', 'nullable', 'optional', 'prefault', 'readonly'].includes(def.type)
+  )
+    return kindOf(def.innerType._zod.def);
+  switch (def.type) {
+    case 'number':
+    case 'int':
+    case 'bigint':
+      return 'number';
+    case 'boolean':
+      return 'boolean';
+    case 'array':
+    case 'tuple':
+      return 'list';
+    case 'object':
+    case 'record':
+      return 'object';
+    case 'union': {
+      const kinds = new Set((def.options ?? []).map((o) => kindOf(o._zod.def)));
+      return kinds.size === 1 ? [...kinds][0]! : 'text';
+    }
+    default:
+      return 'text';
+  }
+}
+
+/** The kind of value each dataset field takes, read from its schema. */
 function fieldKinds(dataset: Dataset): Record<string, FieldKind> {
   const kinds: Record<string, FieldKind> = {};
-  for (const [name, schema] of Object.entries(ROW_SCHEMAS[dataset].shape)) {
-    let t: string;
-    try {
-      t = JSON.stringify(
-        z.toJSONSchema(schema as z.ZodType, { io: 'input', unrepresentable: 'any' }),
-      );
-    } catch {
-      t = '';
-    }
+  for (const [name, schema] of Object.entries(ROW_SCHEMAS[dataset].shape))
     kinds[name] =
       name === 'geometry'
         ? 'object'
-        : t.includes('"type":"number"') || t.includes('"type":"integer"')
-          ? 'number'
-          : t.includes('"type":"boolean"')
-            ? 'boolean'
-            : t.includes('"type":"array"')
-              ? 'list'
-              : t.includes('"type":"object"')
-                ? 'object'
-                : 'text';
-  }
+        : kindOf((schema as unknown as { _zod: { def: ZodDef } })._zod.def);
   return kinds;
 }
 

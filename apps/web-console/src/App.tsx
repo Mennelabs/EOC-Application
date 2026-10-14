@@ -27,6 +27,7 @@ import { MissionDetailScreen, MissionsScreen } from './screens/missions.tsx';
 import { KeyCounts, NeedsBoardScreen, PartnerScreen } from './screens/needs.tsx';
 import { PartnersScreen } from './screens/partners.tsx';
 import { ResourcesScreen } from './screens/resources.tsx';
+import { RefdataScreen } from './screens/refdata.tsx';
 import { ReportDetailScreen, ReviewQueueScreen } from './screens/review.tsx';
 import { PublicationsScreen, SitesScreen } from './screens/sites.tsx';
 import { ConfirmDialog, Field, Status } from './ui/primitives.tsx';
@@ -61,6 +62,7 @@ const routes = [
   { path: '/console/badges', label: 'Badges', layer: 4 },
   { path: '/console/reminders', label: 'Reminders', layer: 4 },
   { path: '/console/devices', label: 'Field devices', layer: 4 },
+  { path: '/console/reference-data', label: 'Reference data', layer: 6 },
   { path: '/console/events', label: 'Events', layer: 1 },
   { path: '/console/tenants', label: 'Organizations', layer: 1 },
   { path: '/console/accounts', label: 'Staff accounts', layer: 1 },
@@ -236,6 +238,8 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <RemindersScreen />;
       case '/console/devices':
         return <DevicesScreen />;
+      case '/console/reference-data':
+        return <RefdataScreen />;
       case '/console/reports':
         return <ReviewQueueScreen navigate={navigate} />;
       case '/console/assist':

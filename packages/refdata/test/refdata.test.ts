@@ -216,6 +216,51 @@ describe('file import (ADR-0039: every dataset can be imported)', () => {
     expect(importFields('tract').map((f) => f.name)).not.toContain('geometry');
   });
 
+  it('knows the kind of each field, nullable numbers and maps of numbers included', () => {
+    const kinds = (d: Parameters<typeof importFields>[0]) =>
+      Object.fromEntries(importFields(d).map((f) => [f.name, f.kind]));
+    expect(kinds('risk')).toEqual({
+      geoid: 'text',
+      nriRiskScore: 'number',
+      nriRiskRating: 'text',
+      sviOverall: 'number',
+      sviThemes: 'object',
+    });
+    expect(kinds('tract_profile')).toMatchObject({
+      population: 'number',
+      povertyPct: 'number',
+      languages: 'object',
+      moe: 'object',
+    });
+    expect(kinds('declaration')).toMatchObject({ programs: 'list', declaredOn: 'text' });
+    expect(kinds('flood_zone')).toMatchObject({
+      specialHazard: 'boolean',
+      baseFloodElevation: 'number',
+    });
+    // Every field said to take a number accepts one, and every text field a text.
+    for (const d of [
+      'tract',
+      'tract_profile',
+      'structure',
+      'flood_zone',
+      'facility',
+      'declaration',
+      'nfip_summary',
+      'risk',
+      'alert',
+      'power_outage',
+    ] as const)
+      for (const f of importFields(d))
+        if (f.kind === 'number' && !['latitude', 'longitude'].includes(f.name)) {
+          expect(
+            parseImport(d, 'csv', `${f.name}\n0.5\n`, { [f.name]: f.name }).errors.some(
+              (e) => e.field === f.name && /received string/.test(e.message),
+            ),
+            `${d}.${f.name}`,
+          ).toBe(false);
+        }
+  });
+
   it('maps GeoJSON properties and keeps the feature geometry', () => {
     const fc = {
       type: 'FeatureCollection',

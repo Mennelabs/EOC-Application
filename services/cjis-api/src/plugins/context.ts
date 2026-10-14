@@ -90,7 +90,11 @@ export const contextPlugin = fp<ContextOptions>(
       try {
         request.enclaveSubject = await opts.subjects.fromBearer(token);
       } catch (err) {
-        if (err instanceof AuthError) throw errors.unauthorized(err.code);
+        if (err instanceof AuthError) {
+          // The code only: never the token or its claims.
+          request.log.info({ authError: err.code }, 'enclave sign-in refused');
+          throw errors.unauthorized(err.code);
+        }
         throw err;
       }
     });

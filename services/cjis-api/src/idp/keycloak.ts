@@ -29,6 +29,8 @@ export const DEV_TEST_CLIENT = { clientId: 'cjis-tests', secret: 'cjis-tests-dev
 export const WEB_CLIENT_ID = 'cjis-web';
 export const ADMIN_CLIENT_ID = 'cjis-api-admin';
 export const API_AUDIENCE = 'cjis-api';
+/** The longest an enclave session lives (10 hours, one shift); idle sessions end after 30 minutes. */
+export const SESSION_MAX_LIFESPAN_SECONDS = 36_000;
 
 /** Sign-in event types copied into the enclave audit (AU-2). */
 export const AUDITED_EVENT_TYPES = [
@@ -153,15 +155,36 @@ export class EnclaveKeycloak {
     >('GET', `/${realm}/authentication/flows/${encodeURIComponent(flow)}/executions`);
   }
 
-  /** Authentication method reference on an execution, for the AMR claim (RFC 8176 values). */
-  private async reference(realm: string, executionId: string, value: string): Promise<void> {
+  /**
+   * Authentication method reference on an execution, for the AMR claim (RFC 8176 values).
+   * The reference stays valid for the whole session (its maximum lifespan): a max age of 0
+   * would drop the method from tokens issued even a second after the factor was checked
+   * (found in layer-5 testing), and the API would refuse them. Existing configs are updated.
+   */
+  private async reference(
+    realm: string,
+    execution: { id: string; authenticationConfig?: string },
+    value: string,
+  ): Promise<void> {
+    const config = {
+      'default.reference.value': value,
+      'default.reference.maxAge': String(SESSION_MAX_LIFESPAN_SECONDS),
+    };
+    if (execution.authenticationConfig) {
+      const current = await this.json<{ id: string; alias: string }>(
+        'GET',
+        `/${realm}/authentication/config/${execution.authenticationConfig}`,
+      );
+      await this.call('PUT', `/${realm}/authentication/config/${current.id}`, {
+        ...current,
+        config,
+      });
+      return;
+    }
     await this.call(
       'POST',
-      `/${realm}/authentication/executions/${executionId}/config`,
-      {
-        alias: `cjis-amr-${value}-${executionId.slice(0, 8)}`,
-        config: { 'default.reference.value': value, 'default.reference.maxAge': '0' },
-      },
+      `/${realm}/authentication/executions/${execution.id}/config`,
+      { alias: `cjis-amr-${value}-${execution.id.slice(0, 8)}`, config },
       [409],
     );
   }
@@ -205,9 +228,8 @@ export class EnclaveKeycloak {
       }
     }
     for (const e of await this.executions(realm, 'cjis-browser')) {
-      if (e.authenticationConfig) continue;
-      if (e.providerId === 'auth-username-password-form') await this.reference(realm, e.id, 'pwd');
-      if (e.providerId === 'webauthn-authenticator') await this.reference(realm, e.id, 'hwk');
+      if (e.providerId === 'auth-username-password-form') await this.reference(realm, e, 'pwd');
+      if (e.providerId === 'webauthn-authenticator') await this.reference(realm, e, 'hwk');
     }
     await this.call('PUT', `/${realm}`, { browserFlow: 'cjis-browser' });
   }
@@ -245,10 +267,8 @@ export class EnclaveKeycloak {
       }
     }
     for (const e of await this.executions(realm, 'cjis-direct')) {
-      if (e.authenticationConfig) continue;
-      if (e.providerId === 'direct-grant-validate-password')
-        await this.reference(realm, e.id, 'pwd');
-      if (e.providerId === 'direct-grant-validate-otp') await this.reference(realm, e.id, 'otp');
+      if (e.providerId === 'direct-grant-validate-password') await this.reference(realm, e, 'pwd');
+      if (e.providerId === 'direct-grant-validate-otp') await this.reference(realm, e, 'otp');
     }
     await this.call('PUT', `/${realm}`, { directGrantFlow: 'cjis-direct' });
   }
@@ -534,7 +554,7 @@ export function enclaveRealmSettings(spec: EnclaveRealmSpec) {
     minimumQuickLoginWaitSeconds: 60,
     accessTokenLifespan: 300,
     ssoSessionIdleTimeout: 1800,
-    ssoSessionMaxLifespan: 36_000,
+    ssoSessionMaxLifespan: SESSION_MAX_LIFESPAN_SECONDS,
     clientSessionIdleTimeout: 1800,
     offlineSessionIdleTimeout: 1800,
     passwordPolicy: 'length(15) and notUsername and notEmail and passwordHistory(10)',

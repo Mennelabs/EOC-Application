@@ -1,13 +1,20 @@
-/* CJIS enclave. WCAG 2.2 AA: 4.5:1 text, visible focus, 44 px targets, reflow at 320 px. */
+/* CJIS enclave. WCAG 2.2 AA: 4.5:1 text, visible focus, 44 px targets, reflow at 320 px.
+   A distinct header colour so nobody mistakes the enclave for the platform console. */
 :root {
   --ink: #1b1f23;
   --muted: #4a5560;
   --surface: #ffffff;
-  --panel: #f3f5f7;
+  --panel: #f3f4f8;
   --line: #d0d7de;
   --brand: #3b2f63;
   --brand-ink: #ffffff;
   --focus: #b34700;
+  --ok-bg: #e6f4ea;
+  --ok-ink: #1e4620;
+  --err-bg: #fdecea;
+  --err-ink: #7a1d14;
+  --warn-bg: #fff4e5;
+  --warn-ink: #663c00;
   font-family:
     system-ui,
     -apple-system,
@@ -24,11 +31,271 @@
 body {
   margin: 0;
 }
+.skip {
+  position: absolute;
+  inset-inline-start: -999px;
+}
+.skip:focus {
+  inset-inline-start: 1rem;
+  inset-block-start: 1rem;
+  background: var(--surface);
+  padding: 0.5rem;
+  z-index: 2;
+}
+.visually-hidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  background: var(--brand);
+  color: var(--brand-ink);
+  padding: 0.75rem 1rem;
+}
+.top p {
+  margin: 0;
+}
+.product {
+  font-weight: 700;
+}
+.top .light {
+  margin-inline-start: auto;
+  background: var(--brand);
+  color: var(--brand-ink);
+  border-color: var(--brand-ink);
+}
+nav {
+  background: var(--panel);
+}
+nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+}
+nav a {
+  display: block;
+  padding: 0.625rem 1rem;
+  color: var(--ink);
+  min-block-size: 44px;
+}
+nav a[aria-current='page'] {
+  font-weight: 700;
+  border-block-end: 4px solid var(--brand);
+}
 main {
-  padding: 1rem;
-  max-width: 60rem;
+  min-inline-size: 0;
+  padding: 1rem 1rem 3rem;
+  max-inline-size: 64rem;
+}
+main:focus {
+  outline: none;
+}
+.notice {
+  max-inline-size: 36rem;
+  margin-inline: auto;
+}
+h1 {
+  font-size: 1.5rem;
+  margin-block: 0.5rem 0.75rem;
+}
+h2 {
+  font-size: 1.2rem;
+  margin-block: 1.5rem 0.5rem;
+}
+h3 {
+  font-size: 1rem;
+  margin-block: 1rem 0.25rem;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  min-block-size: 44px;
+}
+input,
+select,
+textarea {
+  inline-size: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--muted);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
+}
+textarea {
+  min-block-size: 5rem;
+}
+button {
+  padding-inline: 1rem;
+  border: 1px solid var(--brand);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--brand);
+  cursor: pointer;
+}
+button.primary {
+  background: var(--brand);
+  color: var(--brand-ink);
+}
+button.link {
+  border: 0;
+  background: none;
+  color: var(--brand);
+  text-decoration: underline;
+  padding: 0.25rem;
+  min-block-size: 24px;
+}
+button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }
 :focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
+}
+fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.field {
+  margin-block: 0.75rem;
+}
+.field label {
+  display: block;
+  font-weight: 600;
+  margin-block-end: 0.25rem;
+}
+.hint {
+  margin: 0 0 0.25rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.error {
+  margin: 0.25rem 0 0;
+  color: var(--err-ink);
+  font-weight: 600;
+}
+.stack {
+  max-inline-size: 36rem;
+}
+.filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0 1rem;
+  align-items: end;
+}
+.filters button {
+  margin-block-end: 0.75rem;
+}
+.inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: end;
+}
+.status {
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+}
+.status.success {
+  background: var(--ok-bg);
+  color: var(--ok-ink);
+}
+.status.error {
+  background: var(--err-bg);
+  color: var(--err-ink);
+}
+.status.info {
+  background: var(--panel);
+}
+.table-wrap {
+  overflow-x: auto;
+}
+.table-wrap:focus-visible {
+  outline: 3px solid var(--brand);
+  outline-offset: 2px;
+}
+table {
+  border-collapse: collapse;
+  inline-size: 100%;
+}
+caption {
+  text-align: start;
+  font-weight: 600;
+  padding-block: 0.5rem;
+}
+th,
+td {
+  text-align: start;
+  padding: 0.5rem;
+  border-block-end: 1px solid var(--line);
+  vertical-align: top;
+}
+th {
+  background: var(--panel);
+}
+.empty {
+  color: var(--muted);
+}
+.meta {
+  color: var(--muted);
+}
+.panel {
+  background: var(--panel);
+  padding: 1rem;
+  border-radius: 6px;
+  margin-block: 1rem;
+}
+.handover {
+  border: 2px solid var(--warn-ink);
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+  padding: 1rem;
+  border-radius: 6px;
+}
+.secret {
+  font-family: ui-monospace, monospace;
+  font-size: 1.25rem;
+  overflow-wrap: anywhere;
+}
+.timeline,
+.narratives {
+  padding-inline-start: 1.25rem;
+}
+.timeline p,
+.narratives p {
+  margin-block: 0.25rem;
+}
+dialog.confirm {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1.25rem;
+  max-inline-size: 32rem;
+  inline-size: calc(100% - 2rem);
+}
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.4);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block: 0.75rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
 }

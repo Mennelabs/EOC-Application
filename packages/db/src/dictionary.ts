@@ -2091,6 +2091,20 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
 
   // Layer 6 task A (migration 0042): reference data from free federal sources or file
   // imports (ADR-0039). Public facts about places, never about residents.
+  location_geo: table(
+    {
+      location_id: { c: 'internal' },
+      tenant_id: { c: 'internal' },
+      tract_geoid: { c: 'internal', d: 'Census tract the location falls in (DCL:DEC-05)' },
+      tract_snapshot_id: { c: 'internal', d: 'Tract snapshot the assignment used (RULE-10)' },
+      jurisdiction_tenant_id: {
+        c: 'internal',
+        d: 'Most specific jurisdiction (city or county) containing the location',
+      },
+      assigned_at: { c: 'internal' },
+    },
+    { standard: false },
+  ),
   refdata_import: table({
     dataset: { c: 'internal' },
     execution_id: { c: 'internal', d: 'Client id of the upload request (FR-00.06)' },

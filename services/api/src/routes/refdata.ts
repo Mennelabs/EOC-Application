@@ -311,6 +311,267 @@ export const refdataRoutes =
       },
     );
 
+    const profileOut = z.object({
+      geoid: z.string(),
+      population: z.number().nullable(),
+      households: z.number().nullable(),
+      renterHouseholds: z.number().nullable(),
+      medianHouseholdIncome: z.number().nullable(),
+      povertyPct: z.number().nullable(),
+      snapHouseholdsPct: z.number().nullable(),
+      ssiHouseholdsPct: z.number().nullable(),
+      age65Pct: z.number().nullable(),
+      disabilityPct: z.number().nullable(),
+      limitedEnglishHouseholds: z.number().nullable(),
+      noVehicleHouseholds: z.number().nullable(),
+      languages: z.record(z.string(), z.number()),
+      moe: z.record(z.string(), z.number()),
+    });
+    type ProfileRow = z.infer<typeof profileOut>;
+    const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
+    const profileOf = (r: Record<string, unknown>): ProfileRow => ({
+      geoid: String(r['geoid']),
+      population: num(r['population']),
+      households: num(r['households']),
+      renterHouseholds: num(r['renter_households']),
+      medianHouseholdIncome: num(r['median_household_income']),
+      povertyPct: num(r['poverty_pct']),
+      snapHouseholdsPct: num(r['snap_households_pct']),
+      ssiHouseholdsPct: num(r['ssi_households_pct']),
+      age65Pct: num(r['age65_pct']),
+      disabilityPct: num(r['disability_pct']),
+      limitedEnglishHouseholds: num(r['limited_english_households']),
+      noVehicleHouseholds: num(r['no_vehicle_households']),
+      languages: (r['languages'] as Record<string, number>) ?? {},
+      moe: (r['moe'] as Record<string, number>) ?? {},
+    });
+    const citation = z
+      .object({
+        snapshotId: z.uuid(),
+        vintage: z.string().nullable(),
+        retrievedAt: z.iso.datetime(),
+      })
+      .nullable();
+
+    /** The tenant's current snapshot of a dataset, for citing (RULE-10). */
+    const currentSnapshot = (
+      trx: Parameters<Parameters<FastifyRequest['tx']>[0]>[0],
+      tenantId: string,
+      dataset: Dataset,
+    ) =>
+      trx
+        .selectFrom('cg.refdata_current as c')
+        .innerJoin('cg.refdata_snapshot as s', 's.id', 'c.snapshot_id')
+        .select(['s.id', 's.vintage', 's.retrieved_at'])
+        .where('c.tenant_id', '=', tenantId)
+        .where('c.dataset', '=', dataset)
+        .executeTakeFirst();
+    const cite = (s: { id: string; vintage: string | null; retrieved_at: Date } | undefined) =>
+      s ? { snapshotId: s.id, vintage: s.vintage, retrievedAt: iso(s.retrieved_at)! } : null;
+
+    // DCL:DEC-05/06, EQ-11: the tracts in use, each with its profile, for maps and lists.
+    app.get(
+      '/refdata/tracts',
+      {
+        schema: {
+          tags: ['refdata'],
+          response: {
+            200: z.object({
+              tracts: citation,
+              profiles: citation,
+              items: z.array(
+                z.object({
+                  geoid: z.string(),
+                  name: z.string().nullable(),
+                  landM2: z.number().nullable(),
+                  geometry: z.unknown(),
+                  profile: profileOut.nullable(),
+                }),
+              ),
+            }),
+          },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('refdata.read', target(s.tenantId));
+        return request.tx(async (trx) => {
+          const tracts = await currentSnapshot(trx, s.tenantId, 'tract');
+          const profiles = await currentSnapshot(trx, s.tenantId, 'tract_profile');
+          if (!tracts) return { tracts: null, profiles: cite(profiles), items: [] };
+          const rows = await sql<Record<string, unknown>>`
+            select t.geoid, t.name, t.land_m2,
+              ST_AsGeoJSON(ST_SimplifyPreserveTopology(t.geom, 0.00005), 6)::json as geometry,
+              p.geoid as p_geoid, p.population, p.households, p.renter_households,
+              p.median_household_income, p.poverty_pct, p.snap_households_pct, p.ssi_households_pct,
+              p.age65_pct, p.disability_pct, p.limited_english_households, p.no_vehicle_households,
+              p.languages, p.moe
+            from cg.ref_tract t
+            left join cg.ref_tract_profile p on p.geoid = t.geoid and p.snapshot_id = ${profiles?.id ?? null}
+            where t.snapshot_id = ${tracts.id}
+            order by t.geoid`.execute(trx);
+          return {
+            tracts: cite(tracts),
+            profiles: cite(profiles),
+            items: rows.rows.map((r) => ({
+              geoid: String(r['geoid']),
+              name: (r['name'] as string | null) ?? null,
+              landM2: num(r['land_m2']),
+              geometry: r['geometry'],
+              profile: r['p_geoid'] ? profileOf(r) : null,
+            })),
+          };
+        });
+      },
+    );
+
+    /**
+     * DCL:DEC-06, EQ-11: the population profile of an event's area: the tracts
+     * its footprint touches, or else the tracts where its reports are. Shares
+     * are weighted by population or households; a tract without an estimate
+     * is named, never counted as zero (RULE-02). Low income stays a tract
+     * figure, never a household's (NED-09).
+     */
+    app.get(
+      '/refdata/profile',
+      {
+        schema: {
+          tags: ['refdata'],
+          querystring: z.object({ event: z.uuid() }),
+          response: {
+            200: z.object({
+              eventId: z.uuid(),
+              basis: z.enum(['footprint', 'reports', 'none']),
+              tracts: citation,
+              profiles: citation,
+              items: z.array(profileOut),
+              missing: z.array(z.string()),
+              total: z.object({
+                tracts: z.number(),
+                population: z.number().nullable(),
+                households: z.number().nullable(),
+                renterHouseholds: z.number().nullable(),
+                povertyPct: z.number().nullable(),
+                snapHouseholdsPct: z.number().nullable(),
+                ssiHouseholdsPct: z.number().nullable(),
+                age65Pct: z.number().nullable(),
+                disabilityPct: z.number().nullable(),
+                limitedEnglishHouseholds: z.number().nullable(),
+                noVehicleHouseholds: z.number().nullable(),
+              }),
+            }),
+          },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        const eventId = request.query.event;
+        await request.authorize('refdata.read', target(s.tenantId));
+        await request.authorize('event.read', {
+          type: 'event',
+          tenantId: s.tenantId,
+          id: eventId,
+          eventId,
+        });
+        return request.tx(async (trx) => {
+          const event = await trx
+            .selectFrom('cg.event')
+            .select(['id', sql<boolean>`footprint is not null`.as('has_footprint')])
+            .where('id', '=', eventId)
+            .executeTakeFirst();
+          if (!event) throw errors.notFound();
+          const tracts = await currentSnapshot(trx, s.tenantId, 'tract');
+          const profiles = await currentSnapshot(trx, s.tenantId, 'tract_profile');
+          let basis: 'footprint' | 'reports' | 'none' = 'none';
+          let geoids: string[] = [];
+          if (tracts && event.has_footprint) {
+            basis = 'footprint';
+            geoids = (
+              await sql<{ geoid: string }>`
+                select t.geoid from cg.ref_tract t, cg.event e
+                where t.snapshot_id = ${tracts.id} and e.id = ${eventId}
+                  and st_intersects(t.geom, e.footprint)
+                order by t.geoid`.execute(trx)
+            ).rows.map((r) => r.geoid);
+          } else if (tracts) {
+            geoids = (
+              await sql<{ geoid: string }>`
+                select distinct g.tract_geoid as geoid from cg.report r
+                join cg.location_geo g on g.location_id = r.location_id
+                where r.event_id = ${eventId} and r.withdrawn_at is null
+                  and g.tract_snapshot_id = ${tracts.id} and g.tract_geoid is not null
+                order by 1`.execute(trx)
+            ).rows.map((r) => r.geoid);
+            if (geoids.length) basis = 'reports';
+          }
+          const rows =
+            profiles && geoids.length
+              ? (
+                  await sql<Record<string, unknown>>`
+                  select * from cg.ref_tract_profile
+                  where snapshot_id = ${profiles.id} and geoid = any(${geoids})
+                  order by geoid`.execute(trx)
+                ).rows.map(profileOf)
+              : [];
+          const found = new Set(rows.map((r) => r.geoid));
+          const sum = (pick: (r: ProfileRow) => number | null) =>
+            rows.length && rows.every((r) => pick(r) !== null)
+              ? rows.reduce((n, r) => n + (pick(r) ?? 0), 0)
+              : null;
+          /** A share across tracts, weighted by population or households; unknown if any part is. */
+          const weighted = (
+            pct: (r: ProfileRow) => number | null,
+            weight: (r: ProfileRow) => number | null,
+          ) => {
+            if (!rows.length || rows.some((r) => pct(r) === null || weight(r) === null))
+              return null;
+            const w = rows.reduce((n, r) => n + (weight(r) ?? 0), 0);
+            return w === 0
+              ? null
+              : Math.round(
+                  (rows.reduce((n, r) => n + (pct(r) ?? 0) * (weight(r) ?? 0), 0) / w) * 10,
+                ) / 10;
+          };
+          return {
+            eventId,
+            basis,
+            tracts: cite(tracts),
+            profiles: cite(profiles),
+            items: rows,
+            missing: geoids.filter((g) => !found.has(g)),
+            total: {
+              tracts: geoids.length,
+              population: sum((r) => r.population),
+              households: sum((r) => r.households),
+              renterHouseholds: sum((r) => r.renterHouseholds),
+              povertyPct: weighted(
+                (r) => r.povertyPct,
+                (r) => r.population,
+              ),
+              snapHouseholdsPct: weighted(
+                (r) => r.snapHouseholdsPct,
+                (r) => r.households,
+              ),
+              ssiHouseholdsPct: weighted(
+                (r) => r.ssiHouseholdsPct,
+                (r) => r.households,
+              ),
+              age65Pct: weighted(
+                (r) => r.age65Pct,
+                (r) => r.population,
+              ),
+              disabilityPct: weighted(
+                (r) => r.disabilityPct,
+                (r) => r.population,
+              ),
+              limitedEnglishHouseholds: sum((r) => r.limitedEnglishHouseholds),
+              noVehicleHouseholds: sum((r) => r.noVehicleHouseholds),
+            },
+          };
+        });
+      },
+    );
+
     app.post(
       '/refdata/pull',
       {

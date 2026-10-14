@@ -36,6 +36,7 @@ import {
 } from './jobs/reminders.ts';
 import { relayChangesOnce, type ChangeRelayState } from './jobs/changes.ts';
 import { dropPositionTrails, watchFieldSafety, watchReminders } from './jobs/field.ts';
+import { assignLocationGeography } from './jobs/geography.ts';
 import { pruneReferenceSnapshots, scheduleReferencePulls } from './jobs/refdata.ts';
 import { consume, consumeIntake, relayOnce } from './jobs/relay.ts';
 import type { JobContext, Schedule } from './jobs/types.ts';
@@ -172,6 +173,8 @@ const schedules: Schedule[] = [
   // ADR-0039, SCL-09: reference data refreshed per its source's period; old snapshots pruned (SEC-13).
   { name: 'refdata-refresh', everyMs: 15 * 60_000, run: scheduleReferencePulls },
   { name: 'refdata-prune', everyMs: 24 * 3600_000, run: pruneReferenceSnapshots },
+  // DCL:DEC-05, EQ-11: each located place's census tract and jurisdiction, kept current.
+  { name: 'location-geography', everyMs: 60_000, run: assignLocationGeography },
 ];
 
 const probes = [postgresProbe('db', pool), queueProbe('queue', queueNow)];

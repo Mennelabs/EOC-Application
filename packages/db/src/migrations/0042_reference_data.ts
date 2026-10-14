@@ -64,7 +64,7 @@ async function rowTable(db: Kysely<unknown>, name: string, columns: string): Pro
 }
 
 /** Tenant reads; inserts, updates and deletes only by the system (the worker). */
-async function systemWritten(db: Kysely<unknown>, name: string): Promise<void> {
+export async function systemWritten(db: Kysely<unknown>, name: string): Promise<void> {
   await sql.raw(`select cg.apply_tenant_rls('cg.${name}')`).execute(db);
   for (const p of ['tenant_insert', 'tenant_update', 'tenant_delete'])
     await sql.raw(`drop policy ${p} on cg.${name}`).execute(db);

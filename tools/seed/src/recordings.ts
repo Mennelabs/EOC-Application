@@ -20,16 +20,16 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ACS_VARIABLES, type Recording } from '@cg/refdata';
-import { areas, parcels } from './county.ts';
+import { areas, parcels, tenants } from './county.ts';
 import { Rng } from './random.ts';
 
 const STATE = '29';
 const COUNTY = '999';
 const FIPS = `${STATE}${COUNTY}`;
-const SOUTH = 38.76;
-const NORTH = 38.84;
-/** The fictional county outline: [west, south, east, north]. */
-export const COUNTY_BBOX: [number, number, number, number] = [-90.95, SOUTH, -90.75, NORTH];
+/** The fictional county outline: [west, south, east, north], the seed's own (county.ts). */
+export const COUNTY_BBOX = tenants.find((t) => t.key === 'county')!.outline!;
+const SOUTH = COUNTY_BBOX[1];
+const NORTH = COUNTY_BBOX[3];
 
 type Box = [number, number, number, number];
 const ring = ([w, s, e, n]: Box) => [

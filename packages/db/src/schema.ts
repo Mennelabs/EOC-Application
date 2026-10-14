@@ -2249,6 +2249,15 @@ export type ReferenceDataset =
   | 'alert'
   | 'power_outage';
 
+export interface LocationGeoTable {
+  location_id: Uuid;
+  tenant_id: Uuid;
+  tract_geoid: string | null;
+  tract_snapshot_id: Uuid | null;
+  jurisdiction_tenant_id: Uuid | null;
+  assigned_at: TsGen;
+}
+
 export interface RefdataImportTable extends Stamped {
   id: Generated<Uuid>;
   tenant_id: Uuid;
@@ -2544,6 +2553,7 @@ export interface Database {
   'cg.field_assessment': FieldAssessmentTable;
   'cg.change_feed': ChangeFeedTable;
   'cg.client_command': ClientCommandTable;
+  'cg.location_geo': LocationGeoTable;
   'cg.refdata_import': RefdataImportTable;
   'cg.refdata_snapshot': RefdataSnapshotTable;
   'cg.refdata_current': RefdataCurrentTable;

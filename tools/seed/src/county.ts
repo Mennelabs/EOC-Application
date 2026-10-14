@@ -32,6 +32,8 @@ export interface Tenant {
    * exercise county uses 29999, which no real county has (SCL-12).
    */
   fips?: string;
+  /** Jurisdiction outline [west, south, east, north] in WGS84 (fictional; DCL:DEC-05). */
+  outline?: [number, number, number, number];
 }
 
 export interface Area {
@@ -71,6 +73,7 @@ export const tenants: Tenant[] = [
     timezone: 'America/Chicago',
     locales: ['en', 'es'],
     fips: '29999',
+    outline: [-90.95, 38.76, -90.75, 38.84],
   },
   {
     key: 'city',
@@ -79,6 +82,7 @@ export const tenants: Tenant[] = [
     parent: 'county',
     timezone: 'America/Chicago',
     locales: ['en', 'es'],
+    outline: [-90.8, 38.8, -90.775, 38.82],
   },
   {
     key: 'coad',

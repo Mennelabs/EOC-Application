@@ -59,9 +59,13 @@ const STRUCTURE: Record<string, HomeType | 'non_residential'> = {
 export async function loadDamageRecords(
   trx: Transaction<Database>,
   eventId: string,
+  opts: { cutoff?: Date } = {},
 ): Promise<DamageRecord[]> {
+  // A report or assessment made after the cutoff is not in figures as of the cutoff.
+  const cutoff = opts.cutoff ?? null;
   const reports = await sql<{
     id: string;
+    version: number;
     review_state: DamageRecord['reviewState'];
     verification_level: DamageRecord['verification'];
     fema_degree: DamageRecord['degree'];
@@ -81,7 +85,7 @@ export async function loadDamageRecords(
     tract_geoid: string | null;
     submitted_at: Date;
   }>`
-    select r.id, r.review_state, r.verification_level, r.fema_degree, r.relationship,
+    select r.id, r.version, r.review_state, r.verification_level, r.fema_degree, r.relationship,
       r.is_primary_residence, r.pre_existing_damage, r.withdrawn_at is not null as withdrawn,
       r.duplicate_of, r.answers->'home_type' as home_type, r.answers->'units' as units,
       r.answers->'occupancy' as occupancy, r.answers->'insurance' as insurance,
@@ -90,10 +94,14 @@ export async function loadDamageRecords(
     from cg.report r
     left join cg.location l on l.id = r.location_id
     left join cg.location_geo g on g.location_id = r.location_id
-    where r.event_id = ${eventId}`.execute(trx);
+    where r.event_id = ${eventId}
+      and (${cutoff}::timestamptz is null or r.submitted_at <= ${cutoff}::timestamptz)`.execute(
+    trx,
+  );
 
   const assessments = await sql<{
     id: string;
+    version: number;
     review_state: 'new' | 'accepted' | 'rejected' | 'superseded';
     degree: DamageRecord['degree'] | 'cant_reach';
     structure: string;
@@ -106,12 +114,13 @@ export async function loadDamageRecords(
     tract_geoid: string | null;
     assessed_at: Date;
   }>`
-    select a.id, a.review_state, a.degree, a.structure, a.observations, a.parcel_id,
+    select a.id, a.version, a.review_state, a.degree, a.structure, a.observations, a.parcel_id,
       a.location_id, a.report_id, a.duplicate_of, l.address_key, g.tract_geoid, a.assessed_at
     from cg.field_assessment a
     left join cg.location l on l.id = a.location_id
     left join cg.location_geo g on g.location_id = a.location_id
-    where a.event_id = ${eventId}`.execute(trx);
+    where a.event_id = ${eventId}
+      and (${cutoff}::timestamptz is null or a.assessed_at <= ${cutoff}::timestamptz)`.execute(trx);
 
   const out: DamageRecord[] = reports.rows.map((r) => {
     const homeType = homeTypeFromAnswer(r.home_type);
@@ -119,6 +128,7 @@ export async function loadDamageRecords(
     return {
       kind: 'report',
       id: r.id,
+      version: r.version,
       reviewState: r.review_state,
       verification: r.verification_level,
       degree: r.fema_degree,
@@ -160,6 +170,7 @@ export async function loadDamageRecords(
     out.push({
       kind: 'assessment',
       id: a.id,
+      version: a.version,
       reviewState:
         a.review_state === 'accepted'
           ? 'approved'

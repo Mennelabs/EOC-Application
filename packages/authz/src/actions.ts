@@ -498,6 +498,29 @@ export const actions = {
     'pa_site',
     'Record public damage sites with category, cost and flags',
   ),
+
+  // Layer 6 official reports (F15, RULE-10, A7): drafted, reviewed and issued by different people.
+  'official_report.read': a(
+    'read',
+    'official_report',
+    'See official reports, their sections and issued snapshots, and what changed since the last one',
+  ),
+  'official_report.draft': a(
+    'write',
+    'official_report',
+    'Draft situation reports and briefings, edit their judgments and narrative, refresh their facts, draft amendments',
+  ),
+  'official_report.review': a(
+    'write',
+    'official_report',
+    'Approve, or return with a note, a report someone else drafted',
+  ),
+  'official_report.issue': a(
+    'admin',
+    'official_report',
+    'Issue a reviewed report someone else drafted; it is frozen and corrected only by amendment',
+    { consequential: true, explicit: true },
+  ),
 } as const satisfies Record<string, ActionMeta>;
 
 export type ActionKey = keyof typeof actions;
@@ -527,4 +550,7 @@ export const SELF_REVIEW_ACTIONS: readonly string[] = [
   'report.set_degree',
   'assessment.approve',
   'finding.approve',
+  // Official reports: the author neither reviews nor issues (A7); the database refuses it too.
+  'official_report.review',
+  'official_report.issue',
 ];

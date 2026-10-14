@@ -42,6 +42,7 @@ function expected(specs: DamageSpec[], ids: string[]): DamageRecord[] {
     return {
       kind: 'report',
       id: ids[i]!,
+      version: 1,
       reviewState: s.review,
       verification: s.verification,
       degree: s.verification === 'self_reported' && s.review !== 'approved' ? null : s.degree,

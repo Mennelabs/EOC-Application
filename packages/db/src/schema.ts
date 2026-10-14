@@ -2327,6 +2327,77 @@ export interface PaSiteTable extends Stamped {
   status: Generated<'active' | 'withdrawn'>;
 }
 
+export type OfficialReportKind =
+  'sitrep' | 'briefing' | 'ida_package' | 'pda_package' | 'declaration_data' | 'media_sheet';
+export type OfficialReportState = 'draft' | 'reviewed' | 'issued' | 'superseded' | 'withdrawn';
+
+export interface OfficialReportTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  client_uuid: Uuid;
+  kind: OfficialReportKind;
+  sequence: number;
+  title: string;
+  period_from: ColumnType<Date, Date | string, Date | string>;
+  period_to: ColumnType<Date, Date | string, Date | string>;
+  time_zone: string;
+  cutoff: ColumnType<Date, Date | string, Date | string>;
+  state: Generated<OfficialReportState>;
+  classification: Generated<'internal' | 'public'>;
+  author_id: Uuid;
+  reviewer_id: Uuid | null;
+  reviewed_at: TsNullable;
+  reviewed_version: number | null;
+  review_note: string | null;
+  issuer_id: Uuid | null;
+  issued_at: TsNullable;
+  amends: Uuid | null;
+  facts_at: ColumnType<Date, Date | string, Date | string>;
+  definitions: JsonGen<unknown[]>;
+}
+
+export interface OfficialReportSectionTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  report_id: Uuid;
+  key: string;
+  position: number;
+  kind: 'fact' | 'judgment' | 'narrative';
+  title: string;
+  content: JsonGen<Record<string, unknown>>;
+  sources: JsonGen<Record<string, unknown>>;
+  drafted: Generated<boolean>;
+  edited_by: Uuid | null;
+  edited_at: TsNullable;
+}
+
+export interface OfficialReportSnapshotTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  report_id: Uuid;
+  content: JsonValue;
+  record_versions: JsonValue;
+  reference_snapshots: JsonValue;
+  content_hash: string;
+  issued_by: Uuid;
+  issued_at: ColumnType<Date, Date | string, Date | string>;
+  reason: string;
+  created_at: TsGen;
+}
+
+export interface OfficialReportLockTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  snapshot_id: Uuid;
+  object_key: string;
+  version_id: string | null;
+  lock_mode: 'GOVERNANCE' | 'COMPLIANCE';
+  retain_until: ColumnType<Date, Date | string, Date | string>;
+  content_hash: string;
+  written_at: TsGen;
+}
+
 export interface LocationGeoTable {
   location_id: Uuid;
   tenant_id: Uuid;
@@ -2636,6 +2707,10 @@ export interface Database {
   'cg.outage': OutageTable;
   'cg.casualty_count': CasualtyCountTable;
   'cg.pa_site': PaSiteTable;
+  'cg.official_report': OfficialReportTable;
+  'cg.official_report_section': OfficialReportSectionTable;
+  'cg.official_report_snapshot': OfficialReportSnapshotTable;
+  'cg.official_report_lock': OfficialReportLockTable;
   'cg.refdata_import': RefdataImportTable;
   'cg.refdata_snapshot': RefdataSnapshotTable;
   'cg.refdata_current': RefdataCurrentTable;

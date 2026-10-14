@@ -43,6 +43,7 @@ import * as m0041 from './0041_cji_link.ts';
 import * as m0042 from './0042_reference_data.ts';
 import * as m0043 from './0043_location_geography.ts';
 import * as m0044 from './0044_declaration_data.ts';
+import * as m0045 from './0045_official_reports.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -90,4 +91,5 @@ export const migrations: Record<string, Migration> = {
   '0042_reference_data': m0042,
   '0043_location_geography': m0043,
   '0044_declaration_data': m0044,
+  '0045_official_reports': m0045,
 };

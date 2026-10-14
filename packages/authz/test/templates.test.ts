@@ -33,18 +33,29 @@ describe('shipped role templates (ADM-04)', () => {
     const admin = roleTemplates.find((t) => t.key === 'tenant_admin')!;
     const p = previewRole(admin.grants, admin.key);
     // Live positions are for dispatch and safety roles only, the CJIS enclave link for the
-    // liaison, and official casualty counts for roles that name them: no wildcard reaches
-    // them (DSP-08, SEC-12, DCL:DEC-08).
+    // liaison, official casualty counts and issuing official reports for roles that name
+    // them: no wildcard reaches them (DSP-08, SEC-12, DCL:DEC-08, RULE-10).
     expect(p.deniedActions.sort()).toEqual([
       'casualty.record',
       'mission.cji.link',
       'mission.cji.open',
+      'official_report.issue',
       'position.read',
     ]);
     expect(p.visibleCategories).not.toContain('health');
     expect(p.hiddenCategories.map((h) => h.category)).toEqual(
       expect.arrayContaining(['health', 'counseling', 'legal', 'cji']),
     );
+  });
+
+  it('RULE-10, A7: only the EM director issues official reports; reporting staff draft them', () => {
+    const holders = (action: string) =>
+      roleTemplates.filter((t) => t.grants.some((g) => g.action === action)).map((t) => t.key);
+    expect(holders('official_report.issue')).toEqual(['county_em_director']);
+    expect(holders('official_report.draft').sort()).toEqual([
+      'county_em_director',
+      'reporting_planning',
+    ]);
   });
 
   it('SEC-12: only the law-enforcement liaison links missions to the CJIS enclave', () => {

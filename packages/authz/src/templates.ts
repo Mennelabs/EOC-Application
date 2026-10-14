@@ -143,6 +143,10 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('outage.write'),
       g('casualty.record'),
       g('pa_site.write'),
+      g('official_report.read'),
+      g('official_report.draft'),
+      g('official_report.review'),
+      g('official_report.issue'),
       g('break_glass.start'),
       g('break_glass.end'),
       g('break_glass.read'),
@@ -337,6 +341,7 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('tenant.read'),
       g('event.read'),
       g('definition.read'),
+      g('official_report.read'),
     ],
   },
   {
@@ -430,6 +435,8 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('definition.read'),
       g('refdata.read'),
       g('declaration.read'),
+      g('official_report.read'),
+      g('official_report.draft'),
     ],
   },
   {

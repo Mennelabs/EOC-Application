@@ -5,6 +5,7 @@ import { auditRoutes } from './audit.ts';
 import { breakGlassRoutes } from './breakglass.ts';
 import { contactRoutes } from './contacts.ts';
 import { declarationRoutes } from './declaration.ts';
+import { officialReportRoutes } from './official-reports.ts';
 import { definitionRoutes } from './definitions.ts';
 import { dispatchRoutes, type DispatchDeps } from './dispatch.ts';
 import { eventRoutes } from './events.ts';
@@ -74,6 +75,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   referralRoutes,
   refdataRoutes(deps.refdata),
   declarationRoutes,
+  officialReportRoutes,
 ];
 
 /** The default set, as the tests mount it. */

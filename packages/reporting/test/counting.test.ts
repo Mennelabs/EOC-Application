@@ -18,6 +18,7 @@ function rec(over: Partial<DamageRecord> = {}): DamageRecord {
   return {
     kind: 'report',
     id: `r${String(n).padStart(4, '0')}`,
+    version: 1,
     reviewState: 'approved',
     verification: 'desktop_verified',
     degree: 'major',

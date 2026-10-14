@@ -23,6 +23,13 @@ export interface ObjectStore {
   get(key: string): Promise<{ body: Buffer; contentType: string | null }>;
   put(key: string, body: Buffer | string, contentType: string): Promise<void>;
   putAnchor(key: string, body: string): Promise<void>;
+  /** Writes to the records bucket under object lock until `retainUntil` (ADR-0010, RULE-10). */
+  putLocked(
+    key: string,
+    body: string,
+    contentType: string,
+    retainUntil: Date,
+  ): Promise<{ versionId: string | null; mode: 'GOVERNANCE' | 'COMPLIANCE' }>;
 }
 
 export interface JobContext {

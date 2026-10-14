@@ -116,6 +116,9 @@ describe.skipIf(!workerUrl)('reference data jobs (database-backed)', () => {
           files.set(key, Buffer.from(body));
         },
         async putAnchor() {},
+        async putLocked() {
+          return { versionId: null, mode: 'GOVERNANCE' as const };
+        },
       },
       devDirectGrant: false,
       ai: { providerFor: async () => fakeProvider },

@@ -38,6 +38,8 @@ export type Verification =
 export interface DamageRecord {
   kind: 'report' | 'assessment';
   id: string;
+  /** Record version read, so an issued figure can cite exactly what it used (RULE-10). */
+  version: number;
   /** Report review state; for an assessment: accepted → approved, new → under_review. */
   reviewState:
     | 'submitted'

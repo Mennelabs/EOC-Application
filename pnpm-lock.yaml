@@ -524,6 +524,9 @@ importers:
       '@cg/refdata':
         specifier: workspace:*
         version: link:../../packages/refdata
+      '@cg/reporting':
+        specifier: workspace:*
+        version: link:../../packages/reporting
       amqplib:
         specifier: 2.0.1
         version: 2.0.1

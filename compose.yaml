@@ -20,6 +20,9 @@ x-node-env: &node-env
   S3_ACCESS_KEY_ID: cg-local
   S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?}
   S3_BUCKET: cg-local
+  # Issued official reports and audit anchors, under object lock (ADR-0010, RULE-10).
+  S3_RECORDS_BUCKET: cg-local-records
+  S3_LOCK_MODE: COMPLIANCE
   # Browsers upload photos straight to object storage through the gateway's objects host (SCL-04).
   S3_PUBLIC_ENDPOINT: https://objects.${GATEWAY_HOST:-localhost}
   KEYS_PROVIDER: openbao

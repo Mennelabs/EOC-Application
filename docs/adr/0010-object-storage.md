@@ -23,3 +23,10 @@ S3 in GovCloud (and S3-compatible stores elsewhere) need only endpoint and crede
 ## Consequences
 
 MinIO stopped publishing community container images in 2025. We build MinIO from its pinned source release in `infra/minio/Dockerfile`, so it can be scanned and patched like our own images. That is a local stand-in only; production uses the cloud's S3.
+
+## Object lock, as built (layer 6, 2026-10-14)
+
+- A second bucket, `S3_RECORDS_BUCKET` (`<S3_BUCKET>-records` by default), holds what must never change: issued official reports and audit anchors. The worker creates it with object lock on and refuses to write records to a bucket that lacks it (object lock cannot be added to an existing bucket).
+- Each object is written with `ObjectLockMode` from `S3_LOCK_MODE` (COMPLIANCE by default: nobody can shorten or lift the lock, not even the storage account's root) and a retain-until date: an issued report's issue time plus the tenant's `records` retention (SEC-13, 7 years by default); an audit anchor seven years.
+- The database snapshot is the primary frozen copy (append-only, refused to every role by trigger); the locked object is the second. The API never waits on storage to issue a report: the worker writes the copy from the outbox, checks the snapshot still hashes to what was issued first, and records the object key, version and lock in `official_report_lock`.
+- Checked against the local MinIO build: a locked write keeps its retention, deleting that version is refused, and a bucket made without object lock is refused. In AWS GovCloud the same calls apply unchanged.

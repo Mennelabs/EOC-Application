@@ -10,7 +10,15 @@
 import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { migrations } from '../../packages/db/src/migrations/index.ts';
-import { CJIS_URL } from '../support/cjis.ts';
+import {
+  CJIS,
+  CJIS_OTP_SECRET,
+  CJIS_URL,
+  claims,
+  enclaveGrant,
+  enclaveToken,
+  totp,
+} from '../support/cjis.ts';
 
 const BASE = process.env['STACK_URL'] ?? 'https://localhost';
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0'; // Caddy local CA in development only.
@@ -168,6 +176,28 @@ describe('CJIS enclave gateway and identity (SEC-12, ADR-0036)', () => {
     expect(res.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
     expect(res.headers.get('content-security-policy')).toContain("connect-src 'self'");
     expect(res.headers.get('strict-transport-security')).toContain('max-age=');
+  });
+
+  it('refuses a password without the second factor', async () => {
+    const t = await enclaveGrant(CJIS.records);
+    expect(t.access_token).toBeUndefined();
+    expect(t.error).toBe('invalid_grant');
+  });
+
+  it('a token names the second factor and the enclave API as its audience', async () => {
+    const c = claims(await enclaveToken(CJIS.officer));
+    expect(c['iss']).toBe(`${CJIS_URL}/auth/realms/cjis`);
+    expect(c['amr']).toEqual(expect.arrayContaining(['pwd', 'otp']));
+    expect([c['aud']].flat()).toContain('cjis-api');
+  });
+
+  it('five wrong passwords lock the account (AC-7)', async () => {
+    for (let i = 0; i < 5; i++) {
+      await enclaveGrant(CJIS.lockoutDrill, { password: 'not-the-password-0000', totp: '000000' });
+    }
+    // Locked: even the right password and code are refused for ten minutes.
+    const t = await enclaveGrant(CJIS.lockoutDrill, { totp: totp(CJIS_OTP_SECRET) });
+    expect(t.access_token).toBeUndefined();
   });
 });
 

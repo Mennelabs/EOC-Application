@@ -34,8 +34,8 @@ Plan: [`layer-5.md`](layer-5.md). One task per commit; each ends green, pushed, 
 | Task | What                                                                                                        | State | Commits | Notes |
 | ---- | ----------------------------------------------------------------------------------------------------------- | ----- | ------- | ----- |
 | P    | Plan `docs/plans/layer-5.md`                                                                                | done  | 3335213 |       |
-| A    | Enclave containers and identity (`cjis-idp`, `cjis-provision`, `cjis-web`, `cjis-gateway`, secrets, guard)  | done  | this commit |       |
-| B    | Enclave database `packages/cjis-db` (migrations, dictionary, RLS, audit chain, retention, synthetic agency) | todo  |         |       |
+| A    | Enclave containers and identity (`cjis-idp`, `cjis-provision`, `cjis-web`, `cjis-gateway`, secrets, guard)  | done  | d0b21df |       |
+| B    | Enclave database `packages/cjis-db` (migrations, dictionary, RLS, audit chain, retention, synthetic agency) | done  | this commit |       |
 | C    | Enclave API (auth, qualification, policy, audit, encryption, routes, jobs)                                  | todo  |         |       |
 | D    | Platform side (migration 0041, actions, template, mission routes, seed liaison, dictionary guard)           | todo  |         |       |
 | E    | Enclave web app `apps/web-cjis`                                                                             | todo  |         |       |
@@ -50,6 +50,13 @@ Plan: [`layer-5.md`](layer-5.md). One task per commit; each ends green, pushed, 
 - Second factor settled by experiment on Keycloak 26.0.7 (ADR-0036 to record): the AMR mapper with a method reference on each authenticator puts `amr: ["pwd","otp"]` (direct grant) or `["pwd","hwk"]` (browser, passkey) in the token, and it survives a refresh; a password-only direct grant is refused. The API will accept `amr` values from `CJIS_SECOND_FACTORS` (production `hwk`; the development stack adds `otp` for its test client).
 - Unit: `services/cjis-api/test/config.test.ts` (production mode refused without the authorized environment and the audit date, SCL-12), `realm.test.ts` (lockout 5 in 15 minutes for 10 minutes, 30-minute idle, 15-character passwords with history, no self-registration or email reset, events).
 - Sandbox notes (not repository changes): Docker Hub rate limits and a blocked Alpine CDN here, so images were pulled through a registry mirror and built with the proxy CA as the Dockerfiles' `extra_ca` secret; MinIO was built from the same pinned source without the `apk` step; RabbitMQ's cookie in a fresh volume needed its owner fixed. CI builds as before.
+
+## Verified by (task B)
+
+- `packages/cjis-db` migrations 0002–0004: agency keys, people with screening status and dates, permission requests and role grants (the database refuses a decision by the requester), the identity outbox and sign-in cursor; records keyed by `cji_ref`, people involved in law-enforcement roles, weapons, body-camera references, the append-only timeline and idempotency keys (every identifying or free-text value encrypted, `*_enc`); the enclave's own hash-chained audit with its sequence drawn after the chain lock, weekly reviews, retention policies with floors, legal holds and the deletion log.
+- Migration drill on a throwaway enclave database (`scripts/cjis-test-db.sh`): all four migrations down and up, no undocumented or stale dictionary column, row security forced on every agency table.
+- `packages/cjis-db/test/enclave.db.test.ts` (15 cases): an agency sees only its own people, records, agency and audit rows; no context sees nothing; no writes into another agency; agencies by the system only; opaque references only; no self-decided permission request; the timeline is append-only; records leave only through the system role with their entries; retention floors; the sign-in cursor and dictionary closed to requests; 40 concurrent audit writers verify; no role updates or deletes audit rows (the schema owner changes nothing under forced row security); a tampered row is found.
+- Exercise agencies and accounts (`services/cjis-api/src/provision/exercise.ts`): two agencies, twelve accounts with one role each, two deliberately not qualified (training lapsed, fingerprint check pending) and one used only for the lockout drill; identities with the development password and one-time code. Stack suite (28 cases) passes with the second-factor and lockout cases.
 
 ## Known issues and deferred items
 

@@ -25,6 +25,7 @@ The product name is configuration (`PRODUCT_NAME`, ADM-03). "Common Ground" is t
 | `packages/config`, `packages/adapters`, `packages/db`  | Typed config, dependency adapters, database client and migrations                                                                                 |
 | `packages/refdata`                                     | Reference data from free federal sources and file imports, with recorded synthetic responses (layer 6, ADR-0039)                                  |
 | `packages/reporting`                                   | The counting rule every official figure uses (one home, one count; what is shown apart), read for the console's Declaration data screen (layer 6) |
+| `packages/pdf`                                         | Accessible PDFs (PDF/UA-1) from a small document model; a sample of every kind for veraPDF (ADR-0040)                                             |
 | `tools/seed`                                           | Synthetic county generator (Exercise WESTWIND)                                                                                                    |
 | `tools/reqindex`                                       | Requirements index generator                                                                                                                      |
 | `infra/`                                               | Dockerfiles, gateway and web Caddyfiles, database and key-service init                                                                            |
@@ -197,6 +198,7 @@ pnpm test:integration  # against the running stack (STACK_URL, COMPOSE_FILES to 
 pnpm test:e2e          # Playwright + axe: resident flow, kiosk, console onboarding, review, needs board, sites, dispatch and missions journeys, the field app's web build, the public help page, the CJIS enclave and the console's enclave link (npx playwright install chromium first)
 tests/load/run.sh submissions smoke   # k6 load profiles (SCL-03) through the pinned k6 container; also sms-sessions, help and field (positions and the live stream); `full` is the target profile, see tests/load/README.md
 pnpm --filter @cg/web-help build && pnpm --filter @cg/web-help check:size   # PUB-07: the public page's first load against its 300 KB budget
+pnpm --filter @cg/pdf samples out/pdf && scripts/verapdf.sh out/pdf   # ADR-0040: one PDF of every kind, each checked against PDF/UA-1 by veraPDF (Docker)
 scripts/backup.sh && scripts/restore.sh backups/<stamp>   # NFR-05; drills in tests/drills/
 DATABASE_MIGRATOR_URL=... pnpm --filter @cg/db check:migrations 3   # newest migrations up, down, up; dictionary and RLS checks (SEC-05/11)
 pnpm --filter @cg/intake lint:strings   # INT-08: reading-grade table and tone findings for the question graph

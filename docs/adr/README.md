@@ -43,4 +43,5 @@ One record per technology choice (SCL-15). Use `0000-template.md` for new ones. 
 | [0037](0037-enclave-data-keys-audit-retention.md) | Enclave data, per-agency keys, its own audit chain, retention and worker                           |
 | [0038](0038-enclave-app-on-its-own-origin.md)     | The enclave's screens are its own web app on its own address; the console only links               |
 | [0039](0039-reference-data-sources.md)            | Reference data from free public services, with file import for every dataset                       |
+| [0040](0040-pdf-engine.md)                        | PDFs drawn by PDFKit as PDF/UA-1 with Noto Sans embedded, checked by veraPDF in CI                 |
 | [0041](0041-reference-import-formats.md)          | Reference files read with what Node ships: CSV, GeoJSON, GeoPackage, zipped Shapefile; WGS 84 only |

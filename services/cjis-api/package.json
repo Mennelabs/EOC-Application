@@ -11,7 +11,12 @@
     "@cg/adapters": "workspace:*",
     "@cg/cjis-db": "workspace:*",
     "@cg/config": "workspace:*",
+    "@cg/crypto": "workspace:*",
     "fastify": "5.12.5",
-    "kysely": "0.29.6"
+    "fastify-plugin": "6.0.0",
+    "fastify-type-provider-zod": "7.0.0",
+    "jose": "6.2.12",
+    "kysely": "0.29.6",
+    "zod": "4.6.5"
   }
 }

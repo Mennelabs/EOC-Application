@@ -69,6 +69,23 @@ services:
     healthcheck: *cjis-node-health
     networks: [cjis]
 
+  # System jobs as cjis_job with the identity provider's admin client; the API holds neither.
+  cjis-worker:
+    image: common-ground/cjis-api:local
+    restart: unless-stopped
+    environment:
+      <<: *cjis-node-env
+      ENTRY: worker.ts
+      CJIS_DATABASE_URL: postgres://cjis_job:${CJIS_JOB_PASSWORD:?}@cjis-db:5432/cjis
+      CJIS_IDP_ADMIN_CLIENT_SECRET: ${CJIS_IDP_ADMIN_CLIENT_SECRET:?}
+    volumes:
+      - cjis_keys_init:/bao-init:ro
+    depends_on:
+      cjis-provision: { condition: service_completed_successfully }
+      cjis-keys-init: { condition: service_completed_successfully }
+    healthcheck: *cjis-node-health
+    networks: [cjis]
+
   cjis-migrate:
     build: { context: ., dockerfile: infra/node/Dockerfile, args: { APP: packages/cjis-db } }
     image: common-ground/cjis-migrate:local

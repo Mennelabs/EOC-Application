@@ -26,6 +26,21 @@ export interface AgencyContext {
   personId?: string | null;
 }
 
+/** Reads the one account a verified token names, before its agency is known (migration 0005). */
+export async function personBySubject(
+  db: Kysely<CjisDatabase>,
+  subject: string,
+): Promise<{ id: string; agency_id: string } | undefined> {
+  return db.transaction().execute(async (trx) => {
+    await sql`select set_config('app.subject', ${subject}, true)`.execute(trx);
+    return trx
+      .selectFrom('cjis.person')
+      .select(['id', 'agency_id'])
+      .where('idp_subject', '=', subject)
+      .executeTakeFirst();
+  });
+}
+
 export async function withAgency<T>(
   db: Kysely<CjisDatabase>,
   ctx: AgencyContext,

@@ -1018,6 +1018,26 @@ export const roleTemplates: readonly RoleTemplate[] = [
     'Medical assist on missions; people involved with injury and transport; never 911 dispatch (FL:FR-02, DSP-13).',
     ['mission.person.read', 'mission.person.edit', 'interpreter.request'],
   ),
+  {
+    // Layer 5 (SEC-12, ADR-0038): links a mission to the CJIS enclave and opens it there.
+    // The platform role carries no criminal-justice data; the enclave decides, on its own
+    // accounts and screening, who may read or write the CJI.
+    key: 'law_enforcement_liaison',
+    name: 'Law-enforcement liaison',
+    description:
+      'Sheriff or police liaison at the EOC: links a mission with law-enforcement involvement to the CJIS enclave and opens it there. Sees missions; holds no criminal-justice data on the platform.',
+    source: 'platform',
+    grants: [
+      g('me.read'),
+      g('tenant.read'),
+      g('event.read'),
+      g('mission.read', ['location_exact']),
+      g('assignment.read'),
+      g('hazard.read'),
+      g('mission.cji.link'),
+      g('mission.cji.open'),
+    ],
+  },
 ];
 
 export const templateByKey: ReadonlyMap<string, RoleTemplate> = new Map(

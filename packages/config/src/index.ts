@@ -63,6 +63,11 @@ export const platformSchema = baseSchema.extend({
    */
   PUBLIC_IP_VERIFY_PER_10MIN: z.coerce.number().int().positive().default(20),
   PUBLIC_IP_DENY_PER_10MIN: z.coerce.number().int().positive().default(120),
+  /**
+   * Where browsers reach the CJIS enclave (SEC-12, ADR-0038). The platform
+   * only links there; it never calls the enclave. Absent: no link is shown.
+   */
+  CJIS_PUBLIC_URL: z.preprocess((v) => (v === '' ? undefined : v), url.optional()),
 });
 
 /** Worker: platform settings plus identity-provider administration and mail. */
@@ -79,16 +84,106 @@ export const workerSchema = platformSchema.extend({
     .transform((v) => v === 'true'),
 });
 
-/** CJIS enclave API (SEC-12): its own database and keys, nothing shared. */
-export const cjisSchema = baseSchema.extend({
+/**
+ * SCL-12: the enclave may hold real criminal-justice data only once it runs in
+ * an authorized government environment and has passed the state CJIS audit.
+ * In production mode both facts must be declared by the deployment.
+ */
+function requireAuthorizedEnvironment(
+  v: {
+    DATA_CLASSIFICATION_MODE: 'synthetic' | 'production';
+    CJIS_AUTHORIZED_ENVIRONMENT?: string | undefined;
+    CJIS_STATE_AUDIT_PASSED_ON?: string | undefined;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  if (v.DATA_CLASSIFICATION_MODE !== 'production') return;
+  if (!v.CJIS_AUTHORIZED_ENVIRONMENT)
+    ctx.addIssue({
+      code: 'custom',
+      path: ['CJIS_AUTHORIZED_ENVIRONMENT'],
+      message: 'production mode needs the authorized environment declared (SCL-12)',
+    });
+  if (!v.CJIS_STATE_AUDIT_PASSED_ON)
+    ctx.addIssue({
+      code: 'custom',
+      path: ['CJIS_STATE_AUDIT_PASSED_ON'],
+      message: 'production mode needs the state CJIS audit date (SCL-12)',
+    });
+}
+
+const cjisCommon = baseSchema.extend({
+  /** The enclave's own database (never the platform's). */
   CJIS_DATABASE_URL: url,
   CJIS_OPENBAO_ADDR: url,
+  CJIS_OPENBAO_TOKEN_FILE: z.string().min(1).default('/bao-init/app-token'),
+  /** The enclave's own Keycloak as the enclave reaches it, e.g. http://cjis-idp:8080/auth */
+  CJIS_IDP_INTERNAL_BASE: url,
+  /** As browsers see it; token issuers start with this, e.g. https://localhost:8443/auth */
+  CJIS_IDP_PUBLIC_BASE: url,
+  CJIS_IDP_REALM: z.string().min(1).default('cjis'),
+  /** Tokens must name this audience (ADR-0036). */
+  CJIS_API_AUDIENCE: z.string().min(1).default('cjis-api'),
+  /**
+   * Authentication methods (`amr`) that count as the second factor (SEC-12,
+   * SEC-07). Production: the passkey only. A development stack adds `otp` for
+   * its test client's direct grant.
+   */
+  CJIS_SECOND_FACTORS: z
+    .string()
+    .default('hwk')
+    .transform((v) =>
+      v
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
+  CJIS_AUTHORIZED_ENVIRONMENT: optionalString,
+  /** ISO date the state CJIS audit was passed (SCL-12). */
+  CJIS_STATE_AUDIT_PASSED_ON: optionalString,
+  /** System use notification shown before sign-in (AC-8); a default text applies when absent. */
+  CJIS_SYSTEM_USE_NOTICE: optionalString,
 });
+
+/** CJIS enclave API (SEC-12): its own database, keys and identity, nothing shared. */
+export const cjisSchema = cjisCommon.superRefine(requireAuthorizedEnvironment);
+
+/** The enclave worker: system jobs as `cjis_job`, and the identity provider's admin client. */
+export const cjisWorkerSchema = cjisCommon
+  .extend({
+    CJIS_IDP_ADMIN_CLIENT_SECRET: z.string().min(16),
+  })
+  .superRefine(requireAuthorizedEnvironment);
+
+/** The one-shot provisioning of the enclave realm (and the exercise agency on synthetic stacks). */
+export const cjisProvisionSchema = baseSchema
+  .extend({
+    CJIS_DATABASE_URL: url,
+    CJIS_OPENBAO_ADDR: url,
+    CJIS_OPENBAO_TOKEN_FILE: z.string().min(1).default('/bao-init/app-token'),
+    CJIS_IDP_INTERNAL_BASE: url,
+    CJIS_IDP_REALM: z.string().min(1).default('cjis'),
+    CJIS_KC_ADMIN_USER: z.string().min(1),
+    CJIS_KC_ADMIN_PASSWORD: z.string().min(8),
+    CJIS_IDP_ADMIN_CLIENT_SECRET: z.string().min(16),
+    /** Where browsers reach the enclave gateway, e.g. https://localhost:8443 */
+    CJIS_PUBLIC_URL: url,
+    /** Synthetic stacks only: the exercise agency, its accounts and a test client. */
+    CJIS_DEV_ACCOUNTS: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
+    CJIS_AUTHORIZED_ENVIRONMENT: optionalString,
+    CJIS_STATE_AUDIT_PASSED_ON: optionalString,
+  })
+  .superRefine(requireAuthorizedEnvironment);
 
 export type BaseConfig = z.infer<typeof baseSchema>;
 export type PlatformConfig = z.infer<typeof platformSchema>;
 export type WorkerConfig = z.infer<typeof workerSchema>;
 export type CjisConfig = z.infer<typeof cjisSchema>;
+export type CjisWorkerConfig = z.infer<typeof cjisWorkerSchema>;
+export type CjisProvisionConfig = z.infer<typeof cjisProvisionSchema>;
 
 export class ConfigError extends Error {
   override readonly name = 'ConfigError';

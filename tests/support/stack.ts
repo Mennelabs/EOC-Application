@@ -19,6 +19,8 @@ export const CAST_ACCOUNTS: ReadonlyArray<readonly [realm: string, user: string]
   ['county', 'tomas.pio@example.org'],
   ['county', 'luis.masscare@example.org'],
   ['county', 'keisha.afn@example.org'],
+  // Layer 5: links missions to the CJIS enclave (SEC-12).
+  ['county', 'liaison@example.org'],
   ['state', 'state.liaison@example.org'],
   // Partner organizations (layer 3): their realms are provisioned the same way.
   ['canteen', 'ruth.canteen@example.org'],

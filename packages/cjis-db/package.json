@@ -1,0 +1,21 @@
+{
+  "name": "@cg/cjis-db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "migrate": "node src/migrate.ts",
+    "check:migrations": "node src/migrate-check.ts"
+  },
+  "dependencies": {
+    "kysely": "0.29.6",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1"
+  }
+}

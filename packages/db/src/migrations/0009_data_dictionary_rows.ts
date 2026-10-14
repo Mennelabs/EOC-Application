@@ -5,16 +5,17 @@
  * re-run this load (see 0010+ pattern: call cg.reload_data_dictionary()).
  */
 import { sql, type Kysely } from 'kysely';
-import { dictionary } from '../dictionary.ts';
+import { dictionary, retiredColumns } from '../dictionary.ts';
 
 /**
  * Loads the dictionary for the tables that exist at this point of the
  * migration chain: a fresh database runs 0009 before the layer-2 tables
  * exist, so entries for later tables wait for the migration that creates
  * them and reloads; the same goes for columns added to existing tables. One
- * check holds at every call: no existing column is undocumented. The drill
- * (migrate-check.ts) refuses entries that the final schema does not have
- * (a typo or a dropped column).
+ * check holds at every call: no existing column is undocumented. Columns a
+ * later migration drops are described in `retiredColumns` for the steps in
+ * between. The drill (migrate-check.ts) refuses entries that the final schema
+ * does not have (a typo or a dropped column).
  */
 export async function loadDictionary(db: Kysely<unknown>): Promise<void> {
   const existing = await sql<{ table_name: string; column_name: string }>`
@@ -24,14 +25,16 @@ export async function loadDictionary(db: Kysely<unknown>): Promise<void> {
       on t.table_schema = c.table_schema and t.table_name = c.table_name
     where c.table_schema = 'cg' and t.table_type = 'BASE TABLE'`.execute(db);
   const columns = new Set(existing.rows.map((r) => `${r.table_name}.${r.column_name}`));
-  const rows = Object.entries(dictionary).flatMap(([table, cols]) =>
-    Object.entries(cols).map(([column, e]) => ({
-      table,
-      column,
-      classification: e.c,
-      retention: e.r ?? 'records',
-      description: e.d ?? null,
-    })),
+  const rows = [dictionary, retiredColumns].flatMap((source) =>
+    Object.entries(source).flatMap(([table, cols]) =>
+      Object.entries(cols).map(([column, e]) => ({
+        table,
+        column,
+        classification: e.c,
+        retention: e.r ?? 'records',
+        description: e.d ?? null,
+      })),
+    ),
   );
   await sql`delete from cg.data_dictionary`.execute(db);
   for (const r of rows) {

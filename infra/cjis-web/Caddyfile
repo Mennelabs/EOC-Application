@@ -1,0 +1,19 @@
+# Static CJIS enclave web app (ADR-0038). No runtime configuration: the app
+# reaches its API and identity provider on its own origin.
+{
+	admin off
+}
+
+:8080 {
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	handle {
+		root * /srv/cjis
+		try_files {path} /index.html
+		header /assets/* Cache-Control "public, max-age=31536000, immutable"
+		header /index.html Cache-Control "no-store"
+		file_server
+	}
+}

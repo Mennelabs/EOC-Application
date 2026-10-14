@@ -129,6 +129,8 @@ const app = await buildApp({
   }),
   routes: routesWith({
     dispatch: { getQueue: () => queue },
+    // SEC-12, ADR-0038: the console links to the enclave; the platform never calls it.
+    missions: config.CJIS_PUBLIC_URL ? { cjisPublicUrl: config.CJIS_PUBLIC_URL } : {},
     fieldVoice: { ai, defaultGraph: westwindGraph },
     fieldSync: {
       objects: {

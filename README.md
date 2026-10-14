@@ -4,7 +4,7 @@ A disaster community-response platform for county and city emergency management,
 
 The product name is configuration (`PRODUCT_NAME`, ADM-03). "Common Ground" is the current working name.
 
-**Status:** layers 1 (platform foundations), 2 (resident intake, review, verification) and 3 (needs board, partner sharing with consent, public "Find help") built, tested and approved (2026-10-12 and 2026-10-13); layer 4 (missions, dispatch board, field app) built and in review. See `docs/plans/layer-4-report.md`, `docs/traceability.md` and the newest `docs/plans/layer-N-status.md`. Build order follows SCL-14, one layer at a time; `CLAUDE.md` has the rules for resuming work.
+**Status:** layers 1 (platform foundations), 2 (resident intake, review, verification) and 3 (needs board, partner sharing with consent, public "Find help") built, tested and approved (2026-10-12 and 2026-10-13); layer 4 (missions, dispatch board, field app) merged; layer 5 (the CJIS enclave) built and in review. See `docs/plans/layer-5-report.md`, `docs/traceability.md` and the newest `docs/plans/layer-N-status.md`. Build order follows SCL-14, one layer at a time; `CLAUDE.md` has the rules for resuming work.
 
 ## Where things live
 
@@ -20,7 +20,8 @@ The product name is configuration (`PRODUCT_NAME`, ADM-03). "Common Ground" is t
 | `apps/web-resident`, `apps/web-console`                | Resident PWA and staff console (React + Vite)                                                                       |
 | `apps/web-help`                                        | Public "Find help" page (plain TypeScript, under 50 KB first load, optional MapLibre map)                           |
 | `apps/field`                                           | React Native field app (layer 4)                                                                                    |
-| `services/api`, `services/worker`, `services/cjis-api` | Fastify API, queue worker, CJIS enclave API                                                                         |
+| `services/api`, `services/worker`, `services/cjis-api` | Fastify API, queue worker, CJIS enclave API and worker                                                              |
+| `apps/web-cjis`, `packages/cjis-db`                    | The CJIS enclave's own web app and its database package (layer 5)                                                   |
 | `packages/config`, `packages/adapters`, `packages/db`  | Typed config, dependency adapters, database client and migrations                                                   |
 | `tools/seed`                                           | Synthetic county generator (Exercise WESTWIND)                                                                      |
 | `tools/reqindex`                                       | Requirements index generator                                                                                        |
@@ -41,16 +42,17 @@ The first `up` builds seven images and pulls six more; 10–20 minutes on a lapt
 
 Then open:
 
-| URL                        | What                                                                                                                                                         |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| https://localhost/         | Resident app (English/Spanish). Accept Caddy's local certificate once, or trust it: `docker compose cp gateway:/data/caddy/pki/authorities/local/root.crt .` |
-| https://localhost/console/ | Staff console shell                                                                                                                                          |
-| https://localhost/field/   | Field app, web build (the phone app's screens for the browser tests): organization code `westwind`, a PIN, then event code `WESTWIND`                        |
-| https://localhost/api/meta | API metadata; `/api/health/ready` lists dependency health                                                                                                    |
-| https://localhost/auth/    | Keycloak (admin `cg-admin`, password in `.env`)                                                                                                              |
-| http://localhost:8025      | Mailpit: every email the system sends                                                                                                                        |
-| http://localhost:15672     | RabbitMQ management (`cg`, password in `.env`)                                                                                                               |
-| http://localhost:9001      | MinIO console (`cg-local`, password in `.env`)                                                                                                               |
+| URL                        | What                                                                                                                                                                          |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| https://localhost/         | Resident app (English/Spanish). Accept Caddy's local certificate once, or trust it: `docker compose cp gateway:/data/caddy/pki/authorities/local/root.crt .`                  |
+| https://localhost/console/ | Staff console shell                                                                                                                                                           |
+| https://localhost/field/   | Field app, web build (the phone app's screens for the browser tests): organization code `westwind`, a PIN, then event code `WESTWIND`                                         |
+| https://localhost/api/meta | API metadata; `/api/health/ready` lists dependency health                                                                                                                     |
+| https://localhost/auth/    | Keycloak (admin `cg-admin`, password in `.env`)                                                                                                                               |
+| http://localhost:8025      | Mailpit: every email the system sends                                                                                                                                         |
+| http://localhost:15672     | RabbitMQ management (`cg`, password in `.env`)                                                                                                                                |
+| http://localhost:9001      | MinIO console (`cg-local`, password in `.env`)                                                                                                                                |
+| https://localhost:8443/    | The CJIS enclave's own app, sign-in and API (its own Caddy local CA; trust it with `docker compose cp cjis-gateway:/data/caddy/pki/authorities/local/root.crt cjis-root.crt`) |
 
 ### Report damage as a resident
 
@@ -105,7 +107,14 @@ Sign in as `luis.masscare@example.org` (`county`) for the **Needs board**: open,
 
 `casey.dispatch@example.org` (`county`, field coordinator) runs the **Dispatch board** (live teams, the queue, keyboard or drag assignment with suggested teams, alerts that take over the screen until acknowledged), **Missions** (phone and walk-in requests, detail, people involved, narratives, closure), **Board replay**, the **Situation map** (layers checked per role, rounded points unless the role sees exact locations), **Roster and check-in**, **Messages to the field**, **Badges**, **Reminders** and **Field devices**. `luis.masscare@example.org` has **Shelters** (choose a partner as operator, the census, sending it to the county); shelter workers register households with wristband codes there, and the volunteer reception role uses **Volunteer reception** (a walk-up registered, checked in and badged in one step). Neither role has a seeded account; invite one from Administration. Field accounts: `rowan.field@example.org` (team lead of the Field Exercise Team, FX-1), `pat.netcontrol@example.org` (net control) and `dispatch.cleanup@example.org` (realm `cleanup`, agency dispatcher for the chainsaw crews). The field app's web build is at https://localhost/field/: sign in as the field lead, set a PIN, check in with `WESTWIND`.
 
-The CJIS enclave (`cjis-*` services) starts on its own internal network. It has no published ports on purpose: `docker compose exec cjis-api wget -qO- http://127.0.0.1:8080/health/ready`.
+### The CJIS enclave (layer 5)
+
+The `cjis-*` services run on their own internal network `cg_cjis` with their own database, keys and Keycloak (ADR-0021). Only `cjis-gateway` is reachable, at https://localhost:8443 on the loopback address (`CJIS_HTTPS_PORT`, `CJIS_BIND_ADDRESS` in `.env`); the enclave database, keys and identity administration publish nothing. The platform holds only an opaque reference per mission and the console only links to the enclave (ADR-0038). It holds **no real criminal-justice information** until it runs in an authorized government cloud and has passed the state CJIS audit (SCL-12).
+
+- In the console, `liaison@example.org` (`county`, law-enforcement liaison) sees the "Law enforcement (CJIS)" panel on a mission: the exercise mission "Law-enforcement support at the Commercial Row distribution point" is already linked; **Link to the CJIS enclave** links another one with a reason; **Open in the CJIS enclave** opens the enclave's own address in a new tab. Everyone else who can read the mission sees "Restricted: CJIS".
+- The enclave asks for its own sign-in: password, then a passkey (ADR-0036). The exercise accounts (synthetic stacks only) are in `services/cjis-api/src/provision/exercise.ts`, all with the password `Westwind-Exercise-2026!`: at the Westwind County Sheriff's Office (exercise) `deputy.reyes`, `sgt.hollis`, `records.lane`, `tac.admin`, `laso` and `auditor` `@sheriff.example.org` (plus `deputy.lapsed` and `deputy.pending`, deliberately not qualified, and `lockout.drill`); at the city police department `officer.vance`, `admin` and `laso` `@police.example.org`. They have no passkey yet: the first browser sign-in registers one (Chrome's or the operating system's passkey manager, or a security key), and the enclave then asks for one more sign-in with it. The test client `cjis-tests` signs in with password and a time-based code instead; `tests/support/cjis.ts` shows how.
+- A new enclave account is created by an agency administrator (**Accounts**: screening dates, then a role request), approved by a second administrator (**Approvals**), and activated with a one-time password shown once to hand over in person.
+- `docker compose down -v` resets the enclave with everything else; the exercise agencies, accounts and record come back on the next `up`.
 
 Maps (SCL-13) are opt-in because the first build downloads the Missouri OpenStreetMap extract: set `COMPOSE_PROFILES=maps` in `.env` for the geocoder and run `docker compose --profile maps-build run --rm tiles-build` once for vector tiles.
 
@@ -180,8 +189,8 @@ pnpm lint              # eslint + prettier
 pnpm typecheck
 pnpm check:product-name   # ADM-03: product name never hardcoded
 pnpm test              # unit tests (vitest)
-pnpm test:integration  # against the running stack (STACK_URL, COMPOSE_FILES to override): layer 1 to 4 acceptance cases
-pnpm test:e2e          # Playwright + axe: resident flow, kiosk, console onboarding, review, needs board, sites, dispatch and missions journeys, the field app's web build, the public help page (npx playwright install chromium first)
+pnpm test:integration  # against the running stack (STACK_URL, COMPOSE_FILES to override): layer 1 to 5 acceptance cases
+pnpm test:e2e          # Playwright + axe: resident flow, kiosk, console onboarding, review, needs board, sites, dispatch and missions journeys, the field app's web build, the public help page, the CJIS enclave and the console's enclave link (npx playwright install chromium first)
 tests/load/run.sh submissions smoke   # k6 load profiles (SCL-03) through the pinned k6 container; also sms-sessions, help and field (positions and the live stream); `full` is the target profile, see tests/load/README.md
 pnpm --filter @cg/web-help build && pnpm --filter @cg/web-help check:size   # PUB-07: the public page's first load against its 300 KB budget
 scripts/backup.sh && scripts/restore.sh backups/<stamp>   # NFR-05; drills in tests/drills/
@@ -190,9 +199,11 @@ pnpm --filter @cg/intake lint:strings   # INT-08: reading-grade table and tone f
 pnpm --filter @cg/ai evaluate           # AIG-08: evaluation report for the AI provider (default: fake)
 pnpm --filter @cg/db check:migrations 1 # drill the newest migration up, down and up against the compose database (needs DATABASE_MIGRATOR_URL)
 pnpm reqindex          # regenerate docs/requirements-index.md after editing docs/0*
+eval "$(scripts/cjis-test-db.sh)" && pnpm vitest run --project unit packages/cjis-db/test services/cjis-api/test   # the enclave's database-backed suites on a throwaway enclave database (127.0.0.1:5433); scripts/cjis-test-db.sh --stop removes it
+CJIS_DATABASE_MIGRATOR_URL=$CJIS_DB_TEST_MIGRATOR_URL pnpm --filter @cg/cjis-db check:migrations 5   # the enclave migration drill
 ```
 
-CI (`.github/workflows/ci.yml`) runs all of these plus Semgrep, Trivy dependency/secret/container scans and an SBOM. Image scans fail the build on fixed HIGH/CRITICAL findings in our layers and the Alpine packages; findings inside the upstream Caddy binary are reported without failing, because every Caddy release lags its Go libraries, and are cleared by bumping the pinned Caddy image (`compose.yaml`, `infra/web/Dockerfile`).
+CI (`.github/workflows/ci.yml`) runs all of these plus Semgrep, Trivy dependency/secret/container scans (the enclave's `cjis-api` and `cjis-web` images included) and SBOMs. Image scans fail the build on fixed HIGH/CRITICAL findings in our layers and the Alpine packages; findings inside the upstream Caddy binary are reported without failing, because every Caddy release lags its Go libraries, and are cleared by bumping the pinned Caddy image (`compose.yaml`, `infra/web/Dockerfile`).
 
 ## Development loop without Docker rebuilds
 

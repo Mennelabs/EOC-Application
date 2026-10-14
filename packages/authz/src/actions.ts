@@ -311,6 +311,20 @@ export const actions = {
     consequential: true,
   }),
   'mission.lock': a('write', 'mission', 'Lock or unlock a mission against edits'),
+  // Layer 5 (SEC-12, ADR-0038): the platform holds only an opaque pointer to the CJIS enclave.
+  // Both are explicit: no wildcard grant ('*', 'mission.*') ever carries them.
+  'mission.cji.link': a(
+    'write',
+    'mission',
+    'Link a mission to the CJIS enclave (law-enforcement involvement)',
+    { consequential: true, explicit: true },
+  ),
+  'mission.cji.open': a(
+    'read',
+    'mission',
+    'See the enclave reference and open the mission in the CJIS enclave',
+    { explicit: true },
+  ),
   'mission.cancel': a('write', 'mission', 'Cancel a mission with a reason', {
     consequential: true,
   }),

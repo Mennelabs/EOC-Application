@@ -1,0 +1,52 @@
+# The CJIS enclave's only entry point (SEC-12, ADR-0021, ADR-0038). Its own
+# TLS (its own local CA on a laptop), its own origin, strict headers. In the
+# government cloud the enclave's own ingress with mutual TLS replaces it.
+{
+	local_certs
+	admin off
+	auto_https disable_redirects
+}
+
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(), geolocation=(), microphone=(), payment=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		Cross-Origin-Resource-Policy "same-origin"
+		-Server
+	}
+}
+
+# Internal health endpoint for the container health check (not published).
+:8088 {
+	respond /healthz "ok" 200
+}
+
+{$CJIS_HOST:localhost} {
+	import security_headers
+	encode zstd gzip
+
+	handle /api/* {
+		header Cache-Control "no-store"
+		reverse_proxy cjis-api:8080
+	}
+
+	# The identity provider's administration and master realm stay inside the
+	# enclave network; browsers reach only the enclave realm's sign-in.
+	handle /auth/admin* {
+		respond 404
+	}
+	handle /auth/realms/master* {
+		respond 404
+	}
+	handle /auth/* {
+		reverse_proxy cjis-idp:8080
+	}
+
+	handle {
+		header Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		reverse_proxy cjis-web:8080
+	}
+}

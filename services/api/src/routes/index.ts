@@ -15,7 +15,7 @@ import { fieldVoiceRoutes, type FieldVoiceDeps } from './field-voice.ts';
 import { intakeGraphRoutes } from './intake-graphs.ts';
 import { meRoutes } from './me.ts';
 import { messageRoutes } from './messages.ts';
-import { missionRoutes } from './missions.ts';
+import { missionRoutesWith, type MissionDeps } from './missions.ts';
 import { needRoutes } from './needs.ts';
 import { personnelRoutes } from './personnel.ts';
 import { referralRoutes } from './referrals.ts';
@@ -35,6 +35,7 @@ export interface RouteDeps {
   fieldSync?: FieldSyncDeps;
   fieldVoice?: FieldVoiceDeps;
   fieldRecords?: FieldRecordDeps;
+  missions?: MissionDeps;
 }
 
 /** Route plugins mounted under /api/v1. Each layer adds its modules here. */
@@ -54,7 +55,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   sharedRoutes,
   needRoutes,
   siteRoutes,
-  missionRoutes,
+  missionRoutesWith(deps.missions),
   rosterRoutes,
   volunteerRoutes,
   fieldOpsRoutes,

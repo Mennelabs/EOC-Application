@@ -50,6 +50,8 @@ interface Mission {
   lock: { by: string; at: string; reason: string | null } | null;
   disposition: string | null;
   dispatchBlockers: string[];
+  /** SEC-12: law-enforcement details are held in the CJIS enclave; the console only links there. */
+  cjis?: { restricted: true; ref?: string; url?: string; linkedAt?: string } | null;
   createdAt: string;
   closedAt: string | null;
   assignments?: Assignment[];
@@ -202,6 +204,11 @@ export function MissionsScreen({ navigate }: { navigate: (to: string) => void })
             { key: 'state', header: 'State', render: (m) => label(m.state) },
             { key: 'pri', header: 'Priority', render: (m) => `${m.priority}, ${label(m.urgency)}` },
             { key: 'sum', header: 'Summary', render: (m) => m.summary ?? '—' },
+            {
+              key: 'cjis',
+              header: 'Law enforcement',
+              render: (m) => (m.cjis ? 'Restricted: CJIS' : '—'),
+            },
             { key: 'at', header: 'Created', render: (m) => fmt(m.createdAt) },
           ]}
         />
@@ -383,6 +390,81 @@ function NewMission({
   );
 }
 
+/**
+ * SEC-12, ADR-0038: the console holds no criminal-justice information. A mission with
+ * law-enforcement involvement shows "Restricted: CJIS"; a liaison (mission.cji.open) gets
+ * a link that opens the record in the CJIS enclave, on its own address with its own
+ * sign-in; mission.cji.link links a mission after a confirmation with a reason.
+ */
+function CjisPanel({
+  mission,
+  closed,
+  onChanged,
+}: {
+  mission: Mission;
+  closed: boolean;
+  onChanged: (notice: string | null, error: string | null) => void;
+}) {
+  const [canLink, setCanLink] = useState(false);
+  useEffect(() => {
+    let live = true;
+    api<{ actions: string[] }>('/me')
+      .then((me) => live && setCanLink(me.actions.includes('mission.cji.link')))
+      .catch(() => live && setCanLink(false));
+    return () => {
+      live = false;
+    };
+  }, []);
+  const c = mission.cjis;
+  if (!c && !(canLink && !closed)) return null;
+  return (
+    <section aria-labelledby="cjis-h" className="panel">
+      <h2 id="cjis-h">Law enforcement (CJIS)</h2>
+      {c?.ref ? (
+        <>
+          <p>
+            Law-enforcement details for this mission are held in the CJIS enclave, outside this
+            console. Only screened enclave users can see them, after signing in to the enclave.
+          </p>
+          {c.url ? (
+            <p>
+              <a href={c.url} target="_blank" rel="noopener noreferrer">
+                Open in the CJIS enclave (new tab)
+              </a>
+            </p>
+          ) : (
+            <p>The enclave address is not configured on this platform.</p>
+          )}
+        </>
+      ) : c ? (
+        <p>
+          <strong>Restricted: CJIS.</strong> Law-enforcement details for this mission are held in
+          the CJIS enclave.
+        </p>
+      ) : (
+        <>
+          <p>No law-enforcement involvement is linked to this mission.</p>
+          <button
+            type="button"
+            onClick={() => {
+              api(`/missions/${mission.id}/cji-link`, { method: 'POST' })
+                .then(() =>
+                  onChanged(
+                    'Linked to the CJIS enclave. Record the law-enforcement details there.',
+                    null,
+                  ),
+                )
+                .catch((e: unknown) => onChanged(null, describeFailure(e)));
+            }}
+          >
+            Link to the CJIS enclave
+          </button>
+        </>
+      )}
+    </section>
+  );
+}
+
 export function MissionDetailScreen({ id }: { id: string }) {
   const [m, setM] = useState<Mission | null>(null);
   const [people, setPeople] = useState<
@@ -478,6 +560,15 @@ export function MissionDetailScreen({ id }: { id: string }) {
             : 'Not locked'}
         </dd>
       </dl>
+      <CjisPanel
+        mission={m}
+        closed={closed}
+        onChanged={(n, e) => {
+          setNotice(n);
+          setError(e);
+          reload();
+        }}
+      />
       {m.dispatchBlockers.length ? (
         <Status kind="info">
           Before it can be dispatched: {m.dispatchBlockers.map(label).join('; ')}.

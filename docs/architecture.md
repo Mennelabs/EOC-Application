@@ -39,22 +39,24 @@ flowchart LR
     TILES[(tiles - PMTiles files)]
   end
 
-  subgraph cjis[network: cg_cjis - separate compose project]
-    CGW[cjis-gateway]
+  subgraph cjis[network: cg_cjis - internal, compose.cjis.yaml]
+    CGW[cjis-gateway - Caddy TLS :8443]
+    CWEB[cjis-web - enclave app]
     CAPI[cjis-api]
+    CWRK[cjis-worker]
     CDB[(cjis-db)]
-    CKEYS[cjis-keys]
-    CIDP[cjis-idp]
+    CKEYS[cjis-keys - OpenBao]
+    CIDP[cjis-idp - Keycloak realm cjis]
   end
 
   R & S & F & T --> GW
   GW --> WEB & API & IDP & TILES
   API --> DB & Q & OBJ & KEYS & IDP & GEO & MAIL
   WRK --> DB & Q & OBJ & KEYS & MAIL
-  S -. separate login + token .-> CGW
-  CGW --> CAPI --> CDB
-  CAPI --> CKEYS
-  CGW --> CIDP
+  S -. link opens a new tab, separate sign-in .-> CGW
+  CGW --> CWEB & CAPI & CIDP
+  CAPI --> CDB & CKEYS
+  CWRK --> CDB & CKEYS & CIDP
 ```
 
 ### 2.1 Main platform (`compose.yaml`)
@@ -74,19 +76,23 @@ flowchart LR
 | `geocoder`           | `mediagis/nominatim` (profile `maps`)               | Self-hosted address search and reverse geocoding (SCL-13). First start imports the region extract.                                                                                                                                  | `/status`                                                               |
 | `tiles-build`        | one-shot (profile `maps-build`)                     | Builds the region's vector tiles (PMTiles) from the OSM extract with Planetiler. Writes into the `tiles` volume served by the gateway.                                                                                              | exits 0                                                                 |
 
-The CJIS set sits in its own compose file (`compose.cjis.yaml`), started together with the main one through `COMPOSE_PROFILES` in `.env`, but on its own network, volumes and secrets.
+The CJIS set sits in its own compose file (`compose.cjis.yaml`), included by `compose.yaml` so one `docker compose up` starts both, but on its own internal network, volumes and secrets (ADR-0021).
 
-### 2.2 CJIS enclave (`compose.cjis.yaml`, built in layer 5, skeleton from day one)
+### 2.2 CJIS enclave (`compose.cjis.yaml`, built in layer 5; ADR-0021, ADR-0036–0038)
 
-| Service        | Purpose                                                                                                                                     |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cjis-gateway` | The enclave's only entry point. It accepts only tokens from `cjis-idp`, and in the cloud only mutual TLS.                                   |
-| `cjis-api`     | Law-enforcement mission fields, suspect roles, weapons, arrest dispositions, bodycam references (SEC-12, PPL-01), with its own audit trail. |
-| `cjis-db`      | Its own PostgreSQL instance and volume. Not reachable from `cg_platform`.                                                                   |
-| `cjis-keys`    | Its own OpenBao. Keys never shared with the platform.                                                                                       |
-| `cjis-idp`     | Its own Keycloak with its own MFA policy and personnel-screening attributes (CJIS Security Policy 5.6, 5.12). Added in layer 5.             |
+| Service                        | Purpose                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cjis-gateway`                 | The enclave's only entry point, `https://localhost:8443` on the loopback address (its own local CA). Routes `/api` → `cjis-api`, `/auth` → `cjis-idp` (administration and master realm refused), everything else → `cjis-web`. On `cg_cjis` and the small edge network `cg_cjis_edge` that publishes its port. In the cloud, the enclave's own ingress with mutual TLS. |
+| `cjis-web`                     | The enclave's own React app (`apps/web-cjis`): system use notification, sign-in, records, accounts and screening, approvals, audit review, retention (ADR-0038).                                                                                                                                                                                                        |
+| `cjis-api`                     | Records for linked missions: people in law-enforcement roles, weapons, body-camera references, narratives, disposition and review (SEC-12, PPL-01); accounts, screening and roles; audit and retention. Database role `cjis_app`.                                                                                                                                       |
+| `cjis-worker`                  | Same image as `cjis-api`, role `cjis_job`: the identity outbox, sign-in events into the audit, the retention sweep, 90-day inactivity suspension (ADR-0037).                                                                                                                                                                                                            |
+| `cjis-migrate`                 | One-shot migrations of `packages/cjis-db`.                                                                                                                                                                                                                                                                                                                              |
+| `cjis-provision`               | One-shot: realm `cjis` (flows, CJIS values, clients), per-agency keys, and on synthetic stacks only the exercise agencies, accounts and record (ADR-0036).                                                                                                                                                                                                              |
+| `cjis-db`                      | Its own PostgreSQL instance and volume (databases `cjis` and `cjis_idp`). Not reachable from the platform network; no published port.                                                                                                                                                                                                                                   |
+| `cjis-keys` + `cjis-keys-init` | Its own OpenBao transit engine; one key per agency. Keys never shared with the platform.                                                                                                                                                                                                                                                                                |
+| `cjis-idp`                     | Its own Keycloak, realm `cjis`: password then passkey, the second factor proven in `amr`, lockout, idle limit and password policy per the CJIS values (ADR-0036).                                                                                                                                                                                                       |
 
-**How the two halves meet.** The platform stores only an opaque `cji_ref` (a random ID) on a mission. A CJIS-qualified user who opens that mission in the console signs in to the enclave separately. The browser then fetches the CJI fields directly from `cjis-gateway` with the enclave's token, so CJI never passes through the platform's API, logs, queue or AI providers. A user without an enclave session sees "Restricted: CJIS" and nothing else (ADM-05 guardrail). The enclave holds **no real CJI** until it runs in an authorized government cloud and has passed the state CJIS audit (SCL-12).
+**How the two halves meet.** The platform stores only an opaque `cji_ref` (random 256 bits) on a mission, set by a law-enforcement liaison. Holders of `mission.cji.open` see a link that opens the enclave's own address in a new tab, where they sign in separately; the enclave's app talks only to the enclave. CJI never passes through the platform's API, logs, queue or AI providers, and the two systems never call each other. Everyone else who can read the mission sees "Restricted: CJIS" and nothing else; phones, partners and the public see nothing (ADM-05 guardrail). The enclave holds **no real CJI** until it runs in an authorized government cloud and has passed the state CJIS audit (SCL-12); in production it refuses to start without that configuration.
 
 ### 2.3 Not containers
 
@@ -222,6 +228,27 @@ reminder(id, owner, due_at, state, linked_type, linked_id)                      
 badge(id, personnel_id, state, code_hash, valid_to, revoked_at)                          -- F13
 ```
 
+### 4.7a CJIS enclave (layer 5, `packages/cjis-db`, schema `cjis`, its own dictionary; ADR-0037)
+
+```
+agency(id, name, agency_identifier, platform_county, status, exercise)   -- the enclave's tenant; RLS forced per agency
+agency_key(agency_id, version, wrapped, kek_name)           -- data key wrapped by the agency's transit key
+person(id, agency_id, idp_subject, email, status, fingerprint_status, fingerprint_adjudicated_on,
+       training_completed_on, training_expires_on, identity_state, last_seen_at, version)
+                                                             -- screening as status and dates only
+permission_request(id, person_id, role, change, requested_by, decided_by <> requested_by, status)
+role_grant(person_id, role, status, request_id, granted_by, revoked_at)
+record(id, agency_id, cji_ref, platform_mission_reference, platform_county, origin, classification,
+       offense_codes, case_number_enc, summary_enc, state, disposition, disposition_by, reviewed_by, version)
+record_person(role, name_enc, birth_date_enc, identifiers_enc, ...) -- PPL-01, BRD:FR-07.02
+record_weapon(kind, description_enc, serial_enc, disposition)       -- BRD:FR-04.01
+record_bodycam(camera_label, evidence_reference_enc, ...)            -- references only (BRD:FR-07.04)
+record_event(record_id, at, kind, body_enc, by, amends)              -- append-only timeline (BRD:FR-07.01/07.03)
+audit_event(seq, prev_hash, hash, ...), audit_review                 -- own chain, immutable (SEC-18)
+retention_policy(agency_id, category, keep_days >= floor), legal_hold, deletion_log   -- SEC-13
+identity_outbox, idp_event_cursor, idempotency_key(response_body_enc)
+```
+
 ### 4.8 Official outputs (layer 6)
 
 ```
@@ -273,7 +300,7 @@ request ─▶ authenticate (Keycloak token, or public)
 
 1. Default deny; every check runs on the server. Prepared actions are rechecked when they execute (FR-00.01, AC-C05).
 2. Public (unauthenticated) subjects can reach only: intake submission, published resources, and their own report after reference code + one-time code (FR-00.02, RULE-17).
-3. CJI fields need an enclave session. The platform cannot even hold them (SEC-12).
+3. CJI fields need an enclave session. The platform cannot even hold them (SEC-12): its dictionary guard refuses a column classified `cji`, it stores only the opaque `cji_ref`, and body-camera media is refused on missions. The enclave applies its own policy (`services/cjis-api/src/policy.ts`, E1–E6): default deny; CJIS-qualified for everything but one's own account; agency scope; audit immutable; a second administrator for roles and nobody administering their own account; nobody reviews their own disposition; no break-glass.
 4. Nobody approves their own finding, unless the tenant policy grants an exception, and every exception is audited (FR-12.04, AC-12B).
 5. No role can update or delete audit records. This is enforced by DB grants and a trigger, not only by the app (FR-08.04).
 6. Granting permissions takes a second administrator: a `permission_change_request` executes only after another admin approves it.
@@ -337,7 +364,7 @@ The console, dispatch board and needs board receive changes through **Server-Sen
 | Keycloak container   | Same image, HA, external DB                                                               | Env vars                                 |
 | Caddy local CA       | ALB + WAF + ACM certificates                                                              | Gateway replaced by the platform ingress |
 | Mailpit              | Approved email provider                                                                   | `EMAIL_PROVIDER`                         |
-| CJIS compose project | Separate account/subscription with its own network boundary (SEC-12)                      | Separate deployment                      |
+| CJIS compose project | Separate account/subscription with its own network boundary, KMS and ingress (SEC-12)     | Separate deployment; same images         |
 | Single node          | Multi-AZ + warm standby in a second US region, RPO ≤ 15 min, RTO ≤ 1 h (SCL-05)           | Proven only there (`Gov` in the index)   |
 
 Nothing in application code changes for the move. Only environment variables, secrets and the infrastructure code do (SCL-11).

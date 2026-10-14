@@ -1017,6 +1017,10 @@ export interface MissionTable {
   summary: string | null;
   conditions: string | null;
   caller_enc: Buffer | null;
+  /** SEC-12: opaque pointer to the CJIS enclave record (migration 0041). */
+  cji_ref: string | null;
+  cji_linked_at: TsNullable;
+  cji_linked_by: Uuid | null;
   caller_language: string | null;
   interpreter_needed: Generated<boolean>;
   location_id: Uuid | null;
@@ -1110,8 +1114,7 @@ export interface MissionPersonTable {
     | 'victim'
     | 'caregiver'
     | 'property_owner'
-    | 'other'
-    | 'enclave_reference';
+    | 'other';
   display_label: string | null;
   details_enc: Buffer | null;
   injury: 'none' | 'minor' | 'serious' | 'critical' | 'deceased' | 'unknown' | null;
@@ -1122,7 +1125,6 @@ export interface MissionPersonTable {
   transport_ended_at: TsNullable;
   behavioral_health_enc: Buffer | null;
   party_id: Uuid | null;
-  enclave_reference: string | null;
   status: Generated<'active' | 'removed'>;
   removed_reason: string | null;
   version: Generated<number>;

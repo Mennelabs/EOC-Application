@@ -922,6 +922,12 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
         c: 'restricted',
         d: 'CALL-01, FR-02.03: caller name, callback, address and role, encrypted (SEC-10)',
       },
+      cji_ref: {
+        c: 'sensitive',
+        d: 'SEC-12: opaque pointer to the CJIS enclave record; never the detail. Shown only to holders of mission.cji.open',
+      },
+      cji_linked_at: { c: 'internal' },
+      cji_linked_by: { c: 'internal' },
       caller_language: { c: 'internal' },
       interpreter_needed: { c: 'internal' },
       location_id: { c: 'internal' },
@@ -1002,10 +1008,6 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
         d: 'AC-04C: behavioural-health detail, counseling category only',
       },
       party_id: { c: 'internal' },
-      enclave_reference: {
-        c: 'cji',
-        d: 'SEC-12: reference into the CJIS enclave, never the detail',
-      },
       status: { c: 'internal' },
       removed_reason: { c: 'internal' },
       version: { c: 'internal' },
@@ -2086,6 +2088,24 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     },
     { standard: false },
   ),
+};
+
+/**
+ * Entries for columns a later migration drops (SEC-11). They describe the
+ * schema between the migration that adds a column and the one that drops it,
+ * so a database migrated from empty documents every column at every step;
+ * they are loaded only while the column exists and never describe the final
+ * schema (the drill refuses them there like any stale entry).
+ */
+export const retiredColumns: Record<string, Record<string, ColumnEntry>> = {
+  // 0030 adds it, 0041 drops it: law-enforcement people live only in the CJIS enclave (SEC-12, PPL-01).
+  mission_person: {
+    enclave_reference: {
+      c: 'cji',
+      r: 'records',
+      d: 'SEC-12: reference into the CJIS enclave, never the detail',
+    },
+  },
 };
 
 /** Columns that must be encrypted at the application layer (SEC-10). */

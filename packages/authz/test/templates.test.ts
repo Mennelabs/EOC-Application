@@ -32,12 +32,30 @@ describe('shipped role templates (ADM-04)', () => {
   it('preview: tenant_admin can do everything in layer 1 except see protected fields', () => {
     const admin = roleTemplates.find((t) => t.key === 'tenant_admin')!;
     const p = previewRole(admin.grants, admin.key);
-    // Live positions are for dispatch and safety roles only: no wildcard reaches them (DSP-08).
-    expect(p.deniedActions).toEqual(['position.read']);
+    // Live positions are for dispatch and safety roles only, and the CJIS enclave link for the
+    // liaison: no wildcard reaches them (DSP-08, SEC-12).
+    expect(p.deniedActions.sort()).toEqual([
+      'mission.cji.link',
+      'mission.cji.open',
+      'position.read',
+    ]);
     expect(p.visibleCategories).not.toContain('health');
     expect(p.hiddenCategories.map((h) => h.category)).toEqual(
       expect.arrayContaining(['health', 'counseling', 'legal', 'cji']),
     );
+  });
+
+  it('SEC-12: only the law-enforcement liaison links missions to the CJIS enclave', () => {
+    const holders = roleTemplates
+      .filter((t) => t.grants.some((g) => g.action === 'mission.cji.link'))
+      .map((t) => t.key);
+    expect(holders).toEqual(['law_enforcement_liaison']);
+    const liaison = roleTemplates.find((t) => t.key === 'law_enforcement_liaison')!;
+    const p = previewRole(liaison.grants, liaison.key);
+    expect(p.allowedActions.map((a) => a.action)).toEqual(
+      expect.arrayContaining(['mission.cji.link', 'mission.cji.open', 'mission.read']),
+    );
+    expect(p.visibleCategories).not.toContain('cji');
   });
 
   it('preview: shelter nurse sees health, PIO sees nothing restricted', () => {

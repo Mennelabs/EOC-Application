@@ -110,9 +110,12 @@ services:
       CJIS_IDP_ADMIN_CLIENT_SECRET: ${CJIS_IDP_ADMIN_CLIENT_SECRET:?}
       CJIS_PUBLIC_URL: https://${GATEWAY_HOST:-localhost}:${CJIS_HTTPS_PORT:-8443}
       CJIS_DEV_ACCOUNTS: ${CJIS_DEV_ACCOUNTS:-true}
+    volumes:
+      - cjis_keys_init:/bao-init:ro
     depends_on:
       cjis-migrate: { condition: service_completed_successfully }
       cjis-idp: { condition: service_healthy }
+      cjis-keys-init: { condition: service_completed_successfully }
     restart: 'no'
     networks: [cjis]
 

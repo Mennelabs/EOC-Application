@@ -37,7 +37,7 @@ Plan: [`layer-5.md`](layer-5.md). One task per commit; each ends green, pushed, 
 | A    | Enclave containers and identity (`cjis-idp`, `cjis-provision`, `cjis-web`, `cjis-gateway`, secrets, guard)  | done  | d0b21df |       |
 | B    | Enclave database `packages/cjis-db` (migrations, dictionary, RLS, audit chain, retention, synthetic agency) | done  | 7a30a0a |       |
 | C    | Enclave API (auth, qualification, policy, audit, encryption, routes, jobs)                                  | done  | 435f204 |       |
-| D    | Platform side (migration 0041, actions, template, mission routes, seed liaison, dictionary guard)           | todo  |         |       |
+| D    | Platform side (migration 0041, actions, template, mission routes, seed liaison, dictionary guard)           | done  | this commit |       |
 | E    | Enclave web app `apps/web-cjis`                                                                             | todo  |         |       |
 | F    | Console CJIS panel and link action                                                                          | todo  |         |       |
 | G    | Tests and CI (stack suite, browser journeys, enclave database suites, image scans)                          | todo  |         |       |
@@ -65,6 +65,14 @@ Plan: [`layer-5.md`](layer-5.md). One task per commit; each ends green, pushed, 
 - `cjis-worker` (new container, `cjis_job` and the admin client; the API holds neither): identity outbox with retries (the one-time password leaves the database once the identity exists), sign-in events copied into the audit per agency, the retention sweep honouring legal holds, 90-day inactivity suspension.
 - Tests: `policy.test.ts` (13), `token.test.ts` (7), `api.db.test.ts` (24, against the throwaway enclave database: a platform-issuer token refused, no second factor refused and recorded, unknown subject refused, lapsed training and pending check denied with what is missing, the full record journey, 409 with the current record, idempotent replay, removal with reason, confirmation for disposition, E6, another agency sees nothing, no marker string in clear in any enclave table including the audit and idempotency store, reads and writes in the audit by field name, onboarding with a second administrator and the outbox, suspension effective on the next request, audit review and export, retention floors and a legal hold surviving the sweep, sign-in events copied once, inactivity suspension); stable over three runs. Migration drill: 0004 and 0005 down and up.
 - Stack smoke through `https://localhost:8443` with real Keycloak tokens: `/me` qualified, record and person created, a lapsed officer denied with `security_training` missing, the chain verifies; the worker copied logins, failures and the lockout drill's lockouts into the audit.
+
+## Verified by (task D)
+
+- Migration 0041: `cg.mission.cji_ref` (opaque, 43 base64url characters, unique, checked by the database), `cji_linked_at`, `cji_linked_by`; the placeholder person role `enclave_reference` and its column retired (a development row becomes "other"); new `bodycam_reference` media refused (NOT VALID check). The drill runs 0040 and 0041 down and up with no undocumented or stale column (the rollback restores the retired dictionary row by hand).
+- `packages/authz`: explicit actions `mission.cji.link` (consequential) and `mission.cji.open`, never covered by a wildcard; template `law_enforcement_liaison`. `packages/db/test/dictionary.test.ts`: no platform column is classified `cji`, and the only enclave trace is the mission's three link columns.
+- `routes/missions.ts`: `POST /missions/:id/cji-link` (confirmation and reason, one reference per mission, a race answers the winner's, partners refused); the mission detail carries `cjis` (`{ restricted: true }` for console readers; reference, enclave address and link time for holders of `mission.cji.open`, read audited); the list carries the marker; phones (own-record grants) and partners get nothing; body-camera media answers 422 `cji_in_enclave`. Field sync and the dispatch board select explicit columns, so the reference never reaches them.
+- Seed: the liaison `liaison@example.org` and an exercise mission (`law_enforcement_support`) linked with the fixed exercise reference; the enclave's provisioning writes the sheriff's encrypted exercise record for the same reference (a test checks both sides name it). Through the enclave gateway the sheriff's deputy reads it decrypted and the city police get 404.
+- `services/api/test/cjislink.db.test.ts` (8 cases) and the existing mission, dispatch, field and roster suites pass against the compose database.
 
 ## Known issues and deferred items
 

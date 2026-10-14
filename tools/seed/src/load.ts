@@ -115,6 +115,13 @@ export const cast = [
     role: 'net_control',
     tenant: 'county',
   },
+  // Layer 5 (SEC-12): links missions to the CJIS enclave; holds no CJI on the platform.
+  {
+    email: 'liaison@example.org',
+    name: 'Kendall Brooks',
+    role: 'law_enforcement_liaison',
+    tenant: 'county',
+  },
   {
     email: 'dispatch.cleanup@example.org',
     name: 'Cleanup dispatcher',
@@ -654,6 +661,79 @@ async function ensureParcels(trx: Transaction<Database>, tenantId: string): Prom
 }
 
 /**
+ * The opaque reference of the exercise mission linked to the CJIS enclave (layer 5,
+ * SEC-12). Real links get a random reference (routes/missions.ts newCjiRef); this one is
+ * fixed so the enclave's exercise data (services/cjis-api/src/provision/exercise.ts) can
+ * hold a record for it without the two systems ever talking to each other.
+ */
+export const EXERCISE_CJI_REF = 'WESTWIND-EXERCISE-CJIS-LINK-000000000000100';
+
+/**
+ * One exercise mission with law-enforcement involvement, linked to the enclave by the
+ * liaison (layer 5). The platform side says nothing about the criminal-justice details:
+ * the summary is operational only; the details are in the enclave's exercise record.
+ * Loaded once.
+ */
+async function ensureCjisExercise(
+  trx: Transaction<Database>,
+  tenantId: string,
+  accountIds: Record<string, string>,
+): Promise<void> {
+  const linked = await trx
+    .selectFrom('cg.mission')
+    .select('id')
+    .where('cji_ref', '=', EXERCISE_CJI_REF)
+    .executeTakeFirst();
+  if (linked) return;
+  const event = await trx
+    .selectFrom('cg.event')
+    .select('id')
+    .where('tenant_id', '=', tenantId)
+    .where('intake_slug', '=', 'westwind')
+    .executeTakeFirst();
+  if (!event) return;
+  const liaison = accountIds['liaison@example.org'] ?? null;
+  const ref = await sql<{
+    r: string;
+  }>`select cg.next_mission_reference(${tenantId}::uuid) as r`.execute(trx);
+  const now = new Date();
+  const mission = await trx
+    .insertInto('cg.mission')
+    .values({
+      tenant_id: tenantId,
+      event_id: event.id,
+      reference: ref.rows[0]!.r,
+      kind: 'other',
+      subcategory: 'law_enforcement_support',
+      state: 'open',
+      priority: 'high',
+      urgency: 'soon',
+      source: 'staff',
+      summary: 'Law-enforcement support at the Commercial Row distribution point',
+      owning_tenant_id: tenantId,
+      opened_at: now,
+      cji_ref: EXERCISE_CJI_REF,
+      cji_linked_at: now,
+      cji_linked_by: liaison,
+      created_by: liaison,
+      updated_by: liaison,
+    })
+    .returning('id')
+    .executeTakeFirstOrThrow();
+  await trx
+    .insertInto('cg.mission_event')
+    .values({
+      tenant_id: tenantId,
+      mission_id: mission.id,
+      kind: 'created',
+      narrative_role: 'system',
+      actor_account_id: liaison,
+      detail: JSON.stringify({ cjis: 'linked', exercise: true }),
+    })
+    .execute();
+}
+
+/**
  * Exercise missions (layer 4 task B; MIS-01–04, RULE-03, CALL-01, DSP-02/10/11):
  * four verification routes assigned to the damage assessment teams (assigned only:
  * no dispatch, no arrival is inferred, AC-06B), a traffic-control mission dispatched
@@ -1169,6 +1249,7 @@ export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
       await ensureAgreements(trx, countyId, tenantIds);
       await ensureJobAids(trx, countyId);
       await ensureMissions(trx, countyId, tenantIds, accountIds);
+      await ensureCjisExercise(trx, countyId, accountIds);
     });
   }
   return { tenants: tenantIds, accounts: accountIds };

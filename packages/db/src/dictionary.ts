@@ -922,6 +922,12 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
         c: 'restricted',
         d: 'CALL-01, FR-02.03: caller name, callback, address and role, encrypted (SEC-10)',
       },
+      cji_ref: {
+        c: 'sensitive',
+        d: 'SEC-12: opaque pointer to the CJIS enclave record; never the detail. Shown only to holders of mission.cji.open',
+      },
+      cji_linked_at: { c: 'internal' },
+      cji_linked_by: { c: 'internal' },
       caller_language: { c: 'internal' },
       interpreter_needed: { c: 'internal' },
       location_id: { c: 'internal' },
@@ -1002,10 +1008,6 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
         d: 'AC-04C: behavioural-health detail, counseling category only',
       },
       party_id: { c: 'internal' },
-      enclave_reference: {
-        c: 'cji',
-        d: 'SEC-12: reference into the CJIS enclave, never the detail',
-      },
       status: { c: 'internal' },
       removed_reason: { c: 'internal' },
       version: { c: 'internal' },

@@ -39,6 +39,7 @@ import * as m0037 from './0037_field_assessment.ts';
 import * as m0038 from './0038_field_record_photos.ts';
 import * as m0039 from './0039_site_operator.ts';
 import * as m0040 from './0040_audit_chain_order.ts';
+import * as m0041 from './0041_cji_link.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -82,4 +83,5 @@ export const migrations: Record<string, Migration> = {
   '0038_field_record_photos': m0038,
   '0039_site_operator': m0039,
   '0040_audit_chain_order': m0040,
+  '0041_cji_link': m0041,
 };

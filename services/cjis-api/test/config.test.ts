@@ -56,6 +56,7 @@ describe('enclave configuration (SCL-12)', () => {
         PRODUCT_NAME: 'Test Product',
         DATA_CLASSIFICATION_MODE: 'production',
         CJIS_DATABASE_URL: base.CJIS_DATABASE_URL,
+        CJIS_OPENBAO_ADDR: base.CJIS_OPENBAO_ADDR,
         CJIS_IDP_INTERNAL_BASE: base.CJIS_IDP_INTERNAL_BASE,
         CJIS_KC_ADMIN_USER: 'admin',
         CJIS_KC_ADMIN_PASSWORD: 'admin-password',

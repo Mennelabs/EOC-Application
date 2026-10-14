@@ -11,11 +11,24 @@
  * the development test client can sign in (password + code); the browser
  * flow still asks for a passkey and registers one at first sign-in.
  */
-import { sql } from 'kysely';
-import { createCjisDb, type EnclaveRole, type FingerprintStatus } from '@cg/cjis-db';
+import { sql, type Kysely } from 'kysely';
+import {
+  createCjisDb,
+  type CjisDatabase,
+  type EnclaveRole,
+  type FingerprintStatus,
+} from '@cg/cjis-db';
+import type { FieldCrypto } from '@cg/crypto';
+import { Sealer } from '../crypto.ts';
 import type { EnclaveKeycloak } from '../idp/keycloak.ts';
 
 export const EXERCISE_PASSWORD = 'Westwind-Exercise-2026!';
+/**
+ * The exercise mission the platform seed links to the enclave (tools/seed/src/load.ts
+ * EXERCISE_CJI_REF, checked equal by a test). The two systems never talk; both sides
+ * simply know this one fixed reference.
+ */
+export const EXERCISE_CJI_REF = 'WESTWIND-EXERCISE-CJIS-LINK-000000000000100';
 /** Development only: the shared one-time-code secret of the exercise accounts. */
 export const EXERCISE_OTP_SECRET = 'WESTWIND-EXERCISE-OTP-DEV-ONLY';
 
@@ -168,10 +181,101 @@ export const DEFAULT_RETENTION = [
   },
 ];
 
+/**
+ * The sheriff's office's record for the linked exercise mission: invented law-enforcement
+ * details (SCL-12), encrypted under the agency key like any record. Loaded once.
+ */
+async function ensureExerciseRecord(
+  db: Kysely<CjisDatabase>,
+  crypto: FieldCrypto,
+  agencyId: string,
+  authorId: string,
+): Promise<void> {
+  const existing = await db
+    .selectFrom('cjis.record')
+    .select('id')
+    .where('agency_id', '=', agencyId)
+    .where('cji_ref', '=', EXERCISE_CJI_REF)
+    .executeTakeFirst();
+  if (existing) return;
+  const sealer = new Sealer(crypto);
+  const seal = async (v: string): Promise<Buffer> => (await sealer.seal(agencyId, v))!;
+  await db.transaction().execute(async (trx) => {
+    const rec = await trx
+      .insertInto('cjis.record')
+      .values({
+        agency_id: agencyId,
+        cji_ref: EXERCISE_CJI_REF,
+        platform_county: 'county',
+        origin: 'officer_initiated',
+        classification: 'looting',
+        offense_codes: ['EXERCISE-01'],
+        case_number_enc: await seal('EXERCISE-WCSO-2026-0001'),
+        summary_enc: await seal(
+          'Exercise WESTWIND: report of people taking goods from a storm-damaged store on Commercial Row.',
+        ),
+        created_by: authorId,
+        updated_by: authorId,
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    await trx
+      .insertInto('cjis.record_person')
+      .values({
+        agency_id: agencyId,
+        record_id: rec.id,
+        role: 'suspect',
+        name_enc: await seal('Exercise Subject One'),
+        notes_enc: await seal('Invented for the WESTWIND exercise; not a real person.'),
+        created_by: authorId,
+        updated_by: authorId,
+      })
+      .execute();
+    await trx
+      .insertInto('cjis.record_bodycam')
+      .values({
+        agency_id: agencyId,
+        record_id: rec.id,
+        camera_label: 'BWC-EXERCISE-1',
+        officer_person_id: authorId,
+        evidence_reference_enc: await seal('EXERCISE-EVIDENCE-0001'),
+        created_by: authorId,
+        updated_by: authorId,
+      })
+      .execute();
+    for (const kind of ['created', 'person_added', 'bodycam_added'] as const)
+      await trx
+        .insertInto('cjis.record_event')
+        .values({
+          agency_id: agencyId,
+          record_id: rec.id,
+          kind,
+          actor_person_id: authorId,
+          detail: JSON.stringify({ exercise: true }),
+        })
+        .execute();
+    await trx
+      .insertInto('cjis.record_event')
+      .values({
+        agency_id: agencyId,
+        record_id: rec.id,
+        kind: 'narrative',
+        narrative_role: 'officer',
+        body_enc: await seal(
+          'Exercise narrative: deputy arrived 10:05, two people left on foot, no injuries.',
+        ),
+        actor_person_id: authorId,
+        detail: JSON.stringify({ exercise: true }),
+      })
+      .execute();
+  });
+}
+
 export async function provisionExercise(
   databaseUrl: string,
   kc: EnclaveKeycloak,
   realm: string,
+  crypto: FieldCrypto,
 ): Promise<{ agencies: number; accounts: number }> {
   const db = createCjisDb(databaseUrl, 2);
   try {
@@ -253,6 +357,14 @@ export async function provisionExercise(
           .execute();
       }
     }
+
+    const sheriff = agencyIds.get('sheriff');
+    const deputy = await db
+      .selectFrom('cjis.person')
+      .select('id')
+      .where(sql`lower(email)`, '=', 'deputy.reyes@sheriff.example.org')
+      .executeTakeFirst();
+    if (sheriff && deputy) await ensureExerciseRecord(db, crypto, sheriff, deputy.id);
 
     for (const [, agencyId] of agencyIds) {
       await db

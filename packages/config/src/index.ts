@@ -159,6 +159,8 @@ export const cjisWorkerSchema = cjisCommon
 export const cjisProvisionSchema = baseSchema
   .extend({
     CJIS_DATABASE_URL: url,
+    CJIS_OPENBAO_ADDR: url,
+    CJIS_OPENBAO_TOKEN_FILE: z.string().min(1).default('/bao-init/app-token'),
     CJIS_IDP_INTERNAL_BASE: url,
     CJIS_IDP_REALM: z.string().min(1).default('cjis'),
     CJIS_KC_ADMIN_USER: z.string().min(1),

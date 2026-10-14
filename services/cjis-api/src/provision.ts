@@ -5,10 +5,16 @@
  *    session and password values, the web app's PKCE client, the worker's
  *    least-privilege service account);
  * 3. on a synthetic stack only, loads the exercise agencies and accounts
- *    (SCL-12) and gives them development credentials for the test client.
+ *    (SCL-12), gives them development credentials for the test client, and
+ *    writes the sheriff's record for the exercise mission the platform seed
+ *    links to the enclave.
  * Re-runs change nothing that is already in place.
  */
+import { readFileSync } from 'node:fs';
 import { cjisProvisionSchema, loadConfig } from '@cg/config';
+import { createCjisDb } from '@cg/cjis-db';
+import { FieldCrypto, OpenBaoKeyService } from '@cg/crypto';
+import { agencyKeyStore } from './crypto.ts';
 import { EnclaveKeycloak } from './idp/keycloak.ts';
 import { provisionExercise } from './provision/exercise.ts';
 
@@ -46,6 +52,24 @@ if (config.CJIS_DEV_ACCOUNTS) {
   if (config.DATA_CLASSIFICATION_MODE !== 'synthetic') {
     throw new Error('exercise accounts are for synthetic stacks only (SCL-12)');
   }
-  const loaded = await provisionExercise(config.CJIS_DATABASE_URL, kc, config.CJIS_IDP_REALM);
-  log('exercise agencies and accounts ready', loaded);
+  // The exercise record is encrypted like any record, under the agency's key (SEC-10).
+  const keyDb = createCjisDb(config.CJIS_DATABASE_URL, 2);
+  const crypto = new FieldCrypto(
+    new OpenBaoKeyService(
+      config.CJIS_OPENBAO_ADDR,
+      readFileSync(config.CJIS_OPENBAO_TOKEN_FILE, 'utf8').trim(),
+    ),
+    agencyKeyStore(keyDb),
+  );
+  try {
+    const loaded = await provisionExercise(
+      config.CJIS_DATABASE_URL,
+      kc,
+      config.CJIS_IDP_REALM,
+      crypto,
+    );
+    log('exercise agencies, accounts and record ready', loaded);
+  } finally {
+    await keyDb.destroy();
+  }
 }

@@ -71,18 +71,55 @@ export const platformSchema = baseSchema.extend({
 });
 
 /** Worker: platform settings plus identity-provider administration and mail. */
-export const workerSchema = platformSchema.extend({
-  KC_ADMIN_USER: z.string().min(1),
-  KC_ADMIN_PASSWORD: z.string().min(8),
-  /** Where browsers reach the gateway, for realm redirect URIs and emails. */
-  GATEWAY_PUBLIC_URL: url,
-  MAIL_FROM: z.string().min(3).default('no-reply@localhost'),
-  /** Development only: realms get a confidential test client with direct-access grants. */
-  IDP_DEV_DIRECT_GRANT: z
-    .enum(['true', 'false'])
-    .default('false')
-    .transform((v) => v === 'true'),
-});
+export const workerSchema = platformSchema
+  .extend({
+    KC_ADMIN_USER: z.string().min(1),
+    KC_ADMIN_PASSWORD: z.string().min(8),
+    /** Where browsers reach the gateway, for realm redirect URIs and emails. */
+    GATEWAY_PUBLIC_URL: url,
+    MAIL_FROM: z.string().min(3).default('no-reply@localhost'),
+    /** Development only: realms get a confidential test client with direct-access grants. */
+    IDP_DEV_DIRECT_GRANT: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
+    /**
+     * Reference data (ADR-0039, SCL-12): `recorded` replays the synthetic WESTWIND
+     * responses shipped with the code (development and CI), `live` calls the free
+     * federal sources, `off` pulls nothing (file imports still work).
+     */
+    REFDATA_MODE: z.enum(['recorded', 'live', 'off']).default('recorded'),
+    /** Narrows the connectors' own hosts (comma-separated); empty means the connectors' list. */
+    REFDATA_ALLOWED_HOSTS: z.preprocess(
+      (v) => (v === '' ? undefined : v),
+      z
+        .string()
+        .optional()
+        .transform((v) =>
+          v
+            ? v
+                .split(',')
+                .map((h) => h.trim().toLowerCase())
+                .filter(Boolean)
+            : undefined,
+        ),
+    ),
+    /** Where recorded responses live, when not the ones shipped with the code. */
+    REFDATA_RECORDINGS_DIR: optionalString,
+    /** Contact in the User-Agent of outbound requests (the National Weather Service asks for one). */
+    REFDATA_CONTACT: optionalString,
+    /** Free Census Data API key (a secret; ACS works without one at low volume). */
+    CENSUS_API_KEY: optionalString,
+  })
+  .superRefine((v, ctx) => {
+    // SCL-12: recorded responses are synthetic; a production tenant must never get them.
+    if (v.DATA_CLASSIFICATION_MODE === 'production' && v.REFDATA_MODE === 'recorded')
+      ctx.addIssue({
+        code: 'custom',
+        path: ['REFDATA_MODE'],
+        message: 'recorded reference data is synthetic; use live or off in production (SCL-12)',
+      });
+  });
 
 /**
  * SCL-12: the enclave may hold real criminal-justice data only once it runs in

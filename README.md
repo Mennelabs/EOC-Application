@@ -23,6 +23,7 @@ The product name is configuration (`PRODUCT_NAME`, ADM-03). "Common Ground" is t
 | `services/api`, `services/worker`, `services/cjis-api` | Fastify API, queue worker, CJIS enclave API and worker                                                              |
 | `apps/web-cjis`, `packages/cjis-db`                    | The CJIS enclave's own web app and its database package (layer 5)                                                   |
 | `packages/config`, `packages/adapters`, `packages/db`  | Typed config, dependency adapters, database client and migrations                                                   |
+| `packages/refdata`                                     | Reference data from free federal sources and file imports, with recorded synthetic responses (layer 6, ADR-0039)    |
 | `tools/seed`                                           | Synthetic county generator (Exercise WESTWIND)                                                                      |
 | `tools/reqindex`                                       | Requirements index generator                                                                                        |
 | `infra/`                                               | Dockerfiles, gateway and web Caddyfiles, database and key-service init                                              |
@@ -180,6 +181,8 @@ pnpm seed -- --seed 7 --reports 5000
 ```
 
 Since layer 4 the loader also fills the field roster (`tools/seed/src/county.ts`, `teams`): damage assessment teams, the CERT canvass team, a Guard traffic-control unit and ARES net control for the county; chainsaw crews, canteens, shelter staff and an outreach pair for the partner organizations, each member with recorded, verified credentials (DSP-02, PER-01), and a Field Exercise Team whose lead has a sign-in for the field app and the stack suites; the county's parcel grid (`cg.parcel`, FLD-04); and the exercise event's check-in code `WESTWIND` (FLD-03). Everything it produces is invented and marked `synthetic: true`. **Only synthetic or exercise data ever goes into this stack (SCL-12).**
+
+Since layer 6 the loader also gives the exercise state and county their jurisdiction codes (`29` and the fictional `29999`), and the worker fills public reference data for them (tracts, structures, declarations and the like, ADR-0039). By default it replays the synthetic responses in `packages/refdata/recordings`; `REFDATA_MODE=live` in `.env` pulls from the free federal sources instead (only geography leaves the stack), and `off` pulls nothing. Staff with the planning/GIS role can ask for a pull now or import a CSV or GeoJSON file for any dataset (`/api/v1/refdata/...`).
 
 ## Run the checks
 

@@ -2235,6 +2235,206 @@ export interface ExtractionTable {
   created_at: TsGen;
 }
 
+// Layer 6 task A (migration 0042): reference data snapshots and their rows (ADR-0039).
+
+export type ReferenceDataset =
+  | 'tract'
+  | 'tract_profile'
+  | 'structure'
+  | 'flood_zone'
+  | 'facility'
+  | 'declaration'
+  | 'nfip_summary'
+  | 'risk'
+  | 'alert'
+  | 'power_outage';
+
+export interface RefdataImportTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  dataset: ReferenceDataset;
+  execution_id: Uuid;
+  file_name: string;
+  object_key: string;
+  format: 'csv' | 'geojson' | 'gpkg' | 'shapefile';
+  bytes: number;
+  columns: JsonGen<string[]>;
+  mapping: JsonGen<Record<string, string>>;
+  vintage: string | null;
+  licence: string;
+  status: Generated<
+    | 'uploading'
+    | 'uploaded'
+    | 'validating'
+    | 'validated'
+    | 'invalid'
+    | 'applying'
+    | 'applied'
+    | 'failed'
+  >;
+  errors: JsonGen<{ row?: number; field?: string; message: string }[]>;
+  row_count: Generated<number>;
+  snapshot_id: Uuid | null;
+}
+
+export interface RefdataSnapshotTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  dataset: ReferenceDataset;
+  source: string;
+  mode: 'pull' | 'recorded' | 'import';
+  scope: JsonGen<Record<string, unknown>>;
+  vintage: string | null;
+  source_url: string | null;
+  licence: string;
+  status: Generated<'loading' | 'ready' | 'failed' | 'superseded'>;
+  error: string | null;
+  row_count: Generated<number>;
+  checksum: string | null;
+  retrieved_at: TsGen;
+  ready_at: TsNullable;
+  cited: Generated<boolean>;
+  import_id: Uuid | null;
+}
+
+export interface RefdataCurrentTable {
+  tenant_id: Uuid;
+  dataset: ReferenceDataset;
+  snapshot_id: Uuid;
+  switched_at: TsGen;
+}
+
+interface RefRow {
+  id: Generated<number>;
+  snapshot_id: Uuid;
+  tenant_id: Uuid;
+}
+
+export interface RefTractTable extends RefRow {
+  geoid: string;
+  name: string | null;
+  state_fips: string;
+  county_fips: string;
+  land_m2: number | null;
+  geom: ColumnType<unknown, unknown, unknown>;
+}
+
+export interface RefTractProfileTable extends RefRow {
+  geoid: string;
+  population: number | null;
+  households: number | null;
+  renter_households: number | null;
+  median_household_income: number | null;
+  poverty_pct: string | number | null;
+  snap_households_pct: string | number | null;
+  ssi_households_pct: string | number | null;
+  age65_pct: string | number | null;
+  disability_pct: string | number | null;
+  limited_english_households: number | null;
+  no_vehicle_households: number | null;
+  languages: JsonGen<Record<string, number>>;
+  moe: JsonGen<Record<string, number>>;
+}
+
+export type RefHomeType =
+  'single_family' | 'multi_family' | 'manufactured' | 'commercial' | 'public' | 'other' | 'unknown';
+
+export interface RefStructureTable extends RefRow {
+  source_id: string;
+  geom: ColumnType<unknown, unknown, unknown>;
+  occupancy: string | null;
+  home_type: Generated<RefHomeType>;
+  units: number | null;
+  stories: string | number | null;
+  foundation: string | null;
+  value_usd: string | number | null;
+  year_built: number | null;
+  tract_geoid: string | null;
+}
+
+export interface RefFloodZoneTable extends RefRow {
+  zone: string;
+  special_hazard: boolean;
+  base_flood_elevation: string | number | null;
+  geom: ColumnType<unknown, unknown, unknown>;
+}
+
+export type RefFacilityKind =
+  | 'hospital'
+  | 'nursing_home'
+  | 'home_health'
+  | 'dialysis'
+  | 'school'
+  | 'child_care'
+  | 'eldercare'
+  | 'fire_ems'
+  | 'police'
+  | 'water'
+  | 'wastewater'
+  | 'shelter'
+  | 'other';
+
+export interface RefFacilityTable extends RefRow {
+  source_id: string;
+  kind: RefFacilityKind;
+  name: string;
+  address: string | null;
+  city: string | null;
+  postal: string | null;
+  beds: number | null;
+  geom: ColumnType<unknown, unknown, unknown> | null;
+}
+
+export interface RefDeclarationTable extends RefRow {
+  disaster_number: number;
+  declaration_type: string;
+  title: string | null;
+  incident_type: string | null;
+  declared_on: ColumnType<string | null, string | null, string | null>;
+  incident_begin: ColumnType<string | null, string | null, string | null>;
+  incident_end: ColumnType<string | null, string | null, string | null>;
+  programs: ColumnType<string[], string[] | undefined, string[]>;
+  designated_area: string | null;
+  county_fips: string | null;
+}
+
+export interface RefNfipSummaryTable extends RefRow {
+  area_kind: 'county' | 'tract';
+  area_id: string;
+  policies: number | null;
+  residential_policies: number | null;
+  coverage_usd: string | number | null;
+  as_of: ColumnType<string | null, string | null, string | null>;
+}
+
+export interface RefRiskTable extends RefRow {
+  geoid: string;
+  nri_risk_score: string | number | null;
+  nri_risk_rating: string | null;
+  svi_overall: string | number | null;
+  svi_themes: JsonGen<Record<string, number>>;
+}
+
+export interface RefAlertTable extends RefRow {
+  alert_id: string;
+  event: string;
+  severity: string | null;
+  urgency: string | null;
+  headline: string | null;
+  area_description: string | null;
+  effective: TsNullable;
+  expires: TsNullable;
+  geom: ColumnType<unknown, unknown, unknown> | null;
+}
+
+export interface RefPowerOutageTable extends RefRow {
+  county_fips: string;
+  utility: string | null;
+  customers_out: number | null;
+  customers_served: number | null;
+  as_of: Ts;
+}
+
 export interface Database {
   'cg.tenant': TenantTable;
   'cg.jurisdiction': JurisdictionTable;
@@ -2344,4 +2544,17 @@ export interface Database {
   'cg.field_assessment': FieldAssessmentTable;
   'cg.change_feed': ChangeFeedTable;
   'cg.client_command': ClientCommandTable;
+  'cg.refdata_import': RefdataImportTable;
+  'cg.refdata_snapshot': RefdataSnapshotTable;
+  'cg.refdata_current': RefdataCurrentTable;
+  'cg.ref_tract': RefTractTable;
+  'cg.ref_tract_profile': RefTractProfileTable;
+  'cg.ref_structure': RefStructureTable;
+  'cg.ref_flood_zone': RefFloodZoneTable;
+  'cg.ref_facility': RefFacilityTable;
+  'cg.ref_declaration': RefDeclarationTable;
+  'cg.ref_nfip_summary': RefNfipSummaryTable;
+  'cg.ref_risk': RefRiskTable;
+  'cg.ref_alert': RefAlertTable;
+  'cg.ref_power_outage': RefPowerOutageTable;
 }

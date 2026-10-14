@@ -462,6 +462,18 @@ export const actions = {
     consequential: true,
   }),
   'route.import': a('admin', 'mission', 'Import routes from GeoJSON or CSV'),
+
+  // Layer 6 (ADR-0039, SCL-09): public reference data pulled from free federal sources or imported.
+  'refdata.read': a(
+    'read',
+    'refdata_snapshot',
+    'See reference data sources, snapshots and imports',
+  ),
+  'refdata.manage': a(
+    'admin',
+    'refdata_snapshot',
+    'Pull reference data now, and upload, map and apply reference data files',
+  ),
 } as const satisfies Record<string, ActionMeta>;
 
 export type ActionKey = keyof typeof actions;

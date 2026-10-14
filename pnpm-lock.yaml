@@ -365,6 +365,18 @@ importers:
         specifier: 0.29.6
         version: 0.29.6
 
+  packages/refdata:
+    dependencies:
+      '@cg/db':
+        specifier: workspace:*
+        version: link:../db
+      kysely:
+        specifier: 0.29.6
+        version: 0.29.6
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+
   services/api:
     dependencies:
       '@aws-sdk/client-s3':
@@ -400,6 +412,9 @@ importers:
       '@cg/intake':
         specifier: workspace:*
         version: link:../../packages/intake
+      '@cg/refdata':
+        specifier: workspace:*
+        version: link:../../packages/refdata
       '@fastify/swagger':
         specifier: 9.9.0
         version: 9.9.0
@@ -487,6 +502,9 @@ importers:
       '@cg/provisioning':
         specifier: workspace:*
         version: link:../../packages/provisioning
+      '@cg/refdata':
+        specifier: workspace:*
+        version: link:../../packages/refdata
       amqplib:
         specifier: 2.0.1
         version: 2.0.1
@@ -527,6 +545,9 @@ importers:
       '@cg/provisioning':
         specifier: workspace:*
         version: link:../../packages/provisioning
+      '@cg/refdata':
+        specifier: workspace:*
+        version: link:../../packages/refdata
       kysely:
         specifier: 0.29.6
         version: 0.29.6

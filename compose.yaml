@@ -110,6 +110,12 @@ services:
       GATEWAY_PUBLIC_URL: https://${GATEWAY_HOST:-localhost}
       MAIL_FROM: no-reply@${GATEWAY_HOST:-localhost}
       IDP_DEV_DIRECT_GRANT: ${IDP_DEV_DIRECT_GRANT:-true}
+      # Reference data (ADR-0039): recorded synthetic WESTWIND responses unless set to `live`,
+      # which calls the free federal sources (only geography leaves; SCL-12).
+      REFDATA_MODE: ${REFDATA_MODE:-recorded}
+      REFDATA_ALLOWED_HOSTS: ${REFDATA_ALLOWED_HOSTS:-}
+      REFDATA_CONTACT: ${REFDATA_CONTACT:-}
+      CENSUS_API_KEY: ${CENSUS_API_KEY:-}
     volumes:
       - keys_init:/bao-init:ro
     depends_on:

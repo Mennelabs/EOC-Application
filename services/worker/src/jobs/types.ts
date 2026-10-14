@@ -16,6 +16,7 @@ import type { Database } from '@cg/db';
 import type { QuestionGraph } from '@cg/intake';
 import type { KeycloakAdmin } from '../idp/keycloak.ts';
 import type { Mailer } from '../mail.ts';
+import type { RefdataDeps } from './refdata.ts';
 
 /** Object storage as the jobs use it (S3 API; MinIO locally, ADR-0010). */
 export interface ObjectStore {
@@ -44,6 +45,8 @@ export interface JobContext {
   now?: () => Date;
   /** Outside-link check for resources (BRD:FR-16.03); a HEAD request with a short timeout by default. */
   linkCheck?: (url: string) => Promise<boolean>;
+  /** Reference data sources (ADR-0039); absent means no pulls (imports still work). */
+  refdata?: RefdataDeps;
 }
 
 export interface OutboxMessage {

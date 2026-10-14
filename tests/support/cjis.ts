@@ -3,10 +3,15 @@
  * enclave has its own origin, identity provider and accounts; the exercise
  * accounts sign in through the development test client with the password
  * and a one-time code (the browser flow uses a passkey instead). Keycloak
- * refuses a code twice, so a second sign-in in the same 30-second window
- * waits for the next code. Synthetic accounts only (SCL-12).
+ * refuses a code twice for an account, and each refusal counts toward the
+ * account's lockout, so test processes (Playwright workers, vitest pools)
+ * share which code each account last used through a lock file and wait for
+ * the next code instead of colliding. Synthetic accounts only (SCL-12).
  */
 import { createHmac } from 'node:crypto';
+import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 export const CJIS_URL = process.env['CJIS_URL'] ?? 'https://localhost:8443';
 export const CJIS_PASSWORD = 'Westwind-Exercise-2026!';
@@ -65,7 +70,58 @@ export async function enclaveGrant(
 }
 
 const cache = new Map<string, { token: string; refresh: string; exp: number }>();
-const lastCode = new Map<string, string>();
+
+const OTP_LOCK = join(tmpdir(), 'cg-enclave-otp.lock');
+const OTP_USED = join(tmpdir(), 'cg-enclave-otp-used.json');
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const untilNextCode = () => sleep(30_000 - (Date.now() % 30_000) + 250);
+
+/** One process at a time picks and uses a code; a lock older than a minute is a dead process's. */
+async function withOtpLock<T>(fn: () => Promise<T>): Promise<T> {
+  for (;;) {
+    try {
+      mkdirSync(OTP_LOCK);
+      break;
+    } catch {
+      try {
+        if (Date.now() - statSync(OTP_LOCK).mtimeMs > 60_000)
+          rmSync(OTP_LOCK, { recursive: true, force: true });
+      } catch {
+        // Released meanwhile.
+      }
+      await sleep(50 + Math.random() * 100);
+    }
+  }
+  try {
+    return await fn();
+  } finally {
+    rmSync(OTP_LOCK, { recursive: true, force: true });
+  }
+}
+
+function usedCodes(): Record<string, string> {
+  try {
+    return JSON.parse(readFileSync(OTP_USED, 'utf8')) as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+/** A grant with a code this account has not used yet: the current one, or the next. */
+async function grantWithFreshCode(username: string): Promise<GrantResult> {
+  for (;;) {
+    const result = await withOtpLock(async () => {
+      const code = totp(CJIS_OTP_SECRET);
+      const used = usedCodes();
+      if (used[username] === code) return null;
+      used[username] = code;
+      writeFileSync(OTP_USED, JSON.stringify(used));
+      return enclaveGrant(username, { totp: code });
+    });
+    if (result) return result;
+    await untilNextCode();
+  }
+}
 
 export function claims(token: string): Record<string, unknown> {
   return JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8')) as Record<
@@ -92,19 +148,15 @@ export async function enclaveToken(username: string): Promise<string> {
     });
     if (res.ok) return remember(username, (await res.json()) as GrantResult);
   }
-  for (let attempt = 0; attempt < 4; attempt++) {
-    let code = totp(CJIS_OTP_SECRET);
-    if (lastCode.get(username) === code) {
-      await new Promise((r) => setTimeout(r, 30_000 - (Date.now() % 30_000) + 250));
-      code = totp(CJIS_OTP_SECRET);
-    }
-    lastCode.set(username, code);
-    const t = await enclaveGrant(username, { totp: code });
-    if (t.access_token) return remember(username, t);
-    // Another suite may have used this code already: wait for the next one.
-    await new Promise((r) => setTimeout(r, 30_000 - (Date.now() % 30_000) + 250));
+  let last: GrantResult | undefined;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    last = await grantWithFreshCode(username);
+    if (last.access_token) return remember(username, last);
+    await untilNextCode();
   }
-  throw new Error(`no enclave token for ${username}`);
+  throw new Error(
+    `no enclave token for ${username}: ${last?.error ?? last?.status} ${last?.error_description ?? ''}`,
+  );
 }
 
 function remember(username: string, t: GrantResult): string {

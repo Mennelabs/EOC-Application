@@ -718,6 +718,8 @@ export const fieldSyncRoutes =
                   version: z.number().int(),
                 }),
               ),
+              /** Tenant choices the field screens follow: ask tribal ownership where the tenant has tribal lands (DCL:DEC-17). */
+              options: z.object({ tribalOwnership: z.boolean() }),
               /** SCL-13, plan §5: the map extract cut from the self-hosted tiles when one exists; pins work without it (SCL-06). */
               maps: z.array(
                 z.object({
@@ -906,6 +908,12 @@ export const fieldSyncRoutes =
             )
             .orderBy('key')
             .execute();
+          const tribal = await trx
+            .selectFrom('cg.tenant_config')
+            .select('value')
+            .where('tenant_id', '=', me.tenantId)
+            .where('key', '=', 'field.tribal_ownership')
+            .executeTakeFirst();
           return {
             cursor: Number(head.seq),
             eventId,
@@ -971,6 +979,7 @@ export const fieldSyncRoutes =
                   : null,
               services: x.services,
             })),
+            options: { tribalOwnership: tribal?.value === true },
             jobAids: jobAids.map((j) => ({
               id: j.id,
               key: j.key,

@@ -96,6 +96,7 @@ interface Area {
   sites: unknown[];
   jobAids: { key: string }[];
   maps: { areaKey: string; available: boolean; url: string | null }[];
+  options: { tribalOwnership: boolean };
 }
 interface Assignment {
   id: string;
@@ -124,7 +125,7 @@ describe.skipIf(!appUrl || !workerUrl)(
     });
     const call = async (
       who: string,
-      method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+      method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
       url: string,
       payload?: unknown,
       extra: Record<string, string> = {},
@@ -832,6 +833,32 @@ describe.skipIf(!appUrl || !workerUrl)(
       expect(outlines.parcelsTruncated).toBe(true);
       expect(outlines.parcels[0]!.geometry).toBeDefined();
       expect((await call('pio', 'GET', `/api/v1/field/area`)).status).toBe(403);
+      // DCL:DEC-17: the tribal ownership question is asked only where the county turns it on.
+      const tribal = async (value: boolean) => {
+        const url = `/api/v1/tenants/${tenants['county']!}/config/field.tribal_ownership`;
+        const held = await call('admin', 'GET', url);
+        const res = await call(
+          'admin',
+          'PUT',
+          url,
+          { value },
+          {
+            'x-confirm': 'true',
+            'x-reason': 'Exercise: county includes tribal trust land',
+            ...(held.status === 200
+              ? { 'if-match': `"${held.json<{ version: number }>().version}"` }
+              : {}),
+          },
+        );
+        expect(res.status, res.body).toBe(200);
+        return (await call('assessor', 'GET', `/api/v1/field/area?eventId=${eventId}`)).json<Area>()
+          .options;
+      };
+      try {
+        expect(await tribal(true)).toEqual({ tribalOwnership: true });
+      } finally {
+        expect(await tribal(false)).toEqual({ tribalOwnership: false });
+      }
       // The administrator wipes the device (consequential): the phone learns it on its next sync.
       // The administrator reads the device's current version (every contact touches it) and wipes it.
       const dev = (await call('admin', 'GET', '/api/v1/devices'))

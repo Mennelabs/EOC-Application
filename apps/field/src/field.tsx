@@ -35,7 +35,15 @@ import {
   type SyncStatus,
   type TimerState,
 } from '@cg/field-core';
-import { Api, ApiError, OfflineError, type CheckIn, type Me, type VoiceDraft } from './api';
+import {
+  Api,
+  ApiError,
+  OfflineError,
+  type AreaOptions,
+  type CheckIn,
+  type Me,
+  type VoiceDraft,
+} from './api';
 import { takePhoto } from './camera';
 import * as auth from './auth';
 import { loadConfig, type FieldConfig } from './config';
@@ -107,6 +115,8 @@ interface FieldState {
   hazards: HazardArea[];
   areaSummary: { assignments: number; parcels: number; hazards: number; asOf: string } | null;
   areaState: 'idle' | 'downloading' | 'ready' | 'failed';
+  /** County choices from the area package; defaults until one is downloaded. */
+  options: AreaOptions;
   sync: SyncStatus;
   outbox: OutboxCommand[];
   /** Photos on this phone (FLD-07): untagged, waiting for their record, or sent. */
@@ -211,6 +221,8 @@ export function useField(): FieldState & FieldActions {
   return v;
 }
 
+const defaultOptions: AreaOptions = { tribalOwnership: false };
+
 const emptySync: SyncStatus = {
   phase: 'idle',
   pending: 0,
@@ -233,6 +245,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
   const [hazards, setHazards] = useState<HazardArea[]>([]);
   const [areaSummary, setAreaSummary] = useState<FieldState['areaSummary']>(null);
   const [areaState, setAreaState] = useState<FieldState['areaState']>('idle');
+  const [options, setOptions] = useState<AreaOptions>(defaultOptions);
   const [sync, setSync] = useState<SyncStatus>(emptySync);
   const [outbox, setOutbox] = useState<OutboxCommand[]>([]);
   const [photos, setPhotos] = useState<PhotoDoc[]>([]);
@@ -297,6 +310,10 @@ export function FieldProvider({ children }: { children: ReactNode }) {
     setTimer(timerRaw ? (JSON.parse(timerRaw) as TimerState) : null);
     const area = await s.getMeta('area');
     setAreaSummary(area ? (JSON.parse(area) as FieldState['areaSummary']) : null);
+    const opts = await s.getMeta('options');
+    setOptions(
+      opts ? { ...defaultOptions, ...(JSON.parse(opts) as Partial<AreaOptions>) } : defaultOptions,
+    );
   }, []);
 
   const runSync = useCallback(async () => {
@@ -539,6 +556,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
         for (const x of pkg.sites) await s.put('sites', { ...x });
         await s.clear('job_aids');
         for (const j of pkg.jobAids) await s.put('job_aids', { ...j });
+        await s.setMeta('options', JSON.stringify({ ...defaultOptions, ...pkg.options }));
         await s.setMeta(
           'area',
           JSON.stringify({
@@ -864,6 +882,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
     hazards,
     areaSummary,
     areaState,
+    options,
     sync,
     outbox,
     photos,

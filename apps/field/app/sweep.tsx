@@ -2,7 +2,9 @@
  * Street sweep (mockup FieldSweep.dc.html; FLD-10, FLD-13): walking a block,
  * one tap per property (no damage, affected, minor, major, destroyed, can't
  * reach); each tap is saved on the phone and the pin advances to the next
- * parcel in walking order. Undo takes back the last tap while it is still
+ * parcel in walking order. "Can't reach" asks why in one more tap, private
+ * or public road or bridge first, as FEMA asks (DCL:DEC-17); the reason can
+ * be skipped. Undo takes back the last tap while it is still
  * on the phone; once sent, tapping the property again makes a second record
  * that a reviewer sees beside the first (never overwritten).
  */
@@ -10,11 +12,13 @@ import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import {
+  CANT_REACH_REASONS,
   currentStop,
   startSweep,
   sweepProgress,
   tap,
   undo,
+  type CantReachReason,
   type Parcel,
   type SweepState,
   type SweepTap,
@@ -43,6 +47,8 @@ export default function Sweep() {
   // One tap per property: a tap while the previous one is still being saved is ignored (FLD-10).
   const busy = useRef(false);
   const [saving, setSaving] = useState(false);
+  // "Can't reach" was tapped: the reasons show in place of the damage taps.
+  const [reaching, setReaching] = useState(false);
   const key = `sweep.${missionId}`;
   useEffect(() => {
     void (async () => {
@@ -81,8 +87,12 @@ export default function Sweep() {
   const stop = currentStop(sweep);
   const progress = sweepProgress(sweep);
   const structure = ((stop && sweep.structures[stop.parcelId]) ?? 'single_family') as Structure;
-  const onTap = async (value: SweepTap) => {
+  const onTap = async (value: SweepTap, reason?: CantReachReason) => {
     if (!stop || busy.current) return;
+    if (value === 'cant_reach' && !reaching) {
+      setReaching(true);
+      return;
+    }
     busy.current = true;
     setSaving(true);
     try {
@@ -92,10 +102,12 @@ export default function Sweep() {
         position: { lat: stop.position.lat, lon: stop.position.lon },
         structure,
         degree: value,
+        ...(reason ? { observations: { cant_reach_reason: reason } } : {}),
         ...(missionId ? { missionId } : {}),
         ...(assignmentId ? { assignmentId } : {}),
       });
       setMessage(null);
+      setReaching(false);
       await persist({
         ...sweep,
         ...tap(sweep, value),
@@ -136,7 +148,28 @@ export default function Sweep() {
         <Alert>{t('sweep.finished')}</Alert>
       )}
       {message ? <Alert>{message}</Alert> : null}
-      {stop ? (
+      {stop && reaching ? (
+        <View role="group" aria-label={t('sweep.reach.heading')} style={{ gap: 8 }}>
+          <Heading level={2}>{t('sweep.reach.heading')}</Heading>
+          {CANT_REACH_REASONS.map((r) => (
+            <Button
+              key={r}
+              kind="secondary"
+              label={t(`reach.${r}`)}
+              disabled={saving}
+              onPress={() => void onTap('cant_reach', r)}
+            />
+          ))}
+          <Button
+            kind="secondary"
+            label={t('sweep.reach.none')}
+            disabled={saving}
+            onPress={() => void onTap('cant_reach')}
+          />
+          <Button kind="secondary" label={t('common.back')} onPress={() => setReaching(false)} />
+        </View>
+      ) : null}
+      {stop && !reaching ? (
         <View
           role="group"
           aria-label={t('sweep.tapGroup')}
@@ -171,7 +204,7 @@ export default function Sweep() {
           ))}
         </View>
       ) : null}
-      {sweep.index > 0 ? (
+      {sweep.index > 0 && !reaching ? (
         <Button kind="secondary" label={t('sweep.undo')} onPress={() => void onUndo()} />
       ) : null}
       <NavBar current="home" />

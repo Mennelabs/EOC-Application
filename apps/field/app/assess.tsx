@@ -3,9 +3,11 @@
  * the home type, then the degree chosen from a picture and a short
  * description for that home type, the damage seen, a voice or typed note
  * that can draft the home type and damage seen (each confirmed by the
- * volunteer, never the degree) and, when there is no parcel, a landmark.
- * Saved on the phone first; it sends when there is signal. No resident
- * personal details are asked for.
+ * volunteer, never the degree), the details FEMA asks for (DCL:DEC-17:
+ * water depth in feet and inches, units, occupancy, insurance, utilities,
+ * tribal ownership where the county asks it, business details) and, when
+ * there is no parcel, a landmark. Saved on the phone first; it sends when
+ * there is signal. No resident personal details are asked for.
  */
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
@@ -20,6 +22,8 @@ import {
   type Structure,
 } from '../src/assessment';
 import { HouseDiagram } from '../src/diagram';
+import { emptyFema, femaObservations } from '../src/fema';
+import { FemaCard } from '../src/fema-card';
 import { useField } from '../src/field';
 import { PhotoStrip } from '../src/photos';
 import { Alert, Body, Button, Card, Field, Heading, NavBar, Page } from '../src/ui';
@@ -56,9 +60,12 @@ export default function Assess() {
   const [seen, setSeen] = useState<string[]>([]);
   const [draftId, setDraftId] = useState<string | null>(null);
   const [usedDrafts, setUsedDrafts] = useState<string[]>([]);
+  const [fema, setFema] = useState(emptyFema);
+  const tribalOwnership = f.options.tribalOwnership;
+  const details = femaObservations(fema, structure, tribalOwnership, (l) => t(`fema.depth.${l}`));
   const needsLandmark = !p.parcelId;
   const save = async () => {
-    if (!degree) return;
+    if (!degree || details.problems.length) return;
     await f.recordAssessment({
       id,
       mode: 'detailed',
@@ -78,6 +85,7 @@ export default function Assess() {
       observations: {
         water_inside: waterInside,
         ...(seen.length ? { seen } : {}),
+        ...details.observations,
         // Which fields came from a confirmed voice draft; the draft records provider and model (AIG-12).
         ...(draftId && usedDrafts.length ? { voice_draft: draftId, voice_used: usedDrafts } : {}),
       },
@@ -122,7 +130,7 @@ export default function Assess() {
       actions={
         <Button
           label={t('assess.save')}
-          disabled={!degree || (needsLandmark && !landmark.trim())}
+          disabled={!degree || (needsLandmark && !landmark.trim()) || details.problems.length > 0}
           onPress={() => void save()}
         />
       }
@@ -226,6 +234,17 @@ export default function Assess() {
           ))}
         </View>
       </Card>
+      <FemaCard
+        value={fema}
+        onChange={setFema}
+        structure={structure}
+        tribalOwnership={tribalOwnership}
+      />
+      {details.problems.length ? (
+        <Alert tone="warn">
+          {[t('fema.fix'), ...details.problems.map((x) => t(x.key, x.params))].join('\n')}
+        </Alert>
+      ) : null}
       <VoiceNote
         clientUuid={id}
         text={note}

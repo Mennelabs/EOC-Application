@@ -149,7 +149,8 @@ export function damageSpecs(count: number, seed = 6060): DamageSpec[] {
             [null, 8],
           ]),
       access:
-        outcome[1] === 'cannot_verify' ? rng.pick(['road_closed', 'flooded', 'debris']) : null,
+        // The resident's "can a car reach the home" answer (DCL:DEC-17: private or public road or bridge).
+        outcome[1] === 'cannot_verify' ? rng.pick(['no_public_road', 'no_private_road']) : null,
       primaryResidence: witness ? null : rng.chance(0.96),
       preExisting: rng.chance(0.03),
       withdrawn: rng.chance(0.02),

@@ -101,6 +101,12 @@ export interface AreaPackage {
   sites: { id: string; name: string; kind: string; status: string }[];
   jobAids: { id: string; key: string; title: string; bodyHtml: string; lang: string }[];
   maps: { areaKey: string; available: boolean; url: string | null }[];
+  /** County choices the screens follow (DCL:DEC-17: ask tribal ownership). */
+  options: AreaOptions;
+}
+
+export interface AreaOptions {
+  tribalOwnership: boolean;
 }
 
 export interface VoiceDraft {

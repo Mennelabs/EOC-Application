@@ -8,6 +8,7 @@
  */
 import { sql, type Transaction } from 'kysely';
 import type { Database } from '@cg/db';
+import { cantReachReasonOf } from '@cg/field-core';
 import type { DamageRecord, HomeType, Insurance, Tenure } from './counting.ts';
 
 type Answer = { kind?: string; value?: unknown } | null;
@@ -142,11 +143,10 @@ export async function loadDamageRecords(
       addressKey: r.address_key,
       locationId: r.location_id,
       tractGeoid: r.tract_geoid,
+      // DCL:DEC-17: FEMA asks whether a private or a public road or bridge blocked the home.
       inaccessibleReason:
         r.verification_level === 'cannot_verify'
-          ? typeof value(r.access) === 'string'
-            ? String(value(r.access))
-            : 'not given'
+          ? (cantReachReasonOf(value(r.access)) ?? 'not given')
           : null,
       at: new Date(r.submitted_at).toISOString(),
     };
@@ -156,7 +156,7 @@ export async function loadDamageRecords(
     const homeType = STRUCTURE[a.structure] ?? 'other';
     const building = a.structure === 'apartment_building';
     const units = a.observations?.['units'];
-    const reason = a.observations?.['cantReachReason'];
+    const reason = cantReachReasonOf(a.observations?.['cant_reach_reason']);
     out.push({
       kind: 'assessment',
       id: a.id,
@@ -185,8 +185,7 @@ export async function loadDamageRecords(
       addressKey: a.address_key,
       locationId: a.location_id,
       tractGeoid: a.tract_geoid,
-      inaccessibleReason:
-        a.degree === 'cant_reach' ? (typeof reason === 'string' ? reason : 'not given') : null,
+      inaccessibleReason: a.degree === 'cant_reach' ? (reason ?? 'not given') : null,
       at: new Date(a.assessed_at).toISOString(),
     });
   }

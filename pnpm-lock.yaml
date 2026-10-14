@@ -382,6 +382,9 @@ importers:
       '@cg/db':
         specifier: workspace:*
         version: link:../db
+      '@cg/field-core':
+        specifier: workspace:*
+        version: link:../field-core
       kysely:
         specifier: 0.29.6
         version: 0.29.6

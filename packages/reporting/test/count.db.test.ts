@@ -9,6 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, withTenant, type Database } from '@cg/db';
+import { cantReachReasonOf } from '@cg/field-core';
 import { connectorFor, createRecordedHttp, recordingsDir, runPull } from '@cg/refdata';
 import type { Kysely } from 'kysely';
 import { loadDamageReports, type DamageSpec } from '../../../tools/seed/src/damage.ts';
@@ -70,7 +71,8 @@ function expected(specs: DamageSpec[], ids: string[]): DamageRecord[] {
       addressKey: [key(s.line1), key(s.unit), s.postal].filter(Boolean).join('|'),
       locationId: null,
       tractGeoid: `29999${tractAt(s.position[0]).tract}`,
-      inaccessibleReason: s.verification === 'cannot_verify' ? (s.access ?? 'not given') : null,
+      inaccessibleReason:
+        s.verification === 'cannot_verify' ? (cantReachReasonOf(s.access) ?? 'not given') : null,
       at: 'same',
     };
   });
@@ -180,6 +182,11 @@ describe.skipIf(!appUrl || !workerUrl)('the counting rule over the database', ()
       t.excluded.rejected,
     ])
       expect(n).toBeGreaterThan(0);
+    // DCL:DEC-17: inaccessible homes carry FEMA's reason, private or public road or bridge.
+    expect(Object.keys(t.shownSeparately.inaccessible.byReason).sort()).toEqual([
+      'private_road_or_bridge',
+      'public_road_or_bridge',
+    ]);
   });
 
   it('another tenant reads none of these records (SEC-05)', async () => {

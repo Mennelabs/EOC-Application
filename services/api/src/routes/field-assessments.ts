@@ -1,6 +1,6 @@
 /**
  * Field assessments and service counters (layer-4 task I; FLD-04, FLD-05,
- * FLD-08, FLD-10, FLD-12, FLD-13, FL-06, FR-17, FR-22, DCL:DEC-02/03, A7,
+ * FLD-08, FLD-10, FLD-12, FLD-13, FL-06, FR-17, FR-22, DCL:DEC-02/03, DCL:DEC-17, A7,
  * DSP-11, SEC-18):
  *
  * - A field team records what it saw at a property: the parcel the pin was
@@ -21,7 +21,18 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { sql, type Transaction } from 'kysely';
 import { z } from 'zod';
 import type { Database } from '@cg/db';
-import { toUsng } from '@cg/field-core';
+import {
+  BUSINESS_DAYS_CLOSED_MAX,
+  BUSINESS_EMPLOYEES_MAX,
+  CANT_REACH_REASONS,
+  FLOOD_DEPTH_MAX_IN,
+  INSURANCE_TYPES,
+  OCCUPANCIES,
+  TRIBAL_OWNERSHIP,
+  UNITS_MAX,
+  YES_NO_UNKNOWN,
+  toUsng,
+} from '@cg/field-core';
 import { ApiError, errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
 import { iso, listQuery, uuidParam } from './helpers.ts';
@@ -60,6 +71,36 @@ const serviceKinds = [
 ] as const;
 
 const point = z.object({ lat: z.number().min(-90).max(90), lon: z.number().min(-180).max(180) });
+
+const depthIn = z.number().int().min(0).max(FLOOD_DEPTH_MAX_IN);
+const choices = z.array(z.string().max(80)).max(20);
+/**
+ * What the team saw (FLD-08): the picture-based choices for the home type
+ * (water line, roof, walls…), the damage seen, which fields a confirmed voice
+ * draft filled (FLD-09), and the per-home details FEMA asks for (DCL:DEC-17,
+ * packages/field-core fema.ts), each checked against FEMA's choices and
+ * ranges so a report never carries a value FEMA cannot take.
+ */
+const observations = z
+  .object({
+    water_inside: z.enum(YES_NO_UNKNOWN).optional(),
+    seen: choices.optional(),
+    voice_draft: z.string().max(80).optional(),
+    voice_used: z.array(z.string().max(160)).max(20).optional(),
+    flood_depth_basement_in: depthIn.optional(),
+    flood_depth_first_floor_in: depthIn.optional(),
+    flood_depth_crawl_space_in: depthIn.optional(),
+    units: z.number().int().min(1).max(UNITS_MAX).optional(),
+    occupancy: z.enum(OCCUPANCIES).optional(),
+    insurance: z.array(z.enum(INSURANCE_TYPES)).max(INSURANCE_TYPES.length).optional(),
+    utilities_out: z.enum(YES_NO_UNKNOWN).optional(),
+    tribal_ownership: z.enum(TRIBAL_OWNERSHIP).optional(),
+    business_employees: z.number().int().min(0).max(BUSINESS_EMPLOYEES_MAX).optional(),
+    business_days_closed: z.number().int().min(0).max(BUSINESS_DAYS_CLOSED_MAX).optional(),
+    cant_reach_reason: z.enum(CANT_REACH_REASONS).optional(),
+  })
+  .catchall(z.union([z.string().max(80), z.number(), z.boolean(), choices]))
+  .refine((o) => Object.keys(o).length <= 40, { message: 'at most 40 observations' });
 
 const assessmentOut = z.object({
   id: z.uuid(),
@@ -171,10 +212,7 @@ export const fieldAssessmentRoutes: FastifyPluginAsync = async (instance) => {
           landmark: z.string().max(300).optional(),
           structure: z.enum(structures).default('single_family'),
           degree: z.enum(degrees),
-          /** Picture-based choices for the home type (FLD-08): water line, roof, walls, foundation… */
-          observations: z
-            .record(z.string(), z.union([z.string().max(80), z.number(), z.boolean()]))
-            .default({}),
+          observations: observations.default({}),
           note: z.string().max(1000).optional(),
           assessedAt: z.iso.datetime().optional(),
         }),

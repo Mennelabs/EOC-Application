@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@cg/db": "workspace:*",
+    "@cg/field-core": "workspace:*",
     "kysely": "0.29.6"
   },
   "devDependencies": {

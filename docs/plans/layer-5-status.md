@@ -31,17 +31,17 @@ See `docs/plans/layer-4-report.md`, "What did not pass, or is not yet proven" it
 
 Plan: [`layer-5.md`](layer-5.md). One task per commit; each ends green, pushed, and recorded here.
 
-| Task | What                                                                                                        | State | Commits | Notes |
-| ---- | ----------------------------------------------------------------------------------------------------------- | ----- | ------- | ----- |
-| P    | Plan `docs/plans/layer-5.md`                                                                                | done  | 3335213 |       |
-| A    | Enclave containers and identity (`cjis-idp`, `cjis-provision`, `cjis-web`, `cjis-gateway`, secrets, guard)  | done  | d0b21df |       |
-| B    | Enclave database `packages/cjis-db` (migrations, dictionary, RLS, audit chain, retention, synthetic agency) | done  | 7a30a0a |       |
-| C    | Enclave API (auth, qualification, policy, audit, encryption, routes, jobs)                                  | done  | 435f204 |       |
-| D    | Platform side (migration 0041, actions, template, mission routes, seed liaison, dictionary guard)           | done  | 5310f2b |       |
-| E    | Enclave web app `apps/web-cjis`                                                                             | done  | 168ad5d |       |
-| F    | Console CJIS panel and link action                                                                          | done  | this commit |       |
-| G    | Tests and CI (stack suite, browser journeys, enclave database suites, image scans)                          | todo  |         |       |
-| H    | Docs (ADRs 0021/0036–0038, architecture, traceability, report, README, accessibility records)               | todo  |         |       |
+| Task | What                                                                                                        | State | Commits     | Notes |
+| ---- | ----------------------------------------------------------------------------------------------------------- | ----- | ----------- | ----- |
+| P    | Plan `docs/plans/layer-5.md`                                                                                | done  | 3335213     |       |
+| A    | Enclave containers and identity (`cjis-idp`, `cjis-provision`, `cjis-web`, `cjis-gateway`, secrets, guard)  | done  | d0b21df     |       |
+| B    | Enclave database `packages/cjis-db` (migrations, dictionary, RLS, audit chain, retention, synthetic agency) | done  | 7a30a0a     |       |
+| C    | Enclave API (auth, qualification, policy, audit, encryption, routes, jobs)                                  | done  | 435f204     |       |
+| D    | Platform side (migration 0041, actions, template, mission routes, seed liaison, dictionary guard)           | done  | 5310f2b     |       |
+| E    | Enclave web app `apps/web-cjis`                                                                             | done  | 168ad5d     |       |
+| F    | Console CJIS panel and link action                                                                          | done  | f060b6f     |       |
+| G    | Tests and CI (stack suite, browser journeys, enclave database suites, image scans)                          | done  | this commit |       |
+| H    | Docs (ADRs 0021/0036–0038, architecture, traceability, report, README, accessibility records)               | todo  |             |       |
 
 ## Verified by (task A)
 
@@ -84,6 +84,11 @@ Plan: [`layer-5.md`](layer-5.md). One task per commit; each ends green, pushed, 
 
 - `apps/web-console/src/screens/missions.tsx`: the mission page's "Law enforcement (CJIS)" panel shows "Restricted: CJIS" to readers, and to holders of `mission.cji.open` the explanation and "Open in the CJIS enclave (new tab)" (`rel="noopener noreferrer"`); holders of `mission.cji.link` on an unlinked mission get "Link to the CJIS enclave" through the confirmation dialog; the missions list has a "Law enforcement" column with the marker. The console never calls the enclave.
 - `tests/e2e/console-l5.spec.ts` (desktop and phone, 4 passes locally): an onboarded liaison opens the exercise mission, the link names the enclave origin, the exercise reference, the mission reference and the county; following it opens the enclave's own notification page on its own origin; linking a new mission asks for a reason and then shows the link; an onboarded field coordinator sees "Restricted: CJIS", no link and no link button, and the marker in the list; axe passes on each screen.
+
+## Verified by (task G)
+
+- `tests/integration/layer5.int.test.ts` (9 passes against the running stack): a coordinator creates a mission and the liaison links it (the platform answers a 43-character opaque reference and the enclave address; a reader sees only `{ restricted: true }`); an enclave officer records the case number, summary, a person, a weapon, a body-camera reference, a narrative and the disposition with a random marker string; the marker is absent from a full data dump of the platform database (only the opaque reference crossed over), absent from the enclave database dump (ciphertext only), and absent from the logs of `api`, `worker`, `gateway`, `cjis-api`, `cjis-worker` and `cjis-gateway`; a platform token gets 401 from the enclave and an enclave token 401 from the platform; the field sync for `rowan.field` carries no enclave reference; the enclave audit holds create, read, narrative and disposition for the reference without the marker, and the chain verifies; the seeded exercise mission and the sheriff's exercise record share one reference.
+- CI (`.github/workflows/ci.yml`): `services/api/test/cjislink.db.test.ts` joins the platform database suites; a new step starts the throwaway enclave database (`scripts/cjis-test-db.sh`), runs `packages/cjis-db/test/enclave.db.test.ts` and `services/cjis-api/test/api.db.test.ts` (39 passes locally) and the enclave migration drill with all 5 migrations down and up (no undocumented column, no table without forced row security); failure logs include the enclave services; the supply-chain job builds and scans `cjis-api` and `cjis-web` (Trivy, HIGH/CRITICAL gate, the upstream Caddy binary skipped as for `web`) and writes an SPDX SBOM for `cjis-api`. The stack job's `pnpm test:integration` and `pnpm test:e2e` already pick up the layer-5 suite and the two browser journeys.
 
 ## Known issues and deferred items
 

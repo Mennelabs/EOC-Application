@@ -199,6 +199,7 @@ const fieldRecordTypes = [
   'inspection',
   'road_status',
   'canvass_visit',
+  'pa_site',
 ] as const;
 const imageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'] as const;
 

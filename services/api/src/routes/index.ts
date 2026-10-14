@@ -4,6 +4,7 @@ import { aiRegisterRoutes } from './ai-register.ts';
 import { auditRoutes } from './audit.ts';
 import { breakGlassRoutes } from './breakglass.ts';
 import { contactRoutes } from './contacts.ts';
+import { declarationRoutes } from './declaration.ts';
 import { definitionRoutes } from './definitions.ts';
 import { dispatchRoutes, type DispatchDeps } from './dispatch.ts';
 import { eventRoutes } from './events.ts';
@@ -72,6 +73,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   messageRoutes,
   referralRoutes,
   refdataRoutes(deps.refdata),
+  declarationRoutes,
 ];
 
 /** The default set, as the tests mount it. */

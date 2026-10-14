@@ -474,6 +474,30 @@ export const actions = {
     'refdata_snapshot',
     'Pull reference data now, and upload, map and apply reference data files',
   ),
+
+  // Layer 6 declaration data (DCL:DEC-07/08/10/14/16/17, FL-17).
+  'declaration.read': a(
+    'read',
+    'declaration',
+    'See the declaration view: verified totals, outages, casualties, public damage, the clock',
+  ),
+  'declaration.write': a(
+    'write',
+    'declaration',
+    'Enter the incident period, requested areas and the Box 8 and 9 drafts',
+  ),
+  'outage.write': a('write', 'outage', 'Log, update and confirm infrastructure outages'),
+  'casualty.record': a(
+    'write',
+    'casualty_count',
+    'Enter official injured, missing and deceased counts from an official source (DEC-08)',
+    { explicit: true },
+  ),
+  'pa_site.write': a(
+    'write',
+    'pa_site',
+    'Record public damage sites with category, cost and flags',
+  ),
 } as const satisfies Record<string, ActionMeta>;
 
 export type ActionKey = keyof typeof actions;

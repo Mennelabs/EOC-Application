@@ -585,6 +585,7 @@ export interface PhotoTable extends Stamped {
     | 'inspection'
     | 'road_status'
     | 'canvass_visit'
+    | 'pa_site'
     | null;
   field_record_id: Uuid | null;
 }
@@ -2249,6 +2250,83 @@ export type ReferenceDataset =
   | 'alert'
   | 'power_outage';
 
+export interface DeclarationTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  incident_type: string | null;
+  incident_start: ColumnType<string | null, string | null | undefined, string | null>;
+  incident_end: ColumnType<string | null, string | null | undefined, string | null>;
+  requested_areas: JsonGen<{ name: string; tenantId?: string; programs: string[] }[]>;
+  box8_draft: string | null;
+  box9_draft: string | null;
+  review_label: Generated<string>;
+}
+
+export type OutageKind =
+  | 'hospital'
+  | 'water'
+  | 'wastewater'
+  | 'police'
+  | 'fire_ems'
+  | 'school'
+  | 'child_care'
+  | 'eldercare'
+  | 'roads'
+  | 'power';
+
+export interface OutageTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  client_uuid: Uuid;
+  kind: OutageKind;
+  facility_source_id: string | null;
+  facility_name: string | null;
+  description: string | null;
+  area: string | null;
+  customers_out: number | null;
+  started_at: ColumnType<Date, Date | string, Date | string>;
+  expected_restoration_at: TsNullable;
+  restored_at: TsNullable;
+  source: Generated<'staff' | 'feed_suggestion' | 'utility_report'>;
+  confirmed_by: Uuid | null;
+  confirmed_at: TsNullable;
+}
+
+export interface CasualtyCountTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  kind: 'injured' | 'missing' | 'deceased';
+  count: number;
+  official_source: string;
+  as_of: ColumnType<Date, Date | string, Date | string>;
+  note: string | null;
+  entered_by: Uuid;
+  created_at: TsGen;
+}
+
+export interface PaSiteTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  client_uuid: Uuid;
+  applicant: string;
+  applicant_tenant_id: Uuid | null;
+  name: string;
+  description: string | null;
+  category: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G';
+  geom: ColumnType<unknown, unknown, unknown> | null;
+  estimated_cost: ColumnType<string | null, number | string | null, number | string | null>;
+  cost_basis: Generated<'estimate' | 'verified'>;
+  percent_complete: number | null;
+  insured: Generated<'yes' | 'no' | 'unknown'>;
+  other_federal_agency: Generated<'yes' | 'no' | 'unknown'>;
+  debris_cubic_yards: ColumnType<string | null, number | string | null, number | string | null>;
+  status: Generated<'active' | 'withdrawn'>;
+}
+
 export interface LocationGeoTable {
   location_id: Uuid;
   tenant_id: Uuid;
@@ -2554,6 +2632,10 @@ export interface Database {
   'cg.change_feed': ChangeFeedTable;
   'cg.client_command': ClientCommandTable;
   'cg.location_geo': LocationGeoTable;
+  'cg.declaration': DeclarationTable;
+  'cg.outage': OutageTable;
+  'cg.casualty_count': CasualtyCountTable;
+  'cg.pa_site': PaSiteTable;
   'cg.refdata_import': RefdataImportTable;
   'cg.refdata_snapshot': RefdataSnapshotTable;
   'cg.refdata_current': RefdataCurrentTable;

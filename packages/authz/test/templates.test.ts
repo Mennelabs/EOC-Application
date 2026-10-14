@@ -32,9 +32,11 @@ describe('shipped role templates (ADM-04)', () => {
   it('preview: tenant_admin can do everything in layer 1 except see protected fields', () => {
     const admin = roleTemplates.find((t) => t.key === 'tenant_admin')!;
     const p = previewRole(admin.grants, admin.key);
-    // Live positions are for dispatch and safety roles only, and the CJIS enclave link for the
-    // liaison: no wildcard reaches them (DSP-08, SEC-12).
+    // Live positions are for dispatch and safety roles only, the CJIS enclave link for the
+    // liaison, and official casualty counts for roles that name them: no wildcard reaches
+    // them (DSP-08, SEC-12, DCL:DEC-08).
     expect(p.deniedActions.sort()).toEqual([
+      'casualty.record',
       'mission.cji.link',
       'mission.cji.open',
       'position.read',

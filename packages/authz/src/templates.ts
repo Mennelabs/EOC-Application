@@ -139,6 +139,10 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('audit.read'),
       g('definition.*'),
       g('refdata.read'),
+      g('declaration.*'),
+      g('outage.write'),
+      g('casualty.record'),
+      g('pa_site.write'),
       g('break_glass.start'),
       g('break_glass.end'),
       g('break_glass.read'),
@@ -162,6 +166,8 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('definition.read'),
       g('personnel.read'),
       g('refdata.*'),
+      g('declaration.read'),
+      g('outage.write'),
     ],
   },
   {
@@ -192,6 +198,8 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('team.manage'),
       g('check_in.read'),
       g('parcel.read'),
+      g('declaration.read'),
+      g('pa_site.write'),
     ],
   },
   {
@@ -416,7 +424,13 @@ export const roleTemplates: readonly RoleTemplate[] = [
     name: 'Reporting / planning staff',
     description: 'Official reports from approved definitions and retained snapshots.',
     source: 'original_a7',
-    grants: [g('me.read'), g('event.read'), g('definition.read'), g('refdata.read')],
+    grants: [
+      g('me.read'),
+      g('event.read'),
+      g('definition.read'),
+      g('refdata.read'),
+      g('declaration.read'),
+    ],
   },
   {
     key: 'partner_coordinator',

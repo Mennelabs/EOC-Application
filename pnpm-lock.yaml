@@ -428,6 +428,9 @@ importers:
       '@cg/refdata':
         specifier: workspace:*
         version: link:../../packages/refdata
+      '@cg/reporting':
+        specifier: workspace:*
+        version: link:../../packages/reporting
       '@fastify/swagger':
         specifier: 9.9.0
         version: 9.9.0

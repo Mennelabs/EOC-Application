@@ -5,7 +5,12 @@
  * WESTWIND responses on this stack), asks for a pull now, and imports a
  * risk and vulnerability file (an import-only dataset): a wrong column
  * choice is caught by the check, named by row and field without the value;
- * the fixed mapping passes and applies. Axe runs on each state.
+ * the fixed mapping passes and applies. Then the county EM director works
+ * the declaration data for the open event (DCL:DEC-05–DEC-10, DEC-16): sets
+ * the incident period and sees the 30-day clock, logs an outage that has run
+ * past 72 hours and marks it restored, records an official casualty count
+ * with its source, and adds a public damage site (a cost that is not an
+ * amount is named back first) and withdraws it. Axe runs on each state.
  */
 import { expect, test } from '@playwright/test';
 import { expectNoViolations, onboard } from './support/console.ts';
@@ -101,5 +106,104 @@ test.describe('layer 6 console: reference data', () => {
         .getByRole('row')
         .filter({ hasText: `risk-${tag}.csv` }),
     ).toContainText('applied');
+  });
+
+  test('an EM director keeps the declaration data for the event', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'county_em_director',
+      `EM director ${tag}`,
+      `l6d-${testInfo.project.name}`,
+    );
+    const day = (offset: number) =>
+      new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+    const local = (offset: number) => {
+      const d = new Date(Date.now() + offset * 86_400_000);
+      const p = (x: number) => String(x).padStart(2, '0');
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+    };
+    const run = `${tag}-${testInfo.project.name}`;
+
+    await page.goto('/console/declaration');
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Declaration request data' }),
+    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Verified damage to homes' })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(page.getByRole('table', { name: 'Shown apart, not counted' })).toBeVisible();
+    await expectNoViolations(page);
+
+    // DEC-16: the incident end date starts the 30-day clock; an end before the start is refused.
+    await page.getByLabel('Incident type').fill('Severe storms and flooding (exercise)');
+    await page.getByLabel('Incident start date').fill(day(-5));
+    await page.getByLabel('Incident end date').fill(day(-7));
+    await expect(page.getByText('The incident cannot end before it starts.')).toBeVisible();
+    await page.getByLabel('Incident end date').fill(day(-5));
+    await page.getByRole('button', { name: 'Save incident period and drafts' }).click();
+    await expect(page.getByText('Incident period and drafts saved.')).toBeVisible();
+    await expect(page.getByText(/25 days left/)).toBeVisible();
+
+    // DEC-07: an outage past 72 hours is flagged; restoring it records the time.
+    await page.getByLabel('Service', { exact: true }).selectOption({ label: 'Drinking water' });
+    await page.getByLabel('Facility name (optional)').fill(`Exercise pump station ${run}`);
+    await page.getByLabel('Customers out (optional)').fill('1,200');
+    await expect(page.getByText('Enter a whole number, or leave it empty.')).toBeVisible();
+    await page.getByLabel('Customers out (optional)').fill('1200');
+    await page.getByLabel('Out since').fill(local(-4));
+    await page.getByRole('button', { name: 'Log outage' }).click();
+    await expect(page.getByText('Outage logged.')).toBeVisible();
+    const outage = page
+      .getByRole('table', { name: 'Outage log' })
+      .getByRole('row')
+      .filter({ hasText: `Exercise pump station ${run}` });
+    await expect(outage).toContainText('(over 72 hours)');
+    await expectNoViolations(page);
+    await outage.getByRole('button', { name: 'Mark drinking water restored now' }).click();
+    await expect(page.getByText('Drinking water marked restored.')).toBeVisible();
+    await expect(outage).toContainText('Restored');
+
+    // DEC-08: an official count with its source; the latest entry is the one shown.
+    await page.getByLabel('Kind', { exact: true }).selectOption({ label: 'Injured' });
+    await page.getByLabel('Count', { exact: true }).fill('3');
+    await page.getByLabel('Official source').fill('Exercise: county medical examiner');
+    await page.getByLabel('As of').fill(local(0));
+    await page.getByRole('button', { name: 'Record count' }).click();
+    await expect(page.getByText('Injured count recorded.')).toBeVisible();
+    const injured = page
+      .getByRole('table', { name: 'Current official casualty counts' })
+      .getByRole('row')
+      .filter({ hasText: 'Injured' });
+    await expect(injured).toContainText('Exercise: county medical examiner');
+
+    // DEC-10: a public damage site counts toward its category; withdrawing it takes it out.
+    const site = `Exercise culvert ${run}`;
+    await page.getByLabel('Applicant').fill('Exercise Public Works');
+    await page.getByLabel('Site name').fill(site);
+    await page
+      .getByLabel('Category of work', { exact: true })
+      .selectOption({ label: 'C: Roads and bridges' });
+    await page.getByLabel('Cost in US dollars (optional)').fill('about 100k');
+    await expect(page.getByText('Enter an amount of 0 or more.')).toBeVisible();
+    await page.getByLabel('Cost in US dollars (optional)').fill('125000');
+    await page.getByLabel('Cost basis').selectOption('verified');
+    await page.getByLabel('Percent complete (optional)').fill('10');
+    await expectNoViolations(page);
+    await page.getByRole('button', { name: 'Add site' }).click();
+    await expect(page.getByText(`${site} added.`)).toBeVisible();
+    const row = page
+      .getByRole('table', { name: 'Public damage sites' })
+      .getByRole('row')
+      .filter({ hasText: site });
+    await expect(row).toContainText('$125,000, verified');
+    await row.getByRole('button', { name: `Withdraw ${site}` }).click();
+    await expect(page.getByText(`${site} withdrawn.`)).toBeVisible();
+    await expect(row).toContainText('Withdrawn');
+    await expectNoViolations(page);
   });
 });

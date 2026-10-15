@@ -43,6 +43,7 @@ import { pruneReferenceSnapshots, scheduleReferencePulls } from './jobs/refdata.
 import { evaluateEquityAlerts } from './jobs/equity.ts';
 import { evaluateAiHealth } from './jobs/ai-health.ts';
 import { staleAbandonedPlans, sweepCommandHistory } from './jobs/commands.ts';
+import { remindFacilityRechecks } from './jobs/facilities.ts';
 import { webhookSchedule } from './jobs/webhooks.ts';
 import { consume, consumeIntake, relayOnce } from './jobs/relay.ts';
 import type { JobContext, Schedule } from './jobs/types.ts';
@@ -194,6 +195,12 @@ const schedules: Schedule[] = [
   // F09, REM-01: reminders and notices on the worker's clock (jobs/reminders.ts); each is sent once per cycle.
   { name: 'site-reconfirm', everyMs: 5 * 60_000, run: remindSiteConfirmations }, // PUB-03
   { name: 'resource-review', everyMs: 60 * 60_000, run: reviewResources }, // BRD:FR-16.03, AC-16B
+  // REC-01: facility entries are re-checked every 12 months; owners and approvers hear a month before.
+  {
+    name: 'facility-recheck',
+    everyMs: 24 * 3600_000,
+    run: (c) => remindFacilityRechecks(c).then(() => undefined),
+  },
   { name: 'contact-reverify', everyMs: 60 * 60_000, run: remindContactVerification }, // CNT-01
   { name: 'publication-notices', everyMs: 30_000, run: noticePublications }, // PUB-06
   { name: 'ai-health', everyMs: 10 * 60_000, run: evaluateAiHealth }, // AIG-09 (alerts only)

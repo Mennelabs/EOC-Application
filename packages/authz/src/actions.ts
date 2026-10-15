@@ -278,6 +278,12 @@ export const actions = {
     'facility',
     "Propose a facility or a change to one; a partner keeps its own facility's details current",
   ),
+  'facility.self_register': a(
+    'write',
+    'facility_change',
+    'Offer a place for disaster use through the public form; it waits for county approval',
+    { public: true },
+  ),
   'facility.approve': a(
     'admin',
     'facility',

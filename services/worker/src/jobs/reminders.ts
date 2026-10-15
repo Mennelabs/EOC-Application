@@ -38,7 +38,13 @@ const dateOnly = (d: Date | string): string =>
 export interface ReminderSpec {
   kind: NoticeKind;
   subjectKind:
-    'site' | 'resource' | 'partner_contact' | 'publication' | 'tenant' | 'ai_health_alert';
+    | 'site'
+    | 'resource'
+    | 'partner_contact'
+    | 'publication'
+    | 'tenant'
+    | 'ai_health_alert'
+    | 'facility';
   subjectId: string;
   cycleKey: string;
   dueAt: Date;

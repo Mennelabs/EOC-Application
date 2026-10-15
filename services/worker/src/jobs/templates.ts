@@ -23,7 +23,8 @@ export type TemplateName =
   | 'help_alert'
   | 'field_message'
   | 'reminder_overdue'
-  | 'ai_quality_notice';
+  | 'ai_quality_notice'
+  | 'facility_recheck';
 
 export const TEMPLATE_NAMES: readonly TemplateName[] = [
   'confirmation',
@@ -44,6 +45,7 @@ export const TEMPLATE_NAMES: readonly TemplateName[] = [
   'field_message',
   'reminder_overdue',
   'ai_quality_notice',
+  'facility_recheck',
 ];
 
 export interface TemplateVars {
@@ -117,6 +119,8 @@ const EN = {
       `${v.county} Emergency Mgmt: the reminder "${v.title ?? ''}" was due ${v.dueAt ?? 'earlier'} and nobody has acknowledged it. Open the console.`,
     ai_quality_notice: (v: TemplateVars) =>
       `${v.county} Emergency Mgmt: the AI feature "${v.title ?? ''}" needs a look: ${v.what ?? ''} It keeps running. Open the AI use register.`,
+    facility_recheck: (v: TemplateVars) =>
+      `${v.county} Emergency Mgmt: please check that the details of ${v.site ?? 'your facility'} in the facility registry are still right by ${v.dueAt ?? 'its re-check date'}.`,
     resource_attention: (v: TemplateVars) =>
       `${v.county} Emergency Mgmt: the public resource "${v.title ?? ''}" ${v.what ?? 'needs attention'}.`,
     contact_reverify: (v: TemplateVars) =>
@@ -211,6 +215,13 @@ const EN = {
         `The reminder "${v.title ?? ''}" was due ${v.dueAt ?? 'earlier'} and nobody on ${v.county}'s console has acknowledged it.\n\n` +
         `${v.what ? `${v.what}\n\n` : ''}Open the console to acknowledge, snooze or complete it: ${v.url ?? ''}\n`,
     }),
+    facility_recheck: (v: TemplateVars) => ({
+      subject: `${v.county}: please re-check ${v.site ?? 'a facility'} in the facility registry`,
+      body:
+        `${v.site ?? 'A facility'} is in ${v.county}'s facility registry, which the county uses to plan shelters, supply points and recovery centers.\n\n` +
+        `Each entry is re-checked once a year. Please confirm by ${v.dueAt ?? 'its re-check date'} that its details (space, access, power, kitchen, showers, pets, parking, agreement and contacts) are still right, or tell the county what changed. ` +
+        `An entry that is not re-checked is marked stale and planners are warned before they rely on it.\n`,
+    }),
     ai_quality_notice: (v: TemplateVars) => ({
       subject: `${v.county}: the AI feature "${v.title ?? ''}" needs a look`,
       body:
@@ -279,6 +290,8 @@ const ES: typeof EN = {
       `Gestión de Emergencias de ${v.county}: el recordatorio "${v.title ?? ''}" venció ${v.dueAt ?? 'antes'} y nadie lo ha atendido. Abra la consola.`,
     ai_quality_notice: (v) =>
       `Gestión de Emergencias de ${v.county}: la función de IA "${v.title ?? ''}" necesita revisión: ${v.what ?? ''} Sigue funcionando. Abra el registro de uso de IA.`,
+    facility_recheck: (v) =>
+      `Manejo de Emergencias de ${v.county}: revise que los datos de ${v.site ?? 'su instalación'} en el registro de instalaciones sigan correctos antes de ${v.dueAt ?? 'su fecha de revisión'}.`,
     resource_attention: (v) =>
       `Manejo de Emergencias de ${v.county}: el recurso público "${v.title ?? ''}" ${v.what ?? 'necesita atención'}.`,
     contact_reverify: (v) =>
@@ -372,6 +385,13 @@ const ES: typeof EN = {
       body:
         `El recordatorio "${v.title ?? ''}" venció ${v.dueAt ?? 'antes'} y nadie en la consola de ${v.county} lo ha atendido.\n\n` +
         `${v.what ? `${v.what}\n\n` : ''}Abra la consola para atenderlo, posponerlo o completarlo: ${v.url ?? ''}\n`,
+    }),
+    facility_recheck: (v) => ({
+      subject: `${v.county}: revise ${v.site ?? 'una instalación'} en el registro de instalaciones`,
+      body:
+        `${v.site ?? 'Una instalación'} está en el registro de instalaciones de ${v.county}, que el condado usa para planear refugios, puntos de distribución y centros de recuperación.\n\n` +
+        `Cada registro se revisa una vez al año. Confirme antes de ${v.dueAt ?? 'su fecha de revisión'} que sus datos (espacio, acceso, energía, cocina, duchas, mascotas, estacionamiento, acuerdo y contactos) siguen correctos, o diga al condado qué cambió. ` +
+        `Un registro sin revisar se marca como desactualizado y se avisa a quien planea antes de usarlo.\n`,
     }),
     ai_quality_notice: (v) => ({
       subject: `${v.county}: la función de IA "${v.title ?? ''}" necesita revisión`,

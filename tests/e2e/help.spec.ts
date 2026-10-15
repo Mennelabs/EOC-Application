@@ -6,6 +6,7 @@
  */
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
+import { administrators, api, token } from './support/console.ts';
 
 const WCAG = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
@@ -47,6 +48,39 @@ test.describe('find help', () => {
     // The list is still there: the ask box never replaces it (AC-A08).
     await expect(page.getByRole('heading', { name: 'Open sites' })).toBeVisible();
     await expectNoViolations(page);
+  });
+
+  test('REC-01: a place offered through the public form reaches the county approval queue, and nothing is echoed back', async ({
+    page,
+  }) => {
+    const name = `Exercise Grange Hall ${Date.now().toString(36)}`;
+    await page.goto('/county/help');
+    await page.getByRole('link', { name: /Offer it to the county/ }).click();
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Offer a place for disaster use' }),
+    ).toBeVisible();
+    await expectNoViolations(page);
+    await page.getByLabel('Name of the place').fill(name);
+    await page.getByLabel('Kind of place').selectOption('community_center');
+    await page.getByLabel('Street address').fill('3 Grange Rd');
+    await page.getByLabel('City').fill('Westwind');
+    await page.getByLabel('Usable floor space (square feet)').fill('4000');
+    await page
+      .getByRole('group', { name: 'Accessible to wheelchair users?' })
+      .getByRole('radio', { name: 'Yes' })
+      .check();
+    await page.getByLabel('Your name').fill('Exercise Grange Secretary');
+    await page.getByLabel('Email').fill('grange@example.org');
+    await page.getByLabel('I am allowed to offer this place for disaster use.').check();
+    await page.getByRole('button', { name: 'Send the offer' }).click();
+    await expect(page.getByText('Thank you. The county will review the offer')).toBeVisible();
+    await expect(page.getByText('Exercise Grange Secretary')).toHaveCount(0);
+    const admin = await token('county', administrators('county').admin);
+    const queue = (await api(admin, '/facility-changes')).body as unknown as {
+      facilityName: string | null;
+      source: string;
+    }[];
+    expect(queue.find((c) => c.facilityName === name)?.source).toBe('self_registration');
   });
 
   test('Spanish switches the whole page (EQ-06)', async ({ page }) => {

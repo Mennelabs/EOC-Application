@@ -31,6 +31,7 @@ import { validateAnswer, type QuestionGraph, type QuestionNode } from '@cg/intak
 import { ApiError, errors } from '../errors.ts';
 import { enqueueOutbox } from '../routes/helpers.ts';
 import { RiskScorer, WindowCounter } from './abuse.ts';
+import { facilityRegistrationRoutes } from './facility-registration.ts';
 import {
   CODE_DIGITS,
   CODE_LETTERS,
@@ -149,6 +150,8 @@ export const publicRoutes =
 
     // Public "Find help": sites, resources, feeds, widget and media sheet (PUB-*), same tenant hook.
     await app.register(helpRoutes({ publicBase: deps.publicBase }));
+    // REC-01: a place offered through the public form waits for county approval.
+    await app.register(facilityRegistrationRoutes);
 
     // ---------------------------------------------------------------- graph
     app.get(

@@ -97,7 +97,7 @@ Tests added by task J2:
 Remaining gaps, each with an owner:
 
 1. Two register rows had no provider call. `intake.transcription` now carries resident dictation through the county's provider (see below). `photo.quality` was retired from the register by migration 0074: PHO-03's retake suggestion runs on the device without AI, as PHO-03 asks.
-2. The evaluation suite (AIG-08) has injection cases for extraction and the command window only. Scribe notes, drafting, translation and discovery rely on per-output checks and their own tests, not on labelled evaluation cases. There is no labelled photo set for fairness slices.
+2. The evaluation suite (AIG-08) has injection cases for extraction and the command window only. Scribe notes, drafting, translation and discovery rely on per-output checks and their own tests, not on labelled evaluation cases. There is no labelled photo set for fairness slices; the harness to run one is `evaluate:photos` (`packages/ai/src/evaluation/photos.ts`).
 3. These are code only:
    - `field.voice_draft`'s provider-failure answer;
    - the scribe note model's failure;

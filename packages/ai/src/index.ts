@@ -71,3 +71,13 @@ export {
   type HumanAction,
 } from './records.ts';
 export { checkDraft, figuresIn, type DraftCheck } from './drafting.ts';
+export {
+  PHOTO_DEFAULTS,
+  evaluatePhotos,
+  parsePhotoManifest,
+  scorePhotos,
+  type PhotoCase,
+  type PhotoEvaluation,
+  type PhotoSettings,
+  type PhotoSlice,
+} from './evaluation/photos.ts';

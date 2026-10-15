@@ -254,6 +254,7 @@ DATABASE_MIGRATOR_URL=... pnpm --filter @cg/db check:migrations 3   # newest mig
 pnpm --filter @cg/intake lint:strings   # INT-08: reading-grade table and tone findings for the question graph
 pnpm --filter @cg/ai evaluate           # AIG-08: evaluation report against the test double (no network)
 pnpm --filter @cg/ai evaluate:live      # AIG-08: the same set against OpenAI (needs OPENAI_API_KEY; paid calls)
+pnpm --filter @cg/ai evaluate:photos <manifest.csv> [--baseline report.json] [--out report.json]   # AIG-08, PHO-13: the damage classifier on an operator-supplied labelled photo set (kept outside the repo), with accuracy by hazard, home type and income band; fails on a group behind or a regression
 pnpm --filter @cg/db check:migrations 1 # drill the newest migration up, down and up against the compose database (needs DATABASE_MIGRATOR_URL)
 pnpm reqindex          # regenerate docs/requirements-index.md after editing docs/0*
 eval "$(scripts/cjis-test-db.sh)" && pnpm vitest run --project unit packages/cjis-db/test services/cjis-api/test   # the enclave's database-backed suites on a throwaway enclave database (127.0.0.1:5433); scripts/cjis-test-db.sh --stop removes it

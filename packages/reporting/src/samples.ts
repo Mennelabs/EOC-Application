@@ -6,6 +6,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { renderPdf } from '@cg/pdf';
+import { samplePng } from '@cg/pdf/samples';
 import { SHIPPED, buildPackage, samplePackageData } from './fema/index.ts';
 import { reportPdf, type IssuedContent } from './report-export.ts';
 
@@ -97,6 +98,10 @@ export async function writeReportingSamples(dir: string): Promise<string[]> {
   const pkg = buildPackage(samplePackageData(), SHIPPED, {
     productName: 'Sample Product',
     generatedAt: new Date('2026-10-14T18:05:00Z'),
+    photoImages: new Map([
+      ['sample-1', samplePng(1200, 900)],
+      ['sample-2', samplePng(1200, 800)],
+    ]),
   });
   const file = join(dir, 'ida-package.pdf');
   writeFileSync(file, await renderPdf(pkg.pdf));

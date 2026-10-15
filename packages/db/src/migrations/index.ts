@@ -46,6 +46,7 @@ import * as m0044 from './0044_declaration_data.ts';
 import * as m0045 from './0045_official_reports.ts';
 import * as m0046 from './0046_fema_form_mapping.ts';
 import * as m0047 from './0047_export_file.ts';
+import * as m0048 from './0048_package_photo.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -96,4 +97,5 @@ export const migrations: Record<string, Migration> = {
   '0045_official_reports': m0045,
   '0046_fema_form_mapping': m0046,
   '0047_export_file': m0047,
+  '0048_package_photo': m0048,
 };

@@ -11,6 +11,7 @@ import { definitionRoutes } from './definitions.ts';
 import { dispatchRoutes, type DispatchDeps } from './dispatch.ts';
 import { eventRoutes } from './events.ts';
 import { exportRoutes, type ExportDeps } from './exports.ts';
+import { packagePhotoRoutes, type PackagePhotoDeps } from './package-photos.ts';
 import { fieldAssessmentRoutes } from './field-assessments.ts';
 import { fieldOpsRoutes } from './field-ops.ts';
 import { fieldRecordRoutes, type FieldRecordDeps } from './field-records.ts';
@@ -38,6 +39,7 @@ import { volunteerRoutes } from './volunteers.ts';
 export interface RouteDeps {
   dispatch?: DispatchDeps;
   exports?: ExportDeps;
+  packagePhotos?: PackagePhotoDeps;
   fieldSync?: FieldSyncDeps;
   fieldVoice?: FieldVoiceDeps;
   fieldRecords?: FieldRecordDeps;
@@ -81,6 +83,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   officialReportRoutes,
   femaMappingRoutes,
   exportRoutes(deps.exports),
+  packagePhotoRoutes(deps.packagePhotos),
 ];
 
 /** The default set, as the tests mount it. */

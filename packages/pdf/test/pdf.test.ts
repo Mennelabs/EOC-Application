@@ -8,6 +8,7 @@
 import { inflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { renderPdf, type Block } from '../src/index.ts';
+import { samplePng } from '../src/samples.ts';
 
 const pdf = (blocks: Block[], lang = 'en-US') =>
   renderPdf({ title: 'Exercise test', lang, producer: 'Test Product', footer: 'Exercise', blocks });
@@ -55,6 +56,22 @@ describe('accessible PDFs', () => {
     expect(s).not.toContain('/CIDSet');
     for (const tag of ['/H1', '/Table', '/TR', '/TH', '/TD', '/Caption'])
       expect(s, tag).toContain(`/S ${tag}`);
+  });
+
+  it('tags a picture as a Figure with its alternative text, captioned below', async () => {
+    const buf = await pdf([
+      {
+        kind: 'figure',
+        image: samplePng(1200, 800),
+        alt: 'Water line on a living room wall',
+        caption: 'Photo 1. Exercise.',
+      },
+    ]);
+    const s = buf.toString('latin1');
+    expect(s).toContain('/S /Figure');
+    expect(s).toContain('/Alt (Water line on a living room wall)');
+    expect(s).toContain('/Subtype /Image');
+    expect(s.match(/\/Type \/Page\b/g)).toHaveLength(1);
   });
 
   it('says the language of a Spanish document', async () => {

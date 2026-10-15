@@ -2270,6 +2270,27 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     },
     { standard: false },
   ),
+  package_photo: table(
+    {
+      id: { c: 'internal' },
+      tenant_id: { c: 'internal' },
+      event_id: { c: 'internal' },
+      photo_id: { c: 'internal', d: 'A blurred, metadata-free photo of the event (PHO-06/07)' },
+      caption: {
+        c: 'internal',
+        d: 'What the photo shows, written by staff; leaves in the IDA package (DEC-13: no address)',
+      },
+      checked: {
+        c: 'internal',
+        d: 'The chooser saw no face, plate, document, house number or street sign',
+      },
+      chosen_by: { c: 'internal' },
+      chosen_at: { c: 'internal' },
+      removed_at: { c: 'internal' },
+      removed_by: { c: 'internal' },
+    },
+    { standard: false },
+  ),
   location_geo: table(
     {
       location_id: { c: 'internal' },

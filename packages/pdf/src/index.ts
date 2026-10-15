@@ -1,7 +1,7 @@
 /**
  * Accessible PDFs (ADR-0040; NFR-12, ACC-49, GATE-03): a small document model
- * (headings, paragraphs, tables with header cells, lists, label–value pairs)
- * rendered by PDFKit as PDF/UA-1. Every piece of content sits in the
+ * (headings, paragraphs, tables with header cells, lists, label–value pairs,
+ * figures with alternative text) rendered by PDFKit as PDF/UA-1. Every piece of content sits in the
  * structure tree in reading order; tables are Table/TR/TH/TD with column and
  * row header scopes; the language and title are set and the title is shown;
  * fonts are embedded (Noto Sans, SIL OFL); page numbers and the running
@@ -32,6 +32,17 @@ export type Block =
     }
   | { kind: 'list'; items: string[] }
   | { kind: 'pairs'; caption: string; items: [string, Cell][] }
+  | {
+      kind: 'figure';
+      /** JPEG or PNG bytes. */
+      image: Buffer;
+      /** What the image shows, for people who cannot see it (PDF/UA-1 7.3). */
+      alt: string;
+      /** Shown under the image. */
+      caption: string;
+      /** The tallest the image is drawn, in points (default 280: two to a page). */
+      maxHeight?: number;
+    }
   | { kind: 'pageBreak' };
 
 export interface PdfDocumentModel {
@@ -231,6 +242,26 @@ export async function renderPdf(model: PdfDocumentModel): Promise<Buffer> {
         doc.table(opts as unknown as Parameters<Doc['table']>[0]);
         doc.x = MARGIN;
         doc.moveDown(0.8);
+        break;
+      }
+      case 'figure': {
+        const img = (
+          doc as unknown as { openImage(src: Buffer): { width: number; height: number } }
+        ).openImage(b.image);
+        const scale = Math.min(width / img.width, (b.maxHeight ?? 280) / img.height, 1);
+        const w = img.width * scale;
+        const h = img.height * scale;
+        // The image and its caption stay together.
+        if (doc.y + h + 36 > doc.page.height - doc.page.margins.bottom) doc.addPage();
+        const y = doc.y;
+        root.add(
+          doc.struct('Figure', { alt: b.alt }, () => {
+            doc.image(img as never, MARGIN, y, { width: w, height: h });
+          }),
+        );
+        doc.x = MARGIN;
+        doc.y = y + h + 4;
+        text('P', b.caption, { size: SIZE.small, color: MUTED, gap: 0.8 });
         break;
       }
       case 'pageBreak':

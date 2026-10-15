@@ -3,9 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Tagged, accessible PDFs (PDF/UA-1) from a small document model: headings, paragraphs, tables with header cells, lists (ADR-0040; NFR-12, ACC-49).",
+  "description": "Tagged, accessible PDFs (PDF/UA-1) from a small document model: headings, paragraphs, tables with header cells, lists, figures with alternative text (ADR-0040; NFR-12, ACC-49).",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./samples": "./src/samples.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p .",

@@ -134,6 +134,13 @@ const app = await buildApp({
     fieldVoice: { ai, defaultGraph: westwindGraph },
     refdata: { objects: { client: s3, bucket: config.S3_BUCKET } },
     exports: { objects: { client: s3, bucket: config.S3_BUCKET } },
+    packagePhotos: {
+      objects: {
+        client: s3,
+        ...(presignClient ? { presignClient } : {}),
+        bucket: config.S3_BUCKET,
+      },
+    },
     fieldSync: {
       objects: {
         client: s3,

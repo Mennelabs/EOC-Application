@@ -4,11 +4,14 @@
  * rule, every summary form, the per-home sheet and the GIS layer agree on
  * the counts; nothing personal or address-like leaves; text that a
  * spreadsheet could run as a formula stays text; a county's mapping
- * version changes the output without code and is named in it; the PDF
+ * version changes the output without code and is named in it; chosen
+ * photos travel as their blurred images with captions and generalized
+ * places, and a photo with no image is left out and said to be; the PDF
  * renders.
  */
 import { describe, expect, it } from 'vitest';
 import { renderPdf } from '@cg/pdf';
+import { samplePng } from '@cg/pdf/samples';
 import { toCsv } from '../src/csv.ts';
 import {
   SHIPPED,
@@ -20,7 +23,7 @@ import {
 
 const opts = { productName: 'Test Product', generatedAt: new Date('2026-10-14T18:05:00Z') };
 const file = (b: ReturnType<typeof buildPackage>, name: string) =>
-  b.files.find((f) => f.name === name)!.body;
+  b.files.find((f) => f.name === name)!.body.toString();
 /** Parses this writer's CSV: quoted fields, doubled quotes, CRLF rows. */
 function rows(csv: string): string[][] {
   const text = csv.replace(/^\uFEFF/, '');
@@ -117,7 +120,7 @@ describe('the IDA package', () => {
   });
 
   it('DEC-13: no address, parcel or personal detail leaves; places are 100 m cells', () => {
-    const all = pkg.files.map((f) => f.body).join('\n');
+    const all = pkg.files.map((f) => f.body.toString()).join('\n');
     expect(all).not.toMatch(/exercise road|SYN-\d|addressKey|parcel/i);
     const layer = JSON.parse(file(pkg, 'pda-layer.geojson')) as {
       features: { geometry: { coordinates: number[] } | null }[];
@@ -169,5 +172,51 @@ describe('the IDA package', () => {
     const pdf = await renderPdf(pkg.pdf);
     expect(pdf.subarray(0, 8).toString()).toBe('%PDF-1.7');
     expect(pkg.pdf.footer).toContain('Draft for state review');
+  });
+
+  it('PHO-07, DEC-13: chosen photos travel as blurred images with captions and generalized places', async () => {
+    const jpeg = samplePng(1200, 900);
+    const withPhotos = buildPackage(data, SHIPPED, {
+      ...opts,
+      photoImages: new Map([['sample-1', jpeg]]),
+    });
+    // The second chosen photo has no image (not fetched): left out and said to be.
+    expect(withPhotos.check).toMatchObject({ photos: 1, photosLeftOut: 1 });
+    expect(withPhotos.files.find((f) => f.name === 'photos/photo-01.jpg')!.body).toBe(jpeg);
+    expect(withPhotos.files.some((f) => f.name === 'photos/photo-02.jpg')).toBe(false);
+    const listed = rows(file(withPhotos, 'photos.csv'));
+    expect(listed[0]).toEqual([
+      'file',
+      'subject',
+      'caption',
+      'usng',
+      'zip',
+      'tract',
+      'jurisdiction',
+      'site',
+    ]);
+    expect(listed[1]).toEqual([
+      'photos/photo-01.jpg',
+      'Home',
+      'Exercise: water line about three feet up a living room wall.',
+      '15S YC 012 345',
+      '63399',
+      '29999000100',
+      'Harmon City',
+      '',
+    ]);
+    const readme = file(withPhotos, 'README.txt');
+    expect(readme).toContain('1 chosen by county staff');
+    expect(readme).toContain('1 chosen photo(s) left out');
+    const figures = withPhotos.pdf.blocks.filter((b) => b.kind === 'figure');
+    expect(figures).toHaveLength(1);
+    expect(figures[0]).toMatchObject({
+      alt: 'Exercise: water line about three feet up a living room wall.',
+    });
+    expect((figures[0] as { caption: string }).caption).toContain('15S YC 012 345 (100 m cell)');
+    expect((await renderPdf(withPhotos.pdf)).toString('latin1')).toContain('/S /Figure');
+    // Without images, no photo files and the README says none are shown.
+    expect(pkg.files.some((f) => f.name.startsWith('photos'))).toBe(false);
+    expect(pkg.check).toMatchObject({ photos: 0, photosLeftOut: 2 });
   });
 });

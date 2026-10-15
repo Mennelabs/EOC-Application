@@ -9,6 +9,9 @@
  * - one CSV per per-home and per-site form, and summary.csv with every
  *   summary field (form, section, code, label, value);
  * - pda-layer.geojson: one feature per home at its 100 m cell;
+ * - photos/ and photos.csv: the representative photos staff chose, as the
+ *   blurred, metadata-free images with their captions and generalized places
+ *   (PHO-06/07), also shown in the PDF;
  * - README.txt: scope, as-of time, definitions, exclusions, forms and
  *   mapping versions, and what is not in the package.
  * Counts and representative evidence only: no names, contact details or
@@ -20,12 +23,13 @@ import { toCsv } from '../csv.ts';
 import { DEFINITIONS } from '../facts.ts';
 import { homeTable, siteTable, summarySections, type SectionOut, type TableOut } from './apply.ts';
 import { REASON_LABEL, STATUS_LABEL, type PackageData, type Value } from './data.ts';
+import { placeText } from './photos.ts';
 import { FORMS, type FormKey, type Mapping } from './vocabulary.ts';
 
 export interface PackageFile {
   name: string;
   contentType: string;
-  body: string;
+  body: string | Buffer;
 }
 
 export interface PackageBuild {
@@ -34,7 +38,14 @@ export interface PackageBuild {
   /** Form → the FEMA form version and mapping version used (DEC-15). */
   mappings: Record<string, { femaFormVersion: string; mappingVersion: number }>;
   /** Figures the tests reconcile with the declaration view and the GIS layer (GATE-07). */
-  check: { countedUnits: number; homes: number; features: number; sites: number };
+  check: {
+    countedUnits: number;
+    homes: number;
+    features: number;
+    sites: number;
+    photos: number;
+    photosLeftOut: number;
+  };
 }
 
 const OUTAGE_LABEL: Record<string, string> = {
@@ -109,8 +120,18 @@ const tableBlock = (caption: string, t: TableOut, widths?: number[]): Block => (
 export function buildPackage(
   d: PackageData,
   mappings: Record<FormKey, Mapping>,
-  opts: { productName: string; generatedAt: Date },
+  opts: {
+    productName: string;
+    generatedAt: Date;
+    /** JPEG bytes of each chosen photo's blurred review image, by photo id; a photo without one is left out. */
+    photoImages?: ReadonlyMap<string, Buffer>;
+  },
 ): PackageBuild {
+  const shown = d.photos
+    .map((p) => ({ ...p, jpeg: opts.photoImages?.get(p.photoId) }))
+    .filter((p): p is typeof p & { jpeg: Buffer } => !!p.jpeg)
+    .map((p, i) => ({ ...p, file: `photos/photo-${String(i + 1).padStart(2, '0')}.jpg` }));
+  const photosLeftOut = d.photosLeftOut + d.photos.length - shown.length;
   const scope = d.jurisdiction ? `${d.event.name}, ${d.jurisdiction.name}` : d.event.name;
   const asOf = new Intl.DateTimeFormat('en-US', {
     timeZone: d.event.timeZone,
@@ -164,6 +185,7 @@ export function buildPackage(
         ['Homes listed', d.homes.length],
         ['Housing units counted', d.damage.counted.units],
         ['Public damage sites', d.sites.length],
+        ['Representative photos', shown.length],
       ],
     },
     {
@@ -238,6 +260,31 @@ export function buildPackage(
     },
   );
 
+  if (shown.length) {
+    blocks.push(
+      // Photos run two to a page; start them on their own so the heading stays with them.
+      { kind: 'pageBreak' },
+      { kind: 'heading', level: 2, text: 'Representative photos' },
+      {
+        kind: 'paragraph',
+        text: 'Chosen by county staff. Faces, license plates and documents are blurred and the images carry no metadata; each place is a grid cell, ZIP, tract and jurisdiction, never an address.',
+        small: true,
+      },
+      ...shown.map((p, i): Block => ({
+        kind: 'figure',
+        image: p.jpeg,
+        alt: p.caption,
+        caption: `Photo ${i + 1} (${p.subject === 'home' ? 'home' : 'public damage site'}): ${p.caption} ${placeText(p.place)}.`,
+      })),
+    );
+  }
+  if (photosLeftOut)
+    blocks.push({
+      kind: 'paragraph',
+      text: `${photosLeftOut} chosen photo${photosLeftOut === 1 ? ' is' : 's are'} left out: no longer cleared for sharing, or outside this package's scope.`,
+      small: true,
+    });
+
   const pdf: PdfDocumentModel = {
     title: `Damage assessment package: ${scope}`,
     lang: 'en-US',
@@ -309,6 +356,22 @@ export function buildPackage(
     '  pa-site-sheet.csv               one row per public damage site',
     '  summary.csv                     every summary field: form, section, code, label, value',
     '  pda-layer.geojson               one point per home at its 100 m cell (WGS 84)',
+    ...(shown.length
+      ? [
+          '  photos/                         the representative photos (blurred, no metadata)',
+          '  photos.csv                      each photo: file, home or site, caption, place',
+        ]
+      : []),
+    '',
+    'Representative photos',
+    shown.length
+      ? `  ${shown.length} chosen by county staff; faces, license plates and documents blurred; no metadata.`
+      : '  None chosen.',
+    ...(photosLeftOut
+      ? [
+          `  ${photosLeftOut} chosen photo(s) left out: no longer cleared for sharing, or outside this scope.`,
+        ]
+      : []),
     '',
     'FEMA forms and mapping versions used (DEC-15)',
     ...(Object.keys(FORMS) as FormKey[]).map(
@@ -338,6 +401,29 @@ export function buildPackage(
         contentType: 'application/geo+json',
         body: JSON.stringify(geojson),
       },
+      ...(shown.length
+        ? [
+            {
+              name: 'photos.csv',
+              contentType: 'text/csv',
+              body: toCsv(
+                ['file', 'subject', 'caption', 'usng', 'zip', 'tract', 'jurisdiction', 'site'],
+                shown.map((p) => [
+                  p.file,
+                  p.subject === 'home' ? 'Home' : 'Public damage site',
+                  p.caption,
+                  p.place.usng,
+                  p.place.postal,
+                  p.place.tract,
+                  p.place.jurisdiction,
+                  p.place.site,
+                ]),
+                { unknown: '' },
+              ),
+            },
+            ...shown.map((p) => ({ name: p.file, contentType: 'image/jpeg', body: p.jpeg })),
+          ]
+        : []),
       { name: 'README.txt', contentType: 'text/plain', body: readme },
     ],
     check: {
@@ -345,6 +431,8 @@ export function buildPackage(
       homes: d.homes.length,
       features: features.length,
       sites: d.sites.length,
+      photos: shown.length,
+      photosLeftOut,
     },
   };
 }

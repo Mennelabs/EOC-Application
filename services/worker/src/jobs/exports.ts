@@ -11,6 +11,7 @@
  * first to finish records its file (a later one leaves the row as it is).
  */
 import { createHash, randomUUID } from 'node:crypto';
+import sharp from 'sharp';
 import { renderPdf } from '@cg/pdf';
 import {
   FORM_KEYS,
@@ -23,9 +24,35 @@ import {
   type FormKey,
   type IssuedContent,
   type Mapping,
+  type PackagePhoto,
 } from '@cg/reporting';
 import { asSystem, systemAudit } from '../system.ts';
-import type { TopicHandler } from './types.ts';
+import type { JobContext, TopicHandler } from './types.ts';
+
+/**
+ * The chosen photos as JPEG for the PDF and the ZIP: drawn from the blurred,
+ * metadata-free review image only (PHO-06/07), re-encoded without metadata
+ * and at most 1200 px. A photo that cannot be read is left out (the package
+ * says how many) rather than failing the package.
+ */
+async function photoImages(ctx: JobContext, photos: PackagePhoto[]): Promise<Map<string, Buffer>> {
+  const out = new Map<string, Buffer>();
+  for (const p of photos) {
+    try {
+      const { body } = await ctx.objects!.get(p.reviewKey);
+      out.set(
+        p.photoId,
+        await sharp(body, { limitInputPixels: 60_000_000 })
+          .resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true })
+          .jpeg({ quality: 82 })
+          .toBuffer(),
+      );
+    } catch (err) {
+      ctx.log.warn({ err, photoId: p.photoId }, 'package photo could not be read; left out');
+    }
+  }
+  return out;
+}
 
 const slug = (s: string) =>
   s
@@ -89,7 +116,11 @@ export const exportRequested: TopicHandler = async (ctx, msg) => {
         await fail('The event could not be read.');
         return;
       }
-      const pkg = buildPackage(built.data, built.inForce, { productName, generatedAt: now });
+      const pkg = buildPackage(built.data, built.inForce, {
+        productName,
+        generatedAt: now,
+        photoImages: await photoImages(ctx, built.data.photos),
+      });
       const pdf = await renderPdf(pkg.pdf);
       const scope = built.data.jurisdiction
         ? `${built.data.event.name} ${built.data.jurisdiction.name}`

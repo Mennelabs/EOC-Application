@@ -243,5 +243,36 @@ export function samplePackageData(): PackageData {
     sites,
     shelters: { open: 1, occupancy: 37 },
     jointPda: { dates: null, areas: null },
+    photos: [
+      {
+        choiceId: 'sample-1',
+        photoId: 'sample-1',
+        reviewKey: 'sample/review.webp',
+        caption: 'Exercise: water line about three feet up a living room wall.',
+        subject: 'home',
+        place: {
+          usng: '15S YC 012 345',
+          postal: '63399',
+          tract: '29999000100',
+          jurisdiction: 'Harmon City',
+          site: null,
+        },
+      },
+      {
+        choiceId: 'sample-2',
+        photoId: 'sample-2',
+        reviewKey: 'sample/review2.webp',
+        caption: 'Exercise: culvert washed out under Route 9.',
+        subject: 'public_site',
+        place: {
+          usng: '15S YC 0123 3456',
+          postal: null,
+          tract: null,
+          jurisdiction: null,
+          site: 'Exercise culvert, Route 9',
+        },
+      },
+    ],
+    photosLeftOut: 0,
   };
 }

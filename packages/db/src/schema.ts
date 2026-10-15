@@ -2437,6 +2437,19 @@ export interface ExportFileTable {
   ready_at: TsNullable;
 }
 
+export interface PackagePhotoTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  photo_id: Uuid;
+  caption: string;
+  checked: boolean;
+  chosen_by: Uuid;
+  chosen_at: TsGen;
+  removed_at: TsNullable;
+  removed_by: Uuid | null;
+}
+
 export interface LocationGeoTable {
   location_id: Uuid;
   tenant_id: Uuid;
@@ -2752,6 +2765,7 @@ export interface Database {
   'cg.official_report_lock': OfficialReportLockTable;
   'cg.fema_form_mapping': FemaFormMappingTable;
   'cg.export_file': ExportFileTable;
+  'cg.package_photo': PackagePhotoTable;
   'cg.refdata_import': RefdataImportTable;
   'cg.refdata_snapshot': RefdataSnapshotTable;
   'cg.refdata_current': RefdataCurrentTable;

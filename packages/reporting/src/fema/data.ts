@@ -28,6 +28,7 @@ import {
 } from '../declaration.ts';
 import { shelterFigures } from '../facts.ts';
 import { loadDamageRecords } from '../load.ts';
+import { packagePhotos, type PackagePhoto } from './photos.ts';
 import type { ElementKey } from './vocabulary.ts';
 
 type Trx = Transaction<Database>;
@@ -129,6 +130,10 @@ export interface PackageData {
   sites: SiteRow[];
   shelters: { open: number; occupancy: number | null };
   jointPda: { dates: string | null; areas: string | null };
+  /** Staff-chosen, blurred photos of homes and sites in scope (PHO-07, DEC-13). */
+  photos: PackagePhoto[];
+  /** Chosen photos no longer cleared or outside the scope. */
+  photosLeftOut: number;
 }
 
 const feetInches = (inches: unknown): string | null => {
@@ -398,7 +403,7 @@ export async function loadPackageData(
     );
     records = records.filter((r) => r.locationId !== null && inside.has(r.locationId));
   }
-  const sites = (
+  const siteViews = (
     await paSiteSelect(trx)
       .where('s.event_id', '=', eventId)
       .where('s.status', '=', 'active')
@@ -406,7 +411,13 @@ export async function loadPackageData(
       .orderBy('s.category')
       .orderBy('s.name')
       .execute()
-  ).map((r) => siteRow(paSiteView(r as Parameters<typeof paSiteView>[0])));
+  ).map((r) => paSiteView(r as Parameters<typeof paSiteView>[0]));
+  const photos = await packagePhotos(trx, eventId, {
+    recordIds: new Set(
+      records.filter((r) => !r.withdrawn && r.reviewState !== 'rejected').map((r) => r.id),
+    ),
+    siteIds: new Set(siteViews.map((v) => v.id)),
+  });
   return {
     event: {
       id: event.id,
@@ -419,9 +430,11 @@ export async function loadPackageData(
     declaration,
     damage: countDamage(records),
     homes: await homeRows(trx, tenantId, classifyHomes(records).homes, event.timezone),
-    sites,
+    sites: siteViews.map(siteRow),
     shelters: await shelterFigures(trx, eventId),
     // Box 10 is filled from the joint assessment schedule (task F4).
     jointPda: { dates: null, areas: null },
+    photos: photos.photos,
+    photosLeftOut: photos.leftOut,
   };
 }

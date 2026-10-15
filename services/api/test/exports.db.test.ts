@@ -6,13 +6,18 @@
  * one jurisdiction counts only the homes in it; only exporters may ask for
  * or download a file; the request, the result and each download are
  * audited; an issued report exports from its frozen copy, a draft not at
- * all; with no file storage the export fails visibly. Runs only with
+ * all; with no file storage the export fails visibly. Representative
+ * photos (PHO-06/07, DEC-13): only cleared photos can be chosen, a caption
+ * naming the address or a phone number is refused, the package carries the
+ * blurred image re-encoded without metadata, a city package only the city's
+ * photos, and a photo no longer cleared is left out. Runs only with
  * API_DB_TEST_APP_URL, API_DB_TEST_WORKER_URL and MINIO_ROOT_PASSWORD (the
  * stack's object store): the stack's own worker may take a request before
  * the test runs the job, so the file is wherever the stack keeps it.
  */
 import { createHash, randomUUID } from 'node:crypto';
-import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { createRequire } from 'node:module';
+import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { createS3 } from '@cg/adapters';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Kysely } from 'kysely';
@@ -34,6 +39,16 @@ const workerUrl = process.env['API_DB_TEST_WORKER_URL'];
 const objectsSecret = process.env['MINIO_ROOT_PASSWORD'];
 // The compose stack's object store and bucket (compose.yaml).
 const bucket = 'cg-local';
+// The API has no image library; the worker's makes the synthetic photos.
+interface Img {
+  webp(): Img;
+  withExif(exif: Record<string, Record<string, string>>): Img;
+  toBuffer(): Promise<Buffer>;
+  metadata(): Promise<{ width?: number; height?: number }>;
+}
+const sharp = createRequire(new URL('../../worker/package.json', import.meta.url))('sharp') as (
+  input: Buffer | { create: { width: number; height: number; channels: 3; background: string } },
+) => Img;
 
 interface Export {
   id: string;
@@ -111,6 +126,13 @@ describe.skipIf(!appUrl || !workerUrl || !objectsSecret)('exports (database-back
                   ContentType: contentType,
                 }),
               );
+            },
+            async get(key: string) {
+              const res = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+              return {
+                body: Buffer.from(await res.Body!.transformToByteArray()),
+                contentType: res.ContentType ?? null,
+              };
             },
           }
         : null,
@@ -266,6 +288,7 @@ describe.skipIf(!appUrl || !workerUrl || !objectsSecret)('exports (database-back
       subjects: loader,
       routes: routesWith({
         exports: { objects: { client: s3, bucket } },
+        packagePhotos: { objects: { client: s3, bucket } },
       }),
     });
   });
@@ -283,7 +306,7 @@ describe.skipIf(!appUrl || !workerUrl || !objectsSecret)('exports (database-back
 
   const call = async <T = Export>(
     who: string,
-    method: 'GET' | 'POST' | 'PUT',
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE',
     url: string,
     payload?: unknown,
     headers: Record<string, string> = {},
@@ -552,5 +575,245 @@ describe.skipIf(!appUrl || !workerUrl || !objectsSecret)('exports (database-back
         .execute(),
     );
     expect(ready).toHaveLength(1);
+  });
+
+  describe('representative photos (PHO-06, PHO-07, DEC-13)', () => {
+    interface Chosen {
+      id: string;
+      photoId: string;
+      cleared: boolean;
+      placeText: string | null;
+      imageUrl: string | null;
+    }
+    const photo: Record<'cityCleared' | 'countyCleared' | 'notCleared', string> = {
+      cityCleared: '',
+      countyCleared: '',
+      notCleared: '',
+    };
+    let cityLine1 = '';
+
+    beforeAll(async () => {
+      // Three synthetic photos on located reports: two cleared (one in the city), one not.
+      const reports = await tx((trx) =>
+        trx
+          .selectFrom('cg.report as r')
+          .innerJoin('cg.location as l', 'l.id', 'r.location_id')
+          .leftJoin('cg.location_geo as g', 'g.location_id', 'l.id')
+          .select(['r.id', 'r.execution_id', 'l.line1', 'g.jurisdiction_tenant_id'])
+          .where('r.event_id', '=', eventId)
+          .where('r.review_state', '=', 'approved')
+          .orderBy('r.reference_code')
+          .execute(),
+      );
+      const inCity = reports.find((r) => r.jurisdiction_tenant_id === city)!;
+      const outside = reports.filter((r) => r.jurisdiction_tenant_id !== city);
+      cityLine1 = inCity.line1!;
+      const image = await sharp({
+        create: { width: 1600, height: 1200, channels: 3, background: '#5a7a96' },
+      })
+        .webp()
+        // A defect upstream would leave metadata; the package must not carry it.
+        .withExif({ IFD0: { ImageDescription: 'exercise metadata that must not leave' } })
+        .toBuffer();
+      const add = async (
+        r: { id: string; execution_id: string },
+        blur: 'applied' | 'skipped_no_detector',
+      ) => {
+        const id = randomUUID();
+        const prefix = `tenants/${county}/restricted/${r.execution_id}/${id}`;
+        await s3.send(
+          new PutObjectCommand({
+            Bucket: bucket,
+            Key: `${prefix}/review.webp`,
+            Body: image,
+            ContentType: 'image/webp',
+          }),
+        );
+        await tx((trx) =>
+          trx
+            .insertInto('cg.photo')
+            .values({
+              id,
+              tenant_id: county,
+              execution_id: r.execution_id,
+              report_id: r.id,
+              object_key_original: `${prefix}/original.jpg`,
+              derivative_keys: JSON.stringify({
+                review: `${prefix}/review.webp`,
+                thumb: `${prefix}/thumb.webp`,
+              }),
+              exif_stripped: true,
+              blur_status: blur,
+              status: 'processed',
+              content_type: 'image/jpeg',
+              processed_at: new Date(),
+            })
+            .execute(),
+        );
+        return id;
+      };
+      photo.cityCleared = await add(inCity, 'applied');
+      photo.countyCleared = await add(outside[0]!, 'applied');
+      photo.notCleared = await add(outside[1]!, 'skipped_no_detector');
+    });
+
+    const choose = (photoId: string, caption: string, checked: unknown = true) =>
+      call<Chosen & { code?: string }>('director', 'POST', `/events/${eventId}/package-photos`, {
+        photoId,
+        caption,
+        checked,
+      });
+
+    it('only cleared photos are offered and chosen; captions carry no address or phone', async () => {
+      const offered = await call<{ photoId: string; imageUrl: string | null; placeText: string }[]>(
+        'director',
+        'GET',
+        `/events/${eventId}/package-photos/candidates`,
+      );
+      expect(offered.status).toBe(200);
+      const ids = offered.body.map((c) => c.photoId);
+      expect(ids).toContain(photo.cityCleared);
+      expect(ids).toContain(photo.countyCleared);
+      expect(ids).not.toContain(photo.notCleared);
+      const shown = offered.body.find((c) => c.photoId === photo.cityCleared)!;
+      expect(shown.imageUrl).toContain('review.webp');
+      expect(shown.placeText).toContain('(100 m cell)');
+      expect(shown.placeText).not.toContain(cityLine1);
+      expect(
+        (await call('coordinator', 'GET', `/events/${eventId}/package-photos/candidates`)).status,
+      ).toBe(403);
+
+      expect((await choose(photo.notCleared, 'Exercise: water in the basement.')).body.code).toBe(
+        'not_cleared',
+      );
+      expect((await choose(photo.cityCleared, `Exercise: flooding at ${cityLine1}.`)).status).toBe(
+        400,
+      );
+      const number = cityLine1.split(' ')[0]!;
+      const street = cityLine1.split(' ')[1]!;
+      expect(
+        (await choose(photo.cityCleared, `Exercise: house ${number} ${street} flooded.`)).status,
+      ).toBe(400);
+      expect(
+        (await choose(photo.cityCleared, 'Exercise: call 555-201-3344 for access.')).status,
+      ).toBe(400);
+      expect(
+        (await choose(photo.cityCleared, 'Exercise: water line in the hall.', false)).status,
+      ).toBe(400);
+      const first = await choose(
+        photo.cityCleared,
+        'Exercise: water line about three feet up a wall.',
+      );
+      expect(first.status, JSON.stringify(first.body)).toBe(201);
+      expect((await choose(photo.cityCleared, 'Exercise: the same photo again.')).body.code).toBe(
+        'already_chosen',
+      );
+      expect(
+        (await choose(photo.countyCleared, 'Exercise: debris piled at the curb after the flood.'))
+          .status,
+      ).toBe(201);
+      const listed = await call<{ chosen: Chosen[] }>(
+        'director',
+        'GET',
+        `/events/${eventId}/package-photos`,
+      );
+      expect(listed.body.chosen.map((c) => c.photoId)).toEqual([
+        photo.cityCleared,
+        photo.countyCleared,
+      ]);
+      expect(listed.body.chosen.every((c) => c.cleared && c.imageUrl)).toBe(true);
+    });
+
+    it('the package carries the blurred images without metadata, captioned, in scope', async () => {
+      const asked = await call('director', 'POST', `/events/${eventId}/exports`, {
+        clientUuid: randomUUID(),
+      });
+      await build(asked.body.id);
+      const done = (await call('director', 'GET', `/exports/${asked.body.id}`)).body;
+      expect(done.figures).toMatchObject({ photos: 2, photosLeftOut: 0 });
+      const files = unzip((await call('director', 'GET', `/exports/${asked.body.id}/file`)).raw);
+      for (const name of ['photos/photo-01.jpg', 'photos/photo-02.jpg']) {
+        const jpeg = files.get(name)!;
+        expect(jpeg.subarray(0, 2).toString('hex')).toBe('ffd8');
+        expect(jpeg.includes(Buffer.from('Exif'))).toBe(false);
+        expect(jpeg.includes(Buffer.from('must not leave'))).toBe(false);
+        const meta = await sharp(jpeg).metadata();
+        expect(Math.max(meta.width!, meta.height!)).toBeLessThanOrEqual(1200);
+      }
+      const listed = csvRows(files.get('photos.csv')!.toString('utf8'));
+      expect(listed[1]![2]).toBe('Exercise: water line about three feet up a wall.');
+      expect(files.get('photos.csv')!.toString('utf8')).not.toContain(cityLine1);
+      expect(files.get('package.pdf')!.toString('latin1')).toContain('/S /Figure');
+
+      // The city's package carries only the city's photo.
+      const cityPkg = await call('director', 'POST', `/events/${eventId}/exports`, {
+        clientUuid: randomUUID(),
+        jurisdictionTenantId: city,
+      });
+      await build(cityPkg.body.id);
+      expect(
+        (await call('director', 'GET', `/exports/${cityPkg.body.id}`)).body.figures,
+      ).toMatchObject({ photos: 1, photosLeftOut: 1 });
+    });
+
+    it('a photo no longer cleared is left out; a choice is withdrawn, never deleted; all audited', async () => {
+      await tx((trx) =>
+        trx
+          .updateTable('cg.photo')
+          .set({ blur_status: 'failed' })
+          .where('id', '=', photo.countyCleared)
+          .execute(),
+      );
+      const asked = await call('director', 'POST', `/events/${eventId}/exports`, {
+        clientUuid: randomUUID(),
+      });
+      await build(asked.body.id);
+      const done = (await call('director', 'GET', `/exports/${asked.body.id}`)).body;
+      expect(done.figures).toMatchObject({ photos: 1, photosLeftOut: 1 });
+      const readme = unzip((await call('director', 'GET', `/exports/${asked.body.id}/file`)).raw)
+        .get('README.txt')!
+        .toString();
+      expect(readme).toContain('1 chosen photo(s) left out');
+
+      const listed = (
+        await call<{ chosen: Chosen[] }>('director', 'GET', `/events/${eventId}/package-photos`)
+      ).body.chosen;
+      const stale = listed.find((c) => c.photoId === photo.countyCleared)!;
+      expect(stale).toMatchObject({ cleared: false, imageUrl: null });
+      expect(
+        (await call('coordinator', 'DELETE', `/events/${eventId}/package-photos/${stale.id}`))
+          .status,
+      ).toBe(403);
+      expect(
+        (await call('director', 'DELETE', `/events/${eventId}/package-photos/${stale.id}`)).status,
+      ).toBe(204);
+      expect(
+        (await call('director', 'DELETE', `/events/${eventId}/package-photos/${stale.id}`)).status,
+      ).toBe(404);
+      const row = await tx((trx) =>
+        trx
+          .selectFrom('cg.package_photo')
+          .select(['removed_at', 'removed_by'])
+          .where('id', '=', stale.id)
+          .executeTakeFirstOrThrow(),
+      );
+      expect(row.removed_by).toBe(people['director']);
+      const actions = (
+        await tx((trx) =>
+          trx
+            .selectFrom('cg.audit_event')
+            .select('action')
+            .where('target_type', '=', 'package_photo')
+            .where(
+              'target_id',
+              'in',
+              listed.map((c) => c.id),
+            )
+            .execute(),
+        )
+      ).map((a) => a.action);
+      expect(actions.filter((a) => a === 'package_photo.choose')).toHaveLength(2);
+      expect(actions).toContain('package_photo.remove');
+    });
   });
 });

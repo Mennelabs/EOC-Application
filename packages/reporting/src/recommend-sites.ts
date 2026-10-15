@@ -9,7 +9,8 @@
  *   roster can make in a day, each with a serving window, a meal estimate,
  *   the nearest safe registered site with parking, and setup notes on
  *   language, pets and someone to talk to. A canteen's declared meals an
- *   hour caps what one window can serve; unknown is said, never guessed.
+ *   hour caps what one window can serve, and its crew on the roster must
+ *   reach the planning minimum (feeding-2); unknown is said, never guessed.
  * - POD (REC-07, REC-08): sized from the people without power, typed by the
  *   people served a day, with the first 72 hours' supplies from the planning
  *   factors, sited on a large lot with semi-truck access away from damage,
@@ -38,7 +39,7 @@ import {
   type Tract,
 } from './recommend.ts';
 
-export const SITE_ENGINE_VERSIONS = { feeding: 'feeding-1', pod: 'pod-1', marc: 'marc-1' } as const;
+export const SITE_ENGINE_VERSIONS = { feeding: 'feeding-2', pod: 'pod-1', marc: 'marc-1' } as const;
 
 /** A registered place weighed for one use, with its score parts. */
 export interface SiteOption {
@@ -356,6 +357,14 @@ export function recommendFeeding(
       );
     }
     if (canteen) {
+      // REC-06: the crew the partner put on the roster is a limit, not a guess.
+      if (canteen.staff === 0)
+        unknown.push(`the crew for ${canteen.name} (nobody is on its roster)`);
+      else if (canteen.staff < f.canteenMinCrew)
+        notes.push(
+          `${canteen.name} has ${plural(canteen.staff, 'person', 'people')} on its crew; a stop needs at least ${f.canteenMinCrew}: add volunteers before it goes`,
+        );
+      else reasons.push(`${canteen.name} has a crew of ${canteen.staff}`);
       if (canteen.mealsPerHour === null) unknown.push(`meals an hour for ${canteen.name}`);
       else {
         const can = Math.floor(canteen.mealsPerHour * f.feedingWindowHours);

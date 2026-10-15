@@ -668,9 +668,9 @@
   ],
   "REC-06": [
     "partial",
-    "recommend-load.ts reads the active canteens on the roster (the county's and partners' shared with it) with their declared meals an hour (0063 cg.team.meals_per_hour, roster API mealsPerHour) and staff count; recommend-sites.ts caps a stop by the canteen's rate and says when it is unknown; teamIds picks canteens",
-    "packages/reporting/test/recommend-sites.test.ts (REC-06, REC-10: an undeclared rate is unknown, never guessed; a canteen that cannot serve the window), services/api/test/recommendations.db.test.ts (REC-05, REC-06: the declared canteens and rates)",
-    "Staff counts are loaded with each canteen but neither shown nor used as a limit. A partner cannot ask from its own workspace (its row security does not see the county registry or requests), so the county asks on its behalf (layer-7 open item E2)."
+    "recommend-load.ts reads the active canteens on the roster (the county's and partners' shared with it) with their declared meals an hour (0063 cg.team.meals_per_hour, roster API mealsPerHour) and staff count; recommend-sites.ts caps a stop by the canteen's rate and says when it is unknown; teamIds picks canteens; the crew on the roster is a limit (engine feeding-2, planning factor canteenMinCrew 3): a full crew is a reason, a short crew a note to add volunteers, no crew an unknown; the console shows each canteen's crew",
+    "packages/reporting/test/recommend-sites.test.ts (REC-06, REC-10: an undeclared rate is unknown, never guessed; a canteen that cannot serve the window), services/api/test/recommendations.db.test.ts (REC-05, REC-06: the declared canteens and rates); packages/reporting/test/recommend-sites.test.ts (REC-06: crews), tests/e2e/console-l7.spec.ts (the crew column)",
+    "A partner cannot ask from its own workspace (its row security does not see the county registry or requests), so the county asks on its behalf (layer-7 open item E2)."
   ],
   "REC-07": [
     "pass",

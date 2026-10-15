@@ -501,6 +501,13 @@ test.describe('layer 7 console: the command window', () => {
       const shown = page.getByRole('region', { name: new RegExp(`^${title}, asked`) });
       await expect(shown).toBeVisible();
       await expect(shown.getByRole('region', { name: table })).toBeVisible();
+      // REC-06: each canteen's crew on the roster is shown and counted against the minimum.
+      if (kind === 'feeding')
+        await expect(
+          shown.getByRole('table', { name: 'Canteens on the roster' }).getByRole('columnheader', {
+            name: 'Crew on the roster',
+          }),
+        ).toBeVisible();
       await expectNoViolations(page);
     }
     await expect(page.getByRole('table', { name: 'Recommendations for this event' })).toContainText(

@@ -78,7 +78,14 @@ interface Result {
   demand: Record<string, number | string | null>;
   top?: Option[];
   stops?: Stop[];
-  canteens?: { teamId: string; name: string; agency: string | null; mealsPerHour: number | null }[];
+  canteens?: {
+    teamId: string;
+    name: string;
+    agency: string | null;
+    mealsPerHour: number | null;
+    /** REC-06: people on the canteen's crew on the roster. */
+    staff?: number;
+  }[];
   unserved?: number;
   pod?: { type: string; count: number; peoplePerDay: number } | null;
   supplies?: {
@@ -296,6 +303,11 @@ function Body({ rec }: { rec: Recommendation }) {
               { key: 'name', header: 'Canteen', render: (c) => c.name },
               { key: 'agency', header: 'Agency', render: (c) => c.agency ?? '—' },
               { key: 'rate', header: 'Meals an hour', render: (c) => n(c.mealsPerHour) },
+              {
+                key: 'crew',
+                header: 'Crew on the roster',
+                render: (c) => (c.staff === undefined || c.staff === 0 ? 'Nobody yet' : n(c.staff)),
+              },
             ]}
           />
           <DataTable

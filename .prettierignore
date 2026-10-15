@@ -8,6 +8,7 @@ CLAUDE.md
 KICKOFF_PROMPT.md
 pnpm-lock.yaml
 **/dist/
+**/dist-showcase/
 tools/seed/out/
 tools/reqindex/requirements.json
 .expo/

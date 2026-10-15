@@ -1,0 +1,386 @@
+/* React Aria Components (ADR-0045): menus, popovers, selects, dialogs, tabs,
+   tooltips, switches. RAC renders the ARIA pattern and the keyboard handling;
+   these classes give it the look. State comes as data attributes. */
+.cg-popover {
+  z-index: var(--cg-z-popover);
+  min-inline-size: 12rem;
+  max-inline-size: min(24rem, calc(100vw - 2rem));
+  padding: var(--cg-space-1);
+  background: var(--cg-surface);
+  border: 1px solid var(--cg-line);
+  border-radius: var(--cg-radius-lg);
+  box-shadow: var(--cg-shadow-3);
+  outline: none;
+}
+.cg-popover[data-entering] {
+  animation: cg-pop var(--cg-motion-base) var(--cg-ease);
+}
+@keyframes cg-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.cg-menu {
+  outline: none;
+  max-block-size: min(24rem, 70vh);
+  overflow: auto;
+}
+.cg-menu__section + .cg-menu__section {
+  margin-block-start: var(--cg-space-1);
+  padding-block-start: var(--cg-space-1);
+  border-block-start: 1px solid var(--cg-line);
+}
+.cg-menu__header {
+  padding: var(--cg-space-2) var(--cg-space-3) var(--cg-space-1);
+  font-size: var(--cg-text-xs);
+  font-weight: var(--cg-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cg-ink-2);
+}
+.cg-menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  min-block-size: var(--cg-target);
+  padding: var(--cg-space-1) var(--cg-space-3);
+  border-radius: var(--cg-radius-md);
+  color: var(--cg-ink);
+  cursor: pointer;
+  outline: none;
+  text-decoration: none;
+}
+.cg-menu__item[data-focused],
+.cg-menu__item[data-hovered] {
+  background: var(--cg-accent-soft);
+  color: var(--cg-accent-hover);
+}
+.cg-menu__item[data-focus-visible] {
+  outline: 3px solid var(--cg-focus);
+  outline-offset: -3px;
+}
+.cg-menu__item[data-disabled] {
+  color: var(--cg-ink-disabled);
+  cursor: not-allowed;
+}
+.cg-menu__item[data-selected]::before,
+.cg-menu__item[aria-checked='true']::before {
+  content: '✓';
+  inline-size: 1rem;
+  font-weight: var(--cg-weight-bold);
+}
+.cg-menu__item[data-selection-mode]:not([data-selected])::before,
+.cg-menu__item[aria-checked='false']::before {
+  content: '';
+  inline-size: 1rem;
+}
+.cg-menu__item svg {
+  inline-size: 1.1rem;
+  block-size: 1.1rem;
+  color: var(--cg-ink-3);
+}
+.cg-menu__item kbd {
+  margin-inline-start: auto;
+}
+
+/* Select. */
+.cg-select {
+  display: grid;
+  gap: var(--cg-space-1);
+  margin-block: var(--cg-space-3) var(--cg-space-4);
+}
+.cg-select__button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cg-space-2);
+  inline-size: 100%;
+  min-block-size: var(--cg-target);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border: 1px solid var(--cg-line-strong);
+  border-radius: var(--cg-radius-sm);
+  background: var(--cg-surface);
+  color: var(--cg-ink);
+  font-weight: var(--cg-weight-regular);
+  text-align: start;
+}
+.cg-select__button[data-hovered] {
+  border-color: var(--cg-ink-2);
+  background: var(--cg-surface);
+  color: var(--cg-ink);
+}
+.cg-select__button[data-placeholder] {
+  color: var(--cg-ink-3);
+}
+.cg-select__button svg {
+  inline-size: 1rem;
+  block-size: 1rem;
+  color: var(--cg-ink-2);
+}
+.cg-listbox {
+  outline: none;
+  max-block-size: min(20rem, 60vh);
+  overflow: auto;
+}
+.cg-option {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  min-block-size: var(--cg-target);
+  padding: var(--cg-space-1) var(--cg-space-3);
+  border-radius: var(--cg-radius-md);
+  cursor: pointer;
+  outline: none;
+}
+.cg-option[data-focused],
+.cg-option[data-hovered] {
+  background: var(--cg-accent-soft);
+  color: var(--cg-accent-hover);
+}
+.cg-option[data-focus-visible] {
+  outline: 3px solid var(--cg-focus);
+  outline-offset: -3px;
+}
+.cg-option[data-selected] {
+  font-weight: var(--cg-weight-semibold);
+}
+.cg-option[data-selected]::before {
+  content: '✓';
+  inline-size: 1rem;
+}
+.cg-option:not([data-selected])::before {
+  content: '';
+  inline-size: 1rem;
+}
+
+/* Checkbox, radio and switch rendered by RAC (the native inputs keep their own look). */
+.cg-check {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  min-block-size: var(--cg-target);
+  cursor: pointer;
+}
+.cg-check__box {
+  display: grid;
+  place-items: center;
+  inline-size: 1.375rem;
+  block-size: 1.375rem;
+  border: 2px solid var(--cg-line-strong);
+  border-radius: var(--cg-radius-sm);
+  background: var(--cg-surface);
+  transition: background-color var(--cg-motion-fast) var(--cg-ease);
+}
+.cg-check--radio .cg-check__box {
+  border-radius: 50%;
+}
+.cg-check[data-selected] .cg-check__box {
+  background: var(--cg-accent);
+  border-color: var(--cg-accent);
+  color: var(--cg-accent-ink);
+}
+.cg-check[data-focus-visible] .cg-check__box {
+  outline: 3px solid var(--cg-focus);
+  outline-offset: 2px;
+}
+.cg-check[data-invalid] .cg-check__box {
+  border-color: var(--cg-danger-ink);
+}
+.cg-check[data-disabled] {
+  color: var(--cg-ink-disabled);
+  cursor: not-allowed;
+}
+.cg-check__box svg {
+  inline-size: 0.9rem;
+  block-size: 0.9rem;
+}
+.cg-radio-group {
+  display: grid;
+  gap: 0;
+  margin-block: var(--cg-space-3) var(--cg-space-4);
+}
+.cg-radio-group__label,
+.cg-field__label {
+  font-weight: var(--cg-weight-semibold);
+  margin-block-end: var(--cg-space-1);
+}
+.cg-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-3);
+  min-block-size: var(--cg-target);
+  cursor: pointer;
+}
+.cg-switch__track {
+  position: relative;
+  inline-size: 2.75rem;
+  block-size: 1.625rem;
+  border-radius: var(--cg-radius-pill);
+  background: var(--cg-line-strong);
+  transition: background-color var(--cg-motion-base) var(--cg-ease);
+}
+.cg-switch__track::after {
+  content: '';
+  position: absolute;
+  inset-block-start: 3px;
+  inset-inline-start: 3px;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--cg-shadow-1);
+  transition: transform var(--cg-motion-base) var(--cg-ease);
+}
+.cg-switch[data-selected] .cg-switch__track {
+  background: var(--cg-ok-fill);
+}
+.cg-switch[data-selected] .cg-switch__track::after {
+  transform: translateX(1.125rem);
+}
+.cg-switch[data-focus-visible] .cg-switch__track {
+  outline: 3px solid var(--cg-focus);
+  outline-offset: 2px;
+}
+
+/* Text fields rendered by RAC. */
+.cg-field {
+  display: grid;
+  gap: var(--cg-space-1);
+  margin-block: var(--cg-space-3) var(--cg-space-4);
+}
+.cg-field__description {
+  margin: 0;
+  color: var(--cg-ink-2);
+  font-size: var(--cg-text-md);
+}
+.cg-field__error {
+  margin: 0;
+  color: var(--cg-danger-ink);
+  font-weight: var(--cg-weight-semibold);
+}
+
+/* Modal dialogs rendered by RAC. */
+.cg-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--cg-z-dialog);
+  display: grid;
+  place-items: center;
+  padding: var(--cg-space-4);
+  background: rgb(10 16 24 / 0.55);
+}
+.cg-modal {
+  inline-size: 100%;
+  max-inline-size: 32rem;
+  max-block-size: calc(100dvh - 2rem);
+  overflow: auto;
+  background: var(--cg-surface);
+  border: 1px solid var(--cg-line);
+  border-radius: var(--cg-radius-xl);
+  box-shadow: var(--cg-shadow-3);
+  outline: none;
+}
+.cg-modal--wide {
+  max-inline-size: 48rem;
+}
+.cg-modal[data-entering] {
+  animation: cg-pop var(--cg-motion-base) var(--cg-ease);
+}
+.cg-dialog {
+  padding: var(--cg-space-5) var(--cg-space-6);
+  outline: none;
+}
+.cg-dialog__title {
+  margin-block: 0 var(--cg-space-3);
+}
+
+/* Tabs. */
+.cg-tabs {
+  display: grid;
+  gap: var(--cg-space-3);
+}
+.cg-tablist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cg-space-1);
+  border-block-end: 1px solid var(--cg-line);
+}
+.cg-tab {
+  min-block-size: var(--cg-target);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border-block-end: 3px solid transparent;
+  margin-block-end: -1px;
+  color: var(--cg-ink-2);
+  font-weight: var(--cg-weight-medium);
+  cursor: pointer;
+  outline: none;
+  display: flex;
+  align-items: center;
+}
+.cg-tab[data-hovered] {
+  color: var(--cg-ink);
+}
+.cg-tab[data-selected] {
+  color: var(--cg-accent-hover);
+  border-block-end-color: var(--cg-accent);
+  font-weight: var(--cg-weight-semibold);
+}
+.cg-tab[data-focus-visible] {
+  outline: 3px solid var(--cg-focus);
+  outline-offset: -3px;
+  border-radius: var(--cg-radius-sm);
+}
+.cg-tabpanel {
+  outline: none;
+}
+
+/* Tooltip: a name for an icon-only control; the label is always also readable by assistive tech. */
+.cg-tooltip {
+  z-index: var(--cg-z-popover);
+  max-inline-size: 18rem;
+  padding: var(--cg-space-1) var(--cg-space-2);
+  background: var(--cg-ink);
+  color: var(--cg-bg);
+  border-radius: var(--cg-radius-sm);
+  font-size: var(--cg-text-sm);
+  box-shadow: var(--cg-shadow-2);
+}
+
+/* Disclosure (details/summary) with a 44 px summary. */
+details.cg-disclosure {
+  border: 1px solid var(--cg-line);
+  border-radius: var(--cg-radius-lg);
+  background: var(--cg-surface);
+  margin-block: var(--cg-space-3);
+}
+details.cg-disclosure > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  min-block-size: var(--cg-target);
+  padding: var(--cg-space-2) var(--cg-space-4);
+  font-weight: var(--cg-weight-semibold);
+  cursor: pointer;
+  list-style: none;
+  border-radius: var(--cg-radius-lg);
+}
+details.cg-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+details.cg-disclosure > summary::before {
+  content: '';
+  inline-size: 0.5rem;
+  block-size: 0.5rem;
+  border-inline-end: 2px solid currentColor;
+  border-block-end: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--cg-motion-fast) var(--cg-ease);
+  margin-inline-end: var(--cg-space-1);
+}
+details.cg-disclosure[open] > summary::before {
+  transform: rotate(45deg);
+}
+details.cg-disclosure > :not(summary) {
+  padding: 0 var(--cg-space-4) var(--cg-space-4);
+}

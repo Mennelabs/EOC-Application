@@ -1,0 +1,4 @@
+/* Resident and public pages: Atkinson Hyperlegible Next (variable weight), self-hosted.
+   Chosen for letterforms that stay distinct at small sizes and for low vision
+   (docs/design/users-and-needs.md). Italic is not loaded: the public pages never use it. */
+@import '@fontsource-variable/atkinson-hyperlegible-next/index.css';

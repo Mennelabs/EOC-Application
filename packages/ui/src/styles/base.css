@@ -1,0 +1,160 @@
+/* Base element styles (ADR-0045). Every app starts from these; the classes in
+   controls.css and surfaces.css build on them. WCAG 2.2 AA throughout. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  font-family: var(--cg-font-sans);
+  line-height: var(--cg-leading);
+  color: var(--cg-ink);
+  background: var(--cg-bg);
+  font-variant-numeric: tabular-nums;
+}
+html.cg-public,
+.cg-public {
+  font-family: var(--cg-font-public);
+}
+body {
+  margin: 0;
+  min-block-size: 100dvh;
+  font-size: var(--cg-text-base);
+  overflow-wrap: break-word;
+}
+h1,
+h2,
+h3,
+h4 {
+  line-height: var(--cg-leading-tight);
+  font-weight: var(--cg-weight-semibold);
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+h1 {
+  font-size: var(--cg-text-2xl);
+  margin-block: var(--cg-space-2) var(--cg-space-4);
+}
+h2 {
+  font-size: var(--cg-text-xl);
+  margin-block: var(--cg-space-6) var(--cg-space-3);
+}
+h3 {
+  font-size: var(--cg-text-lg);
+  margin-block: var(--cg-space-4) var(--cg-space-2);
+}
+h4 {
+  font-size: var(--cg-text-base);
+  margin-block: var(--cg-space-3) var(--cg-space-1);
+}
+p,
+ul,
+ol,
+dl {
+  margin-block: 0 var(--cg-space-3);
+}
+a {
+  color: var(--cg-accent);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  text-decoration-thickness: from-font;
+  border-radius: var(--cg-radius-sm);
+}
+a:hover {
+  color: var(--cg-accent-hover);
+  text-decoration-thickness: 2px;
+}
+code,
+kbd,
+pre,
+samp {
+  font-family: var(--cg-font-mono);
+  font-size: 0.925em;
+}
+pre {
+  overflow: auto;
+  padding: var(--cg-space-3);
+  background: var(--cg-surface-2);
+  border-radius: var(--cg-radius-md);
+}
+hr {
+  border: 0;
+  border-block-start: 1px solid var(--cg-line);
+  margin-block: var(--cg-space-6);
+}
+img,
+svg,
+video {
+  max-inline-size: 100%;
+  block-size: auto;
+}
+svg {
+  flex-shrink: 0;
+}
+::selection {
+  background: var(--cg-selection);
+  color: var(--cg-ink);
+}
+/* One focus style everywhere: 3 px ring, offset, never removed (WCAG 2.4.7, 2.4.11, 2.4.13). */
+:focus-visible {
+  outline: 3px solid var(--cg-focus);
+  outline-offset: 2px;
+}
+/* Accessibility helpers. */
+.skip {
+  position: absolute;
+  inset-inline-start: -999px;
+  inset-block-start: var(--cg-space-2);
+  z-index: calc(var(--cg-z-header) + 1);
+  padding: var(--cg-space-2) var(--cg-space-4);
+  background: var(--cg-surface);
+  color: var(--cg-ink);
+  border: 2px solid var(--cg-accent);
+  border-radius: var(--cg-radius-md);
+  font-weight: var(--cg-weight-semibold);
+}
+.skip:focus {
+  inset-inline-start: var(--cg-space-2);
+}
+.visually-hidden,
+.cg-sr-only {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.cg-muted,
+.muted {
+  color: var(--cg-ink-2);
+}
+.cg-small,
+.small {
+  font-size: var(--cg-text-sm);
+}
+.cg-mono {
+  font-family: var(--cg-font-mono);
+}
+.cg-nowrap {
+  white-space: nowrap;
+}
+/* Reduced motion: nothing animates (ACC-16). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+/* Windows high contrast and other forced palettes: keep boundaries visible. */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 3px solid Highlight;
+  }
+}

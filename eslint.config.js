@@ -8,6 +8,7 @@ export default tseslint.config(
     ignores: [
       '**/node_modules/**',
       '**/dist/**',
+      '**/dist-showcase/**',
       'docs/**',
       'mockups/**',
       'tools/seed/out/**',

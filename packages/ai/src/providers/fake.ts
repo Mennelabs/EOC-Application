@@ -14,6 +14,8 @@ import type {
   CommandInterpretRequest,
   DiscoveryOutput,
   DiscoveryRequest,
+  DraftOutput,
+  DraftRequest,
   ExtractionOutput,
   ExtractionRequest,
   ImageAnalysis,
@@ -229,6 +231,38 @@ export class FakeLanguageModel implements LanguageModel {
   }
 
   /**
+   * Tests only: the rules' own draft, sentence by sentence, each citing the
+   * facts whose figures it holds; without a template, one sentence per fact.
+   */
+  async draft(request: DraftRequest): Promise<AiOutput<DraftOutput>> {
+    const started = performance.now();
+    const figures = (t: string) => new Set(figuresOf(t));
+    const sentences = request.template
+      ? request.template
+          .split(/(?<=[.!?])\s+/)
+          .filter((t) => t.trim())
+          .map((text) => {
+            const want = figures(text);
+            const cites = request.facts
+              .filter((f) => [...figures(`${f.label} ${f.value ?? ''}`)].some((x) => want.has(x)))
+              .map((f) => f.id);
+            return {
+              text,
+              factIds: cites.length ? cites : request.facts.slice(0, 1).map((f) => f.id),
+            };
+          })
+      : request.facts.map((f) => ({
+          text: `${f.label}: ${f.value ?? (request.language === 'es' ? 'aún no se sabe' : 'not known yet')}.`,
+          factIds: [f.id],
+        }));
+    return {
+      output: { sentences, injectionSuspected: false },
+      provider: INFO,
+      latencyMs: performance.now() - started,
+    };
+  }
+
+  /**
    * Tests only: one fictional hall in the area with a fictional page, and a
    * closure for any listed place whose name says it closed. Never a real place.
    */
@@ -379,3 +413,8 @@ export const fakeProvider: AiProvider = {
   translation: new FakeTranslator(),
   image: new FakeImageAnalysis(),
 };
+
+/** Figures in a text, as the draft check reads them. */
+function figuresOf(text: string): number[] {
+  return [...text.matchAll(/\d[\d,]*(?:\.\d+)?/g)].map((m) => Number(m[0].replace(/,/g, '')));
+}

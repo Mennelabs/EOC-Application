@@ -28,6 +28,8 @@ import type {
   DiscoveredPlace,
   DiscoveryOutput,
   DiscoveryRequest,
+  DraftOutput,
+  DraftRequest,
   ExtractionOutput,
   ExtractionRequest,
   ImageAnalysis,
@@ -37,7 +39,12 @@ import type {
   SpeechToText,
   Translator,
 } from '../types.ts';
-import { buildCommandPrompt, buildDiscoveryPrompt, buildExtractionPrompt } from '../prompt.ts';
+import {
+  buildCommandPrompt,
+  buildDiscoveryPrompt,
+  buildDraftPrompt,
+  buildExtractionPrompt,
+} from '../prompt.ts';
 
 export type OpenAIFunction = 'text' | 'vision' | 'classifier' | 'transcription' | 'speech';
 
@@ -59,6 +66,7 @@ export const OPENAI_TEMPLATES = {
   transcription: 'transcription-1',
   command: 'command-interpret-1',
   discovery: 'discovery-search-1',
+  draft: 'draft-from-facts-1',
 } as const;
 
 /**
@@ -188,6 +196,17 @@ const urlKey = (raw: string): string | null => {
   }
 };
 
+const DRAFT_SCHEMA = strictObject({
+  sentences: {
+    type: 'array',
+    items: strictObject({
+      text: { type: 'string' },
+      factIds: { type: 'array', items: { type: 'string' } },
+    }),
+  },
+  injectionSuspected: { type: 'boolean' },
+});
+
 const TRANSLATION_SCHEMA = strictObject({
   text: { type: 'string' },
   detectedLanguage: { type: ['string', 'null'] },
@@ -257,6 +276,7 @@ export class OpenAIProvider implements AiProvider {
       extract: (r) => this.extract(r),
       interpretCommand: (r) => this.interpretCommand(r),
       discoverPlaces: (r) => this.discover(r),
+      draft: (r) => this.draft(r),
     };
     this.stt = { transcribe: (a, m, l) => this.transcribe(a, m, l) };
     this.translation = { translate: (t, to, from) => this.translate(t, to, from) };
@@ -537,6 +557,38 @@ export class OpenAIProvider implements AiProvider {
       { places, injectionSuspected: json['injectionSuspected'] === true, dropped },
       model,
       OPENAI_TEMPLATES.discovery,
+      started,
+    );
+  }
+
+  /**
+   * Layer-7 task G: a draft from computed facts only, each sentence naming the
+   * facts it states. The server checks every figure against them before anyone
+   * sees it (`checkDraft`); this method only shapes the reply.
+   */
+  async draft(request: DraftRequest): Promise<AiOutput<DraftOutput>> {
+    const started = this.now();
+    const { system, user } = buildDraftPrompt(request);
+    const { json, model } = await this.respond(
+      'text',
+      'draft',
+      system,
+      [{ type: 'input_text', text: user }],
+      DRAFT_SCHEMA,
+    );
+    const raw = Array.isArray(json['sentences']) ? (json['sentences'] as Json[]) : [];
+    return this.out(
+      {
+        sentences: raw.slice(0, 40).map((x) => ({
+          text: String(x['text'] ?? '').slice(0, 1000),
+          factIds: Array.isArray(x['factIds'])
+            ? (x['factIds'] as unknown[]).map(String).slice(0, 20)
+            : [],
+        })),
+        injectionSuspected: json['injectionSuspected'] === true,
+      },
+      model,
+      OPENAI_TEMPLATES.draft,
       started,
     );
   }

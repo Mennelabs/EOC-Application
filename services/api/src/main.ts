@@ -138,6 +138,7 @@ const app = await buildApp({
     missions: config.CJIS_PUBLIC_URL ? { cjisPublicUrl: config.CJIS_PUBLIC_URL } : {},
     fieldVoice: { ai, defaultGraph: westwindGraph },
     commands: { ai },
+    drafting: { ai },
     refdata: { objects: { client: s3, bucket: config.S3_BUCKET } },
     exports: { objects: { client: s3, bucket: config.S3_BUCKET } },
     metrics: { productName: config.PRODUCT_NAME },

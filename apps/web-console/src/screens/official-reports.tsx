@@ -63,6 +63,12 @@ interface Section {
     text?: string;
     rows?: { key: string; label: string; value: number | null; detail?: string }[];
     note?: string | null;
+    /** Layer-7 task G: drafted by the AI assistant from the facts, each sentence citing them. */
+    ai?: {
+      provider: string;
+      model: string;
+      sentences: { text: string; factIds: string[] }[];
+    };
   };
   definition: { key: string; version: number; text: string } | null;
   recordCount: number;
@@ -381,17 +387,38 @@ function TextSection({
   section,
   editable,
   onSave,
+  onAiDraft,
 }: {
   section: Section;
   editable: boolean;
   onSave: (text: string) => void;
+  /** The summary only: ask the AI assistant to redraft it from the facts. */
+  onAiDraft?: () => void;
 }) {
   const [text, setText] = useState(section.content.text ?? '');
   const id = `sec-${section.key}`;
   return (
     <section aria-labelledby={id}>
       <h2 id={id}>{section.title}</h2>
-      {section.drafted ? (
+      {section.drafted && section.content.ai ? (
+        <>
+          <p className="status info">
+            Drafted by the AI assistant ({section.content.ai.provider}, {section.content.ai.model})
+            from the facts below; every figure was checked against them. The author reads it,
+            changes what needs changing and saves it before review.
+          </p>
+          <details>
+            <summary>The facts each sentence uses</summary>
+            <ol>
+              {section.content.ai.sentences.map((x, i) => (
+                <li key={i}>
+                  {x.text} <span className="hint">({x.factIds.join(', ')})</span>
+                </li>
+              ))}
+            </ol>
+          </details>
+        </>
+      ) : section.drafted ? (
         <p className="status info">
           Drafted from the facts. The author reads it, changes what needs changing and saves it
           before review.
@@ -426,6 +453,11 @@ function TextSection({
           </Field>
           <div className="toolbar">
             <button type="submit">Save {section.title.toLowerCase()}</button>
+            {onAiDraft ? (
+              <button type="button" onClick={onAiDraft}>
+                Draft the {section.title.toLowerCase()} with the AI assistant
+              </button>
+            ) : null}
           </div>
         </form>
       ) : (
@@ -813,6 +845,19 @@ export function OfficialReportScreen({
                   : `${s.title} saved.`,
               )
             }
+            {...(s.key === 'summary'
+              ? {
+                  onAiDraft: () =>
+                    void act(
+                      () =>
+                        api<Report>(`/official-reports/${r.id}/sections/summary/ai-draft`, {
+                          body: { language: 'en' },
+                          ...v,
+                        }),
+                      'Summary drafted by the AI assistant from the facts. Read it and save it before review.',
+                    ),
+                }
+              : {})}
           />
         ),
       )}

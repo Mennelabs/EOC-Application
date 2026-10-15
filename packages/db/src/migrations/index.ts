@@ -64,6 +64,7 @@ import * as m0062 from './0062_recommendation.ts';
 import * as m0063 from './0063_team_meals.ts';
 import * as m0064 from './0064_discovery.ts';
 import * as m0065 from './0065_ai_register_discovery.ts';
+import * as m0066 from './0066_ai_register_drafting.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -132,4 +133,5 @@ export const migrations: Record<string, Migration> = {
   '0063_team_meals': m0063,
   '0064_discovery': m0064,
   '0065_ai_register_discovery': m0065,
+  '0066_ai_register_drafting': m0066,
 };

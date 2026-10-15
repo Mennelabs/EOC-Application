@@ -90,6 +90,47 @@ export interface LanguageModel {
   interpretCommand?(request: CommandInterpretRequest): Promise<AiOutput<CommandInterpretation>>;
   /** Web search for public places that could serve residents (layer-7 task F, REC-13). Optional. */
   discoverPlaces?(request: DiscoveryRequest): Promise<AiOutput<DiscoveryOutput>>;
+  /** A draft written from computed facts only, each sentence citing its facts (layer-7 task G). Optional. */
+  draft?(request: DraftRequest): Promise<AiOutput<DraftOutput>>;
+}
+
+/** What a draft is for (CMD-16, CON-06, DCL:DEC-14, PUB-11, PUB-12, PUB-14). */
+export type DraftPurpose =
+  | 'report_summary'
+  | 'declaration_box8'
+  | 'declaration_box9'
+  | 'pio_post'
+  | 'radio_script'
+  | 'wea_alert';
+
+/** One computed fact a draft may state; nothing else may be stated (AI-04, AI-09). */
+export interface DraftFact {
+  id: string;
+  label: string;
+  /** Null is unknown: the draft says so and never gives a number for it. */
+  value: string | number | null;
+}
+
+export interface DraftRequest {
+  purpose: DraftPurpose;
+  language: 'en' | 'es';
+  facts: DraftFact[];
+  /** The rules' own draft, for order and tone. */
+  template?: string;
+  /** The whole draft fits in this many characters (a WEA message, a post). */
+  maxChars?: number;
+}
+
+export interface DraftSentence {
+  text: string;
+  /** The ids of the facts the sentence states. */
+  factIds: string[];
+}
+
+export interface DraftOutput {
+  sentences: DraftSentence[];
+  /** Fact text tried to instruct the model (AIG-02). */
+  injectionSuspected: boolean;
 }
 
 export type DiscoveryPlaceKind =

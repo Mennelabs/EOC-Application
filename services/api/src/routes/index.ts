@@ -8,7 +8,8 @@ import { breakGlassRoutes } from './breakglass.ts';
 import { contactRoutes } from './contacts.ts';
 import { declarationRoutes } from './declaration.ts';
 import { femaMappingRoutes } from './fema-mappings.ts';
-import { officialReportRoutes } from './official-reports.ts';
+import { officialReportRoutesWith } from './official-reports.ts';
+import type { DraftingDeps } from './drafting.ts';
 import { definitionRoutes } from './definitions.ts';
 import { dispatchRoutes, type DispatchDeps } from './dispatch.ts';
 import { eventRoutes } from './events.ts';
@@ -57,6 +58,7 @@ export interface RouteDeps {
   refdata?: RefdataDeps;
   metrics?: { productName?: string };
   commands?: CommandDeps;
+  drafting?: DraftingDeps;
 }
 
 /** Route plugins mounted under /api/v1. Each layer adds its modules here. */
@@ -92,7 +94,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   referralRoutes,
   refdataRoutes(deps.refdata),
   declarationRoutes,
-  officialReportRoutes,
+  officialReportRoutesWith(deps.drafting),
   femaMappingRoutes,
   exportRoutes(deps.exports),
   packagePhotoRoutes(deps.packagePhotos),

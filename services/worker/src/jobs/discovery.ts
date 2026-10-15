@@ -310,7 +310,9 @@ async function partnerPosts(ctx: JobContext, tenantId: string): Promise<FoundPla
       .execute();
     return rows.map((r) => {
       const attributes: KnownAttributes = {};
-      const ada = (r.accessibility as Record<string, unknown> | null)?.['ada'];
+      // The partner form records wheelchair access; the county's own sites record ADA.
+      const access = (r.accessibility ?? {}) as Record<string, unknown>;
+      const ada = typeof access['ada'] === 'boolean' ? access['ada'] : access['wheelchair'];
       if (typeof ada === 'boolean') attributes.ada = ada;
       if (r.pets === 'no') attributes.petPolicy = 'none';
       if (r.pets === 'service_animals') attributes.petPolicy = 'service_animals';

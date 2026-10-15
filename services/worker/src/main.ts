@@ -206,7 +206,8 @@ const schedules: Schedule[] = [
   // when asked; then the alert for a place near unmet need and the digest of what is new.
   {
     name: 'discovery',
-    everyMs: 5 * 60_000,
+    // A run someone asked for starts within a minute; a scheduled one only when due.
+    everyMs: 60_000,
     run: (c) =>
       runDiscovery(c)
         .then(() => notifyDiscovery(c))

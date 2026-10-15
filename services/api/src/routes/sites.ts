@@ -7,20 +7,22 @@
  * confirmed but never published (PUB-05). Alert drafts (PUB-11) come from
  * deterministic templates; the county sends them through its own tool.
  */
+import { createHash, randomUUID } from 'node:crypto';
+import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { sql, type Selectable, type Transaction } from 'kysely';
 import { z } from 'zod';
 import { diffForAudit } from '@cg/audit';
 import type { Database } from '@cg/db';
-import { errors } from '../errors.ts';
+import { ApiError, errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
 import type { DraftFact, DraftPurpose } from '@cg/ai';
 import { draftAlerts, type AlertDraft, type AlertInput, type AlertSite } from '../public/alerts.ts';
 import { addressText, hoursText } from '../public/help.ts';
 import { publicSites } from '../public/sites-view.ts';
 import { configValue } from '../public/submit.ts';
-import { aiDraft, type DraftingDeps } from './drafting.ts';
+import { aiDraft, aiSpeak, type DraftingDeps } from './drafting.ts';
 import { classifierFor, iso, listQuery, pickDefined, stamped, uuidParam } from './helpers.ts';
 
 type SiteRow = Selectable<Database['cg.site']>;
@@ -1427,6 +1429,7 @@ export const siteRoutesWith =
             maxChars: form.max,
           },
           { type: 'site', id: current.id },
+          { publicContacts: input.helpPhone ? [input.helpPhone] : [] },
         );
         return {
           form: b.form,
@@ -1485,6 +1488,193 @@ export const siteRoutesWith =
           if (!seen) throw errors.notFound();
         }
         return reply.code(204).send();
+      },
+    );
+
+    // --------------------------------------------------------- AI voice for radio scripts (layer-7 task G)
+    /**
+     * PUB-14: the AI voice speaks a radio script the PIO approved (the rules'
+     * text or their edit of an AI draft) as an audio file for a Travelers'
+     * Information Station loop or an amateur radio net. The file opens by
+     * saying the voice is computer-generated. It is kept with the script as
+     * spoken and the provider and model; the PIO listens to it before it goes
+     * on the air. Never a confidential site (PUB-05).
+     */
+    const VOICE_NOTICE = {
+      en: 'This announcement is read by a computer-generated voice.',
+      es: 'Este anuncio lo lee una voz generada por computadora.',
+    } as const;
+    const audioOut = z.object({
+      id: z.uuid(),
+      siteId: z.uuid(),
+      form: z.enum(['radioLoop', 'netReadout']),
+      language: z.enum(['en', 'es']),
+      script: z.string(),
+      mimeType: z.string(),
+      bytes: z.number().int(),
+      sha256: z.string(),
+      provider: z.string(),
+      model: z.string(),
+      createdAt: z.string(),
+    });
+    const audioView = (r: Selectable<Database['cg.public_audio']>) => ({
+      id: r.id,
+      siteId: r.site_id,
+      form: r.form,
+      language: r.language,
+      script: r.script,
+      mimeType: r.mime_type,
+      bytes: r.bytes,
+      sha256: r.sha256,
+      provider: r.provider,
+      model: r.model,
+      createdAt: new Date(r.created_at).toISOString(),
+    });
+    app.post(
+      '/alerts/audio',
+      {
+        schema: {
+          tags: ['sites'],
+          body: z.object({
+            siteId: z.uuid(),
+            form: z.enum(['radioLoop', 'netReadout']),
+            language: z.enum(['en', 'es']).default('en'),
+            script: z.string().trim().min(10).max(3800),
+          }),
+          response: { 201: audioOut },
+        },
+      },
+      async (request, reply) => {
+        const s = account(request);
+        const b = request.body;
+        const current = await load(request, b.siteId);
+        await request.authorize('publication.draft', { type: 'publication', tenantId: s.tenantId });
+        if (current.confidential)
+          throw errors.validation([
+            {
+              name: 'siteId',
+              message: 'a confidential site is never named in public text (PUB-05)',
+            },
+          ]);
+        const objects = deps.objects;
+        if (!objects)
+          throw new ApiError(503, 'storage_unavailable', 'File storage is not available.');
+        const script = `${VOICE_NOTICE[b.language]} ${b.script}`;
+        const spoken = await aiSpeak(
+          request,
+          deps,
+          {
+            text: script,
+            language: b.language,
+            style: b.form === 'netReadout' ? 'net_readout' : 'radio_loop',
+          },
+          { type: 'site', id: current.id },
+        );
+        const id = randomUUID();
+        const ext = spoken.mimeType === 'audio/wav' ? 'wav' : 'mp3';
+        const key = `public-audio/${s.tenantId}/${id}.${ext}`;
+        const sha256 = createHash('sha256').update(spoken.audio).digest('hex');
+        await objects.client.send(
+          new PutObjectCommand({
+            Bucket: objects.bucket,
+            Key: key,
+            Body: spoken.audio,
+            ContentType: spoken.mimeType,
+          }),
+        );
+        const row = await request.tx(async (trx) => {
+          const r = await trx
+            .insertInto('cg.public_audio')
+            .values({
+              id,
+              tenant_id: s.tenantId,
+              site_id: current.id,
+              form: b.form,
+              language: b.language,
+              script,
+              object_key: key,
+              mime_type: spoken.mimeType,
+              bytes: spoken.audio.length,
+              sha256,
+              provider: spoken.provider.provider,
+              model: spoken.provider.model,
+              ai_output_id: spoken.outputId,
+              created_by: s.accountId,
+            })
+            .returningAll()
+            .executeTakeFirstOrThrow();
+          await request.audit(trx, {
+            action: 'publication.draft',
+            targetType: 'public_audio',
+            targetId: r.id,
+            changes: {
+              fields: [
+                { name: 'site', to: current.id },
+                { name: 'form', to: b.form },
+                { name: 'language', to: b.language },
+                { name: 'sha256', to: sha256 },
+              ],
+            },
+          });
+          return r;
+        });
+        return reply.code(201).send(audioView(row));
+      },
+    );
+
+    app.get(
+      '/alerts/audio',
+      {
+        schema: {
+          tags: ['sites'],
+          querystring: z.object({ siteId: z.uuid() }),
+          response: { 200: z.array(audioOut) },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('publication.read', { type: 'publication', tenantId: s.tenantId });
+        const rows = await request.tx((trx) =>
+          trx
+            .selectFrom('cg.public_audio')
+            .selectAll()
+            .where('site_id', '=', request.query.siteId)
+            .orderBy('created_at', 'desc')
+            .limit(50)
+            .execute(),
+        );
+        return rows.map(audioView);
+      },
+    );
+
+    app.get(
+      '/alerts/audio/:id/file',
+      { schema: { tags: ['sites'], params: uuidParam } },
+      async (request, reply) => {
+        const s = account(request);
+        await request.authorize('publication.read', { type: 'publication', tenantId: s.tenantId });
+        const row = await request.tx((trx) =>
+          trx
+            .selectFrom('cg.public_audio')
+            .selectAll()
+            .where('id', '=', request.params.id)
+            .executeTakeFirst(),
+        );
+        if (!row) throw errors.notFound();
+        if (!deps.objects)
+          throw new ApiError(503, 'storage_unavailable', 'File storage is not available.');
+        const obj = await deps.objects.client.send(
+          new GetObjectCommand({ Bucket: deps.objects.bucket, Key: row.object_key }),
+        );
+        const bytes = await obj.Body?.transformToByteArray();
+        if (!bytes) throw new ApiError(503, 'storage_unavailable', 'The file could not be read.');
+        const ext = row.mime_type === 'audio/wav' ? 'wav' : 'mp3';
+        const name = `${row.form === 'netReadout' ? 'net-readout' : 'radio-loop'}-${row.language}-${new Date(row.created_at).toISOString().slice(0, 10)}.${ext}`;
+        return reply
+          .header('content-type', row.mime_type)
+          .header('content-disposition', `attachment; filename="${name}"`)
+          .header('x-content-sha256', row.sha256)
+          .send(Buffer.from(bytes));
       },
     );
   };

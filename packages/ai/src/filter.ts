@@ -32,7 +32,26 @@ export interface FilterResult {
   reasons: string[];
 }
 
-export function filterGeneratedText(text: string): FilterResult {
-  const reasons = RULES.filter(([, re]) => re.test(text)).map(([name]) => name);
+const digits = (s: string) => s.replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
+
+/**
+ * `publicContacts` are the county's own published numbers and addresses
+ * (its help line in a public text, PUB-11): the text may carry those, and
+ * still never anyone else's.
+ */
+export function filterGeneratedText(
+  text: string,
+  opts: { publicContacts?: readonly string[] } = {},
+): FilterResult {
+  const allowed = new Set(
+    (opts.publicContacts ?? []).flatMap((c) => [c.trim().toLowerCase(), digits(c)]).filter(Boolean),
+  );
+  const reasons = RULES.filter(([name, re]) => {
+    if (name !== 'contact_data' || !allowed.size) return re.test(text);
+    const all = new RegExp(re.source, 'g');
+    return [...text.matchAll(all)].some(
+      (m) => !allowed.has(m[0].trim().toLowerCase()) && !allowed.has(digits(m[0])),
+    );
+  }).map(([name]) => name);
   return { allowed: reasons.length === 0, reasons };
 }

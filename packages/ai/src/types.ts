@@ -1,6 +1,6 @@
 /**
  * Pluggable AI interfaces (AIG-12): one each for language models, speech to
- * text, translation and image analysis. Providers are chosen per tenant in
+ * text, text to speech, translation and image analysis. Providers are chosen per tenant in
  * configuration; every output records which provider and model produced it.
  * A provider may be enabled for a tenant only when it meets AIG-06 (US
  * processing, zero data retention, no training on customer data) and passes
@@ -201,6 +201,18 @@ export interface SpeechToText {
   ): Promise<AiOutput<{ text: string; language: string }>>;
 }
 
+/** What the AI voice speaks (PUB-14): an approved script, never anything about a person. */
+export interface SpeechRequest {
+  text: string;
+  language: string;
+  /** How it is read: a station loop or a net read-out. Never changes the words. */
+  style: 'radio_loop' | 'net_readout';
+}
+
+export interface TextToSpeech {
+  speak(request: SpeechRequest): Promise<AiOutput<{ audio: Buffer; mimeType: string }>>;
+}
+
 export interface Translator {
   translate(
     text: string,
@@ -257,6 +269,7 @@ export interface AiProvider {
   readonly languages: readonly string[];
   readonly llm?: LanguageModel;
   readonly stt?: SpeechToText;
+  readonly tts?: TextToSpeech;
   readonly translation?: Translator;
   readonly image?: ImageAnalysis;
   readonly classifier?: DamageClassifier;

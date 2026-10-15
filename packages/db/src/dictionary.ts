@@ -2128,6 +2128,22 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     },
     execution_id: { c: 'internal' },
   }),
+  public_audio: table({
+    site_id: { c: 'internal' },
+    form: { c: 'internal', d: 'radioLoop or netReadout (PUB-14)' },
+    language: { c: 'internal' },
+    script: {
+      c: 'public',
+      d: 'The approved script as spoken, opening with the computer-generated voice notice',
+    },
+    object_key: { c: 'internal' },
+    mime_type: { c: 'internal' },
+    bytes: { c: 'internal' },
+    sha256: { c: 'internal' },
+    provider: { c: 'internal', d: 'The text-to-speech provider (AIG-01)' },
+    model: { c: 'internal' },
+    ai_output_id: { c: 'internal' },
+  }),
   discovery_source: table({
     kind: { c: 'internal', d: 'hsds, csv, geojson or web_search (REC-13)' },
     name: { c: 'internal' },

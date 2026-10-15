@@ -23,7 +23,8 @@
  * for its alert drafts; the social post, the radio loop and the amateur-net
  * read-out sit with the WEA and mass-notification texts in both languages;
  * with no AI provider configured, the assistant says it is off and the rules'
- * texts stay.
+ * texts stay; the net read-out is ready to speak, and the AI voice says it is
+ * off too.
  */
 import { devices, expect, test } from '@playwright/test';
 import {
@@ -380,13 +381,18 @@ test.describe('layer 7 console: the command window', () => {
       'Amateur radio net read-out',
       'Publicación en redes sociales',
     ])
-      await expect(drafts.getByText(label, { exact: true })).toBeVisible();
+      await expect(drafts.getByRole('term').filter({ hasText: label }).first()).toBeVisible();
     await expect(drafts).toContainText('This message repeats.');
     await expect(drafts).toContainText('End of traffic.');
     await expectNoViolations(page);
     await drafts.getByLabel('Text', { exact: true }).selectOption('radioLoop');
     await drafts.getByRole('button', { name: 'Draft with the AI assistant' }).click();
     await expect(drafts.getByText('The AI drafting assistant is off here.')).toBeVisible();
+    // PUB-14: the radio script is ready to speak; with no AI voice configured, it says so.
+    await drafts.getByLabel('Script', { exact: true }).selectOption('netReadout');
+    await expect(drafts.getByLabel('Script to speak')).toHaveValue(/End of traffic\.$/);
+    await drafts.getByRole('button', { name: 'Make the audio file with the AI voice' }).click();
+    await expect(drafts.getByText('The AI voice is off here.')).toBeVisible();
     await expectNoViolations(page);
     if (testInfo.project.name === 'phone') await expectReflow(page);
   });

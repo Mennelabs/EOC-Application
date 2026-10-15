@@ -36,7 +36,9 @@ import type {
   LanguageModel,
   ProviderInfo,
   Region,
+  SpeechRequest,
   SpeechToText,
+  TextToSpeech,
   Translator,
 } from '../types.ts';
 import {
@@ -67,6 +69,7 @@ export const OPENAI_TEMPLATES = {
   command: 'command-interpret-1',
   discovery: 'discovery-search-1',
   draft: 'draft-from-facts-1',
+  speech: 'speech-1',
 } as const;
 
 /**
@@ -89,6 +92,8 @@ export interface OpenAIConfig {
   models?: Partial<Record<OpenAIFunction, string>>;
   /** Per call; 20 s by default (BRD:INT-04). */
   timeoutMs?: number;
+  /** The text-to-speech voice (PUB-14); `alloy` by default. */
+  voice?: string;
   fetch?: typeof fetch;
   now?: () => number;
 }
@@ -252,6 +257,7 @@ export class OpenAIProvider implements AiProvider {
   readonly languages = ['en', 'es'] as const;
   readonly llm: LanguageModel;
   readonly stt: SpeechToText;
+  readonly tts: TextToSpeech;
   readonly translation: Translator;
   readonly image: ImageAnalysis;
   readonly classifier: DamageClassifier;
@@ -279,6 +285,7 @@ export class OpenAIProvider implements AiProvider {
       draft: (r) => this.draft(r),
     };
     this.stt = { transcribe: (a, m, l) => this.transcribe(a, m, l) };
+    this.tts = { speak: (r) => this.speak(r) };
     this.translation = { translate: (t, to, from) => this.translate(t, to, from) };
     this.image = { analyse: (i, m) => this.analyse(i, m) };
     this.classifier = { classify: (i, c) => this.classify(i, c) };
@@ -651,6 +658,42 @@ export class OpenAIProvider implements AiProvider {
     );
   }
 
+  /**
+   * PUB-14: speaks an approved radio script with the speech model. The words
+   * are read as written; the instructions set only the pace and manner. MP3,
+   * at most 4,096 characters, two minutes.
+   */
+  async speak(request: SpeechRequest): Promise<AiOutput<{ audio: Buffer; mimeType: string }>> {
+    const started = this.now();
+    if (!request.text.trim() || request.text.length > 4096)
+      throw new AiProviderError('invalid_output');
+    const language = request.language === 'es' ? 'Spanish' : 'English';
+    const manner =
+      request.style === 'net_readout'
+        ? 'like a message read over an amateur radio net for relay: slow and distinct, with a pause after each sentence so it can be written down'
+        : 'like a public information announcement on a low-power AM radio station: calm, clear and unhurried';
+    const res = await this.post(
+      '/audio/speech',
+      JSON.stringify({
+        model: this.models.speech,
+        voice: this.config.voice ?? 'alloy',
+        input: request.text,
+        instructions: `Read the text exactly as written, word for word, in ${language}, ${manner}. Read numbers and street addresses plainly.`,
+        response_format: 'mp3',
+      }),
+      'application/json',
+      Math.max(this.timeoutMs, 120_000),
+    );
+    const audio = Buffer.from(await res.arrayBuffer());
+    if (!audio.length) throw new AiProviderError('invalid_output');
+    return this.out(
+      { audio, mimeType: 'audio/mpeg' },
+      this.models.speech,
+      OPENAI_TEMPLATES.speech,
+      started,
+    );
+  }
+
   async analyse(
     image: Buffer,
     mimeType: string,
@@ -757,6 +800,7 @@ export function openAIFromEnv(env: Record<string, string | undefined>): OpenAIPr
   const timeout = Number(env['AI_TIMEOUT_MS']);
   return new OpenAIProvider({
     apiKey,
+    ...(env['AI_SPEECH_VOICE'] ? { voice: env['AI_SPEECH_VOICE'] } : {}),
     ...(env['OPENAI_BASE_URL'] ? { baseUrl: env['OPENAI_BASE_URL'] } : {}),
     ...(env['OPENAI_ORGANIZATION'] ? { organization: env['OPENAI_ORGANIZATION'] } : {}),
     models,

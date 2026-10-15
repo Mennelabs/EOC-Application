@@ -76,10 +76,25 @@ export function draftAlerts(input: AlertInput): AlertDraft[] {
   return (['en', 'es'] as const).map((lang) => {
     const kind = KIND[lang][input.site.kind] ?? KIND[lang]['other']!;
     const where = input.site.address ? `, ${input.site.address}` : '';
-    const more =
+    // Each its own sentence: with no help page the line is "Questions: call …", with neither nothing.
+    const more = (
       lang === 'en'
-        ? `${input.helpUrl ? ` More: ${input.helpUrl}` : ''}${input.helpPhone ? ` or call ${input.helpPhone}` : ''}.`
-        : `${input.helpUrl ? ` Más: ${input.helpUrl}` : ''}${input.helpPhone ? ` o llame al ${input.helpPhone}` : ''}.`;
+        ? [
+            input.helpUrl ? `More: ${input.helpUrl}` : null,
+            input.helpPhone
+              ? `${input.helpUrl ? 'Or call' : 'Questions: call'} ${input.helpPhone}`
+              : null,
+          ]
+        : [
+            input.helpUrl ? `Más: ${input.helpUrl}` : null,
+            input.helpPhone
+              ? `${input.helpUrl ? 'O llame al' : 'Preguntas: llame al'} ${input.helpPhone}`
+              : null,
+          ]
+    )
+      .filter(Boolean)
+      .map((x) => ` ${x}.`)
+      .join('');
     const extras = [input.site.hours, input.site.pets, input.site.accessibility]
       .filter(Boolean)
       .join('. ');

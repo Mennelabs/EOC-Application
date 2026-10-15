@@ -110,6 +110,17 @@ describe('output filter (AIG-07)', () => {
     expect(filterGeneratedText('Call Maria at 314-555-0100.').reasons).toContain('contact_data');
     expect(filterGeneratedText('A tree fell on the roof.').allowed).toBe(true);
   });
+  it("lets a public text carry the county's own help line, however written, and nobody else's (PUB-11)", () => {
+    const opts = { publicContacts: ['(314) 555-0142'] };
+    expect(filterGeneratedText('Call the county help line at 314-555-0142.', opts).allowed).toBe(
+      true,
+    );
+    expect(filterGeneratedText('Llame al +1 314 555 0142.', opts).allowed).toBe(true);
+    expect(
+      filterGeneratedText('Call 314-555-0142 or Maria at 314-555-0100.', opts).reasons,
+    ).toContain('contact_data');
+    expect(filterGeneratedText('Call 314-555-0142.').reasons).toContain('contact_data');
+  });
 });
 
 describe('fake provider and the evaluation harness (AIG-08, AIG-12)', () => {

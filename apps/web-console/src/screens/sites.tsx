@@ -8,10 +8,12 @@
  * (PUB-11, PUB-12, PUB-14, AI-04): the social post, radio loop and net
  * read-out sit with the alert texts, and the AI assistant can redraft any of
  * them from the same facts, labelled and checked; the person copies what
- * they keep, and its record says whether they changed it (AIG-01).
+ * they keep, and its record says whether they changed it (AIG-01). The AI
+ * voice speaks an approved radio script into an audio file that opens by
+ * saying the voice is computer-generated, with its transcript (PUB-14).
  */
 import { Fragment, useState, type FormEvent } from 'react';
-import { api, describeFailure } from '../api/client.ts';
+import { api, describeFailure, download, fetchBlob } from '../api/client.ts';
 import { DataTable, Field, Status, Toolbar, fmt } from '../ui/primitives.tsx';
 import { useList } from './admin.tsx';
 
@@ -342,6 +344,7 @@ export function SitesScreen() {
             </dl>
           ))}
           <AiPublicDraft key={`${drafts.siteId}:${drafts.change}`} {...drafts} />
+          <RadioAudio key={`audio:${drafts.siteId}:${drafts.change}`} {...drafts} />
         </div>
       ) : null}
       <h2>Add a site</h2>
@@ -689,6 +692,179 @@ function AiPublicDraft({ siteId, site, change }: { siteId: string; site: string;
             </ol>
           </details>
         </div>
+      ) : null}
+    </section>
+  );
+}
+
+interface PublicAudio {
+  id: string;
+  form: 'radioLoop' | 'netReadout';
+  language: 'en' | 'es';
+  script: string;
+  mimeType: string;
+  bytes: number;
+  provider: string;
+  model: string;
+  createdAt: string;
+}
+const SPOKEN = { radioLoop: 'Radio loop (TIS)', netReadout: 'Amateur radio net read-out' } as const;
+
+/**
+ * PUB-14: the AI voice speaks the script the PIO approves (the rules' text,
+ * changed as they need) into an audio file. Each file is listed with its
+ * transcript; the PIO plays it before it goes on the air.
+ */
+function RadioAudio({
+  siteId,
+  site,
+  drafts,
+}: {
+  siteId: string;
+  site: string;
+  drafts: AlertDraft[];
+}) {
+  const { rows, error, reload } = useList<PublicAudio>(`/alerts/audio?siteId=${siteId}`);
+  const [form, setForm] = useState<'radioLoop' | 'netReadout'>('radioLoop');
+  const [language, setLanguage] = useState<'en' | 'es'>('en');
+  const rulesText = (f: typeof form, l: typeof language) =>
+    drafts.find((d) => d.lang === l)?.[f] ?? '';
+  const [script, setScript] = useState(() => rulesText('radioLoop', 'en'));
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ kind: 'error' | 'success'; text: string } | null>(null);
+  const [playing, setPlaying] = useState<Record<string, string>>({});
+
+  const choose = (f: typeof form, l: typeof language) => {
+    setForm(f);
+    setLanguage(l);
+    setScript(rulesText(f, l));
+  };
+  const make = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await api('/alerts/audio', { body: { siteId, form, language, script } });
+      setMsg({
+        kind: 'success',
+        text: 'Audio file made. Play it through before it goes on the air.',
+      });
+      reload();
+    } catch (err) {
+      setMsg({ kind: 'error', text: describeFailure(err) });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const play = async (a: PublicAudio) => {
+    try {
+      const blob = await fetchBlob(`/alerts/audio/${a.id}/file`);
+      setPlaying((p) => ({ ...p, [a.id]: URL.createObjectURL(blob) }));
+    } catch (err) {
+      setMsg({ kind: 'error', text: describeFailure(err) });
+    }
+  };
+  const fileName = (a: PublicAudio) =>
+    `${a.form === 'netReadout' ? 'net-readout' : 'radio-loop'}-${a.language}.${a.mimeType === 'audio/wav' ? 'wav' : 'mp3'}`;
+
+  return (
+    <section aria-labelledby="radio-audio-h">
+      <h3 id="radio-audio-h">Radio audio</h3>
+      <p>
+        The AI voice reads the script below for {site} into an audio file for the county's
+        Travelers' Information Station or an amateur radio net. The file opens by saying the voice
+        is computer-generated. Change the script as needed first; play the file before it goes on
+        the air.
+      </p>
+      <div className="form-grid">
+        <Field label="Script">
+          {({ id }) => (
+            <select
+              id={id}
+              value={form}
+              onChange={(e) => choose(e.target.value as typeof form, language)}
+            >
+              <option value="radioLoop">{SPOKEN.radioLoop}</option>
+              <option value="netReadout">{SPOKEN.netReadout}</option>
+            </select>
+          )}
+        </Field>
+        <Field label="Spoken language">
+          {({ id }) => (
+            <select
+              id={id}
+              value={language}
+              onChange={(e) => choose(form, e.target.value as typeof language)}
+            >
+              <option value="en">English</option>
+              <option value="es">Spanish</option>
+            </select>
+          )}
+        </Field>
+      </div>
+      <Field label="Script to speak">
+        {({ id }) => (
+          <textarea
+            id={id}
+            lang={language}
+            rows={6}
+            value={script}
+            onChange={(e) => setScript(e.target.value)}
+          />
+        )}
+      </Field>
+      <Toolbar>
+        <button
+          type="button"
+          onClick={make}
+          disabled={busy || script.trim().length < 10 || script.length > 3800}
+          aria-busy={busy}
+        >
+          {busy ? 'Making the audio file…' : 'Make the audio file with the AI voice'}
+        </button>
+      </Toolbar>
+      {msg ? <Status kind={msg.kind}>{msg.text}</Status> : null}
+      {error ? <Status kind="error">{error}</Status> : null}
+      {rows?.length ? (
+        <ul aria-label={`Audio files for ${site}`}>
+          {rows.map((a) => (
+            <li key={a.id}>
+              <p>
+                {SPOKEN[a.form]}, {a.language === 'es' ? 'Spanish' : 'English'}, made{' '}
+                {fmt(a.createdAt)} by the AI voice ({a.provider}, {a.model});{' '}
+                {Math.ceil(a.bytes / 1024)} KB.
+              </p>
+              {playing[a.id] ? (
+                <audio
+                  controls
+                  src={playing[a.id]}
+                  aria-label={`${SPOKEN[a.form]}, ${a.language === 'es' ? 'Spanish' : 'English'}`}
+                />
+              ) : null}
+              <Toolbar>
+                {playing[a.id] ? null : (
+                  <button type="button" onClick={() => play(a)}>
+                    Play
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="link"
+                  onClick={() =>
+                    download(`/alerts/audio/${a.id}/file`, fileName(a)).catch((err) =>
+                      setMsg({ kind: 'error', text: describeFailure(err) }),
+                    )
+                  }
+                >
+                  Download
+                </button>
+              </Toolbar>
+              <details>
+                <summary>Transcript</summary>
+                <p lang={a.language}>{a.script}</p>
+              </details>
+            </li>
+          ))}
+        </ul>
       ) : null}
     </section>
   );

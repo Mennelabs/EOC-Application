@@ -31,7 +31,7 @@ export function providerByName(name: string): AiProvider | undefined {
 /** The provider a tenant is configured for (`ai.provider`, OpenAI by default), or null: AI off. */
 export const DEFAULT_PROVIDER = 'openai';
 
-export type ProviderNeed = 'llm' | 'stt' | 'translation' | 'image' | 'classifier';
+export type ProviderNeed = 'llm' | 'stt' | 'tts' | 'translation' | 'image' | 'classifier';
 
 /** What the register records about a provider, whether or not this process can call it. */
 export interface ProviderDescriptor {
@@ -42,7 +42,7 @@ export interface ProviderDescriptor {
 }
 
 export function describeProvider(p: AiProvider): ProviderDescriptor {
-  const all: ProviderNeed[] = ['llm', 'stt', 'translation', 'image', 'classifier'];
+  const all: ProviderNeed[] = ['llm', 'stt', 'tts', 'translation', 'image', 'classifier'];
   return {
     info: p.info,
     compliance: p.compliance,
@@ -59,7 +59,7 @@ export function openAIDescriptor(
     info: { provider: 'openai', model: models.text ?? OPENAI_DEFAULT_MODELS.text },
     compliance: OPENAI_COMPLIANCE,
     languages: ['en', 'es'],
-    supports: ['llm', 'stt', 'translation', 'image', 'classifier'],
+    supports: ['llm', 'stt', 'tts', 'translation', 'image', 'classifier'],
   };
 }
 
@@ -194,6 +194,16 @@ export const AI_FEATURES: readonly RegisterEntry[] = [
     decisionInformed:
       'Drafts public posts, radio scripts and alert text sized for the channel (PUB-11, PUB-12, PUB-14)',
     humanCheckpoint: 'Nothing is sent or published until its named approver approves it (PUB-06)',
+    owner: 'Public information officer',
+  },
+  {
+    feature: 'public.speech',
+    needs: 'tts',
+    dataSent: "A radio script a person approved: a site's public details; never a resident",
+    decisionInformed:
+      'Speaks the script as an audio file for a Travelers’ Information Station loop or an amateur radio net (PUB-14); the file opens by saying the voice is computer-generated',
+    humanCheckpoint:
+      'The PIO approves the script first and listens to the file before it goes on the air',
     owner: 'Public information officer',
   },
   {

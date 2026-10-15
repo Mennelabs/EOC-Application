@@ -12,6 +12,7 @@
  * and API_DB_TEST_WORKER_URL.
  */
 import { randomUUID } from 'node:crypto';
+import { GetObjectCommand, PutObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Kysely } from 'kysely';
 import { fakeProvider, type AiProvider } from '@cg/ai';
@@ -45,6 +46,28 @@ interface Report {
   code?: string;
   details?: { problems?: string[] };
 }
+
+/** Storage for the AI voice's files, in memory (PUB-14). */
+const stored = new Map<string, { body: Buffer; type: string }>();
+const objects = {
+  bucket: 'drafting-test',
+  client: {
+    async send(cmd: unknown) {
+      if (cmd instanceof PutObjectCommand) {
+        stored.set(cmd.input.Key!, {
+          body: Buffer.from(cmd.input.Body as Buffer),
+          type: cmd.input.ContentType!,
+        });
+        return {};
+      }
+      if (cmd instanceof GetObjectCommand) {
+        const o = stored.get(cmd.input.Key!)!;
+        return { Body: { transformToByteArray: async () => new Uint8Array(o.body) } };
+      }
+      throw new Error('unexpected storage call');
+    },
+  } as unknown as Pick<S3Client, 'send'>,
+};
 
 /** A provider that states a figure the facts do not hold. */
 const straying: AiProvider = {
@@ -170,6 +193,30 @@ describe.skipIf(!appUrl || !workerUrl)('AI drafting from facts (database-backed)
           enabled: true,
         })
         .execute();
+      await trx
+        .insertInto('cg.ai_use_register')
+        .values({
+          tenant_id: county,
+          feature: 'public.speech',
+          provider: 'fake',
+          model: 'keyword-rules',
+          model_version: null,
+          data_sent: 'An approved radio script',
+          decision_informed: 'An audio file of it',
+          human_checkpoint: 'The PIO listens before it airs',
+          owner: 'Public information',
+          evaluation: JSON.stringify({}),
+          enabled: false,
+        })
+        .execute();
+      await trx
+        .insertInto('cg.tenant_config')
+        .values({
+          tenant_id: county,
+          key: 'intake.help_phone',
+          value: JSON.stringify('(314) 555-0142'),
+        })
+        .execute();
       return (
         await trx
           .insertInto('cg.event')
@@ -233,7 +280,7 @@ describe.skipIf(!appUrl || !workerUrl)('AI drafting from facts (database-backed)
       fieldCrypto: new FieldCrypto(new InMemoryKeyService(), new MemoryKeyStore()),
       subjects: loader,
       // The deterministic fake stands in for OpenAI here (tests only, ADR-0043).
-      routes: routesWith({ drafting: { ai: { providerFor: async () => provider } } }),
+      routes: routesWith({ drafting: { ai: { providerFor: async () => provider }, objects } }),
     });
   });
 
@@ -518,6 +565,145 @@ describe.skipIf(!appUrl || !workerUrl)('AI drafting from facts (database-backed)
       url: '/api/v1/alerts/ai-draft',
       headers: { authorization: 'Bearer author', 'idempotency-key': randomUUID() },
       payload: { siteId, change: 'opened', form: 'social' },
+    });
+    expect([403, 404]).toContain(author.statusCode);
+  });
+
+  it('PUB-11, AIG-07: a public text may carry the county’s own help line; the filter still refuses anyone else’s', async () => {
+    const pio = (url: string, payload: unknown) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/v1${url}`,
+        headers: { authorization: 'Bearer pio', 'idempotency-key': randomUUID() },
+        payload: payload as Record<string, unknown>,
+      });
+    const site = await pio('/sites', {
+      kind: 'warming',
+      name: `Westwind Library ${run}`,
+      slug: `drf-library-${run}`,
+      status: 'open',
+      address: { line1: '5 Civic Plaza', city: 'Westwind', postal: '63003' },
+    });
+    expect(site.statusCode, site.body).toBe(201);
+    const siteId = (site.json() as { id: string }).id;
+    const mass = await pio('/alerts/ai-draft', {
+      siteId,
+      change: 'opened',
+      form: 'massNotification',
+    });
+    expect(mass.statusCode, mass.body).toBe(200);
+    expect((mass.json() as { text: string }).text).toContain('Questions: call (314) 555-0142.');
+    // A provider that adds someone else's number is filtered and never shown.
+    provider = {
+      ...fakeProvider,
+      llm: {
+        extract: (r) => fakeProvider.llm!.extract(r),
+        draft: async () => ({
+          output: {
+            sentences: [
+              {
+                text: 'Questions: call (314) 555-0142 or 314-555-0100.',
+                factIds: ['helpPhone', 'county'],
+              },
+            ],
+            injectionSuspected: false,
+          },
+          provider: fakeProvider.info,
+          latencyMs: 1,
+        }),
+      },
+    };
+    const other = await pio('/alerts/ai-draft', { siteId, change: 'opened', form: 'social' });
+    provider = fakeProvider;
+    expect(other.statusCode).toBe(422);
+  });
+
+  it('PUB-14, AIG-01: the AI voice speaks an approved radio script into a file that says it is computer-generated; off until enabled', async () => {
+    const pio = (url: string, payload: unknown) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/v1${url}`,
+        headers: { authorization: 'Bearer pio', 'idempotency-key': randomUUID() },
+        payload: payload as Record<string, unknown>,
+      });
+    const site = await pio('/sites', {
+      kind: 'shelter',
+      name: `Harmon Middle School ${run}`,
+      slug: `drf-middle-${run}`,
+      status: 'open',
+      address: { line1: '12 Schoolhouse Rd', city: 'Harmon City', postal: '63005' },
+    });
+    const siteId = (site.json() as { id: string }).id;
+    const rules = (await pio('/alerts/draft', { siteId, change: 'opened' })).json() as {
+      drafts: { lang: string; radioLoop: string; netReadout: string }[];
+    };
+    const script = rules.drafts.find((d) => d.lang === 'es')!.radioLoop;
+    const off = await pio('/alerts/audio', { siteId, form: 'radioLoop', language: 'es', script });
+    expect(off.statusCode).toBe(409);
+    expect((off.json() as { code: string }).code).toBe('ai_off');
+    await withTenant(dbWorker, { tenantId: county }, (trx) =>
+      trx
+        .updateTable('cg.ai_use_register')
+        .set({ enabled: true })
+        .where('tenant_id', '=', county)
+        .where('feature', '=', 'public.speech')
+        .execute(),
+    );
+    const made = await pio('/alerts/audio', { siteId, form: 'radioLoop', language: 'es', script });
+    expect(made.statusCode, made.body).toBe(201);
+    const audio = made.json() as {
+      id: string;
+      script: string;
+      mimeType: string;
+      bytes: number;
+      provider: string;
+      sha256: string;
+    };
+    expect(audio.script).toBe(`Este anuncio lo lee una voz generada por computadora. ${script}`);
+    expect(audio).toMatchObject({ mimeType: 'audio/wav', provider: 'fake' });
+    expect(audio.bytes).toBeGreaterThan(44);
+    const listed = await app.inject({
+      url: `/api/v1/alerts/audio?siteId=${siteId}`,
+      headers: { authorization: 'Bearer pio' },
+    });
+    expect((listed.json() as { id: string }[]).map((x) => x.id)).toEqual([audio.id]);
+    const file = await app.inject({
+      url: `/api/v1/alerts/audio/${audio.id}/file`,
+      headers: { authorization: 'Bearer pio' },
+    });
+    expect(file.statusCode).toBe(200);
+    expect(file.headers['content-type']).toBe('audio/wav');
+    expect(file.headers['content-disposition']).toContain('radio-loop-es-');
+    expect(file.rawPayload.subarray(0, 4).toString('ascii')).toBe('RIFF');
+    expect(file.rawPayload.length).toBe(audio.bytes);
+    const rec = await dbWorker
+      .selectFrom('cg.ai_output')
+      .select(['outcome', 'target_type', 'target_id', 'language'])
+      .where('tenant_id', '=', county)
+      .where('feature', '=', 'public.speech')
+      .execute();
+    expect(rec).toEqual([
+      { outcome: 'ok', target_type: 'site', target_id: siteId, language: 'es' },
+    ]);
+    // PUB-05: never a confidential site; and only those who draft public text.
+    const quiet = await pio('/sites', {
+      kind: 'shelter',
+      name: `Quiet place ${run}`,
+      slug: `drf-quiet2-${run}`,
+      status: 'open',
+      confidential: true,
+    });
+    const secret = await pio('/alerts/audio', {
+      siteId: (quiet.json() as { id: string }).id,
+      form: 'netReadout',
+      script,
+    });
+    expect(secret.statusCode).toBe(400);
+    const author = await app.inject({
+      method: 'POST',
+      url: '/api/v1/alerts/audio',
+      headers: { authorization: 'Bearer author', 'idempotency-key': randomUUID() },
+      payload: { siteId, form: 'radioLoop', script },
     });
     expect([403, 404]).toContain(author.statusCode);
   });

@@ -21,7 +21,9 @@ import type {
   ImageAnalysis,
   LanguageModel,
   ProviderInfo,
+  SpeechRequest,
   SpeechToText,
+  TextToSpeech,
   Translator,
 } from '../types.ts';
 
@@ -376,6 +378,34 @@ export class FakeSpeechToText implements SpeechToText {
   }
 }
 
+/**
+ * Tests only: a silent 8 kHz WAV whose length follows the number of words
+ * (a tenth of a second each, at most ten seconds), so a test can tell a file
+ * was made for the script it sent. Never a voice.
+ */
+export class FakeTextToSpeech implements TextToSpeech {
+  async speak(request: SpeechRequest) {
+    const rate = 8000;
+    const words = request.text.split(/\s+/).filter(Boolean).length;
+    const samples = Math.min(rate * 10, Math.max(rate / 10, words * (rate / 10)));
+    const audio = Buffer.alloc(44 + samples, 128);
+    audio.write('RIFF', 0, 'ascii');
+    audio.writeUInt32LE(36 + samples, 4);
+    audio.write('WAVE', 8, 'ascii');
+    audio.write('fmt ', 12, 'ascii');
+    audio.writeUInt32LE(16, 16);
+    audio.writeUInt16LE(1, 20);
+    audio.writeUInt16LE(1, 22);
+    audio.writeUInt32LE(rate, 24);
+    audio.writeUInt32LE(rate, 28);
+    audio.writeUInt16LE(1, 32);
+    audio.writeUInt16LE(8, 34);
+    audio.write('data', 36, 'ascii');
+    audio.writeUInt32LE(samples, 40);
+    return { output: { audio, mimeType: 'audio/wav' }, provider: INFO, latencyMs: 0 };
+  }
+}
+
 export class FakeTranslator implements Translator {
   /** Returns the text unchanged so reviewers see an honest label, never a wrong translation (EQ-08). */
   async translate(text: string, _to: string, from?: string) {
@@ -410,6 +440,7 @@ export const fakeProvider: AiProvider = {
   languages: ['en', 'es'],
   llm: new FakeLanguageModel(),
   stt: new FakeSpeechToText(),
+  tts: new FakeTextToSpeech(),
   translation: new FakeTranslator(),
   image: new FakeImageAnalysis(),
 };

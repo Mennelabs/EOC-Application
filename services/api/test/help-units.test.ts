@@ -32,6 +32,24 @@ describe('alert drafts (PUB-11)', () => {
     }
     expect(drafts[0]!.wea90).toContain('Harmon High School gym');
     expect(drafts[1]!.wea90).toContain('albergue');
+    // Every sentence ends once: the help line is its own sentence.
+    expect(drafts[0]!.massNotification).toMatch(/call 911\. Questions: call \(314\) 555-0142\.$/);
+    expect(drafts[1]!.massNotification).toMatch(
+      /llame al 911\. Preguntas: llame al \(314\) 555-0142\.$/,
+    );
+    const [bare] = draftAlerts({ county: 'Westwind County', change: 'opened', site });
+    for (const t of [bare!.massNotification, bare!.wea360, bare!.radioLoop])
+      expect(t).not.toMatch(/\.\.|\. or call/);
+    const [linked] = draftAlerts({
+      county: 'Westwind County',
+      change: 'opened',
+      site,
+      helpUrl: 'https://westwind.example/help',
+      helpPhone: '(314) 555-0142',
+    });
+    expect(linked!.massNotification).toContain(
+      'More: https://westwind.example/help. Or call (314) 555-0142.',
+    );
   });
   it('full or closed names the next nearest open site of the kind (PUB-04)', () => {
     const next = {

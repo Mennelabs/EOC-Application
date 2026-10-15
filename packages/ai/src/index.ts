@@ -10,6 +10,17 @@ export {
 } from './extraction.ts';
 export { fakeProvider, FakeLanguageModel } from './providers/fake.ts';
 export {
+  OpenAIProvider,
+  openAIFromEnv,
+  AiProviderError,
+  OPENAI_DEFAULT_MODELS,
+  OPENAI_TEMPLATES,
+  OPENAI_COMPLIANCE,
+  type OpenAIConfig,
+  type OpenAIFunction,
+  type AiProviderErrorKind,
+} from './providers/openai.ts';
+export {
   providers,
   providerByName,
   isCompliant,

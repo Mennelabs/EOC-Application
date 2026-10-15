@@ -12,6 +12,8 @@ export interface ProviderInfo {
   provider: string;
   model: string;
   version?: string;
+  /** The prompt template's version behind an output (AIG-01). */
+  templateVersion?: string;
 }
 
 export interface Compliance {
@@ -80,7 +82,7 @@ export interface Translator {
 }
 
 export interface Region {
-  kind: 'face' | 'license_plate' | 'document' | 'other';
+  kind: 'face' | 'license_plate' | 'document' | 'house_number' | 'other';
   x: number;
   y: number;
   width: number;
@@ -97,6 +99,29 @@ export interface ImageAnalysis {
   >;
 }
 
+/** A suggested damage degree (PHO-09, PHO-12); a person always decides (PHO-10, DCL:DEC-02). */
+export type DamageDegree = 'affected' | 'minor' | 'major' | 'destroyed' | 'cannot_tell';
+
+export interface DamageSuggestion {
+  degree: DamageDegree;
+  /** 0..1 */
+  confidence: number;
+  /** What in the photos the suggestion rests on (Section 29.2). */
+  visibleFeatures: string[];
+}
+
+/**
+ * The damage classifier interface (PHO-12, ADR-0043): photos and context in, a suggestion
+ * out. OpenAI's vision model fills it for now; a validated classifier replaces it through
+ * configuration.
+ */
+export interface DamageClassifier {
+  classify(
+    images: { data: Buffer; mimeType: string }[],
+    context: { homeType?: string; hazard?: string },
+  ): Promise<AiOutput<DamageSuggestion>>;
+}
+
 export interface AiProvider {
   readonly info: ProviderInfo;
   readonly compliance: Compliance;
@@ -106,4 +131,5 @@ export interface AiProvider {
   readonly stt?: SpeechToText;
   readonly translation?: Translator;
   readonly image?: ImageAnalysis;
+  readonly classifier?: DamageClassifier;
 }

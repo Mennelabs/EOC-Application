@@ -2516,6 +2516,70 @@ export interface EquityAlertTable {
   updated_at: TsGen;
 }
 
+export type ApiKeyScope = 'pda.read';
+export type WebhookEvent = 'official_report.issued' | 'export.ready';
+
+export interface ApiKeyTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  name: string;
+  prefix: string;
+  secret_hash: string;
+  scopes: ApiKeyScope[];
+  status: Generated<'pending' | 'active' | 'declined' | 'revoked'>;
+  expires_at: Ts;
+  created_by: Uuid;
+  decided_by: Uuid | null;
+  decided_at: TsNullable;
+  decision_reason: string | null;
+  revoked_by: Uuid | null;
+  revoked_at: TsNullable;
+  revoked_reason: string | null;
+  last_used_at: TsNullable;
+  version: Generated<number>;
+  created_at: TsGen;
+  updated_at: TsGen;
+}
+
+export interface WebhookTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  name: string;
+  url: string;
+  events: WebhookEvent[];
+  secret_enc: Buffer;
+  status: Generated<'pending' | 'active' | 'declined' | 'disabled'>;
+  created_by: Uuid;
+  decided_by: Uuid | null;
+  decided_at: TsNullable;
+  decision_reason: string | null;
+  disabled_by: Uuid | null;
+  disabled_at: TsNullable;
+  disabled_reason: string | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  updated_at: TsGen;
+}
+
+export interface WebhookDeliveryTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  webhook_id: Uuid;
+  event: WebhookEvent;
+  subject_id: Uuid;
+  payload: JsonValue;
+  status: Generated<'pending' | 'delivered' | 'failed'>;
+  attempts: Generated<number>;
+  next_attempt_at: TsNullable;
+  last_attempt_at: TsNullable;
+  last_status: number | null;
+  last_error: string | null;
+  delivered_at: TsNullable;
+  version: Generated<number>;
+  created_at: TsGen;
+  updated_at: TsGen;
+}
+
 export interface LocationGeoTable {
   location_id: Uuid;
   tenant_id: Uuid;
@@ -2836,6 +2900,9 @@ export interface Database {
   'cg.joint_pda_stop': JointPdaStopTable;
   'cg.joint_pda_mark': JointPdaMarkTable;
   'cg.equity_alert': EquityAlertTable;
+  'cg.api_key': ApiKeyTable;
+  'cg.webhook': WebhookTable;
+  'cg.webhook_delivery': WebhookDeliveryTable;
   'cg.refdata_import': RefdataImportTable;
   'cg.refdata_snapshot': RefdataSnapshotTable;
   'cg.refdata_current': RefdataCurrentTable;

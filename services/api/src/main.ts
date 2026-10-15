@@ -29,6 +29,7 @@ import { ReferenceCodeLeaser } from './public/reference-codes.ts';
 import { submitIntake } from './public/submit.ts';
 import { publicRoutes } from './public/routes.ts';
 import { TenantResolver } from './public/tenant-resolver.ts';
+import { gisRoutes } from './routes/gis.ts';
 
 const config = loadConfig(platformSchema);
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
@@ -174,6 +175,7 @@ const app = await buildApp({
       simulator: config.DATA_CLASSIFICATION_MODE === 'synthetic',
     }),
   ],
+  gisRoutes: [gisRoutes({ resolver, db })],
   probes: [
     postgresProbe('db', pool),
     queueProbe('queue', () => queue),

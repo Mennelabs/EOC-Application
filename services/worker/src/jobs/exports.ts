@@ -26,6 +26,7 @@ import {
   type Mapping,
   type PackagePhoto,
 } from '@cg/reporting';
+import { publishWebhookEvent, sendClaimed } from './webhooks.ts';
 import { asSystem, systemAudit } from '../system.ts';
 import type { JobContext, TopicHandler } from './types.ts';
 
@@ -171,7 +172,7 @@ export const exportRequested: TopicHandler = async (ctx, msg) => {
     const key = `tenant/${tenantId}/exports/${row.id}/${randomUUID()}/${file.name}`;
     await ctx.objects.put(key, file.body, file.contentType);
     const sha256 = createHash('sha256').update(file.body).digest('hex');
-    await asSystem(ctx.db, tenantId, async (trx) => {
+    const claimed = await asSystem(ctx.db, tenantId, async (trx) => {
       const recorded = await trx
         .updateTable('cg.export_file')
         .set({
@@ -187,7 +188,7 @@ export const exportRequested: TopicHandler = async (ctx, msg) => {
         .where('id', '=', row.id)
         .where('status', '=', 'queued')
         .executeTakeFirst();
-      if (recorded.numUpdatedRows === 0n) return;
+      if (recorded.numUpdatedRows === 0n) return [];
       await systemAudit(trx, tenantId, 'export', {
         action: 'export.ready',
         targetType: 'export_file',
@@ -195,7 +196,28 @@ export const exportRequested: TopicHandler = async (ctx, msg) => {
         changes: { file: file.name, bytes: file.body.length, sha256 },
         executionId: msg.executionId,
       });
+      // SCL-09: "export ready" to the county's webhooks, in the same transaction.
+      return publishWebhookEvent(
+        ctx,
+        tenantId,
+        'export.ready',
+        row.id,
+        {
+          exportId: row.id,
+          eventId: row.event_id,
+          kind: row.kind,
+          format: row.format,
+          reportId: row.report_id,
+          fileName: file.name,
+          bytes: file.body.length,
+          sha256,
+        },
+        trx,
+      );
     });
+    await sendClaimed(ctx, claimed).catch((err: unknown) =>
+      ctx.log.warn({ err, exportId: row.id }, 'webhook delivery deferred to the schedule'),
+    );
   } catch (err) {
     ctx.log.error({ err, exportId: row.id }, 'export failed');
     await fail('The export could not be built; try again, and tell support if it fails again.');

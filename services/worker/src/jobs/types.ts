@@ -9,7 +9,7 @@
  */
 import type { Kysely, Transaction } from 'kysely';
 import type { Logger } from 'pino';
-import type { SmsSender } from '@cg/adapters';
+import type { SmsSender, WebhookSender } from '@cg/adapters';
 import type { AiProvider } from '@cg/ai';
 import type { FieldCrypto } from '@cg/crypto';
 import type { Database } from '@cg/db';
@@ -56,6 +56,8 @@ export interface JobContext {
   linkCheck?: (url: string) => Promise<boolean>;
   /** Reference data sources (ADR-0039); absent means no pulls (imports still work). */
   refdata?: RefdataDeps;
+  /** Outbound webhook sender (SCL-09); HTTPS to public addresses only by default. */
+  webhookSender?: WebhookSender;
 }
 
 export interface OutboxMessage {

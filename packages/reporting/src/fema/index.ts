@@ -8,3 +8,4 @@ export * from './in-force.ts';
 export * from './photos.ts';
 export * from './joint.ts';
 export * from './joint-data.ts';
+export * from './layer.ts';

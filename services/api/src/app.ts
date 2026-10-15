@@ -13,7 +13,7 @@ import { runProbes, type Probe } from '@cg/adapters';
 import { AuthError, type SubjectLoader } from './auth/subject.ts';
 import { errorHandler } from './errors.ts';
 import type { ReportDeps } from './routes/reports.ts';
-import { redactPaths } from './logging.ts';
+import { redactPaths, serializers } from './logging.ts';
 import { authorizePlugin } from './plugins/authorize.ts';
 import { contextPlugin } from './plugins/context.ts';
 import { idempotencyPlugin } from './plugins/idempotency.ts';
@@ -37,6 +37,8 @@ export interface AppOptions {
   publicRoutes?: FastifyPluginAsync[];
   /** Route plugins mounted under /api/webhooks (carrier callbacks and the simulator). */
   webhookRoutes?: FastifyPluginAsync[];
+  /** Route plugins mounted under /api/gis (the read-only feature service, SCL-09). */
+  gisRoutes?: FastifyPluginAsync[];
 }
 
 export type App = Awaited<ReturnType<typeof buildApp>>;
@@ -49,7 +51,11 @@ declare module 'fastify' {
 
 export async function buildApp(opts: AppOptions) {
   const app = Fastify({
-    logger: { level: opts.logLevel ?? 'info', redact: { paths: redactPaths, remove: true } },
+    logger: {
+      level: opts.logLevel ?? 'info',
+      redact: { paths: redactPaths, remove: true },
+      serializers,
+    },
     // Correlation id for every request (NFR-10). Generated server-side; a
     // client-supplied execution id for idempotency is a separate header.
     genReqId: () => crypto.randomUUID(),
@@ -113,6 +119,9 @@ export async function buildApp(opts: AppOptions) {
   }
   for (const routes of opts.webhookRoutes ?? []) {
     await app.register(routes, { prefix: '/api/webhooks' });
+  }
+  for (const routes of opts.gisRoutes ?? []) {
+    await app.register(routes, { prefix: '/api/gis' });
   }
 
   return app;

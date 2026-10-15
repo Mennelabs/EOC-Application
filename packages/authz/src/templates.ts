@@ -90,6 +90,9 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('intake_graph.*'),
       g('ai_register.*'),
       g('report.read'),
+      // SCL-09: explicit actions, never reached by the wildcard below.
+      g('api_key.manage'),
+      g('webhook.manage'),
       { action: '*', dataCategories: ['contact'] },
     ],
   },
@@ -109,6 +112,10 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('audit.*'),
       g('retention.*'),
       g('legal_hold.*'),
+      g('api_key.read'),
+      g('api_key.manage'),
+      g('webhook.read'),
+      g('webhook.manage'),
     ],
   },
   {

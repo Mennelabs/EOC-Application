@@ -41,6 +41,7 @@ import { dropPositionTrails, watchFieldSafety, watchReminders } from './jobs/fie
 import { assignLocationGeography } from './jobs/geography.ts';
 import { pruneReferenceSnapshots, scheduleReferencePulls } from './jobs/refdata.ts';
 import { evaluateEquityAlerts } from './jobs/equity.ts';
+import { webhookSchedule } from './jobs/webhooks.ts';
 import { consume, consumeIntake, relayOnce } from './jobs/relay.ts';
 import type { JobContext, Schedule } from './jobs/types.ts';
 import { nullMailer, smtpMailer } from './mail.ts';
@@ -200,6 +201,7 @@ const schedules: Schedule[] = [
   { name: 'location-geography', everyMs: 60_000, run: assignLocationGeography },
   // EQ-12, CON-07: coverage and gap alerts raised and cleared against the tenant's thresholds.
   { name: 'equity-alerts', everyMs: 15 * 60_000, run: evaluateEquityAlerts },
+  webhookSchedule, // SCL-09
 ];
 
 const probes = [postgresProbe('db', pool), queueProbe('queue', queueNow)];

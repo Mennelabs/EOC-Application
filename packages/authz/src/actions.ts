@@ -582,6 +582,25 @@ export const actions = {
     'Put a FEMA form mapping version in force for every export that follows',
     { consequential: true },
   ),
+  // Layer 6 outbound integrations (SCL-09): keys and webhooks need a second administrator (ADM-05).
+  'api_key.read': a(
+    'read',
+    'api_key',
+    'See API keys: name, scopes, status, expiry, last use; never the key',
+  ),
+  'api_key.manage': a(
+    'admin',
+    'api_key',
+    'Ask for, approve or decline (never your own), and revoke an API key',
+    { consequential: true, explicit: true },
+  ),
+  'webhook.read': a('read', 'webhook', 'See webhooks and their deliveries; never the secret'),
+  'webhook.manage': a(
+    'admin',
+    'webhook',
+    'Ask for, approve or decline (never your own), and disable a webhook',
+    { consequential: true, explicit: true },
+  ),
 } as const satisfies Record<string, ActionMeta>;
 
 export type ActionKey = keyof typeof actions;

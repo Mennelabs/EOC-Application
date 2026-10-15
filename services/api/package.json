@@ -20,6 +20,7 @@
     "@cg/db": "workspace:*",
     "@cg/field-core": "workspace:*",
     "@cg/intake": "workspace:*",
+    "@cg/pdf": "workspace:*",
     "@cg/refdata": "workspace:*",
     "@cg/reporting": "workspace:*",
     "@fastify/swagger": "9.9.0",

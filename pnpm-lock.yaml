@@ -444,6 +444,9 @@ importers:
       '@cg/intake':
         specifier: workspace:*
         version: link:../../packages/intake
+      '@cg/pdf':
+        specifier: workspace:*
+        version: link:../../packages/pdf
       '@cg/refdata':
         specifier: workspace:*
         version: link:../../packages/refdata

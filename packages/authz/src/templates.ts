@@ -153,6 +153,10 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('fema_mapping.*'),
       g('joint_assessment.read'),
       g('joint_assessment.plan'),
+      g('metric.read'),
+      g('metric.export'),
+      g('equity.read'),
+      g('equity.act'),
       g('break_glass.start'),
       g('break_glass.end'),
       g('break_glass.read'),
@@ -181,6 +185,8 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('declaration.export'),
       g('outage.write'),
       g('joint_assessment.read'),
+      g('metric.read'),
+      g('equity.read'),
     ],
   },
   {
@@ -217,6 +223,9 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('joint_assessment.read'),
       g('joint_assessment.plan'),
       g('joint_assessment.validate'),
+      // CON-07: coverage alerts say where to verify next.
+      g('metric.read'),
+      g('equity.read'),
     ],
   },
   {
@@ -284,6 +293,9 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('tenant.read'),
       g('event.read', ['contact', 'household', 'location_exact']),
       g('personnel.read'),
+      // EQ-11/12: under-reached tracts and groups are the outreach list.
+      g('equity.read'),
+      g('equity.act'),
     ],
   },
   {
@@ -355,6 +367,7 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('event.read'),
       g('definition.read'),
       g('official_report.read'),
+      g('metric.read'),
     ],
   },
   {
@@ -476,6 +489,9 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('fema_mapping.read'),
       g('fema_mapping.write'),
       g('joint_assessment.read'),
+      g('metric.read'),
+      g('metric.export'),
+      g('equity.read'),
     ],
   },
   {

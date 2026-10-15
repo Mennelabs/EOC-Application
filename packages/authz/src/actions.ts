@@ -504,6 +504,20 @@ export const actions = {
     'Export the IDA package (PDF, CSV, GeoJSON): counts and generalized places, no personal details',
   ),
 
+  // Layer 6 metrics and equity (BRD:F14, MET, EQ-11/12/13, CON-07).
+  'metric.read': a('read', 'metric', 'See metrics from the shared definitions, with their trends'),
+  'metric.export': a('export', 'metric', 'Export metrics as CSV or PDF (counts only)'),
+  'equity.read': a(
+    'read',
+    'equity',
+    'See the equity dashboard: report and need rates by tract and group, small numbers hidden',
+  ),
+  'equity.act': a(
+    'write',
+    'equity',
+    'Acknowledge an equity or coverage alert and record the outreach taken',
+  ),
+
   // Layer 6 joint damage assessment (FL:FR-10) and the state liaison's view (DCL:DEC-13).
   'joint_assessment.read': a(
     'read',

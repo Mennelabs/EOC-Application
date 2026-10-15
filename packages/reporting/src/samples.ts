@@ -9,6 +9,8 @@ import { renderPdf } from '@cg/pdf';
 import { samplePng } from '@cg/pdf/samples';
 import { SHIPPED, buildPackage, samplePackageData } from './fema/index.ts';
 import { reportPdf, type IssuedContent } from './report-export.ts';
+import { metricsPdf } from './metrics.ts';
+import { sampleMetrics } from './metrics-sample.ts';
 
 const sampleReport: IssuedContent = {
   report: {
@@ -112,7 +114,18 @@ export async function writeReportingSamples(dir: string): Promise<string[]> {
       reportPdf(sampleReport, { productName: 'Sample Product', contentHash: 'f'.repeat(64) }),
     ),
   );
-  return [file, report];
+  const metrics = join(dir, 'metrics.pdf');
+  writeFileSync(
+    metrics,
+    await renderPdf(
+      metricsPdf(sampleMetrics(), {
+        productName: 'Sample Product',
+        eventName: 'Exercise WESTWIND flood',
+        countyName: 'Westwind County (exercise)',
+      }),
+    ),
+  );
+  return [file, report, metrics];
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

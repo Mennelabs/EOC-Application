@@ -109,4 +109,4 @@ Remaining gaps, each with an owner:
 Found and fixed while gathering this evidence (J2):
 
 - The severity classifier was sent any processed photo's review copy. That copy is unblurred when the sensitive-region detector is off or failed, so faces and plates could reach the provider. It now sees only photos the detector cleared (`blur_status = applied`; PHO-07, AIG-05).
-- A legal-aid referral's outcome note reached the referring organization and the county's audit log, against FL:FR-23. This has its own task.
+- A legal-aid referral's outcome note reached the referring organization and the county's audit log, against FL:FR-23. Fixed: legal aid responses now share the status only (`updates.db.test.ts`).

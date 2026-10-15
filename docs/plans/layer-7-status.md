@@ -35,7 +35,7 @@ Resume record for layer 7. Chat history is not the record; this file is.
 
 - (J) Resident dictation uses the browser's speech recognition, which in Chrome sends audio to Google, outside AIG-06; `intake.transcription` is a register row with no provider call. Task: dictation through the tenant's provider (INT-12).
 - (J) `photo.quality` is a register row with no provider call; the worker drops the provider's quality notes. Task: wire it for reviewers or retire the row (AIG-01).
-- (J, found by the trace) A legal-aid referral's outcome note reaches the referring organization and the county's audit log; FL:FR-23 allows only "accepted" and "service given". Task.
+- (Closed) A legal-aid referral's outcome note reached the referring organization and the county's audit log, against FL:FR-23. Now a response from the legal aid attorney role, or from an organization with `referrals.confidential_outcomes`, shares the status only; the note is not stored, shown or audited (`updates.db.test.ts`).
 - (J) No labelled photo set for AIG-08 fairness slices before release; a photo evaluation harness (operator-supplied set, never committed) is a task.
 
 - (E2) A partner asking for feeding stops from its own workspace: the partner's row security does not see the county's registry or requests, so the county (mass care or county EM) asks on its behalf for now. Needs a shared view of the registry and requests for partners with a sharing grant before it can be offered.

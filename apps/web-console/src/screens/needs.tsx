@@ -419,8 +419,12 @@ export function PartnerScreen({ me }: { me: { tenantId: string } | null }) {
   const [referNote, setReferNote] = useState('');
   const respond = async (id: string, verb: 'accept' | 'decline' | 'done', note: string) => {
     try {
-      await api(`/referrals/${id}/${verb}`, { body: { note } });
-      setNotice(`Referral ${verb === 'done' ? 'finished' : verb + 'ed'}.`);
+      const r = await api<Referral>(`/referrals/${id}/${verb}`, { body: { note } });
+      const kept = note.trim() !== '' && verb !== 'accept' && r.outcome === null;
+      // FL:FR-23: a legal aid organization's notes stay with it; only the status is shared.
+      setNotice(
+        `Referral ${verb === 'done' ? 'finished' : verb + 'ed'}.${kept ? ' Your note was not shared or stored: only the status reaches the referring organization.' : ''}`,
+      );
       referrals.reload();
     } catch (err) {
       setNotice(describeFailure(err));

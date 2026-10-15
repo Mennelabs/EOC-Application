@@ -8,7 +8,28 @@ import { expect, test, type Page } from '@playwright/test';
 
 const WCAG = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
+/**
+ * Waits for the page's finite animations and transitions to end: axe reads
+ * computed colours, and a dialog or button caught mid-fade blends with what is
+ * behind it (the first CI run failed on a dialog at 55% opacity). The skeleton's
+ * endless shimmer moves only a background position and is left running.
+ */
+async function settled(page: Page) {
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => {
+          const timing = (a.effect as KeyframeEffect | null)?.getTiming();
+          return !timing || timing.iterations !== Infinity;
+        })
+        .map((a) => a.finished.catch(() => undefined)),
+    ),
+  );
+}
+
 async function noViolations(page: Page) {
+  await settled(page);
   const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
   // Each failing node with its reason, so a failure in CI names the element and the colours.
   const found = results.violations.flatMap((v) =>

@@ -30,6 +30,7 @@ import {
   agreements as agreementSpecs,
   resources as resourceSpecs,
   sites as siteSpecs,
+  facilities as facilitySpecs,
   teams as teamSpecs,
   zipCentroids,
   buildCounty,
@@ -307,6 +308,64 @@ async function ensureChannelNumber(trx: Transaction<Database>, tenantId: string)
     })
     .onConflict((oc) => oc.doNothing())
     .execute();
+}
+
+/** The WESTWIND facility registry, approved by the exercise EM director (REC-01). */
+async function ensureFacilities(trx: Transaction<Database>, tenantId: string): Promise<void> {
+  for (const spec of facilitySpecs) {
+    const existing = await trx
+      .selectFrom('cg.facility')
+      .select('id')
+      .where('tenant_id', '=', tenantId)
+      .where('name', '=', spec.name)
+      .executeTakeFirst();
+    if (existing) continue;
+    const location = await trx
+      .insertInto('cg.location')
+      .values({
+        tenant_id: tenantId,
+        line1: spec.address.line1,
+        city: spec.address.city,
+        state: 'MO',
+        postal: spec.address.postal,
+        geom: sql`ST_SetSRID(ST_MakePoint(${spec.location[0]}, ${spec.location[1]}), 4326)`,
+        precision: 'exact',
+        source: 'reviewer',
+        created_by: SEED_ACTOR_A,
+        updated_by: SEED_ACTOR_A,
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    await trx
+      .insertInto('cg.facility')
+      .values({
+        tenant_id: tenantId,
+        name: spec.name,
+        kind: spec.kind as 'school',
+        location_id: location.id,
+        sqft: spec.sqft,
+        ada: spec.ada,
+        power_backup: spec.powerBackup as 'none',
+        kitchen: spec.kitchen,
+        showers: spec.showers,
+        pet_policy: spec.petPolicy as 'none',
+        parking_spaces: spec.parkingSpaces,
+        truck_access: spec.truckAccess,
+        floodplain: spec.floodplain as 'out' | null,
+        mou_status: spec.mouStatus as 'none',
+        communities: spec.communities,
+        notes: null,
+        contacts_enc: null,
+        owner_tenant_id: null,
+        mou_expires_on: null,
+        source: 'import',
+        approved_by: SEED_ACTOR_A,
+        approved_at: new Date(),
+        created_by: SEED_ACTOR_A,
+        updated_by: SEED_ACTOR_A,
+      })
+      .execute();
+  }
 }
 
 /** Sites with their locations, published ones with a publication row (CON-09, PUB-06). */
@@ -1197,6 +1256,7 @@ export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
         await ensureChannelNumber(trx, id);
         await ensureZipCentroids(trx, id);
         await ensureSites(trx, id);
+        await ensureFacilities(trx, id);
         await ensureResources(trx, id);
         await ensureParcels(trx, id);
       }

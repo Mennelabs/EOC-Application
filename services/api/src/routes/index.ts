@@ -19,6 +19,7 @@ import { equityRoutes } from './equity.ts';
 import { integrationRoutes } from './integrations.ts';
 import { situationAreaRoutes } from './situation-areas.ts';
 import { packagePhotoRoutes, type PackagePhotoDeps } from './package-photos.ts';
+import { facilityRoutes } from './facilities.ts';
 import { fieldAssessmentRoutes } from './field-assessments.ts';
 import { fieldOpsRoutes } from './field-ops.ts';
 import { fieldRecordRoutes, type FieldRecordDeps } from './field-records.ts';
@@ -100,6 +101,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   situationAreaRoutes,
   commandRoutesWith(deps.commands),
   commandAliasRoutes,
+  facilityRoutes,
 ];
 
 /** The default set, as the tests mount it. */

@@ -1136,9 +1136,30 @@ const templates: readonly RoleTemplate[] = [
  */
 const NO_COMMAND_WINDOW = new Set(['fema_validator']);
 
-export const roleTemplates: readonly RoleTemplate[] = templates.map((t) =>
-  NO_COMMAND_WINDOW.has(t.key) ? t : { ...t, grants: [...t.grants, g('command.use')] },
-);
+/**
+ * Layer 7 (REC-01): the facility registry. County EM approves; planning, mass
+ * care, the COAD and partner incident commanders propose or keep their own
+ * entries current; AFN and partner coordinators read it.
+ */
+const FACILITY_GRANTS: Record<string, (string | Grant)[]> = {
+  // Those who open a site call its contacts; the read of contacts is audited (SEC-18).
+  county_em_director: [g('facility.read', ['contact']), 'facility.manage', 'facility.approve'],
+  planning_gis_lead: [g('facility.read', ['contact']), 'facility.manage'],
+  mass_care_coordinator: [g('facility.read', ['contact']), 'facility.manage'],
+  coad_chair: ['facility.read', 'facility.manage'],
+  ngo_incident_commander: ['facility.read', 'facility.manage'],
+  afn_coordinator: ['facility.read'],
+  partner_coordinator: ['facility.read'],
+};
+
+export const roleTemplates: readonly RoleTemplate[] = templates.map((t) => ({
+  ...t,
+  grants: [
+    ...t.grants,
+    ...(FACILITY_GRANTS[t.key] ?? []).map((a) => (typeof a === 'string' ? g(a) : a)),
+    ...(NO_COMMAND_WINDOW.has(t.key) ? [] : [g('command.use')]),
+  ],
+}));
 
 export const templateByKey: ReadonlyMap<string, RoleTemplate> = new Map(
   roleTemplates.map((t) => [t.key, t]),

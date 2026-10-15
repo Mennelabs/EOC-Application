@@ -271,6 +271,19 @@ export const actions = {
     'command',
     'Use the command window: run catalogued commands you could run by hand',
   ),
+  // Layer 7 (REC-01): the facility registry the recommendations draw on.
+  'facility.read': a('read', 'facility', 'Read the facility registry and its approval queue'),
+  'facility.manage': a(
+    'write',
+    'facility',
+    "Propose a facility or a change to one; a partner keeps its own facility's details current",
+  ),
+  'facility.approve': a(
+    'admin',
+    'facility',
+    'Approve or reject facilities and changes for the registry (never your own proposal)',
+    { explicit: true },
+  ),
   'command_alias.manage': a(
     'admin',
     'command_alias',

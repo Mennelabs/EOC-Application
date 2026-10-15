@@ -13,9 +13,20 @@ export const PASSWORD = 'Westwind-Exercise-2026!';
 // Node-side fetches in the test trust Caddy's development CA like the browser does.
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 
-export async function expectNoViolations(page: Page) {
+export async function expectNoViolations(page: Page, opts: { mapMarkers?: boolean } = {}) {
   const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help} (${v.nodes.length})`)).toEqual([]);
+  // WCAG 2.5.8 "Equivalent" exception: map markers can sit close together at
+  // a zoom, and every marker's item is in the table beside the map (ACC-07).
+  // Every other rule still runs on the markers.
+  const exempt = (v: (typeof results.violations)[number]) =>
+    opts.mapMarkers === true &&
+    v.id === 'target-size' &&
+    v.nodes.every((n) => /^<button[^>]*class="marker[ "]/.test(n.html));
+  expect(
+    results.violations
+      .filter((v) => !exempt(v))
+      .map((v) => `${v.id}: ${v.help} (${v.nodes.length})`),
+  ).toEqual([]);
 }
 
 /**

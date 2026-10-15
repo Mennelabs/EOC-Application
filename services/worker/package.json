@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/main.ts",
     "dev": "node --watch src/main.ts",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p .",
+    "load:generation": "node scripts/generation-load.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1141.0",

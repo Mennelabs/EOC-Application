@@ -382,4 +382,72 @@ describe.skipIf(!appUrl || !workerUrl)('equity (database-backed)', () => {
     expect(audit).toHaveLength(1);
     expect((await call('pio', 'GET', `/events/${eventId}/equity`)).status).toBe(403);
   });
+
+  it('CON-03: the situation map shades tracts by damage, coverage and the Census profile, with outages', async () => {
+    await tx((trx) =>
+      trx
+        .insertInto('cg.outage')
+        .values({
+          tenant_id: county,
+          event_id: eventId,
+          client_uuid: randomUUID(),
+          kind: 'water',
+          area: 'Exercise north service area',
+          customers_out: 140,
+          started_at: new Date(Date.now() - 30 * HOUR),
+        })
+        .execute(),
+    );
+    interface Areas {
+      basis: string;
+      tracts: { geoid: string; geometry: { type: string } | null }[];
+      tractSource: string | null;
+      layers: Record<
+        'damage' | 'coverage' | 'poverty' | 'limitedEnglish',
+        {
+          available: boolean;
+          source: string | null;
+          asOf: string | null;
+          items: { geoid: string; value: number | null; flagged: boolean; detail: string | null }[];
+        }
+      >;
+      outages: { available: boolean; items: { label: string; state: string }[] };
+    }
+    const url = `/situation/areas?eventId=${eventId}`;
+    const d = await call<Areas>('director', 'GET', url);
+    expect(d.status, d.text).toBe(200);
+    expect(d.body.basis).toBe('county');
+    expect(d.body.tracts).toHaveLength(5);
+    expect(d.body.tracts.every((t) => /Polygon/.test(t.geometry?.type ?? ''))).toBe(true);
+    expect(d.body.tractSource).toContain('Census tracts');
+    // DCL:DEC-03: the tract figures add up to the Declaration screen's units.
+    const declared = await call<{ damage: { counted: { units: number } } }>(
+      'director',
+      'GET',
+      `/events/${eventId}/declaration`,
+    );
+    const units = d.body.layers.damage.items.reduce((n, i) => n + (i.value ?? 0), 0);
+    expect(units).toBe(declared.body.damage.counted.units);
+    // The equity map: the same flags and hidden counts as the equity screen.
+    const eq = (await call('director', 'GET', `/events/${eventId}/equity`)).body;
+    for (const t of eq.tracts) {
+      const c = d.body.layers.coverage.items.find((i) => i.geoid === t.geoid)!;
+      expect(c.flagged).toBe(t.underReported);
+      expect(c.value).toBe(t.reportsPer100Structures);
+      if (t.reports === null) expect(c.detail).toBe('Fewer than 11 reports');
+    }
+    expect(d.body.layers.poverty.items.every((i) => i.value !== null)).toBe(true);
+    expect(d.body.layers.poverty.source).toContain('American Community Survey');
+    for (const l of Object.values(d.body.layers)) expect(l.asOf).not.toBeNull();
+    expect(d.body.outages.items.map((o) => [o.label, o.state])).toEqual([
+      ['Water: Exercise north service area', 'not confirmed'],
+    ]);
+    // Each layer on its own read action: the AFN coordinator sees coverage and the profile only.
+    const a = await call<Areas>('afn', 'GET', url);
+    expect(a.status).toBe(200);
+    expect(a.body.layers.damage).toMatchObject({ available: false, items: [] });
+    expect(a.body.layers.coverage.available).toBe(true);
+    expect(a.body.outages).toMatchObject({ available: false, items: [] });
+    expect((await call('pio', 'GET', url)).status).toBe(403);
+  });
 });

@@ -32,7 +32,9 @@
  * and records the outreach taken (EQ-11/12, CON-07). A tenant administrator
  * asks for an API key and a webhook and sees each once; neither can be
  * approved by them; the security administrator approves the key and the
- * feature service answers with it (SCL-09, ADM-05). Axe runs on each state, and each layer-6
+ * feature service answers with it (SCL-09, ADM-05). An EM director shades the
+ * situation map's tracts by damage and by reports per 100 homes, reads the
+ * legend and the table by tract, and opens the map (CON-03, EQ-11). Axe runs on each state, and each layer-6
  * screen is checked for reflow: no sideways scrolling at phone width
  * (WCAG 1.4.10, ACC-07).
  */
@@ -778,5 +780,45 @@ test.describe('layer 6 console: reference data', () => {
     await expect(page.getByText('Nothing has been sent yet.')).toBeVisible();
     await expectNoViolations(page);
     await expectReflow(page);
+  });
+  test('an EM director shades the situation map by damage and by coverage', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'county_em_director',
+      `EM director S ${tag}`,
+      `l6s-${testInfo.project.name}`,
+    );
+    await page.goto('/console/situation');
+    await expect(page.getByRole('heading', { level: 1, name: 'Situation map' })).toBeVisible();
+    const choice = page.getByRole('group', { name: 'Shade the tracts by' });
+    await expect(choice).toBeVisible({ timeout: 30_000 });
+    await expectNoViolations(page);
+    await choice.getByRole('radio', { name: 'Damaged housing units' }).check();
+    await expect(
+      page.getByRole('heading', { level: 2, name: 'Damaged housing units by tract' }),
+    ).toBeVisible();
+    await expect(page.getByText(/^Source: Verified reports and field assessments/)).toBeVisible();
+    await choice.getByRole('radio', { name: 'Reports per 100 homes (equity)' }).check();
+    const table = page.getByRole('table', { name: 'Reports per 100 homes by tract' });
+    await expect(table).toBeVisible();
+    await expect(table.getByRole('columnheader', { name: 'Under-reported' })).toBeVisible();
+    expect(await table.getByRole('row').count()).toBeGreaterThan(1);
+    await expect(
+      page.getByRole('list', { name: 'Legend' }).getByText(/Heavy dashed outline/),
+    ).toBeVisible();
+    await expectNoViolations(page);
+    await expectReflow(page);
+    // The map is optional and carries the same shading; the table stays.
+    await page.getByRole('button', { name: 'Show map' }).click();
+    await expect(
+      page.getByRole('region', { name: 'Situation map. The tables below show the same items.' }),
+    ).toBeVisible();
+    await expect(table).toBeVisible();
+    await expectNoViolations(page, { mapMarkers: true });
   });
 });

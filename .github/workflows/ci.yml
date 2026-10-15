@@ -83,6 +83,12 @@ jobs:
           tests/load/run.sh sms-sessions smoke
           tests/load/run.sh help smoke
           tests/load/run.sh field smoke
+      - name: Generation load smoke, the counting rule, IDA package and metrics for 1,000 reports (SCL-03, GATE-07)
+        run: |
+          set -a; . ./.env; set +a
+          API_DB_TEST_APP_URL="postgres://cg_app:${CG_APP_PASSWORD}@127.0.0.1:5432/cg" \
+          API_DB_TEST_WORKER_URL="postgres://cg_worker:${CG_WORKER_PASSWORD}@127.0.0.1:5432/cg" \
+          pnpm --filter @cg/worker load:generation smoke
       - name: Migration drill on the compose database, last so nothing depends on the state it leaves (SEC-05, SEC-11)
         run: |
           set -a; . ./.env; set +a

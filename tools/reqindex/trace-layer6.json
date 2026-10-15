@@ -237,9 +237,9 @@
   ],
   "DCL:DEC-09": [
     "partial",
-    "donated volunteer hours by partner organization and registered volunteers; shelter figures in the package (packages/reporting declaration.ts, fema/data.ts)",
-    "services/api/test/declaration.db.test.ts",
-    "Meals served, cleanup teams and donated goods from the needs and partner records are not summarized yet."
+    "declarationData partners: by organization, needs met, services logged for their teams (meals, water, tarps, cots, rides, people served), people and households sheltered at sites they run, teams checked in; on the Declaration screen and the state liaison's view (packages/reporting declaration.ts; screens/declaration.tsx Partners)",
+    "services/api/test/declaration.db.test.ts (DCL:DEC-09: totals, a partner's own log stays with the partner, no household detail)",
+    "Counts only what the county can read: services and shelter stays a partner records under its own accounts stay with the partner (tenant isolation) unless shared; whether partners' counts should roll up to the county automatically is a question for Adam. Donated goods are not recorded as such."
   ],
   "DCL:DEC-10": [
     "pass",

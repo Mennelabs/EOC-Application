@@ -30,7 +30,12 @@ const workerUrl = process.env['API_DB_TEST_WORKER_URL'];
 const HOUR = 3_600_000;
 
 /** The parts of the declaration view these tests read. */
+interface Partners {
+  byOrganization: { organization: string; needsMet: number; teams: number }[];
+  totals: Record<string, number>;
+}
 interface DeclarationView {
+  partners: Partners;
   damage: {
     counted: { units: number; byDegree: Record<string, number> };
     shownSeparately: unknown;
@@ -501,6 +506,123 @@ describe.skipIf(!appUrl || !workerUrl)('the declaration view (database-backed)',
       [`Exercise partner ${run}`, 'Registered volunteers'].sort(),
     );
     expect(d.includesOpenShifts).toBe(false);
+  });
+
+  it('summarizes what partner organizations committed, counts only (DCL:DEC-09)', async () => {
+    await tx(partner, async (trx) => {
+      const team = await trx
+        .insertInto('cg.team')
+        .values({
+          tenant_id: partner,
+          event_id: eventId,
+          key: `pc-${run}`,
+          name: `Exercise canteen team ${run}`,
+          agency_tenant_id: partner,
+        })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      const crew = await trx
+        .insertInto('cg.personnel')
+        .values({ tenant_id: partner, name: `Exercise canteen cook ${run}` })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      await trx
+        .insertInto('cg.check_in')
+        .values({
+          tenant_id: partner,
+          personnel_id: crew.id,
+          event_id: eventId,
+          agency_tenant_id: partner,
+          team_id: team.id,
+          method: 'console',
+          started_at: new Date(Date.now() - 2 * HOUR),
+          ended_at: new Date(),
+          end_reason: 'checked_out',
+        })
+        .execute();
+    });
+    const team = await tx(partner, (trx) =>
+      trx
+        .selectFrom('cg.team')
+        .select('id')
+        .where('key', '=', `pc-${run}`)
+        .executeTakeFirstOrThrow(),
+    );
+    await tx(county, async (trx) => {
+      // The county's distribution point logs what the partner's team handed out.
+      for (const [kind, count] of [
+        ['meal', 40],
+        ['water_case', 10],
+        ['person_served', 25],
+      ] as const)
+        await trx
+          .insertInto('cg.service_log')
+          .values({
+            tenant_id: county,
+            event_id: eventId,
+            client_uuid: randomUUID(),
+            kind,
+            count,
+            team_id: team.id,
+          })
+          .execute();
+      await trx
+        .insertInto('cg.need')
+        .values({
+          tenant_id: county,
+          event_id: eventId,
+          category: 'food',
+          status: 'met',
+          claimed_by_tenant_id: partner,
+          done_at: new Date(),
+        })
+        .execute();
+      const site = await trx
+        .insertInto('cg.site')
+        .values({
+          tenant_id: county,
+          event_id: eventId,
+          kind: 'shelter',
+          name: `Exercise partner shelter ${run}`,
+          slug: `pshelter-${run}`,
+          operator_tenant_id: partner,
+        })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      for (const size of [3, 2])
+        await trx
+          .insertInto('cg.shelter_stay')
+          .values({ tenant_id: county, site_id: site.id, event_id: eventId, household_size: size })
+          .execute();
+    });
+    const p = (await view()).body.partners;
+    expect(p.byOrganization.map((o) => o.organization)).toEqual([`Exercise partner ${run}`]);
+    expect(p.totals).toMatchObject({
+      needsMet: 1,
+      meals: 40,
+      waterCases: 10,
+      peopleServed: 25,
+      shelteredHouseholds: 2,
+      shelteredPeople: 5,
+      teams: 1,
+    });
+    // A log the partner keeps under its own accounts stays with the partner (tenant isolation).
+    await tx(partner, (trx) =>
+      trx
+        .insertInto('cg.service_log')
+        .values({
+          tenant_id: partner,
+          event_id: eventId,
+          client_uuid: randomUUID(),
+          kind: 'meal',
+          count: 999,
+          team_id: team.id,
+        })
+        .execute(),
+    );
+    expect((await view()).body.partners.totals['meals']).toBe(40);
+    // Counts and organizations only: no household detail.
+    expect(JSON.stringify(p)).not.toMatch(/household_party|wristband|access_needs/);
   });
 
   it('starts the 30-day clock at the incident end date (DEC-16)', () => {

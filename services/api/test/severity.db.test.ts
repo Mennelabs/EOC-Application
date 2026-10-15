@@ -35,10 +35,13 @@ const workerUrl = process.env['API_DB_TEST_WORKER_URL'];
 /** What the classifier was shown, to check it is the review copy and the hazard. */
 const shown: { keys: string[]; context: unknown }[] = [];
 const fetched: string[] = [];
+/** Set to make the classifier fail, as a timeout or outage would (GATE-08). */
+let classifierFails = false;
 const classifying: AiProvider = {
   ...fakeProvider,
   classifier: {
     classify: async (images, context) => {
+      if (classifierFails) throw new Error('provider unavailable');
       shown.push({ keys: [...fetched], context });
       return {
         output: {
@@ -157,6 +160,7 @@ describe.skipIf(!appUrl || !workerUrl)('damage severity suggestion (database-bac
             report_id: reportId,
             object_key_original: `tenants/${county}/restricted/${run}/${n}/original.jpg`,
             status: 'processed',
+            blur_status: 'applied',
             derivative_keys: JSON.stringify({
               review: `tenants/${county}/restricted/${run}/${n}/review.webp`,
               thumb: `tenants/${county}/restricted/${run}/${n}/thumb.webp`,
@@ -261,6 +265,57 @@ describe.skipIf(!appUrl || !workerUrl)('damage severity suggestion (database-bac
     });
     await reportSeverity(ctx(), message());
     expect(await suggestions()).toHaveLength(1);
+  });
+
+  it('PHO-07, AIG-05, GATE-08: a photo the detector did not clear is never sent; a failing classifier is recorded and suggests nothing', async () => {
+    const key = `tenants/${county}/restricted/${run}/3/review.webp`;
+    const extra = await withTenant(dbWorker, { tenantId: county }, async (trx) => {
+      const r = await trx
+        .selectFrom('cg.report')
+        .select('execution_id')
+        .where('id', '=', reportId)
+        .executeTakeFirstOrThrow();
+      return (
+        await trx
+          .insertInto('cg.photo')
+          .values({
+            tenant_id: county,
+            execution_id: r.execution_id,
+            report_id: reportId,
+            object_key_original: `tenants/${county}/restricted/${run}/3/original.jpg`,
+            status: 'processed',
+            blur_status: 'skipped_no_detector',
+            derivative_keys: JSON.stringify({ review: key }),
+          })
+          .returning('id')
+          .executeTakeFirstOrThrow()
+      ).id;
+    });
+    fetched.length = 0;
+    await reportSeverity(ctx(), message());
+    // The uncleared photo is left out, so the set is the one already classified: nothing new.
+    expect(fetched).not.toContain(key);
+    expect(await suggestions()).toHaveLength(1);
+    // Cleared, it changes the set; the classifier fails: recorded, no suggestion, no throw.
+    await withTenant(dbWorker, { tenantId: county }, (trx) =>
+      trx.updateTable('cg.photo').set({ blur_status: 'applied' }).where('id', '=', extra).execute(),
+    );
+    classifierFails = true;
+    try {
+      await reportSeverity(ctx(), message());
+    } finally {
+      classifierFails = false;
+    }
+    expect(fetched).toContain(key);
+    expect(await suggestions()).toHaveLength(1);
+    const failed = await dbWorker
+      .selectFrom('cg.ai_output')
+      .select('outcome')
+      .where('tenant_id', '=', county)
+      .where('feature', '=', 'photo.severity')
+      .where('outcome', '=', 'error')
+      .execute();
+    expect(failed).toHaveLength(1);
   });
 
   it('PHO-10: a reviewer reads it labelled as not verified; a role without review does not', async () => {
@@ -630,5 +685,109 @@ describe.skipIf(!appUrl || !workerUrl)('damage severity suggestion (database-bac
       })
     ).json() as unknown[];
     expect(open).toEqual([]);
+  });
+
+  it('PHO-07, AIG-01, GATE-08: switched on, the detector blurs what it finds and the call is recorded; when it fails the photo keeps an unblurred, restricted copy marked failed', async () => {
+    await withTenant(dbWorker, { tenantId: county }, (trx) =>
+      trx
+        .insertInto('cg.ai_use_register')
+        .values({
+          tenant_id: county,
+          feature: 'photo.sensitive_regions',
+          provider: 'fake',
+          model: 'keyword-rules',
+          model_version: null,
+          data_sent: 'Review copies of photos',
+          decision_informed: 'Regions to blur',
+          human_checkpoint: 'Staff with the evidence category see the original',
+          owner: 'Privacy officer',
+          evaluation: JSON.stringify({}),
+          enabled: true,
+        })
+        .execute(),
+    );
+    let detectorFails = false;
+    const detecting: AiProvider = {
+      ...fakeProvider,
+      image: {
+        analyse: async () => {
+          if (detectorFails) throw new Error('provider unavailable');
+          return {
+            output: {
+              qualityIssues: [],
+              sensitiveRegions: [{ kind: 'face', x: 0.1, y: 0.1, width: 0.2, height: 0.2 }],
+              detectorAvailable: true,
+            },
+            provider: fakeProvider.info,
+            latencyMs: 2,
+          };
+        },
+      },
+    };
+    const store = new Map<string, Buffer>();
+    const scene = await sharp({
+      create: { width: 800, height: 600, channels: 3, background: '#8a6' },
+    })
+      .jpeg()
+      .toBuffer();
+    const report = await dbWorker
+      .selectFrom('cg.report')
+      .select(['id', 'execution_id'])
+      .where('id', '=', reportId)
+      .executeTakeFirstOrThrow();
+    const worker = {
+      db: dbWorker,
+      log: { warn: () => undefined },
+      objects: {
+        get: async (key: string) => ({ body: store.get(key)!, contentType: 'image/jpeg' }),
+        put: async (key: string, body: Buffer) => {
+          store.set(key, body);
+        },
+      },
+      ai: { providerFor: async () => detecting },
+    } as unknown as JobContext;
+    const photo = async (n: string) => {
+      const key = `tenants/${county}/restricted/${run}/detect-${n}/original.jpg`;
+      store.set(key, scene);
+      const id = (
+        await withTenant(dbWorker, { tenantId: county }, (trx) =>
+          trx
+            .insertInto('cg.photo')
+            .values({
+              tenant_id: county,
+              execution_id: report.execution_id,
+              report_id: report.id,
+              object_key_original: key,
+              status: 'uploaded',
+              content_type: 'image/jpeg',
+            })
+            .returning('id')
+            .executeTakeFirstOrThrow(),
+        )
+      ).id;
+      await photoProcess(worker, {
+        id: 1,
+        tenantId: county,
+        topic: 'photo.process',
+        payload: { photoId: id },
+        executionId: null,
+      });
+      return dbWorker
+        .selectFrom('cg.photo')
+        .select(['status', 'blur_status'])
+        .where('id', '=', id)
+        .executeTakeFirstOrThrow();
+    };
+    expect(await photo('ok')).toEqual({ status: 'processed', blur_status: 'applied' });
+    detectorFails = true;
+    expect(await photo('down')).toEqual({ status: 'processed', blur_status: 'failed' });
+    const calls = await dbWorker
+      .selectFrom('cg.ai_output')
+      .select('outcome')
+      .where('tenant_id', '=', county)
+      .where('feature', '=', 'photo.sensitive_regions')
+      .orderBy('created_at')
+      .execute();
+    expect(calls.map((c) => c.outcome)).toEqual(['ok', 'error']);
   });
 });

@@ -9,7 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
-import { createDb, type Database } from '@cg/db';
+import { createDb, withTenant, type Database } from '@cg/db';
 import { AiProviderError, fakeProvider, type AiProvider } from '@cg/ai';
 import { westwindGraph } from '@cg/intake';
 import type { Kysely } from 'kysely';
@@ -351,6 +351,55 @@ describe.skipIf(!appUrl || !workerUrl)('public intake API (database-backed)', ()
         .execute();
       expect(extracted).toEqual([]);
     } finally {
+      provider = fakeProvider;
+    }
+  });
+
+  it('INT-16, AI-10, GATE-08: with extraction switched off the resident is told to answer directly; nothing is sent or recorded', async () => {
+    const setFeature = (enabled: boolean) =>
+      withTenant(dbWorker, { tenantId }, (trx) =>
+        trx
+          .updateTable('cg.ai_use_register')
+          .set({ enabled })
+          .where('tenant_id', '=', tenantId)
+          .where('feature', '=', 'intake.extraction')
+          .execute(),
+      );
+    let asked = 0;
+    provider = {
+      ...fakeProvider,
+      llm: {
+        extract: async (r) => {
+          asked += 1;
+          return fakeProvider.llm!.extract(r);
+        },
+      },
+    };
+    await setFeature(false);
+    try {
+      const executionId = randomUUID();
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/public/intake/county/extract',
+        payload: {
+          executionId,
+          text: 'The roof blew off and we need water.',
+          graphKey: westwindGraph.key,
+          graphVersion: westwindGraph.version,
+        },
+      });
+      expect(res.statusCode).toBe(409);
+      expect(res.json()).toMatchObject({ code: 'ai_off' });
+      expect(res.json().message).toMatch(/answer the questions directly/);
+      expect(asked).toBe(0);
+      const records = await dbWorker
+        .selectFrom('cg.ai_output')
+        .select('id')
+        .where('execution_id', '=', executionId)
+        .execute();
+      expect(records).toEqual([]);
+    } finally {
+      await setFeature(true);
       provider = fakeProvider;
     }
   });

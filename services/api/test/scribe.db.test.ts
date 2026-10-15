@@ -424,6 +424,39 @@ describe.skipIf(!appUrl || !workerUrl)('conversation scribe (database-backed)', 
     expect(output).toEqual({ outcome: 'filtered', human_action: 'rejected' });
   });
 
+  it('GATE-08, AI-10: when speech to text fails, the worker is told to write the note themselves; the failure is recorded and the recording kept for a retry', async () => {
+    provider = {
+      ...hearing,
+      stt: {
+        transcribe: async () => {
+          throw new Error('provider unavailable');
+        },
+      },
+    };
+    try {
+      const c = (await start('ana')).body['id'] as string;
+      await record('ana', c);
+      const failed = await call('ana', 'POST', `/scribe/sessions/${c}/draft`);
+      expect(failed.status).toBe(503);
+      expect(failed.body).toMatchObject({ code: 'ai_unavailable', retryable: true });
+      expect(String(failed.body['message'])).toContain('write the note yourself');
+      const r = await row(c);
+      expect(r.audio_object_key).not.toBeNull();
+      const recorded = await dbWorker
+        .selectFrom('cg.ai_output')
+        .select(['feature', 'outcome'])
+        .where('target_id', '=', c)
+        .execute();
+      expect(recorded).toEqual([{ feature: 'scribe.transcription', outcome: 'error' }]);
+      // Back up: the same recording drafts.
+      provider = hearing;
+      const retried = await call('ana', 'POST', `/scribe/sessions/${c}/draft`);
+      expect(retried.status, JSON.stringify(retried.body)).toBe(200);
+    } finally {
+      provider = hearing;
+    }
+  });
+
   it('FL:FR-23: with legal aid turned on, the note is only ever its author’s', async () => {
     await setConfig('scribe.legal_aid', true);
     const s = await start('attorney', { context: 'legal_aid', language: 'en' });

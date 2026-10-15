@@ -21,15 +21,21 @@ import { routesWith } from '../src/routes/index.ts';
 const appUrl = process.env['API_DB_TEST_APP_URL'];
 const workerUrl = process.env['API_DB_TEST_WORKER_URL'];
 
+/** Set to make the provider fail, as a timeout or outage would. */
+let failing = false;
+
 /** A translator that marks its output, so the test can tell it ran. */
 const marking: AiProvider = {
   ...fakeProvider,
   translation: {
-    translate: async (text, to) => ({
-      output: { text: `[${to}] ${text}` },
-      provider: fakeProvider.info,
-      latencyMs: 1,
-    }),
+    translate: async (text, to) => {
+      if (failing) throw new Error('provider unavailable');
+      return {
+        output: { text: `[${to}] ${text}` },
+        provider: fakeProvider.info,
+        latencyMs: 1,
+      };
+    },
   },
 };
 
@@ -190,5 +196,25 @@ describe.skipIf(!appUrl || !workerUrl)('live translation (database-backed)', () 
     }
     expect((await translate('nurse', { text: 'Hello' })).status).toBe(403);
     expect((await translate('worker', { text: 'Hello', from: 'es', to: 'es' })).status).toBe(400);
+  });
+
+  it('GATE-08, AI-10: when the provider fails, the worker is told to ask for an interpreter and the failure is recorded', async () => {
+    failing = true;
+    try {
+      const r = await translate('worker', { text: 'Where is the shelter?' });
+      expect(r.status).toBe(503);
+      expect(r.body).toMatchObject({ code: 'ai_unavailable', retryable: true });
+      expect(String(r.body['message'])).toContain('interpreter');
+    } finally {
+      failing = false;
+    }
+    const failed = await dbWorker
+      .selectFrom('cg.ai_output')
+      .select(['outcome'])
+      .where('tenant_id', '=', county)
+      .where('feature', '=', 'field.translation')
+      .where('outcome', '=', 'error')
+      .execute();
+    expect(failed).toHaveLength(1);
   });
 });

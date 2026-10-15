@@ -147,6 +147,13 @@ test.describe('console review (CON-02, CON-05, BRD:FR-12, DCL:DEC-02/03, AIG-01,
           timeout: 15_000,
         });
       }
+      if (name === 'AI use register') {
+        // AIG-09 alerts and PHO-13 agreement sit under the register.
+        await expect(page.getByRole('heading', { name: 'Open alerts' })).toBeVisible();
+        await expect(
+          page.getByRole('heading', { name: 'Severity suggestion: reviewer agreement' }),
+        ).toBeVisible();
+      }
       await expectNoViolations(page);
     }
   });

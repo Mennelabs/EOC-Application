@@ -327,6 +327,154 @@ interface RegisterEntry {
   updatedAt: string;
 }
 
+interface HealthAlert {
+  id: string;
+  feature: string;
+  scope: string;
+  kind: 'corrections' | 'failures' | 'fairness';
+  counted: number;
+  flagged: number;
+  rate: number;
+  threshold: number;
+  raisedAt: string;
+  acknowledgedAt: string | null;
+}
+
+interface Agreement {
+  minimum: number;
+  margin: number;
+  models: {
+    model: string;
+    decisions: number;
+    agreed: number;
+    rate: number;
+    slices: {
+      dimension: 'hazard' | 'home_type' | 'income_band';
+      group: string;
+      decisions: number;
+      agreed: number;
+      rate: number;
+      behind: boolean;
+    }[];
+  }[];
+}
+
+const pct = (n: number) => `${Math.round(n * 100)}%`;
+const DIMENSION: Record<string, string> = {
+  hazard: 'Hazard',
+  home_type: 'Home type',
+  income_band: 'Income band',
+};
+
+const alertWhat = (a: HealthAlert) => {
+  if (a.kind === 'fairness') {
+    const [dimension, group] = a.scope.split(':');
+    return `Reviewers agreed with it on ${pct(1 - a.rate)} of ${a.counted} decisions for ${(DIMENSION[dimension ?? ''] ?? dimension ?? '').toLowerCase()} ${group ?? ''}, more than the margin under the model's overall agreement`;
+  }
+  const what = a.kind === 'corrections' ? 'corrected or rejected' : 'failed';
+  return `${a.flagged} of the last ${a.counted} outputs${a.scope ? ` in ${a.scope}` : ''} were ${what} (${pct(a.rate)}; the line is ${pct(a.threshold)})`;
+};
+
+/**
+ * Open AI health alerts (AIG-09 as decided 2026-10-15: alert, never switch off) and reviewer
+ * agreement with the severity suggestion per model, by hazard, home type and income band
+ * (PHO-13). Income band 1 is the county's highest-poverty fifth of tracts.
+ */
+function AiHealth({ onChanged }: { onChanged: (text: string, kind: 'success' | 'error') => void }) {
+  const alerts = useList<HealthAlert>('/ai-register/alerts');
+  const [agreement, setAgreement] = useState<Agreement | null>(null);
+  const [agreementError, setAgreementError] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    api<Agreement>('/ai-register/severity-agreement')
+      .then((a) => live && setAgreement(a))
+      .catch((e: unknown) => live && setAgreementError(describeFailure(e)));
+    return () => {
+      live = false;
+    };
+  }, []);
+  return (
+    <>
+      <h2 id="ai-alerts-h">Open alerts</h2>
+      <p>
+        An alert tells the people who manage this register when people correct a feature too often,
+        when its calls fail too often, or when reviewers agree with the severity suggestion less for
+        one group of homes than for the rest. Features stay on; an alert clears by itself when the
+        numbers recover.
+      </p>
+      {alerts.error ? <Status kind="error">{alerts.error}</Status> : null}
+      <DataTable
+        caption="Open AI alerts"
+        rows={alerts.rows ?? []}
+        rowKey={(a) => a.id}
+        empty="No open alerts."
+        columns={[
+          { key: 'feature', header: 'Feature', render: (a) => a.feature },
+          { key: 'what', header: 'What happened', render: alertWhat },
+          { key: 'raised', header: 'Raised', render: (a) => fmt(a.raisedAt) },
+          {
+            key: 'ack',
+            header: 'Seen',
+            render: (a) =>
+              a.acknowledgedAt ? (
+                fmt(a.acknowledgedAt)
+              ) : (
+                <button
+                  type="button"
+                  aria-label={`Mark the ${a.feature} alert as seen…`}
+                  onClick={() =>
+                    void api(`/ai-register/alerts/${a.id}/acknowledge`, { method: 'POST' })
+                      .then(() => {
+                        onChanged(
+                          'Alert marked as seen. It stays open until the numbers recover.',
+                          'success',
+                        );
+                        alerts.reload();
+                      })
+                      .catch((e: unknown) => onChanged(describeFailure(e), 'error'))
+                  }
+                >
+                  Mark as seen…
+                </button>
+              ),
+          },
+        ]}
+      />
+      <h2 id="ai-agreement-h">Severity suggestion: reviewer agreement</h2>
+      {agreementError ? <Status kind="error">{agreementError}</Status> : null}
+      {agreement ? (
+        <>
+          <p>
+            How often the degree a reviewer set matched the AI suggestion, for each model version. A
+            group is marked behind when it has at least {agreement.minimum} decisions and its
+            agreement is more than {pct(agreement.margin)} points under the model&rsquo;s overall
+            agreement. Income band 1 is the fifth of the county&rsquo;s census tracts with the
+            highest poverty share; band 5 the lowest.
+          </p>
+          {agreement.models.length === 0 ? (
+            <p className="empty">No reviewer decisions on a suggestion yet.</p>
+          ) : null}
+          {agreement.models.map((m) => (
+            <DataTable
+              key={m.model}
+              caption={`${m.model}: ${pct(m.rate)} agreement over ${m.decisions} decisions`}
+              rows={m.slices}
+              rowKey={(x) => `${x.dimension}:${x.group}`}
+              columns={[
+                { key: 'dim', header: 'Grouped by', render: (x) => DIMENSION[x.dimension] },
+                { key: 'group', header: 'Group', render: (x) => x.group.replace('_', ' ') },
+                { key: 'n', header: 'Decisions', render: (x) => String(x.decisions) },
+                { key: 'agreed', header: 'Agreed', render: (x) => `${x.agreed} (${pct(x.rate)})` },
+                { key: 'behind', header: 'Behind', render: (x) => (x.behind ? 'Behind' : 'No') },
+              ]}
+            />
+          ))}
+        </>
+      ) : null}
+    </>
+  );
+}
+
 /**
  * AI use register (AIG-01, AIG-06, AIG-08; ADR-0043): every AI feature, its provider and its
  * human checkpoint; an administrator evaluates the configured provider (OpenAI) for the
@@ -435,6 +583,7 @@ export function AiRegisterScreen() {
           },
         ]}
       />
+      <AiHealth onChanged={(text, kind) => setMsg({ kind, text })} />
     </section>
   );
 }

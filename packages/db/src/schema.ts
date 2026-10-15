@@ -2565,7 +2565,7 @@ export interface AiHealthAlertTable extends Stamped {
   tenant_id: Uuid;
   feature: string;
   language: Generated<string>;
-  kind: 'corrections' | 'failures';
+  kind: 'corrections' | 'failures' | 'fairness';
   window_size: number;
   counted: number;
   flagged: number;

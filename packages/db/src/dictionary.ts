@@ -2360,7 +2360,10 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
   ai_health_alert: table({
     feature: { c: 'internal' },
     language: { c: 'internal' },
-    kind: { c: 'internal', d: 'corrections (people corrected or rejected outputs) or failures' },
+    kind: {
+      c: 'internal',
+      d: 'corrections (people corrected or rejected outputs), failures, or fairness (a group behind on agreement, PHO-13)',
+    },
     window_size: { c: 'internal' },
     counted: { c: 'internal' },
     flagged: { c: 'internal' },

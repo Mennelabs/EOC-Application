@@ -152,11 +152,21 @@ export async function onboard(
   });
   expect(invited.status).toBe(201);
   const accountId = invited.body['id'] as string;
-  const activated = await api(admin, `/accounts/${accountId}/activate`, {
+  // The worker stores the new identity on the account meanwhile, which moves its version
+  // (FR-00.05): activate at the version the account has now, and again if it just moved.
+  let activated = await api(admin, `/accounts/${accountId}/activate`, {
     method: 'POST',
     body: {},
     version: invited.body['version'] as number,
   });
+  for (let i = 0; i < 3 && activated.status === 409; i++) {
+    const current = await api(admin, `/accounts/${accountId}`);
+    activated = await api(admin, `/accounts/${accountId}/activate`, {
+      method: 'POST',
+      body: {},
+      version: current.body['version'] as number,
+    });
+  }
   expect(activated.status).toBe(200);
   const roles = await api(admin, '/roles');
   const role = (roles.body as { id: string; key: string }[]).find((r) => r.key === roleKey)!;

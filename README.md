@@ -216,6 +216,8 @@ eval "$(scripts/cjis-test-db.sh)" && pnpm vitest run --project unit packages/cji
 CJIS_DATABASE_MIGRATOR_URL=$CJIS_DB_TEST_MIGRATOR_URL pnpm --filter @cg/cjis-db check:migrations 5   # the enclave migration drill
 ```
 
+On a fresh stack, run them in CI's order: `pnpm test:integration`, then the database-backed suites against the compose database (the command in the CI step that lists them), then `pnpm test:e2e`. The joint-assessment and equity journeys use the verified, geolocated reports those suites leave in the seeded county, and fail on a stack that has only the seed. The enclave suites share their tokens through `cg-enclave-otp-state.json` in the system temp folder and drop any signed by a key the current enclave realm no longer has, so they also work after `docker compose down -v`.
+
 CI (`.github/workflows/ci.yml`) runs all of these plus Semgrep, Trivy dependency/secret/container scans (the enclave's `cjis-api` and `cjis-web` images included) and SBOMs. Image scans fail the build on fixed HIGH/CRITICAL findings in our layers and the Alpine packages; findings inside the upstream Caddy binary are reported without failing, because every Caddy release lags its Go libraries, and are cleared by bumping the pinned Caddy image (`compose.yaml`, `infra/web/Dockerfile`).
 
 ## Development loop without Docker rebuilds

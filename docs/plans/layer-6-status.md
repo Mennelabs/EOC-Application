@@ -161,9 +161,17 @@ PR #13 merged as `ad7a806` with CI green on `c6c7b6e`. A scan for the approval's
 - `2453732`: the daily outside-link check fetched staff-typed URLs, redirects included, from inside the stack's network, a blind SSRF probe; it now reaches only public addresses on web ports, pinned, three redirects at most each checked, and runs with no transaction open (PUB-18, MET-07, ADR-0042 amendment). `link-check.test.ts`, `reminders.db.test.ts`. `8ab3f71`: the console's "check link" button had the same hole and answered the caller at once; it uses the same check (`help.db.test.ts`: a server on 127.0.0.1 was reported "ok" before, "broken" and never contacted after).
 - `7508dfe`: the CJIS enclave's audit writer gets the same before-commit queue (ADR-0037 amendment). `enclave.db.test.ts`.
 
+## After #14
+
+PR #14 merged as `1980f42` with CI green end to end on `e3663ef`.
+
+- The local full browser run on a fresh stack (before the database suites) failed the joint-assessment and equity journeys on both projects: they need verified, geolocated reports in the seeded county that CI's database step leaves there. After that step they pass. The README now gives the order; making the journeys create their own homes is open (below).
+- The enclave suites failed with "invalid_token" after `docker compose down -v`: the harness reused unexpired tokens from the old realm. It now drops a token whose signing key the realm no longer publishes (reproduced with stale tokens: four failures before, none after).
+
 ## Known issues and open items
 
 - ~~**Lock order with the audit chain:** other routes and jobs that audit and then write more rows in one transaction.~~ Fixed for every transaction (below).
+- **Journeys that need the database suites' data:** `console-l6.spec.ts` "the county plans the joint assessment" and "an AFN coordinator records outreach on an equity alert" rely on verified, geolocated reports in the seeded county created by the database-backed suites, which CI runs first. Run in CI's order (README); a setup step that files and verifies its own homes through the API would remove the dependency.
 - **Not verified against the live services** (blocked here; Adam runs the live check in production later, decision 2026-10-15): TIGERweb layer `Tracts_Blocks/MapServer/0`, the NFHL layer 28 field names, NSI's `fmt=fc` properties, the CMS dataset ids and column names (`xubh-q36u`, `4pq5-n9py`), OpenFEMA NFIP field names, and the NWS county-zone query. The recordings follow the published formats; run the smoke command against a real county once the hosts are allowed and adjust any connector that differs (Section 21-style item for the pilot).
 - ODIN power outages and FEMA USA Structures are import-only for now (the ODIN feed's format could not be checked; USA Structures is served from ArcGIS Online). National Risk Index and SVI are import-only by design (release files).
 - **Existing tenants and new actions:** a county's roles are its own versions of the templates, so the new `refdata.*`, `declaration.*` (including `declaration.export`), `outage.write`, `casualty.record`, `pa_site.write`, `official_report.*`, `fema_mapping.*`, `joint_assessment.*`, `shared_declaration.read`, `metric.*`, `equity.*`, `api_key.*` and `webhook.*` (and the new FEMA validator role) reach roles only through a role change approved by a second administrator (ADM-05); new tenants get them from the templates. A release note for a live county must say so. (Local stacks seeded before this layer need the same, or a fresh `docker compose down -v`.)

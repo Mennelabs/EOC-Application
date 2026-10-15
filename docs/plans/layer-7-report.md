@@ -1,0 +1,118 @@
+# Layer 7 report: AI assistance, the command window, facilities and recommendations
+
+Date: 2026-10-15/16. Branch `claude/determined-gates-zd5i8m`. Layer 7 reached `main` in nine pull requests, each squash-merged with CI green:
+
+| PR  | Merge commit                  | What it carried                                                                                     |
+| --- | ----------------------------- | --------------------------------------------------------------------------------------------------- |
+| #19 | `f809d68`                     | The AI foundation, together with the partner roll-up                                                |
+| #20 | `17445a5`                     | The command window and the facility registry                                                        |
+| #21 | `830ed2b`                     | Facility self-registration, the yearly re-check and the console screens                             |
+| #22 | `eaf383a`                     | Recommendations                                                                                     |
+| #23 | `8300162`                     | Resource discovery                                                                                  |
+| #25 | `e5d79dd`                     | AI drafting                                                                                         |
+| #26 | `6dd209a`                     | Scribe, hand-over, translation, the severity suggestion, and the tenant-scoped settings fix         |
+| #27 | `eb6fe2f`                     | Queue order, near-identical photos, agreement and fairness alerts                                   |
+| #28 | (open at the time of writing) | Tasks J and K, three privacy fixes, the `photo.quality` retirement and the photo evaluation harness |
+
+Everything in the stack is synthetic or the WESTWIND exercise (SCL-12).
+
+**The rule under every feature:** AI suggests, drafts and interprets; a named person decides; every essential task works with AI switched off.
+
+**The provider:** OpenAI for every AI function (decided 2026-10-15, ADR-0043). It runs only where the secret `OPENAI_API_KEY` is set and an administrator has switched the feature on. **The key is not set in the cloud environment yet**, so every AI feature is off there today, and the manual paths are what runs.
+
+## What was built
+
+| Area                                                                                                                                                                                                                                                                                                                                                                                                                                      | Where                                                                                                                                                       |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **AI foundation:** the OpenAI provider for language, speech-to-text, speech, translation, image analysis and the damage classifier. Each call is recorded with provider, model, prompt version, outcome and latency, never the content. Also: health alerts (corrections, failures, fairness), name redaction, the live evaluation suite, and the AI use register with evaluation and switches                                            | `packages/ai`, `routes/ai-register.ts`, worker `ai-health.ts`, `ai-evaluate.ts`, migrations 0054–0055, 0073–0074                                            |
+| **Command window:** a catalog of 12 commands over the console's own operations. Plain words are read into shorthand by the model; shorthand works without it. Every plan is confirmed, with undo inside its window. Also: personal and organization aliases, personal history for 30 days (never on a shared device), the field app's "Ask or command", and Find help's "Ask a question" (no model)                                       | `services/api/src/commands`, `routes/commands.ts`, `ui/command-window.tsx`, `apps/field/app/command.tsx`, ADR-0044                                          |
+| **Facility registry:** county EM enters and approves; partners propose; the public offers a place; a yearly re-check                                                                                                                                                                                                                                                                                                                      | `routes/facilities.ts`, `screens/facilities.tsx`, `apps/web-help/src/offer.ts`, migrations 0060–0061                                                        |
+| **Recommendations:** shelter, feeding stops, a POD with walk-up points, and a MARC. Each comes with its reasons, unknowns, the places set aside, the age of its inputs and an equity check. A named person accepts, edits or rejects it with a reason                                                                                                                                                                                     | `packages/reporting/src/recommend*.ts`, `routes/recommendations.ts`, `docs/recommendations.md`                                                              |
+| **Resource discovery:** partner posts, county feeds and OpenAI web search. Each candidate carries its sources, and a person decides                                                                                                                                                                                                                                                                                                       | worker `discovery.ts`, `routes/discovery.ts`, `docs/discovery.md`                                                                                           |
+| **AI drafting:** situation report summaries, Form 010-0-13 Boxes 8–9, the PIO's social post, radio loop, amateur-radio read-out and WEA text, a computer-generated radio voice and social cards. Every figure is checked against the facts it cites                                                                                                                                                                                       | `routes/drafting.ts`, `sites.ts`, `official-reports.ts`, `declaration.ts`                                                                                   |
+| **Field:** the conversation note-taker (consent in the survivor's language; only the confirmed note is kept, audio deleted), the shift hand-over, and live translation with an interpreter one tap away                                                                                                                                                                                                                                   | `routes/scribe.ts`, `handover.ts`, `translation.ts`, `apps/field/app/{scribe,handover,translate}.tsx`, migrations 0068–0070                                 |
+| **Photo pre-sort:** the sensitive-region blur fails closed. The severity suggestion is labelled "AI suggestion — not verified" and is only for reviewers who set the degree; it sees only photos the detector cleared. Need signals come first in the queue. Near-identical photos are flagged. Agreement is reported by hazard, home type and income band, with fairness alerts. The classifier's evaluation harness has fairness slices | worker `photos.ts`, `severity.ts`, `routes/reports.ts`, `packages/reporting/src/agreement.ts`, `packages/ai/src/evaluation/photos.ts`, migrations 0071–0073 |
+| **Resident dictation:** through the county's provider, never the browser's speech recognition                                                                                                                                                                                                                                                                                                                                             | `services/api/src/public/dictation.ts`, `apps/web-resident/src/intake/speech.ts`                                                                            |
+| **Governance records:** the NIST AI RMF mapping, launch-gate evidence, traceability and accessibility records                                                                                                                                                                                                                                                                                                                             | `docs/ai-rmf.md`, `docs/plans/layer-7-gates.md`, `layer-7-gate-08.md`, `tools/reqindex/trace-layer7.json`, `docs/a11y/screens/*`                            |
+
+## What passed
+
+- **Traceability:** of the 105 requirement IDs assigned to layer 7, 76 pass, 23 are partial and 6 are deferred (`docs/traceability.md`, evidence in `trace-layer7.json`). Earlier IDs this layer extends are updated in place: INT-12, PHO-03, PHO-07, AIG-05, the GATE rows and others.
+- **Launch gates:** GATE-02, GATE-04 and GATE-05 pass for layer 7. GATE-03 and GATE-08 are partial; see `layer-7-gates.md`.
+- **Permission sweep:** every staff route (364) refuses a caller with no token and an account with no role, and none fails with a server error (`authz-sweep.db.test.ts`, in CI).
+- **CI:** each merged PR was green end to end (lint, typecheck, unit tests, scans, Semgrep, the Android build, and the compose stack with integration, database and browser suites). Locally the full database list, the console, resident, field and help journeys, and the a11y spec pass.
+
+## What did not pass, or is not yet proven
+
+- **Live AI.** `OPENAI_API_KEY` is not set anywhere this build ran, so the live evaluation suite (`evaluate:live`) and real calls have not run. The automated suites use a test double and recorded OpenAI replies. Before a county relies on any feature:
+  1. set the key;
+  2. run the evaluation from the AI use register;
+  3. switch features on one by one.
+- **Photo fairness before launch (PHO-13, AIG-08).** The harness exists (`pnpm --filter @cg/ai evaluate:photos <manifest.csv>`), but no labelled photo set ships. Until one is run, the severity suggestion should stay off.
+- **GATE-08 gaps** (`layer-7-gates.md`):
+  - These are code only: the provider-failure path of `field.voice_draft`, the scribe note model's failure, and the per-suggestion confirm controls.
+  - Injection cases in the evaluation suite cover extraction and the command window only.
+  - No test hides instructions in an image.
+  - Listening to AI radio audio before it airs is a procedure, not a gate.
+- **Screen-reader passes** of every new screen need a person with NVDA and VoiceOver, and the field app needs a device pass, including a real recorded conversation with the AI on.
+- **Command window (Must, BRD section 10):**
+  - Not yet in the catalog:
+    - personnel, damage-assessment and resource/contact/badge commands (CMD-14, CMD-15, CMD-17);
+    - administration commands (CMD-18);
+    - mission drafts, priority, assignment and closure (CMD-13, AC-C01);
+    - exports (CMD-16);
+    - a message-sending command (AC-C08).
+  - Not built:
+    - the window does not use the selected record as context (CMD-06);
+    - there is no open-draft registry, so unsaved forms are only protected by version checks (CMD-29, AC-C09);
+    - there are no bulk commands (CMD-30) and no multi-step workflows (AC-C07);
+    - latency targets are not enforced or measured (CMD-38).
+- **Field and recommendations (Must):**
+  - voice commands for logging meals or referring to case management (FL-07);
+  - facility owners updating their own entry (REC-01);
+  - canteen staff counts used as a limit (REC-06);
+  - an interpreter joining a conversation remotely (FL:FR-24).
+- **Earlier layers, still not started (Must):**
+  - finding a survivor's record by phone and a one-time code, or by address and name (FL-02);
+  - document photos into a survivor's record with consent (FL-09);
+  - an off-duty release policy for open assignments (AC-05C).
+- **Retention (SEC-13):** no sweep yet deletes the field-records, badges, safety, comms or child-records categories, and `cg.change_feed` is never pruned.
+- **Found and fixed during this layer**, each with a test that failed before the fix:
+  - several tenant settings, and the AI provider and switches, were read without the tenant filter by the worker's system role (`6dd209a`);
+  - resident dictation went through the browser's speech recognition, which sends audio to Google or Apple (INT-12, AIG-06);
+  - the severity classifier could be sent an unblurred photo when the detector was off or failed (PHO-07, AIG-05);
+  - a legal-aid referral's note reached the referring organization and the county's audit log (FL:FR-23);
+  - the AI register listed `photo.quality`, which called nothing (AIG-01).
+
+## What was deferred and why
+
+| What                                                                             | Why                                                                                              | When                            |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------- |
+| A purpose-trained, validated damage classifier (PHO-12)                          | The university partnership does not exist yet; OpenAI's vision model fills in (Adam, 2026-10-15) | When a model card passes PHO-13 |
+| A cloud AI provider in a government region                                       | OpenAI until the first customer and a cloud account (Adam, 2026-10-15)                           | First customer                  |
+| Reverse-image matching against stock photos (PHO-15)                             | Needs a provider that offers it                                                                  | Later                           |
+| Automatic AI switch-off (AIG-09, FL-18)                                          | Adam decided on alerts only (2026-10-15)                                                         | Not planned                     |
+| Case management on the shared record (FL:FR-16 contact log, FL:FR-23 case notes) | Adam: after layer 8 (2026-10-15)                                                                 | After layer 8                   |
+| The command-window, field and earlier-layer Musts listed above                   | Not built in this layer                                                                          | Next, unless you reorder        |
+
+## Readings taken in favour of privacy and safety (flagged for you)
+
+The plan's §12 lists all 20. The newest:
+
+- a legal aid organization's referral responses share only the status;
+- resident dictation goes through the county's provider or not at all;
+- the register lists only features that call a provider;
+- "income band" is the county's tract poverty quintile;
+- a group is behind on severity agreement when it has 20 or more decisions and is more than 10 points under the model's overall agreement.
+
+## Questions for you (defaults in force)
+
+1. **The OpenAI key.** Set `OPENAI_API_KEY` as a secret in the cloud environment (environment settings, never in chat or the repository). Then run the evaluation from the AI use register before switching features on.
+2. **Zero data retention.** Please attach the Mennelabs zero-data-retention agreement to the register's provider record (AIG-06, ADR-0043). Please also confirm it covers OpenAI web search, which discovery uses. Until then, keep `discovery.web_search` off.
+3. **A labelled damage-photo set** for the fairness evaluation (PHO-13): licensed or synthetic, kept outside the repository. Who supplies it? Until it is run, the severity suggestion stays off.
+4. **Planning defaults** in force, all tenant settings:
+   - **fairness:** 20 decisions, 10 points;
+   - **photo evaluation:** 20 cases, 10 points, 2 points of regression;
+   - **AI health:** 30% of the last 50.
+5. **Order of the remaining Musts.** By default, next comes the command-window catalog: personnel, damage assessment, resources and contacts, mission assignment, exports, then the open-draft registry and selected-record context. After that: FL-07 voice commands, FL-02, FL-09, REC-01, REC-06, AC-05C and the SEC-13 sweeps. An interpreter joining remotely (FL:FR-24) needs a video service, which is a paid third party: yes or no?
+6. **Dictation now needs the AI service.** Without it, residents type, or use their phone keyboard's own microphone. Is that acceptable?

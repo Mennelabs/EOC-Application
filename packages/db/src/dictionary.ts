@@ -2102,6 +2102,22 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     undone_by: { c: 'internal' },
     undo_until: { c: 'internal' },
   }),
+  command_message: table(
+    {
+      id: { c: 'internal' },
+      tenant_id: { c: 'internal' },
+      account_id: { c: 'internal', d: 'Whose personal command history this is (CMD-36)' },
+      role: { c: 'internal', d: 'person (what was typed) or window (what was answered)' },
+      body_enc: {
+        c: 'restricted',
+        r: 'command_conversation',
+        d: 'Encrypted message text; kept 30 days, clearable by the person (Section 30.2)',
+      },
+      execution_id: { c: 'internal', d: 'The command execution the message belongs to' },
+      created_at: { c: 'internal' },
+    },
+    { standard: false },
+  ),
   ai_output: table(
     {
       id: { c: 'internal' },

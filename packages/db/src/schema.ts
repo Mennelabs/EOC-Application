@@ -2261,6 +2261,17 @@ export type PartnerRollup =
   { all: true } | { all: false; partners: Uuid[]; categories: PartnerCategory[] };
 
 /** One command a person asked for (ADR-0044, CMD-37); never the typed words. */
+/** Personal command history (layer 7; CMD-36): the person's own, encrypted, 30 days. */
+export interface CommandMessageTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  account_id: Uuid;
+  role: 'person' | 'window';
+  body_enc: Buffer;
+  execution_id: Uuid | null;
+  created_at: TsGen;
+}
+
 export interface CommandExecutionTable extends Stamped {
   id: Generated<Uuid>;
   tenant_id: Uuid;
@@ -2965,6 +2976,7 @@ export interface Database {
   'cg.pa_site': PaSiteTable;
   'cg.ai_output': AiOutputTable;
   'cg.command_execution': CommandExecutionTable;
+  'cg.command_message': CommandMessageTable;
   'cg.ai_health_alert': AiHealthAlertTable;
   'cg.official_report': OfficialReportTable;
   'cg.official_report_section': OfficialReportSectionTable;

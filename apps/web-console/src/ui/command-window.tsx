@@ -71,6 +71,15 @@ interface Prefs {
   letter: string;
   /** Whether "/" outside a text field opens the window. */
   slash: boolean;
+  /** A shared device keeps no command history (CMD-36, Section 30.2). */
+  shared: boolean;
+}
+
+interface HistoryItem {
+  role: 'person' | 'window';
+  text: string;
+  executionId: string | null;
+  createdAt: string;
 }
 
 /** Per-person conveniences only; the window works the same without them. */
@@ -81,9 +90,10 @@ function readPrefs(): Prefs {
     return {
       letter: typeof p.letter === 'string' && /^[a-z]$/.test(p.letter) ? p.letter : 'k',
       slash: p.slash !== false,
+      shared: p.shared === true,
     };
   } catch {
-    return { letter: 'k', slash: true };
+    return { letter: 'k', slash: true, shared: false };
   }
 }
 function writePrefs(p: Prefs) {
@@ -153,6 +163,7 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
   const [problem, setProblem] = useState<string | null>(null);
   const [choice, setChoice] = useState<string>('');
   const [announce, setAnnounce] = useState('');
+  const [history, setHistory] = useState<HistoryItem[] | null>(null);
   const titleId = useId();
   const shortcutLabel = `${navigator.platform.startsWith('Mac') ? 'Command' : 'Ctrl'}+${prefs.letter.toUpperCase()}`;
 
@@ -221,7 +232,12 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
     setAnnounce('Working…');
     try {
       const e = await api<Execution>('/commands', {
-        body: { executionId: crypto.randomUUID(), input: line, ...extra },
+        body: {
+          executionId: crypto.randomUUID(),
+          input: line,
+          remember: !prefs.shared,
+          ...extra,
+        },
       });
       settle(e);
       if (e.status !== 'clarify') writeDraft('');
@@ -263,6 +279,31 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
     current?.id
       ? act(`/commands/${current.id}/undo`, { executionId: crypto.randomUUID() })
       : undefined;
+
+  const loadHistory = async () => {
+    if (prefs.shared) return;
+    try {
+      setHistory(await api<HistoryItem[]>('/me/command-history?limit=50'));
+    } catch (err) {
+      fail(err);
+    }
+  };
+
+  /** CMD-36: clearing the conversation never touches the audit record of what ran. */
+  const clearHistory = async () => {
+    setBusy(true);
+    try {
+      const r = await api<{ cleared: number }>('/me/command-history', { method: 'DELETE' });
+      setHistory([]);
+      setAnnounce(
+        `History cleared (${r.cleared} messages). The record of what ran is kept for the audit.`,
+      );
+    } catch (err) {
+      fail(err);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const resultHeading = current
     ? {
@@ -470,6 +511,37 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
           </section>
         ) : null}
 
+        <details
+          className="command-settings"
+          onToggle={(e) => {
+            if ((e.currentTarget as HTMLDetailsElement).open) void loadHistory();
+          }}
+        >
+          <summary>Your recent commands</summary>
+          {prefs.shared ? (
+            <p>History is off on this device because it is marked as shared.</p>
+          ) : history === null ? (
+            <p>Loading…</p>
+          ) : history.length === 0 ? (
+            <p>Nothing kept. Commands you give here are kept for 30 days, for you only.</p>
+          ) : (
+            <>
+              <ol className="command-history">
+                {history.map((h, i) => (
+                  <li key={`${h.createdAt}-${i}`}>
+                    <span className="who">{h.role === 'person' ? 'You' : 'Window'}:</span> {h.text}
+                  </li>
+                ))}
+              </ol>
+              <div className="actions">
+                <button type="button" onClick={() => void clearHistory()} disabled={busy}>
+                  Clear my history
+                </button>
+              </div>
+            </>
+          )}
+        </details>
+
         <details className="command-settings">
           <summary>Shortcut settings</summary>
           <Field
@@ -506,6 +578,19 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
               }}
             />{' '}
             Open with / when I am not typing in a field
+          </label>
+          <label className="choice">
+            <input
+              type="checkbox"
+              checked={prefs.shared}
+              onChange={(e) => {
+                const p = { ...prefs, shared: e.target.checked };
+                setPrefs(p);
+                writePrefs(p);
+                if (p.shared) setHistory(null);
+              }}
+            />{' '}
+            This is a shared device: keep no command history
           </label>
         </details>
       </dialog>

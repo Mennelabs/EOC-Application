@@ -16,7 +16,7 @@
  * what that operation answered (CMD-26). A change that can be undone can be,
  * for 15 minutes, as a linked execution (CMD-28, AC-08C).
  */
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import type { Selectable, Transaction } from 'kysely';
@@ -662,10 +662,184 @@ export const commandRoutesWith =
       },
     );
 
+    // ---------------------------------------------------------------- personal history
+    /** What the window said, in one line, for the person's own history. */
+    const answerText = (e: ExecutionOut) =>
+      e.status === 'awaiting_confirmation' && e.plan
+        ? `Plan: ${e.plan.description}`
+        : e.message || e.status.replace('_', ' ');
+
+    /**
+     * CMD-36, Section 30.2: the typed words and the answer go into the
+     * person's own history, encrypted, only when the client says the device is
+     * not shared; later answers on the same command join it only if it was
+     * kept. The execution record is the audit either way.
+     */
+    async function remember(
+      request: FastifyRequest,
+      payload: unknown,
+      typed: string | null,
+      historyKey?: string,
+    ): Promise<void> {
+      const e = payload as Partial<ExecutionOut> | null;
+      if (!e || typeof e.executionId !== 'string' || typeof e.status !== 'string') return;
+      const s = account(request);
+      const key = historyKey ?? e.executionId;
+      const crypto = base.fieldCrypto;
+      await request.tx(async (trx) => {
+        if (typed === null) {
+          const kept = await trx
+            .selectFrom('cg.command_message')
+            .select('id')
+            .where('account_id', '=', s.accountId)
+            .where('execution_id', '=', key)
+            .executeTakeFirst();
+          if (!kept) return;
+        } else
+          await trx
+            .insertInto('cg.command_message')
+            .values({
+              tenant_id: s.tenantId,
+              account_id: s.accountId,
+              role: 'person',
+              body_enc: await crypto.encrypt(s.tenantId, typed),
+              execution_id: key,
+            })
+            .execute();
+        await trx
+          .insertInto('cg.command_message')
+          .values({
+            tenant_id: s.tenantId,
+            account_id: s.accountId,
+            role: 'window',
+            body_enc: await crypto.encrypt(s.tenantId, answerText(e as ExecutionOut)),
+            execution_id: key,
+          })
+          .execute();
+      });
+    }
+
+    /** A legal hold on the tenant's command conversations, or on this person's, stops deletion (SEC-13). */
+    const heldFor = async (trx: Transaction<Database>, accountId: string) => {
+      const holds = await trx
+        .selectFrom('cg.legal_hold')
+        .select('scope')
+        .where('released_at', 'is', null)
+        .execute();
+      return holds.some((h) => {
+        const sc = (h.scope ?? {}) as Record<string, unknown>;
+        return (
+          sc['dataCategory'] === 'command_conversation' ||
+          (sc['targetType'] === 'command_message' &&
+            (sc['targetId'] === undefined || sc['targetId'] === accountId))
+        );
+      });
+    };
+
+    app.get(
+      '/me/command-history',
+      {
+        schema: {
+          tags: ['commands'],
+          querystring: z.object({ limit: z.coerce.number().int().min(1).max(200).default(50) }),
+          response: {
+            200: z.array(
+              z.object({
+                role: z.enum(['person', 'window']),
+                text: z.string(),
+                executionId: z.uuid().nullable(),
+                createdAt: z.iso.datetime(),
+              }),
+            ),
+          },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('command.use', { type: 'command', tenantId: s.tenantId });
+        const rows = await request.tx((trx) =>
+          trx
+            .selectFrom('cg.command_message')
+            .selectAll()
+            .where('account_id', '=', s.accountId)
+            .where('created_at', '>', new Date(Date.now() - 30 * 86_400_000))
+            .orderBy('created_at', 'desc')
+            // Within one request the person spoke first; the list is reversed below.
+            .orderBy('role', 'desc')
+            .limit(request.query.limit)
+            .execute(),
+        );
+        return Promise.all(
+          rows.reverse().map(async (r) => ({
+            role: r.role,
+            text: await base.fieldCrypto.decrypt(r.tenant_id, r.body_enc),
+            executionId: r.execution_id,
+            createdAt: iso(r.created_at)!,
+          })),
+        );
+      },
+    );
+
+    app.delete(
+      '/me/command-history',
+      {
+        schema: {
+          tags: ['commands'],
+          response: { 200: z.object({ cleared: z.number().int() }) },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('command.use', { type: 'command', tenantId: s.tenantId });
+        return request.tx(async (trx) => {
+          if (await heldFor(trx, s.accountId))
+            throw new ApiError(
+              409,
+              'legal_hold',
+              'Your command history is under a legal hold and cannot be cleared now.',
+            );
+          const gone = await trx
+            .deleteFrom('cg.command_message')
+            .where('account_id', '=', s.accountId)
+            .returning('created_at')
+            .execute();
+          if (gone.length > 0) {
+            const times = gone.map((g) => g.created_at.getTime());
+            await trx
+              .insertInto('cg.deletion_log')
+              .values({
+                tenant_id: s.tenantId,
+                data_category: 'command_conversation',
+                target_type: 'command_message',
+                deleted_count: gone.length,
+                oldest: new Date(Math.min(...times)),
+                newest: new Date(Math.max(...times)),
+                execution_id: request.executionId ?? randomUUID(),
+              })
+              .execute();
+          }
+          // RULE-15: clearing the conversation is recorded; the executions stay.
+          await request.audit(trx, {
+            action: 'command.history_cleared',
+            targetType: 'account',
+            targetId: s.accountId,
+            reason: `${gone.length} messages`,
+          });
+          return { cleared: gone.length };
+        });
+      },
+    );
+
     // ---------------------------------------------------------------- prepare
     app.post(
       '/commands',
       {
+        preSerialization: async (request, _reply, payload) => {
+          const body = request.body as { input?: string; remember?: boolean } | undefined;
+          if (body?.remember === true && typeof body.input === 'string')
+            await remember(request, payload, body.input);
+          return payload;
+        },
         schema: {
           tags: ['commands'],
           body: z.object({
@@ -675,6 +849,8 @@ export const commandRoutesWith =
             eventId: z.uuid().optional(),
             /** The record chosen from a clarification (CMD-08). */
             targetId: z.uuid().optional(),
+            /** CMD-36: keep this exchange in the person's own history (never on a shared device). */
+            remember: z.boolean().default(false),
           }),
           response: { 200: executionOut },
         },
@@ -845,6 +1021,10 @@ export const commandRoutesWith =
     app.post(
       '/commands/:id/confirm',
       {
+        preSerialization: async (request, _reply, payload) => {
+          await remember(request, payload, null);
+          return payload;
+        },
         schema: {
           tags: ['commands'],
           params: uuidParam,
@@ -981,7 +1161,13 @@ export const commandRoutesWith =
     // ---------------------------------------------------------------- cancel
     app.post(
       '/commands/:id/cancel',
-      { schema: { tags: ['commands'], params: uuidParam, response: { 200: executionOut } } },
+      {
+        preSerialization: async (request, _reply, payload) => {
+          await remember(request, payload, null);
+          return payload;
+        },
+        schema: { tags: ['commands'], params: uuidParam, response: { 200: executionOut } },
+      },
       async (request) => {
         const s = account(request);
         await request.authorize('command.use', { type: 'command', tenantId: s.tenantId });
@@ -1038,6 +1224,20 @@ export const commandRoutesWith =
     app.post(
       '/commands/:id/undo',
       {
+        preSerialization: async (request, _reply, payload) => {
+          // The undo joins the history of the command it reverses.
+          const e = payload as Partial<ExecutionOut> | null;
+          if (!e?.reversalOf) return payload;
+          const original = await request.tx((trx) =>
+            trx
+              .selectFrom('cg.command_execution')
+              .select('execution_id')
+              .where('id', '=', e.reversalOf!)
+              .executeTakeFirst(),
+          );
+          if (original) await remember(request, payload, null, original.execution_id);
+          return payload;
+        },
         schema: {
           tags: ['commands'],
           params: uuidParam,

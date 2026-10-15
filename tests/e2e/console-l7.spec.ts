@@ -4,7 +4,7 @@
  * care coordinator opens it with the keyboard shortcut, reads the help, looks
  * up a need filed through the public API by its reference code, prepares a claim, checks the plan
  * and confirms it; the need is claimed on the board; then undoes it within
- * the window. Escape closes the window and returns focus to where it was
+ * the window; reads its own command history and clears it. Escape closes the window and returns focus to where it was
  * opened; "/" opens it when the cursor is not in a text field. Axe runs on
  * each state and, on the phone project, the window reflows at phone width.
  */
@@ -97,6 +97,14 @@ test.describe('layer 7 console: the command window', () => {
     await expect(dialog.getByRole('heading', { name: 'Undone' })).toBeVisible();
     expect(await statusOf()).toBe('open');
     await expectNoViolations(page);
+
+    // CMD-36: the person's own history, kept 30 days, cleared on request.
+    await dialog.getByText('Your recent commands').click();
+    const kept = dialog.getByRole('list').filter({ hasText: 'You:' });
+    await expect(kept).toContainText(`/need ${code} claim`);
+    await expectNoViolations(page);
+    await dialog.getByRole('button', { name: 'Clear my history' }).click();
+    await expect(dialog.getByText(/Nothing kept/)).toBeVisible();
 
     // Escape closes it; focus goes back to the button that opened it.
     await page.keyboard.press('Escape');

@@ -613,3 +613,10 @@ dialog.command select {
   align-items: center;
   cursor: pointer;
 }
+/* No scroll box of its own: a scrolling region must be reachable by keyboard (WCAG 2.1.1). */
+.command-history {
+  padding-inline-start: 1.25rem;
+}
+.command-history .who {
+  font-weight: 600;
+}

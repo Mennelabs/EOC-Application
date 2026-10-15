@@ -81,6 +81,25 @@ The report states exactly what was included. An issued report freezes the choice
 - `declaration.partner_rollup` and an `official_report.partner_rollup` setting (all, or the chosen partners and categories), versioned like the rest.
 - A security-definer function `cg.partner_counts(county, event, period)` returns counts per partner organization and category for partner tenants under that county only. It is callable by the application role only, and the authorization check comes first (`declaration.read`).
 
+As built (migration 0053):
+
+- **The function is not security-definer.** Row security is forced on every table, so a function owned by the migrator would still be held by it. Handing the function to the worker role would give the API the worker's reach. Instead, `cg.partner_counts(county, event)` runs as its caller:
+  - It refuses unless the caller is acting as that county (or is the worker).
+  - It adds the county's own partner organizations to the tenants the row policies let the caller see, for one aggregate query, then puts the setting back.
+  - It returns numbers per organization, category and item, never a row.
+  - It is granted to the application and worker roles only.
+- **No period argument.** The figures are as of when the facts are computed, as the shelter figures already are.
+- **What the categories cover:**
+  - Needs met, services, people and households sheltered, and teams checked in come from the function.
+  - Donated hours and equipment come from check-ins the county can already read. They follow the choice on the declaration view and so in the IDA package.
+  - Official reports state no hours.
+- **On an official report:**
+  - The choice is made when drafting (`partnerRollup` on `POST /official-reports`) or changed on a draft with `POST /official-reports/:id/partner-rollup`. A change recomputes the facts and sends a reviewed report back to draft.
+  - An amendment starts with the choice of the report it corrects.
+  - The new "Partner organizations" fact states what it includes. The CSV row "Partner organizations included" names them.
+  - The issued content carries the choice.
+- **A category left out reads "not included" (null), never zero.**
+
 **Tests:**
 
 - The counts equal what each partner's own screens show.

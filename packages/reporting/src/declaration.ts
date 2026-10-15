@@ -6,14 +6,24 @@
  * profile, outages with the 72-hour flag, official casualty counts with
  * their sources, public damage by category against the per-capita
  * indicators, donated volunteer hours, what partner organizations committed
- * (DCL:DEC-09), and the 30-day filing clock. Runs
+ * (DCL:DEC-09, all of it or what the county chose, 2026-10-15), and the
+ * 30-day filing clock. Runs
  * inside the caller's transaction (row-level security).
  */
 import { sql, type Transaction } from 'kysely';
-import type { Database } from '@cg/db';
+import type { Database, PartnerRollup } from '@cg/db';
 import { areaProfile, currentSnapshot, type AreaProfile } from './area.ts';
 import { countDamage, type DamageTotals } from './counting.ts';
 import { loadDamageRecords } from './load.ts';
+import {
+  applyRollup,
+  includesCategory,
+  includesPartner,
+  partnerCounts,
+  partnerOrganizations,
+  rollupOf,
+  rollupStatement,
+} from './partners.ts';
 
 type Trx = Transaction<Database>;
 
@@ -67,6 +77,8 @@ export interface Declaration {
   box9Draft: string | null;
   reviewLabel: string;
   updatedAt: string;
+  /** Partner counts on this view (2026-10-15, DCL:DEC-09): all, or the county's choice. */
+  partnerRollup: PartnerRollup;
 }
 
 export const OUTAGE_KINDS = [
@@ -195,6 +207,7 @@ export const declarationView = (r: {
   box9_draft: string | null;
   review_label: string;
   updated_at: Date;
+  partner_rollup?: unknown;
 }): Declaration => ({
   id: r.id,
   version: r.version,
@@ -206,6 +219,7 @@ export const declarationView = (r: {
   box9Draft: r.box9_draft,
   reviewLabel: r.review_label,
   updatedAt: iso(r.updated_at)!,
+  partnerRollup: rollupOf(r.partner_rollup),
 });
 
 export function dayOf(v: string | Date | null): string | null {
@@ -321,6 +335,7 @@ export async function declarationData(trx: Trx, tenantId: string, eventId: strin
   // FL-17: hours from check-ins, by who donated them. Partner organizations' people and
   // registered walk-up volunteers donate; staff of the county itself do not.
   const hours = await sql<{
+    agency_id: string | null;
     agency: string | null;
     kind: string | null;
     donated: boolean;
@@ -328,7 +343,7 @@ export async function declarationData(trx: Trx, tenantId: string, eventId: strin
     people: string;
     open_shifts: string;
   }>`
-    select t.name as agency, t.kind,
+    select t.id as agency_id, t.name as agency, t.kind,
       (t.kind = 'partner_org' or exists (
         select 1 from cg.volunteer_registration v
         where v.personnel_id = c.personnel_id and v.event_id = c.event_id)) as donated,
@@ -338,19 +353,25 @@ export async function declarationData(trx: Trx, tenantId: string, eventId: strin
     from cg.check_in c
     left join cg.tenant t on t.id = c.tenant_id
     where c.event_id = ${eventId}
-    group by 1, 2, 3
-    order by 3 desc, 1`.execute(trx);
-  const donatedRows = hours.rows.filter((h) => h.donated);
+    group by 1, 2, 3, 4
+    order by 4 desc, 2`.execute(trx);
+  // 2026-10-15: a partner's donated hours and equipment count as the county's choice says.
+  const rollup = rollupOf(decl?.partner_rollup);
+  const donatedBy = (kind: string | null, id: string | null) =>
+    kind !== 'partner_org' ||
+    (id !== null && includesPartner(rollup, id) && includesCategory(rollup, 'donated'));
+  const donatedRows = hours.rows.filter((h) => h.donated && donatedBy(h.kind, h.agency_id));
   const round1 = (n: number) => Math.round(n * 10) / 10;
   // FL-17: donated equipment, from the equipment a partner's team brought and the
   // team's time on duty (its members' check-ins merged, so overlaps count once).
   const equipment = await sql<{
+    organization_id: string;
     organization: string;
     team: string;
     items: string[];
     hours: string;
   }>`
-    select t.name as organization, tm.name as team, tm.equipment as items,
+    select t.id as organization_id, t.name as organization, tm.name as team, tm.equipment as items,
       (select coalesce(sum(extract(epoch from (upper(r) - lower(r)))), 0) / 3600
          from unnest(d.duty) as r) as hours
     from (
@@ -363,84 +384,14 @@ export async function declarationData(trx: Trx, tenantId: string, eventId: strin
     join cg.team tm on tm.id = d.team_id
     join cg.tenant t on t.id = tm.agency_tenant_id
     where t.kind = 'partner_org' and cardinality(tm.equipment) > 0
-    order by 1, 2`.execute(trx);
+    order by 2, 3`.execute(trx);
 
-  // DCL:DEC-09: what partner organizations committed, from the needs they met, the
-  // services logged for their teams, the shelters they ran and their teams checked
-  // in. Counts only; nothing about a household. Only what the county can read:
-  // a log a partner keeps under its own accounts stays with the partner (tenant
-  // isolation) unless it shares it.
-  const partnerRows = await sql<{
-    id: string;
-    name: string;
-    what: 'need' | 'service' | 'shelter_households' | 'shelter_people' | 'team';
-    k: string;
-    n: string;
-  }>`
-    select t.id, t.name, 'need' as what, n.category as k, count(*) as n
-      from cg.need n join cg.tenant t on t.id = n.claimed_by_tenant_id
-      where n.event_id = ${eventId} and n.status in ('met', 'closed') and t.kind = 'partner_org'
-      group by 1, 2, 4
-    union all
-    select t.id, t.name, 'service', s.kind, sum(s.count)
-      from cg.service_log s join cg.team tm on tm.id = s.team_id
-      join cg.tenant t on t.id = tm.agency_tenant_id
-      where s.event_id = ${eventId} and t.kind = 'partner_org'
-      group by 1, 2, 4
-    union all
-    select t.id, t.name, 'shelter_households', '', count(*)
-      from cg.shelter_stay ss join cg.site st on st.id = ss.site_id
-      join cg.tenant t on t.id = coalesce(st.operator_tenant_id, st.tenant_id)
-      where ss.event_id = ${eventId} and t.kind = 'partner_org'
-      group by 1, 2
-    union all
-    select t.id, t.name, 'shelter_people', '', sum(ss.household_size)
-      from cg.shelter_stay ss join cg.site st on st.id = ss.site_id
-      join cg.tenant t on t.id = coalesce(st.operator_tenant_id, st.tenant_id)
-      where ss.event_id = ${eventId} and t.kind = 'partner_org'
-      group by 1, 2
-    union all
-    select t.id, t.name, 'team', '', count(distinct c.team_id)
-      from cg.check_in c join cg.team tm on tm.id = c.team_id
-      join cg.tenant t on t.id = tm.agency_tenant_id
-      where c.event_id = ${eventId} and t.kind = 'partner_org'
-      group by 1, 2`.execute(trx);
-  const orgs = new Map<
-    string,
-    {
-      organization: string;
-      needsMet: number;
-      needsByCategory: Record<string, number>;
-      services: Record<string, number>;
-      shelteredHouseholds: number;
-      shelteredPeople: number;
-      teams: number;
-    }
-  >();
-  for (const r of partnerRows.rows) {
-    const o = orgs.get(r.id) ?? {
-      organization: r.name,
-      needsMet: 0,
-      needsByCategory: {},
-      services: {},
-      shelteredHouseholds: 0,
-      shelteredPeople: 0,
-      teams: 0,
-    };
-    const n = Number(r.n);
-    if (r.what === 'need') {
-      o.needsMet += n;
-      o.needsByCategory[r.k] = n;
-    } else if (r.what === 'service') o.services[r.k] = n;
-    else if (r.what === 'shelter_households') o.shelteredHouseholds = n;
-    else if (r.what === 'shelter_people') o.shelteredPeople = n;
-    else o.teams = n;
-    orgs.set(r.id, o);
-  }
-  const partnerList = [...orgs.values()].sort((a, b) =>
-    a.organization.localeCompare(b.organization),
-  );
-  const sumService = (k: string) => partnerList.reduce((n, o) => n + (o.services[k] ?? 0), 0);
+  // DCL:DEC-09 (2026-10-15): what partner organizations committed, from their own records
+  // through the counting function (numbers only): the needs they met, the services their
+  // teams logged, the people and households in shelters they run, their teams checked in.
+  // The county rolls up all of them, or the organizations and categories it chose.
+  const organizations = await partnerOrganizations(trx, tenantId);
+  const partnerFigures = applyRollup(await partnerCounts(trx, tenantId, eventId), rollup);
   return {
     eventId,
     asOf: new Date().toISOString(),
@@ -511,29 +462,22 @@ export async function declarationData(trx: Trx, tenantId: string, eventId: strin
         people: Number(h.people),
       })),
       // Hours each item was on duty with its team; whether it was in use is for the county to confirm.
-      equipment: equipment.rows.flatMap((e) =>
-        e.items.map((item) => ({
-          organization: e.organization,
-          team: e.team,
-          item,
-          hours: round1(Number(e.hours)),
-        })),
-      ),
+      equipment: equipment.rows
+        .filter((e) => donatedBy('partner_org', e.organization_id))
+        .flatMap((e) =>
+          e.items.map((item) => ({
+            organization: e.organization,
+            team: e.team,
+            item,
+            hours: round1(Number(e.hours)),
+          })),
+        ),
     },
     partners: {
-      byOrganization: partnerList,
-      totals: {
-        needsMet: partnerList.reduce((n, o) => n + o.needsMet, 0),
-        meals: sumService('meal'),
-        waterCases: sumService('water_case'),
-        tarps: sumService('tarp'),
-        cots: sumService('cot'),
-        rides: sumService('ride'),
-        peopleServed: sumService('person_served'),
-        shelteredHouseholds: partnerList.reduce((n, o) => n + o.shelteredHouseholds, 0),
-        shelteredPeople: partnerList.reduce((n, o) => n + o.shelteredPeople, 0),
-        teams: partnerList.reduce((n, o) => n + o.teams, 0),
-      },
+      rollup: rollupStatement(rollup, organizations),
+      organizations,
+      byOrganization: partnerFigures.byOrganization,
+      totals: partnerFigures.totals,
     },
   };
 }

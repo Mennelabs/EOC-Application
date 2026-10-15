@@ -2107,6 +2107,10 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     box8_draft: { c: 'internal', d: 'Damage description draft, at most 3,000 characters (Box 8)' },
     box9_draft: { c: 'internal', d: 'Resources committed draft, at most 3,000 characters (Box 9)' },
     review_label: { c: 'internal' },
+    partner_rollup: {
+      c: 'internal',
+      d: 'Partner counts on the declaration view (2026-10-15, DCL:DEC-09): all, or the chosen partner organizations and categories',
+    },
   }),
   outage: table({
     event_id: { c: 'internal' },
@@ -2178,6 +2182,10 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     amends: { c: 'internal', d: 'The issued report this one corrects (RULE-10)' },
     facts_at: { c: 'internal', d: 'When the facts were last computed from the records' },
     definitions: { c: 'internal', d: 'Definitions and versions the facts use (F14)' },
+    partner_rollup: {
+      c: 'internal',
+      d: 'Partner counts the report states (2026-10-15, DCL:DEC-09): all, or the chosen partner organizations and categories; frozen when issued (RULE-10)',
+    },
   }),
   official_report_section: table({
     report_id: { c: 'internal' },

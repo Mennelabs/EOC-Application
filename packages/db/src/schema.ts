@@ -2251,6 +2251,13 @@ export type ReferenceDataset =
   | 'alert'
   | 'power_outage';
 
+/** Partner counts category (2026-10-15, DCL:DEC-09). */
+export type PartnerCategory = 'needs_met' | 'services' | 'sheltered' | 'teams' | 'donated';
+
+/** Which partner counts roll up: all, or the chosen organizations and categories. */
+export type PartnerRollup =
+  { all: true } | { all: false; partners: Uuid[]; categories: PartnerCategory[] };
+
 export interface DeclarationTable extends Stamped {
   id: Generated<Uuid>;
   tenant_id: Uuid;
@@ -2262,6 +2269,7 @@ export interface DeclarationTable extends Stamped {
   box8_draft: string | null;
   box9_draft: string | null;
   review_label: Generated<string>;
+  partner_rollup: JsonGen<PartnerRollup>;
 }
 
 export type OutageKind =
@@ -2356,6 +2364,7 @@ export interface OfficialReportTable extends Stamped {
   amends: Uuid | null;
   facts_at: ColumnType<Date, Date | string, Date | string>;
   definitions: JsonGen<unknown[]>;
+  partner_rollup: JsonGen<PartnerRollup>;
 }
 
 export interface OfficialReportSectionTable extends Stamped {

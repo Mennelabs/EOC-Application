@@ -10,9 +10,17 @@
  */
 import { createHash } from 'node:crypto';
 import { sql, type Transaction } from 'kysely';
-import type { Database } from '@cg/db';
+import type { Database, PartnerCategory, PartnerRollup } from '@cg/db';
 import { countDamage, DEGREES } from './counting.ts';
 import { loadDamageRecords } from './load.ts';
+import {
+  ALL_PARTNERS,
+  applyRollup,
+  includesCategory,
+  partnerCounts,
+  partnerOrganizations,
+  rollupStatement,
+} from './partners.ts';
 
 export interface Definition {
   key: string;
@@ -47,6 +55,11 @@ export const DEFINITIONS = {
     version: 1,
     text: 'Shelters open, limited or full when the facts were computed, with their last reported occupancy and capacity; confidential shelters are counted without their names.',
   },
+  partners: {
+    key: 'partner_counts',
+    version: 1,
+    text: "Counts from partner organizations' own records for the event when the facts were computed: needs they met, meals and other services their teams logged, people and households in shelters they run, and teams checked in. Numbers only, never a name, household or record. All partner organizations and counts unless the county chose; the report states what it includes.",
+  },
 } as const satisfies Record<string, Definition>;
 
 export type FactKey = keyof typeof DEFINITIONS;
@@ -76,10 +89,14 @@ export interface Fact {
 }
 
 export interface FactScope {
+  /** The county whose report it is: partner counts answer only for it. */
+  tenantId: string;
   eventId: string;
   periodFrom: Date;
   periodTo: Date;
   cutoff: Date;
+  /** Which partner counts the report states (2026-10-15); all unless the county chose. */
+  partnerRollup?: PartnerRollup;
 }
 
 const DEGREE_LABEL = {
@@ -297,6 +314,58 @@ async function sheltersFact(trx: Transaction<Database>, s: FactScope): Promise<F
   };
 }
 
+/** DCL:DEC-09 (2026-10-15): partner counts, all or as the county chose, with what is included. */
+async function partnersFact(trx: Transaction<Database>, s: FactScope): Promise<Fact> {
+  const rollup = s.partnerRollup ?? ALL_PARTNERS;
+  const view = rollupStatement(rollup, await partnerOrganizations(trx, s.tenantId));
+  const { totals } = applyRollup(await partnerCounts(trx, s.tenantId, s.eventId), rollup);
+  const has = (k: PartnerCategory) => includesCategory(rollup, k);
+  const rows: FactRow[] = [
+    ...(has('needs_met')
+      ? [{ key: 'needsMet', label: 'Needs met by partners', value: totals.needsMet }]
+      : []),
+    ...(has('services')
+      ? [
+          { key: 'meals', label: 'Meals served', value: totals.meals },
+          { key: 'waterCases', label: 'Cases of water handed out', value: totals.waterCases },
+          { key: 'peopleServed', label: 'People served', value: totals.peopleServed },
+        ]
+      : []),
+    ...(has('sheltered')
+      ? [
+          {
+            key: 'shelteredPeople',
+            label: 'People sheltered by partners',
+            value: totals.shelteredPeople,
+          },
+          {
+            key: 'shelteredHouseholds',
+            label: 'Households sheltered by partners',
+            value: totals.shelteredHouseholds,
+          },
+        ]
+      : []),
+    ...(has('teams')
+      ? [{ key: 'teams', label: 'Partner teams checked in', value: totals.teams }]
+      : []),
+    {
+      key: 'organizations',
+      label: 'Partner organizations included',
+      value: view.partners.length,
+      // The CSV carries rows only: the organizations included go with the figure.
+      detail: view.partners.map((o) => o.organization).join('; ') || 'none',
+    },
+  ];
+  return {
+    key: 'partners',
+    title: 'Partner organizations',
+    rows,
+    note: view.statement,
+    definition: DEFINITIONS.partners,
+    records: [],
+  };
+}
+
 /** Every fact a situation report or briefing states, in report order. */
 export async function computeFacts(trx: Transaction<Database>, s: FactScope): Promise<Fact[]> {
   return [
@@ -305,6 +374,7 @@ export async function computeFacts(trx: Transaction<Database>, s: FactScope): Pr
     await outagesFact(trx, s),
     await casualtiesFact(trx, s),
     await sheltersFact(trx, s),
+    await partnersFact(trx, s),
   ];
 }
 

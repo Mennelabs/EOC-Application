@@ -17,6 +17,7 @@ import { api, ApiFailure, describeFailure } from '../api/client.ts';
 import { DataTable, Field, Status, fmt } from '../ui/primitives.tsx';
 import { EventPicker, useOpenEvents } from './dispatch.tsx';
 import { ExportFile, useExports } from './fema-package.tsx';
+import { PartnerRollupChooser, type RollupValue } from './partner-rollup.tsx';
 
 type State = 'draft' | 'reviewed' | 'issued' | 'superseded' | 'withdrawn';
 const STATE_TEXT: Record<State, string> = {
@@ -50,6 +51,8 @@ interface ReportRow {
   amends: string | null;
   amendedBy: string | null;
   factsAt: string;
+  /** Which partner counts the report states (2026-10-15, DCL:DEC-09). */
+  partnerRollup?: RollupValue;
 }
 
 interface Section {
@@ -69,6 +72,7 @@ interface Section {
 }
 
 interface Report extends ReportRow {
+  partnerOrganizations?: { id: string; organization: string }[];
   sections: Section[];
   snapshot: {
     id: string;
@@ -626,6 +630,28 @@ export function OfficialReportScreen({
               Refresh the facts
             </button>
           </div>
+        ) : null}
+        {editable && r.partnerRollup ? (
+          <PartnerRollupChooser
+            key={`rollup-${r.version}`}
+            id="report-rollup"
+            value={r.partnerRollup}
+            organizations={r.partnerOrganizations ?? []}
+            statement={r.sections.find((x) => x.key === 'partners')?.content.note ?? null}
+            editable
+            onSave={async (partnerRollup) =>
+              !!(await act(
+                () =>
+                  api<Report>(`/official-reports/${r.id}/partner-rollup`, {
+                    body: { partnerRollup },
+                    ...v,
+                  }),
+                r.state === 'reviewed'
+                  ? 'Partner counts choice saved and the facts recomputed. The report needs review again.'
+                  : 'Partner counts choice saved and the facts recomputed.',
+              ))
+            }
+          />
         ) : null}
         {r.state === 'draft' && can('official_report.review') && !author ? (
           drafted.length ? (

@@ -10,7 +10,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
 import { createDb, withTenant, type Database } from '@cg/db';
@@ -31,8 +31,16 @@ const HOUR = 3_600_000;
 
 /** The parts of the declaration view these tests read. */
 interface Partners {
-  byOrganization: { organization: string; needsMet: number; teams: number }[];
-  totals: Record<string, number>;
+  rollup: { all: boolean; partners: { id: string }[]; categories: string[]; statement: string };
+  organizations: { id: string; organization: string }[];
+  byOrganization: {
+    id: string;
+    organization: string;
+    needsMet: number | null;
+    services: Record<string, number> | null;
+    teams: number | null;
+  }[];
+  totals: Record<string, number | null>;
 }
 interface DeclarationView {
   partners: Partners;
@@ -78,6 +86,13 @@ describe.skipIf(!appUrl || !workerUrl)('the declaration view (database-backed)',
   const run = randomUUID().slice(0, 8);
   const tx = <T>(tenantId: string, fn: Parameters<typeof withTenant<T>>[2]) =>
     withTenant(dbWorker, { tenantId }, fn);
+  let countyPath = '';
+  /** As the API runs: the application role, in a tenant's context. */
+  const asApp = <T>(
+    tenantId: string,
+    fn: Parameters<typeof withTenant<T>>[2],
+    tenantPath?: string,
+  ) => withTenant(dbApp, { tenantId, ...(tenantPath ? { tenantPath } : {}) }, fn);
 
   beforeAll(async () => {
     dbApp = createDb(appUrl!, 3);
@@ -97,6 +112,7 @@ describe.skipIf(!appUrl || !workerUrl)('the declaration view (database-backed)',
         .executeTakeFirstOrThrow();
     const c = await newTenant('county', seeded.tenants['region']!, 'county');
     county = c.id;
+    countyPath = c.path;
     partner = (await newTenant('partner_org', county, 'partner')).id;
     eventId = await tx(county, async (trx) => {
       await trx
@@ -509,7 +525,7 @@ describe.skipIf(!appUrl || !workerUrl)('the declaration view (database-backed)',
     expect(d.includesOpenShifts).toBe(false);
   });
 
-  it('summarizes what partner organizations committed, counts only (DCL:DEC-09)', async () => {
+  it('summarizes what partner organizations committed from their own records, counts only (DCL:DEC-09)', async () => {
     await tx(partner, async (trx) => {
       const team = await trx
         .insertInto('cg.team')
@@ -607,7 +623,8 @@ describe.skipIf(!appUrl || !workerUrl)('the declaration view (database-backed)',
       shelteredPeople: 5,
       teams: 1,
     });
-    // A log the partner keeps under its own accounts stays with the partner (tenant isolation).
+    // 2026-10-15: a log the partner keeps under its own accounts counts too, through the
+    // counting function (numbers only); before, the county saw only what it could read.
     await tx(partner, (trx) =>
       trx
         .insertInto('cg.service_log')
@@ -621,7 +638,7 @@ describe.skipIf(!appUrl || !workerUrl)('the declaration view (database-backed)',
         })
         .execute(),
     );
-    expect((await view()).body.partners.totals['meals']).toBe(40);
+    expect((await view()).body.partners.totals['meals']).toBe(1039);
     // Counts and organizations only: no household detail.
     expect(JSON.stringify(p)).not.toMatch(/household_party|wristband|access_needs/);
   });
@@ -662,6 +679,111 @@ describe.skipIf(!appUrl || !workerUrl)('the declaration view (database-backed)',
       expect(x.organization).toBe(`Exercise partner ${run}`);
       expect(x.hours).toBeCloseTo(3, 0);
     }
+  });
+
+  it('partner counts (2026-10-15; DCL:DEC-09): the county rolls up all, or chooses organizations and categories; the view states what it includes', async () => {
+    const before = (await view()).body;
+    expect(before.partners.rollup.all).toBe(true);
+    expect(before.partners.organizations.map((o) => o.id)).toContain(partner);
+    const partnerHours = before.donated.byOrganization.length;
+    const current = await call<Saved>('director', 'GET', `/events/${eventId}/declaration`);
+    const decl = (current.body as unknown as { declaration: Saved | null }).declaration;
+    const put = (partnerRollup: unknown, version?: number) =>
+      call<Saved>(
+        'director',
+        'PUT',
+        `/events/${eventId}/declaration`,
+        { partnerRollup },
+        version !== undefined ? { 'if-match': String(version) } : {},
+      );
+    // Another county's organization cannot be chosen.
+    expect(
+      (await put({ all: false, partners: [randomUUID()], categories: ['services'] }, decl?.version))
+        .status,
+    ).toBe(400);
+    // Only this partner's services: needs, shelter and teams read as not included, never zero.
+    const chosen = await put(
+      { all: false, partners: [partner], categories: ['services'] },
+      decl?.version,
+    );
+    expect([200, 201]).toContain(chosen.status);
+    const p = (await view()).body.partners;
+    expect(p.rollup).toMatchObject({ all: false, categories: ['services'] });
+    expect(p.rollup.statement).toContain(`Exercise partner ${run}`);
+    expect(p.totals).toMatchObject({
+      meals: 1039,
+      needsMet: null,
+      shelteredPeople: null,
+      teams: null,
+    });
+    expect(p.byOrganization[0]).toMatchObject({ needsMet: null, teams: null });
+    // Donated hours and equipment leave with the category; the walk-up volunteers stay.
+    const d = (await view()).body.donated;
+    expect(d.byOrganization.length).toBe(partnerHours - 1);
+    expect(d.equipment).toEqual([]);
+    // No organization chosen: nothing from any partner, every chosen category at zero.
+    const v2 = (await view()).body.declaration as Saved;
+    expect(
+      (
+        await put(
+          {
+            all: false,
+            partners: [],
+            categories: ['needs_met', 'services', 'sheltered', 'teams', 'donated'],
+          },
+          v2.version,
+        )
+      ).status,
+    ).toBe(200);
+    const none = (await view()).body.partners;
+    expect(none.byOrganization).toEqual([]);
+    expect(none.totals).toMatchObject({ meals: 0, needsMet: 0, teams: 0 });
+    // Back to all.
+    const v3 = (await view()).body.declaration as Saved;
+    expect((await put({ all: true }, v3.version)).status).toBe(200);
+    expect((await view()).body.partners.totals['meals']).toBe(1039);
+  });
+
+  it('partner counts (2026-10-15): the counting function returns numbers only, and only for the county itself', async () => {
+    const rows = await asApp(
+      county,
+      (trx) =>
+        sql<
+          Record<string, unknown>
+        >`select * from cg.partner_counts(${county}, ${eventId})`.execute(trx),
+      countyPath,
+    );
+    expect(rows.rows.length).toBeGreaterThan(0);
+    for (const r of rows.rows) {
+      expect(Object.keys(r).sort()).toEqual([
+        'category',
+        'item',
+        'n',
+        'organization',
+        'partner_id',
+      ]);
+      expect(Number.isFinite(Number(r['n']))).toBe(true);
+    }
+    // The visibility the function widens for its one query is put back.
+    const after = await asApp(
+      county,
+      async (trx) => {
+        await sql`select * from cg.partner_counts(${county}, ${eventId})`.execute(trx);
+        return (
+          await sql<{
+            v: string | null;
+          }>`select current_setting('app.tenant_ids', true) as v`.execute(trx)
+        ).rows[0]!.v;
+      },
+      countyPath,
+    );
+    expect(after ?? '').not.toContain(partner);
+    // A partner, or anyone acting for another tenant, gets nothing.
+    await expect(
+      asApp(partner, (trx) =>
+        sql`select * from cg.partner_counts(${county}, ${eventId})`.execute(trx),
+      ),
+    ).rejects.toThrow(/only for the county itself/);
   });
 
   it('starts the 30-day clock at the incident end date (DEC-16)', () => {

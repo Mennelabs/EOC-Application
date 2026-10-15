@@ -23,5 +23,29 @@
     "shelter_stay with household, cots, access needs (encrypted), pets, check-in and check-out (0033, routes/field-records.ts); a county site run by a partner (0039, routes/sites.ts); screens/masscare.tsx shelters; a partner posts and runs its own service in the county, the county sees Posted by and withdraws it (0052; routes/sites.ts; screens/our-services.tsx, sites.tsx)",
     "services/api/test/fieldrecords.db.test.ts (CON-16 shelter door), services/api/test/siteoperator.db.test.ts (CON-16 operator), services/api/test/siteoperator.db.test.ts (partner posting), tests/e2e/console-l3.spec.ts (partner posting)",
     "Import of shelter counts from the Red Cross system is not built."
+  ],
+  "DCL:DEC-09": [
+    "pass",
+    "partner counts from each partner organization's own records through cg.partner_counts (0053; numbers only, answers only for the county itself), all rolled up by default or the organizations and categories the county chooses (declaration.partner_rollup, official_report.partner_rollup; packages/reporting partners.ts, declaration.ts, facts.ts partners fact); the Declaration screen and the state liaison's view; the chooser on the Declaration screen and on a draft report (screens/partner-rollup.tsx)",
+    "services/api/test/declaration.db.test.ts (DCL:DEC-09: totals from partners' own records; the choice removes exactly a partner or a category, not included reads null; the function returns numbers only and refuses another tenant), services/api/test/official-reports.db.test.ts (partner counts: choice on a report, CSV holds exactly the choice, frozen when issued), tests/e2e/console-l6.spec.ts (the chooser with axe)",
+    "Donated goods are not recorded as such. Donated hours and equipment follow the choice on the declaration view and the IDA package; official reports carry no hours."
+  ],
+  "RULE-10": [
+    "pass",
+    "cg.official_report_snapshot (frozen content, record versions, content hash; refused to every role by trigger, 0045), the cutoff and time zone on each report (packages/reporting facts.ts), locked copy in the records bucket under object lock for the records retention (worker jobs/official-reports.ts, ADR-0010); the partner counts choice is frozen with the facts in the issued content (2026-10-15)",
+    "services/api/test/official-reports.db.test.ts (facts as of the cutoff, snapshot unchanged after a record changes, locked copy once with seven-year retention), packages/reporting/test/facts.test.ts, tests/e2e/console-l6.spec.ts, services/api/test/official-reports.db.test.ts (partner counts: the issued snapshot keeps the choice)",
+    ""
+  ],
+  "FL-17": [
+    "pass",
+    "hours from check-in rows (cg.check_in, 0028), ICS 214 entries from check-in and assignments; layer 6: donated volunteer hours by organization, and donated equipment: each item a partner team brought with the team's merged hours on duty, both derived from check-ins with no extra entry (packages/reporting declaration.ts; the Declaration screen); a partner's donated hours and equipment follow the county's partner counts choice (2026-10-15)",
+    "services/api/test/roster.db.test.ts (check-in hours), services/api/test/field.db.test.ts (check-out counts the hours), services/api/test/declaration.db.test.ts (FL-17: donated hours; equipment hours with overlapping shifts counted once), services/api/test/declaration.db.test.ts (partner counts: donated hours and equipment leave with the category)",
+    "Whether an item was in use for all of its team's hours, and the FEMA equipment rates, are for the county to confirm in its claim."
+  ],
+  "BRD:FR-15.01": [
+    "pass",
+    "drafts per period, scope and cutoff from mission, staffing, damage, shelters and outages facts (packages/reporting facts.ts; routes/official-reports.ts); a partner organizations fact, all or as the county chose, stating what it includes (2026-10-15)",
+    "services/api/test/official-reports.db.test.ts, tests/e2e/console-l6.spec.ts, services/api/test/official-reports.db.test.ts (partner counts)",
+    ""
   ]
 }

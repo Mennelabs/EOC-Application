@@ -18,7 +18,13 @@ import { sql, type Kysely } from 'kysely';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
 import { createDb, withTenant, type Database } from '@cg/db';
-import { contentHash, countDamage, loadDamageRecords } from '@cg/reporting';
+import {
+  contentHash,
+  countDamage,
+  loadDamageRecords,
+  reportCsv,
+  type IssuedContent,
+} from '@cg/reporting';
 import { loadDamageReports } from '../../../tools/seed/src/damage.ts';
 import { loadSeed } from '../../../tools/seed/src/load.ts';
 import { officialReportIssued } from '../../worker/src/jobs/official-reports.ts';
@@ -35,7 +41,11 @@ interface Section {
   key: string;
   kind: 'fact' | 'judgment' | 'narrative';
   title: string;
-  content: { text?: string; rows?: { key: string; value: number | null; detail?: string }[] };
+  content: {
+    text?: string;
+    rows?: { key: string; value: number | null; detail?: string }[];
+    note?: string | null;
+  };
   definition: { key: string; version: number } | null;
   recordCount: number;
   drafted: boolean;
@@ -238,6 +248,7 @@ describe.skipIf(!appUrl || !workerUrl)('official reports (database-backed)', () 
       ['outages', 'fact'],
       ['casualties', 'fact'],
       ['shelters', 'fact'],
+      ['partners', 'fact'],
       ['outlook', 'judgment'],
       ['priorities', 'judgment'],
     ]);
@@ -633,5 +644,140 @@ describe.skipIf(!appUrl || !workerUrl)('official reports (database-backed)', () 
       `/official-reports?eventId=${eventId}`,
     );
     expect(list.body.map((r) => r.state).sort()).toEqual(['issued', 'superseded', 'withdrawn']);
+  });
+
+  it('partner counts (2026-10-15; DCL:DEC-09, F15, RULE-10): the county chooses the partners and categories a report states; the issued report freezes the choice and its CSV holds exactly that', async () => {
+    // Two partner organizations of this county, each with a team that handed out meals.
+    const partnerOf = async (slug: string, meals: number) => {
+      const t = await dbWorker
+        .insertInto('cg.tenant')
+        .values({
+          kind: 'partner_org',
+          parent_id: county,
+          slug: `exercise-reports-${slug}-${run}`,
+          name: `Exercise ${slug} ${run}`,
+          status: 'provisioning',
+        })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      await withTenant(dbWorker, { tenantId: t.id }, async (trx) => {
+        const team = await trx
+          .insertInto('cg.team')
+          .values({
+            tenant_id: t.id,
+            event_id: eventId,
+            key: `rp-${slug}-${run}`,
+            name: `Exercise ${slug} team ${run}`,
+            agency_tenant_id: t.id,
+          })
+          .returning('id')
+          .executeTakeFirstOrThrow();
+        await trx
+          .insertInto('cg.service_log')
+          .values({
+            tenant_id: t.id,
+            event_id: eventId,
+            client_uuid: randomUUID(),
+            kind: 'meal',
+            count: meals,
+            team_id: team.id,
+          })
+          .execute();
+      });
+      return t.id;
+    };
+    const canteen = await partnerOf('canteen', 120);
+    const kitchen = await partnerOf('kitchen', 80);
+    const only = { all: false, partners: [canteen], categories: ['services'] };
+    const body = { eventId, kind: 'briefing', periodFrom, periodTo };
+
+    // An organization of another county cannot be chosen.
+    expect(
+      (
+        await call('author', 'POST', '/official-reports', {
+          ...body,
+          clientUuid: randomUUID(),
+          partnerRollup: { ...only, partners: [randomUUID()] },
+        })
+      ).status,
+    ).toBe(400);
+    const res = await call('author', 'POST', '/official-reports', {
+      ...body,
+      clientUuid: randomUUID(),
+      partnerRollup: only,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    let r = res.body;
+    expect(row(r, 'partners', 'meals')).toBe(120);
+    expect(section(r, 'partners').content.rows!.map((x) => x.key)).not.toContain('needsMet');
+    expect(section(r, 'partners').content.note).toContain(`Exercise canteen ${run}`);
+
+    // Rolling up all of them takes in the other organization and every category.
+    const all = await call(
+      'author',
+      'POST',
+      `/official-reports/${r.id}/partner-rollup`,
+      { partnerRollup: { all: true } },
+      v(r),
+    );
+    expect(all.status, JSON.stringify(all.body)).toBe(200);
+    expect(row(all.body, 'partners', 'meals')).toBe(200);
+    expect(row(all.body, 'partners', 'needsMet')).toBe(0);
+    // Back to the canteen's services alone, then reviewed and issued.
+    r = (
+      await call(
+        'author',
+        'POST',
+        `/official-reports/${r.id}/partner-rollup`,
+        { partnerRollup: only },
+        v(all.body),
+      )
+    ).body;
+    expect(row(r, 'partners', 'meals')).toBe(120);
+    const summary = await call(
+      'author',
+      'PUT',
+      `/official-reports/${r.id}/sections/summary`,
+      { text: 'Exercise: briefing on partner meals.' },
+      v(r),
+    );
+    expect(summary.status, JSON.stringify(summary.body)).toBe(200);
+    const reviewed = (
+      await call(
+        'director',
+        'POST',
+        `/official-reports/${r.id}/review`,
+        { decision: 'approve' },
+        v(summary.body),
+      )
+    ).body;
+    const out = await call('director', 'POST', `/official-reports/${r.id}/issue`, undefined, {
+      ...v(reviewed),
+      ...confirm,
+    });
+    expect(out.status, JSON.stringify(out.body)).toBe(200);
+    // RULE-10: the choice is frozen with the facts; a later change to the records leaves it.
+    const snap = await call<{ content: IssuedContent & { report: { partnerRollup: unknown } } }>(
+      'pio',
+      'GET',
+      `/official-reports/${r.id}/snapshot`,
+    );
+    expect(snap.body.content.report.partnerRollup).toEqual(only);
+    const csv = reportCsv(snap.body.content);
+    expect(csv).toContain(`Exercise canteen ${run}`);
+    expect(csv).not.toContain(`Exercise kitchen ${run}`);
+    expect(csv).toMatch(/Meals served,120/);
+    expect(
+      (
+        await call(
+          'author',
+          'POST',
+          `/official-reports/${r.id}/partner-rollup`,
+          { partnerRollup: { all: true } },
+          v(out.body),
+        )
+      ).status,
+    ).toBe(409);
+    expect(kitchen).not.toBe(canteen);
   });
 });

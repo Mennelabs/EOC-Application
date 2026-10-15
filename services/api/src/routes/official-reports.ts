@@ -28,12 +28,23 @@ import {
   computeFacts,
   contentHash,
   draftSummary,
+  foreignPartners,
+  partnerOrganizations,
+  rollupOf,
   type Fact,
   type RecordRef,
 } from '@cg/reporting';
 import { ApiError, errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
-import { classifierFor, enqueueOutbox, iso, listQuery, uuidParam } from './helpers.ts';
+import {
+  classifierFor,
+  enqueueOutbox,
+  iso,
+  listQuery,
+  partnerRollupIn,
+  partnerRollupOut,
+  uuidParam,
+} from './helpers.ts';
 
 type Trx = Transaction<Database>;
 type ReportRow = Selectable<OfficialReportTable>;
@@ -91,9 +102,13 @@ const reportOut = z.object({
   amendedBy: z.uuid().nullable(),
   factsAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
+  /** Which partner counts the report states (2026-10-15, DCL:DEC-09). */
+  partnerRollup: partnerRollupOut,
 });
 
 const detailOut = reportOut.extend({
+  /** The county's partner organizations, for choosing which counts roll up. */
+  partnerOrganizations: z.array(z.object({ id: z.uuid(), organization: z.string() })),
   sections: z.array(sectionOut),
   snapshot: z
     .object({
@@ -188,6 +203,7 @@ export const officialReportRoutes: FastifyPluginAsync = async (raw) => {
     amendedBy,
     factsAt: iso(r.facts_at)!,
     updatedAt: iso(r.updated_at)!,
+    partnerRollup: rollupOf(r.partner_rollup),
   });
 
   const sectionView = (x: SectionRow, who: Map<string, string>) => {
@@ -250,6 +266,7 @@ export const officialReportRoutes: FastifyPluginAsync = async (raw) => {
     ]);
     return {
       ...view(r, who, amendment?.id ?? null),
+      partnerOrganizations: await partnerOrganizations(trx, r.tenant_id),
       sections: sections.map((x) => sectionView(x, who)),
       snapshot: snap
         ? {
@@ -303,14 +320,84 @@ export const officialReportRoutes: FastifyPluginAsync = async (raw) => {
 
   const factsFor = (
     trx: Trx,
-    r: Pick<ReportRow, 'event_id' | 'period_from' | 'period_to' | 'cutoff'>,
+    r: Pick<
+      ReportRow,
+      'tenant_id' | 'event_id' | 'period_from' | 'period_to' | 'cutoff' | 'partner_rollup'
+    >,
   ) =>
     computeFacts(trx, {
+      tenantId: r.tenant_id,
+      partnerRollup: rollupOf(r.partner_rollup),
       eventId: r.event_id,
       periodFrom: new Date(r.period_from),
       periodTo: new Date(r.period_to),
       cutoff: new Date(r.cutoff),
     });
+
+  /** The chosen organizations must be this county's partner organizations. */
+  async function checkRollup(trx: Trx, countyId: string, rollup: z.infer<typeof partnerRollupIn>) {
+    const foreign = await foreignPartners(trx, countyId, rollup);
+    if (foreign.length)
+      throw errors.validation([
+        { name: 'partnerRollup', message: "not one of the county's partner organizations" },
+      ]);
+  }
+
+  /**
+   * The facts again from the records: every fact section follows them (one a report made before
+   * a fact existed gains it), and a summary nobody has edited yet follows too.
+   */
+  async function writeFacts(trx: Trx, r: ReportRow, facts: Fact[], actor: string) {
+    const held = await trx
+      .selectFrom('cg.official_report_section')
+      .select(['key', 'position'])
+      .where('report_id', '=', r.id)
+      .execute();
+    let next = Math.max(-1, ...held.map((x) => x.position)) + 1;
+    for (const f of facts)
+      if (held.some((x) => x.key === f.key))
+        await trx
+          .updateTable('cg.official_report_section')
+          .set({
+            content: JSON.stringify(factContent(f)),
+            sources: JSON.stringify(factSources(f)),
+            version: sql`version + 1`,
+            updated_by: actor,
+          })
+          .where('report_id', '=', r.id)
+          .where('key', '=', f.key)
+          .execute();
+      else
+        await trx
+          .insertInto('cg.official_report_section')
+          .values({
+            tenant_id: r.tenant_id,
+            report_id: r.id,
+            key: f.key,
+            position: next++,
+            kind: 'fact',
+            title: f.title,
+            content: JSON.stringify(factContent(f)),
+            sources: JSON.stringify(factSources(f)),
+            drafted: false,
+            edited_by: null,
+            edited_at: null,
+            created_by: actor,
+            updated_by: actor,
+          })
+          .execute();
+    await trx
+      .updateTable('cg.official_report_section')
+      .set({
+        content: JSON.stringify({ text: draftSummary(facts, asOf(r.cutoff), r.time_zone) }),
+        version: sql`version + 1`,
+        updated_by: actor,
+      })
+      .where('report_id', '=', r.id)
+      .where('key', '=', 'summary')
+      .where('drafted', '=', true)
+      .execute();
+  }
 
   async function insertSections(
     trx: Trx,
@@ -448,6 +535,8 @@ export const officialReportRoutes: FastifyPluginAsync = async (raw) => {
             /** Records after this are not in the facts; the period's end by default. */
             cutoff: z.iso.datetime({ offset: true }).optional(),
             classification: z.enum(['internal', 'public']).default('internal'),
+            /** Partner counts: all unless the county chooses (2026-10-15, DCL:DEC-09). */
+            partnerRollup: partnerRollupIn.default({ all: true }),
           })
           .refine((b) => b.periodTo > b.periodFrom, {
             message: 'the period must end after it starts',
@@ -493,7 +582,10 @@ export const officialReportRoutes: FastifyPluginAsync = async (raw) => {
           .where('amends', 'is', null)
           .executeTakeFirstOrThrow();
         const sequence = Number(last.n) + 1;
+        await checkRollup(trx, event.tenant_id, b.partnerRollup);
         const facts = await computeFacts(trx, {
+          tenantId: event.tenant_id,
+          partnerRollup: b.partnerRollup,
           eventId: b.eventId,
           periodFrom: new Date(b.periodFrom),
           periodTo: new Date(b.periodTo),
@@ -516,6 +608,7 @@ export const officialReportRoutes: FastifyPluginAsync = async (raw) => {
             author_id: s.accountId,
             facts_at: new Date(),
             definitions: JSON.stringify(facts.map((f) => f.definition)),
+            partner_rollup: JSON.stringify(b.partnerRollup),
             created_by: s.accountId,
             updated_by: s.accountId,
           })
@@ -535,6 +628,7 @@ export const officialReportRoutes: FastifyPluginAsync = async (raw) => {
               period_from: b.periodFrom,
               period_to: b.periodTo,
               cutoff: r.cutoff,
+              partner_rollup: b.partnerRollup,
             },
             classifierFor('official_report'),
           ),
@@ -669,36 +763,75 @@ export const officialReportRoutes: FastifyPluginAsync = async (raw) => {
             .executeTakeFirst(),
           { id: r.id, version: r.version },
         );
-        for (const f of facts)
-          await trx
-            .updateTable('cg.official_report_section')
-            .set({
-              content: JSON.stringify(factContent(f)),
-              sources: JSON.stringify(factSources(f)),
-              version: sql`version + 1`,
-              updated_by: s.accountId,
-            })
-            .where('report_id', '=', r.id)
-            .where('key', '=', f.key)
-            .execute();
-        // A summary nobody has edited yet follows the new facts; an edited one stays as written.
-        await trx
-          .updateTable('cg.official_report_section')
-          .set({
-            content: JSON.stringify({ text: draftSummary(facts, asOf(r.cutoff), r.time_zone) }),
-            version: sql`version + 1`,
-            updated_by: s.accountId,
-          })
-          .where('report_id', '=', r.id)
-          .where('key', '=', 'summary')
-          .where('drafted', '=', true)
-          .execute();
+        await writeFacts(trx, saved, facts, s.accountId);
         await request.audit(trx, {
           action: 'official_report.draft',
           targetType: 'official_report',
           targetId: r.id,
           targetVersion: saved.version,
           changes: { facts: 'refreshed' },
+        });
+      });
+      return request.tx((trx) => detail(trx, request.params.id));
+    },
+  );
+
+  // ------------------------------------------------------------------ partner counts
+  // 2026-10-15 (DCL:DEC-09): the county rolls up all partner counts, or chooses the partner
+  // organizations and categories; the report states what it includes. Changing the choice
+  // recomputes the facts and, like any change, sends a reviewed report back to draft.
+  app.post(
+    '/official-reports/:id/partner-rollup',
+    {
+      config: { requiresVersion: true },
+      schema: {
+        tags: ['official-reports'],
+        params: uuidParam,
+        body: z.object({ partnerRollup: partnerRollupIn }),
+        response: { 200: detailOut },
+      },
+    },
+    async (request) => {
+      const s = account(request);
+      const expected = request.expectedVersion();
+      await request.authorize(
+        'official_report.draft',
+        { type: 'official_report', id: request.params.id, tenantId: s.tenantId },
+        { asNotFound: true },
+      );
+      const rollup = request.body.partnerRollup;
+      await request.tx(async (trx) => {
+        const r = await load(trx, request.params.id);
+        editable(r);
+        await checkRollup(trx, r.tenant_id, rollup);
+        const facts = await factsFor(trx, { ...r, partner_rollup: rollup });
+        const saved = assertUpdated(
+          await trx
+            .updateTable('cg.official_report')
+            .set({
+              ...backToDraft,
+              partner_rollup: JSON.stringify(rollup),
+              facts_at: new Date(),
+              definitions: JSON.stringify(facts.map((f) => f.definition)),
+              version: sql`version + 1`,
+              updated_by: s.accountId,
+            })
+            .where('id', '=', r.id)
+            .where('version', '=', expected)
+            .returningAll()
+            .executeTakeFirst(),
+          { id: r.id, version: r.version },
+        );
+        await writeFacts(trx, saved, facts, s.accountId);
+        await request.audit(trx, {
+          action: 'official_report.draft',
+          targetType: 'official_report',
+          targetId: r.id,
+          targetVersion: saved.version,
+          changes: {
+            fields: [{ name: 'partner_rollup', from: rollupOf(r.partner_rollup), to: rollup }],
+            ...(r.state === 'reviewed' ? { state: { from: 'reviewed', to: 'draft' } } : {}),
+          },
         });
       });
       return request.tx((trx) => detail(trx, request.params.id));
@@ -876,6 +1009,8 @@ export const officialReportRoutes: FastifyPluginAsync = async (raw) => {
             classification: r.classification,
             amends: r.amends,
             factsAt: iso(r.facts_at),
+            // RULE-10: the partner counts the report states are frozen with its facts.
+            partnerRollup: rollupOf(r.partner_rollup),
             author: { id: r.author_id, name: who.get(r.author_id) ?? null },
             reviewer: {
               id: r.reviewer_id,
@@ -1027,6 +1162,8 @@ export const officialReportRoutes: FastifyPluginAsync = async (raw) => {
             amends: r.id,
             facts_at: new Date(),
             definitions: JSON.stringify(facts.map((f) => f.definition)),
+            // The amendment states the same partner counts until the county changes its choice.
+            partner_rollup: JSON.stringify(rollupOf(r.partner_rollup)),
             created_by: s.accountId,
             updated_by: s.accountId,
           })
@@ -1187,7 +1324,7 @@ export const officialReportRoutes: FastifyPluginAsync = async (raw) => {
         let base = trx
           .selectFrom('cg.official_report as r')
           .innerJoin('cg.official_report_snapshot as s', 's.report_id', 'r.id')
-          .select(['r.id', 'r.title', 'r.cutoff', 's.issued_at', 's.content'])
+          .select(['r.id', 'r.title', 'r.cutoff', 'r.partner_rollup', 's.issued_at', 's.content'])
           .where('r.event_id', '=', request.params.id)
           .where('r.state', 'in', ['issued', 'superseded']);
         base = request.query.since
@@ -1214,6 +1351,8 @@ export const officialReportRoutes: FastifyPluginAsync = async (raw) => {
             records: [],
           }));
         const after = await computeFacts(trx, {
+          tenantId: s.tenantId,
+          partnerRollup: rollupOf(last.partner_rollup),
           eventId: request.params.id,
           periodFrom: new Date(last.cutoff),
           periodTo: now,

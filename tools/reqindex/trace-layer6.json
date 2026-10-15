@@ -1,0 +1,400 @@
+{
+  "_about": "Evidence per requirement ID for layer 6 (FEMA package and official reports; layer-6 plan §1), plus earlier rows that layer 6 finishes or extends: for those the earlier evidence is kept and layer 6's code and tests are appended. status: pass | partial | deferred | designed. The cited suites passed locally on the compose stack and run in CI on every push; the layer merges only when CI is green. tools/reqindex/traceability.py merges trace-layer1..6.json in order.",
+  "RULE-10": [
+    "pass",
+    "cg.official_report_snapshot (frozen content, record versions, content hash; refused to every role by trigger, 0045), the cutoff and time zone on each report (packages/reporting facts.ts), locked copy in the records bucket under object lock for the records retention (worker jobs/official-reports.ts, ADR-0010)",
+    "services/api/test/official-reports.db.test.ts (facts as of the cutoff, snapshot unchanged after a record changes, locked copy once with seven-year retention), packages/reporting/test/facts.test.ts, tests/e2e/console-l6.spec.ts",
+    ""
+  ],
+  "MET-00": [
+    "partial",
+    "packages/reporting/src/metrics.ts: fifteen shipped metric definitions (damage, reports, missions, personnel, badges, needs, accountability) with county versions through the governed definitions; /console/metrics",
+    "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts",
+    "MET-01, MET-03, MET-08 and MET-09 are not measured by the platform (see their rows)."
+  ],
+  "MET-01": [
+    "deferred",
+    "",
+    "",
+    "Task completion and abandonment need moderated usability testing with residents and staff (process), not platform data; recorded with the GATE-03 manual passes."
+  ],
+  "MET-02": [
+    "partial",
+    "metrics reports.re_review (corrections that sent a report back) and reports.completeness",
+    "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts",
+    "Time to complete a task and repeated entry are not instrumented; they come from moderated testing."
+  ],
+  "MET-03": [
+    "deferred",
+    "",
+    "",
+    "Assistive-technology task success is measured in moderated testing (layer-6 plan §11); the screen records in docs/a11y hold the results."
+  ],
+  "MET-04": [
+    "partial",
+    "metrics missions.by_state, missions.closed (active definition), missions.time_to_close",
+    "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts",
+    "Assignment conflicts and overdue updates are raised as dispatch alerts (DSP-07) but not yet counted as metrics."
+  ],
+  "MET-05": [
+    "pass",
+    "metrics reports.completeness, reports.duplicates, reports.time_to_review (against the 24-hour target, unreviewed disclosed), reports.re_review",
+    "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts",
+    ""
+  ],
+  "MET-06": [
+    "pass",
+    "one computation behind the screen, CSV, PDF and package (packages/reporting metrics.ts, counting.ts, fema/package.ts); export records carry their totals and SHA-256",
+    "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts, services/api/test/exports.db.test.ts (package totals equal the Declaration screen), tests/integration/layer6.int.test.ts (declaration, metrics, package and situation map agree on the stack)",
+    ""
+  ],
+  "MET-07": [
+    "partial",
+    "resource link checks and expiry (layer 3, worker jobs/reminders.ts); resources carry reviewed_at and link_status",
+    "services/worker/test/reminders.db.test.ts",
+    "Freshness and broken-link rate are checked and shown per resource but not yet reported as a metric."
+  ],
+  "MET-08": [
+    "deferred",
+    "",
+    "",
+    "Reliability (failed saves, duplicate effects, availability, restore, recovery times) comes from operations monitoring (ADR-0023, OpenTelemetry later) and the restore drills, not the metrics engine."
+  ],
+  "MET-09": ["deferred", "", "", "AI metrics arrive with the AI features (layer 7)."],
+  "MET-10": [
+    "partial",
+    "metric accountability.denied (refused attempts from the audit chain by action and reason)",
+    "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts",
+    "Audit completeness is proven by the audit chain verifier (layer 1) rather than reported as a metric."
+  ],
+  "BRD:FR-14.01": [
+    "pass",
+    "packages/reporting/src/metrics.ts METRICS (missions, personnel, assessment/damage, badges) from version-1 shipped definitions and county versions (governed definitions metric.<key>)",
+    "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts",
+    ""
+  ],
+  "BRD:FR-14.02": [
+    "partial",
+    "period bounded to 92 days in the tenant's time zone; filters mission kind, priority, department, degree (routes/metrics.ts)",
+    "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts, tests/e2e/console-l6.spec.ts (metrics journey)",
+    "No status or severity filter: missions by state is a breakdown instead."
+  ],
+  "BRD:FR-14.03": [
+    "pass",
+    "damage.units by FEMA degree from the counting rule, with self-reported, awaiting review and inaccessible shown apart",
+    "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts, packages/reporting/test/counting.test.ts",
+    ""
+  ],
+  "BRD:FR-14.04": [
+    "partial",
+    "trends by operational period (07:00 and 19:00 local, daylight saving handled); people and hours by department",
+    "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts",
+    "Utilization as a share of capacity is not computed."
+  ],
+  "BRD:FR-14.05": [
+    "pass",
+    "each value names its definition and version, scope and generation time; screen, CSV and PDF from one computation (AC-14C)",
+    "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts, tests/e2e/console-l6.spec.ts",
+    ""
+  ],
+  "BRD:FR-14.06": [
+    "pass",
+    "metricsCsv with the formula guard; metricsPdf as PDF/UA-1 (veraPDF in CI)",
+    "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts, scripts/verapdf.sh (metrics.pdf)",
+    ""
+  ],
+  "BRD:FR-14.07": [
+    "pass",
+    "records missing a milestone are disclosed as left out with a count, never guessed (metrics incomplete)",
+    "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts",
+    ""
+  ],
+  "AC-14A": [
+    "pass",
+    "missions.closed follows the active definition (shipped: closed; a county version can include cleared)",
+    "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts (a cleared mission is not closed under the shipped definition and is under a county version)",
+    ""
+  ],
+  "AC-14B": [
+    "pass",
+    "counting rule classifies each assessment into its degree and what is shown apart",
+    "packages/reporting/test/counting.test.ts, packages/reporting/test/count.db.test.ts",
+    ""
+  ],
+  "AC-14C": [
+    "pass",
+    "one computation for the screen, CSV and PDF; exports carry counts only",
+    "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts, packages/reporting/test/count.db.test.ts, tests/integration/layer6.int.test.ts",
+    ""
+  ],
+  "BRD:FR-15.01": [
+    "pass",
+    "drafts per period, scope and cutoff from mission, staffing, damage, shelters and outages facts (packages/reporting facts.ts; routes/official-reports.ts)",
+    "services/api/test/official-reports.db.test.ts, tests/e2e/console-l6.spec.ts",
+    ""
+  ],
+  "BRD:FR-15.02": [
+    "pass",
+    "sections kept apart: facts (with definitions and record citations), staff judgments, drafted narrative that a person must read and save",
+    "services/api/test/official-reports.db.test.ts, packages/reporting/test/facts.test.ts",
+    ""
+  ],
+  "BRD:FR-15.03": [
+    "pass",
+    "unknown is written as unknown; no default condition is assumed",
+    "packages/reporting/test/facts.test.ts",
+    ""
+  ],
+  "BRD:FR-15.04": [
+    "pass",
+    "draft, review by someone else, issue with a confirmed reason (G4, RULE-14), classification, frozen snapshot",
+    "services/api/test/official-reports.db.test.ts, tests/e2e/console-l6.spec.ts",
+    ""
+  ],
+  "BRD:FR-15.05": [
+    "pass",
+    "issued values never change; an amendment is a new draft that supersedes on issue",
+    "services/api/test/official-reports.db.test.ts",
+    ""
+  ],
+  "BRD:FR-15.06": [
+    "pass",
+    "report PDF (PDF/UA-1) and CSV from the frozen copy with author, reviewer, issuer, scope and times (packages/reporting report-export.ts)",
+    "services/api/test/exports.db.test.ts, scripts/verapdf.sh (official-report.pdf), tests/e2e/console-l6.spec.ts",
+    ""
+  ],
+  "AC-15A": [
+    "pass",
+    "the snapshot is unchanged when a counted record changes after issue",
+    "services/api/test/official-reports.db.test.ts",
+    ""
+  ],
+  "AC-15B": [
+    "pass",
+    "unknown communications status reads unknown",
+    "packages/reporting/test/facts.test.ts",
+    ""
+  ],
+  "AC-15C": [
+    "pass",
+    "never issued without review",
+    "services/api/test/official-reports.db.test.ts",
+    ""
+  ],
+  "NFR-12": [
+    "pass",
+    "@cg/pdf writes tagged PDF/UA-1 (headings, tables with headers, lists, figures with alternative text, language set); every PDF kind also has a CSV or a screen with the same content",
+    "scripts/verapdf.sh in CI over blocks-en/es, ida-package, official-report, metrics, media-sheet-en/es, resident-copy-en/es; packages/pdf/test/pdf.test.ts",
+    "The screen-reader pass of the PDFs is pending a person (GATE-03)."
+  ],
+  "PHO-16": [
+    "pass",
+    "IDA package export (zip: PDF, CSVs, GeoJSON, README, representative photos) from reviewed, verified records (worker jobs/exports.ts, packages/reporting fema/package.ts)",
+    "services/api/test/exports.db.test.ts, packages/reporting/test/fema-package.test.ts, tests/integration/layer6.int.test.ts",
+    ""
+  ],
+  "EQ-11": [
+    "pass",
+    "packages/reporting equity.ts (rates by tract against households and residential structures, income bands, small numbers hidden); /console/equity; the situation map's coverage shading",
+    "services/api/test/equity.db.test.ts, packages/reporting/test/equity.test.ts, tests/e2e/console-l6.spec.ts (equity journey, situation map journey)",
+    ""
+  ],
+  "EQ-12": [
+    "pass",
+    "time to first review and to help by income band, occupancy, language and channel; gap alerts with outreach (worker equity-alerts)",
+    "services/api/test/equity.db.test.ts, packages/reporting/test/equity.test.ts",
+    ""
+  ],
+  "SCL-09": [
+    "pass",
+    "GeoJSON and CSV in the IDA package; per-tenant API keys with scopes and a second administrator (routes/integrations.ts); signed webhooks for report issued and export ready (worker jobs/webhooks.ts); the read-only GeoServices feature service for the PDA layer (routes/gis.ts); OpenAPI at /api/docs/json; ADR-0042",
+    "services/api/test/integrations.db.test.ts, packages/adapters/test/webhooks.test.ts, packages/crypto/test/api-key.test.ts, packages/reporting/test/pda-layer.test.ts, tests/integration/layer6.int.test.ts, tests/e2e/console-l6.spec.ts (API keys and webhooks journey)",
+    "The feature service answers the query subset a GIS client needs to add the layer (ADR-0042), not the full ArcGIS Server API; webhooks reach only public HTTPS hosts."
+  ],
+  "DCL:DEC-05": [
+    "pass",
+    "totals by event, by jurisdiction (a city package) and by tract (counting rule byTract); the damage-concentration layer on the situation map (routes/situation-areas.ts)",
+    "services/api/test/declaration.db.test.ts, services/api/test/exports.db.test.ts (city package), services/api/test/equity.db.test.ts (situation areas add up to the Declaration screen), tests/e2e/console-l6.spec.ts (situation map journey)",
+    ""
+  ],
+  "DCL:DEC-06": [
+    "pass",
+    "areaProfile: ACS population profile for the tracts in the event's footprint or with reports, population-weighted, cited by snapshot",
+    "services/api/test/tracts.db.test.ts, services/api/test/declaration.db.test.ts",
+    ""
+  ],
+  "DCL:DEC-07": [
+    "pass",
+    "cg.outage log by facility or service type with customers out, start, expected and actual restoration, flags over 72 hours, feed suggestions confirmed by a person; outages on the situation map",
+    "services/api/test/declaration.db.test.ts, services/api/test/equity.db.test.ts (outages on the situation map), tests/e2e/console-l6.spec.ts",
+    ""
+  ],
+  "DCL:DEC-08": [
+    "pass",
+    "cg.casualty_count append-only, only roles naming casualty.record, official source required; resident answers shown as unconfirmed",
+    "services/api/test/declaration.db.test.ts",
+    ""
+  ],
+  "DCL:DEC-09": [
+    "partial",
+    "donated volunteer hours by partner organization and registered volunteers; shelter figures in the package (packages/reporting declaration.ts, fema/data.ts)",
+    "services/api/test/declaration.db.test.ts",
+    "Meals served, cleanup teams and donated goods from the needs and partner records are not summarized yet."
+  ],
+  "DCL:DEC-10": [
+    "pass",
+    "cg.pa_site with applicant, category of work, estimate and basis, percent complete, insurance, other federal agency, debris; PA site sheet and cost survey in the package",
+    "services/api/test/declaration.db.test.ts, packages/reporting/test/fema-package.test.ts",
+    ""
+  ],
+  "DCL:DEC-11": [
+    "pass",
+    "POST /events/:id/exports (whole event or one jurisdiction) built by the worker",
+    "services/api/test/exports.db.test.ts, tests/integration/layer6.int.test.ts",
+    ""
+  ],
+  "DCL:DEC-12": [
+    "partial",
+    "FEMA's own PDA formats mapped field by field (packages/reporting fema/shipped.ts, ten forms)",
+    "packages/reporting/test/fema-mapping.test.ts, packages/reporting/test/fema-package.test.ts",
+    "The v1 mappings follow docs/05; FEMA's current form versions could not be fetched from this build environment and must be compared with fema.gov/pda before the pilot."
+  ],
+  "DCL:DEC-13": [
+    "pass",
+    "closed vocabulary of mappable elements (no name, phone, email or street address); places as the 100 m USNG cell, ZIP, tract and jurisdiction; photos blurred and chosen by a person; liaison and validators see counts only",
+    "services/api/test/exports.db.test.ts (no street address, reference code or parcel in any file), services/api/test/joint-pda.db.test.ts, services/api/test/fema-mappings.db.test.ts",
+    ""
+  ],
+  "DCL:DEC-14": [
+    "pass",
+    "Form 010-0-13 data drafted from the records (packages/reporting fema/package.ts), Box 10 from the joint assessment schedule",
+    "packages/reporting/test/fema-package.test.ts, services/api/test/joint-pda.db.test.ts",
+    "The governor's office files; the platform never submits."
+  ],
+  "DCL:DEC-15": [
+    "pass",
+    "cg.fema_form_mapping versions (draft, active, retired) activated with a confirmed reason, no release needed (0046); /console/fema-mappings",
+    "services/api/test/fema-mappings.db.test.ts, tests/e2e/console-l6.spec.ts",
+    ""
+  ],
+  "DCL:DEC-16": [
+    "pass",
+    "the 30-day filing clock from the incident end date on the Declaration screen",
+    "services/api/test/declaration.db.test.ts, tests/e2e/console-l6.spec.ts",
+    ""
+  ],
+  "RPT-01": [
+    "pass",
+    "situation reports and briefings follow F15: draft, reviewed, issued, immutable, amended (routes/official-reports.ts); the package is versioned by its export record",
+    "services/api/test/official-reports.db.test.ts, tests/e2e/console-l6.spec.ts",
+    ""
+  ],
+  "CON-06": [
+    "pass",
+    "'what changed since the last issued report' from the frozen facts; drafts sourced from the records with citations",
+    "services/api/test/official-reports.db.test.ts, packages/reporting/test/facts.test.ts",
+    "AI-assisted drafting (CMD-16) is layer 7."
+  ],
+  "CON-07": [
+    "pass",
+    "coverage alerts: tracts and income bands under the tenant's share of the best-covered band against the residential structure inventory inside the footprint; raised and cleared by the worker",
+    "services/api/test/equity.db.test.ts, packages/reporting/test/equity.test.ts, tests/e2e/console-l6.spec.ts",
+    ""
+  ],
+  "FL:FR-10": [
+    "pass",
+    "joint assessment: schedule, seeded proportional sample by degree, route without addresses, validator marks (0049; routes/joint-pda.ts; /console/joint-assessment); fema_validator role time-limited",
+    "services/api/test/joint-pda.db.test.ts, packages/reporting/test/joint-sample.test.ts, tests/e2e/console-l6.spec.ts",
+    ""
+  ],
+  "BRD:DEC-15": [
+    "pass",
+    "proposed defaults in force: shipped metric definitions with county versions, operational periods 07:00 and 19:00, review and snapshot rules of F15",
+    "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts, services/api/test/official-reports.db.test.ts",
+    "Defaults are recorded in layer-6 plan §4; the owner (planning) confirms them per county."
+  ],
+  "GATE-07": [
+    "pass",
+    "one counting rule, one metrics computation, frozen report snapshots, export records with totals and hashes",
+    "services/api/test/exports.db.test.ts, services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts, services/api/test/official-reports.db.test.ts, tests/integration/layer6.int.test.ts",
+    ""
+  ],
+  "PUB-13": [
+    "pass",
+    "GET /api/public/help/:tenant/media (page with last-updated and generated times, no timed refresh); layer 6: GET /api/public/help/:tenant/media.pdf (PDF/UA, English and Spanish, linked from the page; services/api/src/public/pdf.ts)",
+    "services/api/test/help.db.test.ts, tests/e2e/help.spec.ts (axe), services/api/test/public-pdfs.db.test.ts, tests/integration/layer6.int.test.ts, scripts/verapdf.sh (media-sheet-en/es)",
+    ""
+  ],
+  "FL:FR-32": [
+    "pass",
+    "GET /api/public/intake/:tenant/me/export.pdf behind the resident token: home and damage answers, own words, photos; who, contact, household and needs left out (services/api/src/public/my-copy.ts, pdf.ts); 'Download my copy (PDF)' on my report",
+    "services/api/test/public-pdfs.db.test.ts, tests/e2e/resident.spec.ts (download by keyboard), scripts/verapdf.sh (resident-copy-en/es)",
+    ""
+  ],
+  "CON-03": [
+    "partial",
+    "GET /situation layers: reports, danger flags, verified damage, needs, sites, teams, hazards, event area, each on its own read action with a table (routes/situation.ts, screens/situation.tsx); layer 6: GET /situation/areas: tracts shaded by damaged units, reports per 100 homes (equity map), poverty and limited-English shares, each with source and as-of time and a table; outages placed at their facility (routes/situation-areas.ts, screens/situation.tsx)",
+    "services/api/test/siteoperator.db.test.ts (CON-03 layers by role), tests/e2e/console-l4.spec.ts (situation map with axe), services/api/test/equity.db.test.ts (CON-03 area layers), tests/e2e/console-l6.spec.ts (situation map journey)",
+    "Road closures are not a layer yet; an outage without a known facility is listed, not placed."
+  ],
+  "CON-17": [
+    "partial",
+    "offline field app (packages/field-core, apps/field), FEMA degree pictures (apps/field/src/assessment.ts) and FEMA matrix job aids; layer 6: GeoJSON and CSV in the IDA package and the read-only PDA feature service for ArcGIS and QGIS (routes/gis.ts)",
+    "packages/field-core/test/sync.test.ts, apps/field/test/i18n.test.ts (assessment pictures and job aids), services/api/test/integrations.db.test.ts, tests/integration/layer6.int.test.ts",
+    "Survey123-compatible import of routes and parcels is not built; two-way ArcGIS sync is excluded by SCL-13."
+  ],
+  "EQ-13": [
+    "pass",
+    "afterSubmission questions optional and after saving; packages/db/src/after-answers.ts keeps aggregate answers apart from restricted ones; layer 6: equity figures hide counts from 1 to 10 and anything worked out from them (packages/reporting equity.ts); the coverage map shades them as unknown",
+    "services/worker/test/intake.db.test.ts, tests/integration/layer2.int.test.ts (AC-10A), services/api/test/equity.db.test.ts, packages/reporting/test/equity.test.ts",
+    ""
+  ],
+  "FL-17": [
+    "partial",
+    "hours from check-in rows (cg.check_in, 0028), ICS 214 entries from check-in and assignments; layer 6: donated volunteer hours by organization on the Declaration screen and in the package (packages/reporting declaration.ts)",
+    "services/api/test/roster.db.test.ts (check-in hours), services/api/test/field.db.test.ts (check-out counts the hours), services/api/test/declaration.db.test.ts",
+    "Donated equipment is not logged yet."
+  ],
+  "DCL:DEC-03": [
+    "pass",
+    "cg.report.verification_level, routes/reports.ts /verification; layer 6: the counting rule counts only approved, verified records; the rest are shown apart (packages/reporting counting.ts)",
+    "services/api/test/reports.db.test.ts, tests/integration/layer2.int.test.ts, packages/reporting/test/counting.test.ts, packages/reporting/test/count.db.test.ts",
+    ""
+  ],
+  "DCL:DEC-04": [
+    "pass",
+    "pre_existing and primary_residence captured (graph, cg.report columns); layer 6: pre-existing damage and non-primary residences are shown apart from IA totals by the counting rule",
+    "packages/intake/test/graph.test.ts, packages/reporting/test/counting.test.ts",
+    ""
+  ],
+  "DCL:DEC-17": [
+    "pass",
+    "graphs/westwind.ts (units, home type incl. condo and manufactured, utilities, access, business impact); layer 6: field capture of FEMA details (water depths, tribal ownership, utilities, access reasons; packages/field-core fema.ts, apps/field) and the FEMA output mapping",
+    "packages/intake/test/graph.test.ts (organization buildings with unit counts), services/api/test/fieldwork.db.test.ts, packages/field-core/test, apps/field/test, packages/reporting/test/fema-package.test.ts",
+    ""
+  ],
+  "BRD:FR-12.05": [
+    "pass",
+    "approved report changed by the resident → submitted with reReview; layer 6: official totals read approved versions only (counting rule, report snapshots with record versions)",
+    "tests/integration/layer2.int.test.ts (AC-12C), packages/reporting/test/counting.test.ts, services/api/test/official-reports.db.test.ts",
+    ""
+  ],
+  "SCL-13": [
+    "pass",
+    "MapLibre + self-hosted PMTiles on the public page, loaded only on request (ADR-0029); ZIP centroids; Esri/FEMA by import and export only; layer 6: as amended 2026-10-14 (ADR-0039): public reference data pulled from free federal services with file import for every dataset (packages/refdata; ADR-0041); the situation map's area layers on MapLibre",
+    "tests/e2e/help.spec.ts (map toggle), apps/web-help/src/map.ts, packages/refdata/test, services/worker/test/refdata.db.test.ts, services/api/test/refdata.db.test.ts",
+    "Live pulls were not verified against the federal hosts from this environment (blocked); Adam runs the live check in production (decision 2026-10-15)."
+  ],
+  "SCL-03": [
+    "partial",
+    "queue with publisher confirms, stored fallback, pre-leased reference codes; k6 profiles in tests/load; layer 6: generation profile: counting rule, IDA package and metrics for 50,000 reports (services/worker/scripts/generation-load.ts)",
+    "tests/load (smoke in CI), pnpm --filter @cg/worker load:generation smoke in CI",
+    "The intake full profiles still need a sized host; the generation full profile was run locally (layer-6 status)."
+  ],
+  "ADM-05": [
+    "pass",
+    "packages/authz/src/guardrails.ts G1–G7; criminal-justice data only for CJIS-qualified users: services/cjis-api/src/policy.ts E1–E6 with qualification rebuilt from the enclave database on every request (fingerprint check, training, approved role, active agency, second factor); second administrator and SELF_FORBIDDEN for enclave roles; enclave audit immutable; no break-glass; platform actions mission.cji.link and mission.cji.open explicit only; layer 6: G6 extended: an API key or webhook is approved or declined by someone other than who asked, and both are frozen during break-glass",
+    "one test file per guardrail, layer1.int.test.ts; services/cjis-api/test/policy.test.ts, services/cjis-api/test/api.db.test.ts (qualification, second administrator), packages/cjis-db/test/enclave.db.test.ts (decided_by <> requested_by, audit immutable), packages/authz/test/templates.test.ts, packages/authz/test/guardrail-G6.test.ts, services/api/test/integrations.db.test.ts",
+    ""
+  ]
+}

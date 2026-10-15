@@ -119,6 +119,12 @@ The `cjis-*` services run on their own internal network `cg_cjis` with their own
 - A new enclave account is created by an agency administrator (**Accounts**: screening dates, then a role request), approved by a second administrator (**Approvals**), and activated with a one-time password shown once to hand over in person.
 - `docker compose down -v` resets the enclave with everything else; the exercise agencies, accounts and record come back on the next `up`.
 
+### Official numbers, the FEMA package and integrations (layer 6)
+
+Every official figure comes from one counting rule (`packages/reporting`): only approved, verified records count, one home counts once, and what is left out is shown apart, never dropped (DCL:DEC-03). Sign in as `dana.director@example.org` (`county`): **Declaration data** keeps the incident period and the 30-day clock, outages, official casualty counts and public damage sites, chooses representative photos (only detector-blurred ones, none until a detector is enabled) and makes the **damage assessment package** (a ZIP with the PDF, the FEMA forms as CSV, the GeoJSON layer and a README naming the mapping versions; for the whole event or one city). **Official reports** are drafted, reviewed by someone else and issued with a reason; the issued copy is frozen and written under object lock, and is exported as PDF or CSV. **Joint assessment** draws the FEMA/state sample (a `fema_validator` role is time-limited), **Shared declaration figures** is the state liaison's counts-only view under a signed agreement, **FEMA form mappings** puts a new FEMA edition in force without a release, **Metrics** and **Equity** show the shared metrics and the coverage and wait-time gaps (counts under 11 hidden), and the **Situation map** shades tracts by damage, coverage or the Census profile. Every PDF is PDF/UA-1.
+
+**API keys and webhooks** (Administration, `admin@example.org` asks, `security.admin@example.org` approves; never the same person): a key is shown once and reads the PDA feature service at `https://localhost/api/gis/<county>/pda/FeatureServer` (add it in ArcGIS or QGIS with the key as `token`); a webhook (HTTPS, a public host name) is told when a report is issued or an export is ready, signed per Standard Webhooks (ADR-0042). Residents download their own copy of their report from **my report**; the public media sheet is also a PDF (`/api/public/help/<county>/media.pdf`).
+
 Maps (SCL-13) are opt-in because the first build downloads the Missouri OpenStreetMap extract: set `COMPOSE_PROFILES=maps` in `.env` for the geocoder and run `docker compose --profile maps-build run --rm tiles-build` once for vector tiles.
 
 Behind a corporate proxy that inspects TLS, pass its CA to the builds: `docker compose build --build-arg HTTPS_PROXY=... ` and `--secret id=extra_ca,src=/path/ca.pem` (see `infra/node/Dockerfile`).
@@ -194,11 +200,12 @@ pnpm lint              # eslint + prettier
 pnpm typecheck
 pnpm check:product-name   # ADM-03: product name never hardcoded
 pnpm test              # unit tests (vitest)
-pnpm test:integration  # against the running stack (STACK_URL, COMPOSE_FILES to override): layer 1 to 5 acceptance cases
+pnpm test:integration  # against the running stack (STACK_URL, COMPOSE_FILES to override): layer 1 to 6 acceptance cases
 pnpm test:e2e          # Playwright + axe: resident flow, kiosk, console onboarding, review, needs board, sites, dispatch and missions journeys, the field app's web build, the public help page, the CJIS enclave and the console's enclave link (npx playwright install chromium first)
 tests/load/run.sh submissions smoke   # k6 load profiles (SCL-03) through the pinned k6 container; also sms-sessions, help and field (positions and the live stream); `full` is the target profile, see tests/load/README.md
 pnpm --filter @cg/web-help build && pnpm --filter @cg/web-help check:size   # PUB-07: the public page's first load against its 300 KB budget
-pnpm --filter @cg/pdf samples out/pdf && scripts/verapdf.sh out/pdf   # ADR-0040: one PDF of every kind, each checked against PDF/UA-1 by veraPDF (Docker)
+pnpm --filter @cg/pdf samples out/pdf && pnpm --filter @cg/reporting samples out/pdf && pnpm --filter @cg/api samples out/pdf && scripts/verapdf.sh out/pdf   # ADR-0040: one PDF of every kind, each checked against PDF/UA-1 by veraPDF (Docker)
+API_DB_TEST_APP_URL=... API_DB_TEST_WORKER_URL=... pnpm --filter @cg/worker load:generation smoke   # SCL-03: counting rule, IDA package and metrics timed for 1,000 reports (`full`: 50,000)
 scripts/backup.sh && scripts/restore.sh backups/<stamp>   # NFR-05; drills in tests/drills/
 DATABASE_MIGRATOR_URL=... pnpm --filter @cg/db check:migrations 3   # newest migrations up, down, up; dictionary and RLS checks (SEC-05/11)
 pnpm --filter @cg/intake lint:strings   # INT-08: reading-grade table and tone findings for the question graph

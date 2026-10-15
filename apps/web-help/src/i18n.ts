@@ -12,6 +12,18 @@ export const STRINGS = {
     searchLabel: 'Your ZIP code, address or a landmark',
     searchHint: 'Nearest sites come first when we know where you are. We keep nothing you type.',
     search: 'Find nearest',
+    askLabel: 'Ask a question',
+    askHint:
+      'For example: where can I get food tonight? or I want to report damage. We keep nothing you type.',
+    ask: 'Ask',
+    asking: 'Looking…',
+    askFailed: 'We could not answer just now. The list below still works.',
+    askLinks: {
+      myReport: 'Check your report (we confirm it is you first)',
+      resume: 'Continue a saved report',
+      report: 'Report damage or needs',
+      help: 'See all the help listed here',
+    } as Record<string, string>,
     useLocation: 'Use my location',
     locating: 'Finding your location…',
     locationDenied: 'We could not use your location. Enter a ZIP code instead.',
@@ -93,6 +105,18 @@ export const STRINGS = {
     searchHint:
       'Los sitios más cercanos van primero cuando sabemos dónde está. No guardamos lo que escribe.',
     search: 'Buscar el más cercano',
+    askLabel: 'Haga una pregunta',
+    askHint:
+      'Por ejemplo: ¿dónde consigo comida esta noche? o quiero reportar daños. No guardamos nada de lo que escribe.',
+    ask: 'Preguntar',
+    asking: 'Buscando…',
+    askFailed: 'No pudimos responder ahora. La lista de abajo sigue funcionando.',
+    askLinks: {
+      myReport: 'Ver su reporte (primero confirmamos que es usted)',
+      resume: 'Seguir un reporte guardado',
+      report: 'Reportar daños o necesidades',
+      help: 'Ver toda la ayuda publicada aquí',
+    } as Record<string, string>,
     useLocation: 'Usar mi ubicación',
     locating: 'Buscando su ubicación…',
     locationDenied: 'No pudimos usar su ubicación. Escriba un código postal.',

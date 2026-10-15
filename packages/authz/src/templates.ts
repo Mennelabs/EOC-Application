@@ -72,7 +72,7 @@ function frontline(
   ];
 }
 
-export const roleTemplates: readonly RoleTemplate[] = [
+const templates: readonly RoleTemplate[] = [
   {
     key: 'tenant_admin',
     name: 'Tenant administrator',
@@ -1126,6 +1126,17 @@ export const roleTemplates: readonly RoleTemplate[] = [
     ],
   },
 ];
+
+/**
+ * Layer 7 (CON-12, CMD-21): every staff and field role opens the command window; a
+ * command only runs what the role could do by hand. The FEMA validator, who sees one
+ * sample and nothing else, has nothing to run and does not get it.
+ */
+const NO_COMMAND_WINDOW = new Set(['fema_validator']);
+
+export const roleTemplates: readonly RoleTemplate[] = templates.map((t) =>
+  NO_COMMAND_WINDOW.has(t.key) ? t : { ...t, grants: [...t.grants, g('command.use')] },
+);
 
 export const templateByKey: ReadonlyMap<string, RoleTemplate> = new Map(
   roleTemplates.map((t) => [t.key, t]),

@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { accountRoutes } from './accounts.ts';
 import { aiRegisterRoutes } from './ai-register.ts';
 import { auditRoutes } from './audit.ts';
+import { commandRoutes } from './commands.ts';
 import { breakGlassRoutes } from './breakglass.ts';
 import { contactRoutes } from './contacts.ts';
 import { declarationRoutes } from './declaration.ts';
@@ -95,6 +96,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   equityRoutes,
   integrationRoutes,
   situationAreaRoutes,
+  commandRoutes,
 ];
 
 /** The default set, as the tests mount it. */

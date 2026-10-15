@@ -2260,6 +2260,30 @@ export type PartnerCategory = 'needs_met' | 'services' | 'sheltered' | 'teams' |
 export type PartnerRollup =
   { all: true } | { all: false; partners: Uuid[]; categories: PartnerCategory[] };
 
+/** One command a person asked for (ADR-0044, CMD-37); never the typed words. */
+export interface CommandExecutionTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  account_id: Uuid;
+  execution_id: Uuid;
+  input_kind: 'shorthand' | 'natural' | 'alias';
+  command: string;
+  command_version: number;
+  phase: number;
+  plan: JsonGen<Record<string, unknown>>;
+  plan_hash: string;
+  confirmation: 'none' | 'one_tap' | 'full_review' | 'second_person';
+  reversal: 'undo_15_min' | 'compensating' | 'none';
+  state: 'awaiting_confirmation' | 'executing' | 'succeeded' | 'failed' | 'canceled' | 'stale';
+  confirmed_by: Uuid | null;
+  confirmed_at: TsNullable;
+  reason: string | null;
+  result: ColumnType<unknown, string | null | undefined, string | null>;
+  reversal_of: Uuid | null;
+  undone_by: Uuid | null;
+  undo_until: TsNullable;
+}
+
 /** One AI call (AIG-01, layer-7 task A); never the prompt or the reply. */
 export interface AiOutputTable {
   id: Generated<Uuid>;
@@ -2940,6 +2964,7 @@ export interface Database {
   'cg.casualty_count': CasualtyCountTable;
   'cg.pa_site': PaSiteTable;
   'cg.ai_output': AiOutputTable;
+  'cg.command_execution': CommandExecutionTable;
   'cg.ai_health_alert': AiHealthAlertTable;
   'cg.official_report': OfficialReportTable;
   'cg.official_report_section': OfficialReportSectionTable;

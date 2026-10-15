@@ -2076,6 +2076,32 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     },
     { omit: ['id'] },
   ),
+  command_execution: table({
+    account_id: { c: 'internal', d: 'Who asked for the command (CMD-37)' },
+    execution_id: { c: 'internal', d: 'Idempotency key for the operation it runs (CMD-25)' },
+    input_kind: { c: 'internal', d: 'shorthand, natural language or alias' },
+    command: { c: 'internal', d: 'Catalogued command name (CMD-12)' },
+    command_version: { c: 'internal' },
+    phase: { c: 'internal', d: 'Rollout phase of the command (Section 30.2)' },
+    plan: {
+      c: 'sensitive',
+      d: 'Interpreted plan: arguments and the target with its version; never the typed words',
+    },
+    plan_hash: { c: 'internal', d: 'What a confirmation is bound to (AC-C04)' },
+    confirmation: { c: 'internal' },
+    reversal: {
+      c: 'internal',
+      d: 'undo within 15 minutes, a compensating action, or none (CMD-28)',
+    },
+    state: { c: 'internal' },
+    confirmed_by: { c: 'internal' },
+    confirmed_at: { c: 'internal' },
+    reason: { c: 'sensitive', d: 'Reason given at confirmation (RULE-14)' },
+    result: { c: 'sensitive', d: 'Verified result from the operation (CMD-26)' },
+    reversal_of: { c: 'internal' },
+    undone_by: { c: 'internal' },
+    undo_until: { c: 'internal' },
+  }),
   ai_output: table(
     {
       id: { c: 'internal' },

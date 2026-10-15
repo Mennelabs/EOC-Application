@@ -92,6 +92,13 @@ describe('shipped role templates (ADM-04)', () => {
     ]);
   });
 
+  it('CON-12, CMD-21: every role but the FEMA validator opens the command window', () => {
+    const without = roleTemplates
+      .filter((t) => !t.grants.some((g) => g.action === 'command.use'))
+      .map((t) => t.key);
+    expect(without).toEqual(['fema_validator']);
+  });
+
   it('SEC-12: only the law-enforcement liaison links missions to the CJIS enclave', () => {
     const holders = roleTemplates
       .filter((t) => t.grants.some((g) => g.action === 'mission.cji.link'))

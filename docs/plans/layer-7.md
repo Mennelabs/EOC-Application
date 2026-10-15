@@ -75,7 +75,7 @@ Not in this layer, with reasons, in §11.
 
 Situation reports and briefings (CMD-16, CON-06, FR-15.02, AC-15C): the existing template draft can be rewritten by the model from the computed facts only, each sentence citing its facts, labelled as drafted and still unapprovable until a person has read and saved it; a check refuses a draft that states a figure not in the facts (AI-04, AI-09, AI-12). The same pattern drafts PIO posts (PUB-12) and audio scripts for low-power radio and ARES/RACES nets (PUB-14; audio files from OpenAI text-to-speech), alert text sized for WEA (PUB-11), and Boxes 8 and 9 of Form 010-0-13 (DCL:DEC-14). Nothing goes public or official without its named approver (PUB-06, RULE-10).
 
-## 8. Data model (migrations 0052 onward; every column in the dictionary, RLS on every tenant table)
+## 8. Data model (migrations 0054 onward; every column in the dictionary, RLS on every tenant table)
 
 - **AI records:** `ai_output` (feature, provider, model and version, template version, latency, outcome, accepted/edited/rejected and by whom, target record; no raw prompt), `ai_feature_health` (rolling counts per tenant, feature and language; alert state), provider compliance and evaluation rows extending `ai_register`.
 - **Command window:** `command_conversation` and `command_message` (personal, encrypted, 30-day retention, clearable), `command_execution` (actor, scope, input kind, interpreted plan, plan hash, targets with versions, confirmation class and confirming user, per-step results, reversal id, execution id), `command_alias` (personal or organization, normalized expansion, allowed actions, version, audit).

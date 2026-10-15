@@ -1,6 +1,6 @@
 # ADR-0017: Pluggable AI interfaces with a deterministic fake provider
 
-- Status: proposed
+- Status: superseded by ADR-0025 and ADR-0043
 - Date: 2026-10-12
 - Requirements: AIG-01..12, AI-01..12, PHO-09..13, INT-12..16, OWASP LLM Top 10
 

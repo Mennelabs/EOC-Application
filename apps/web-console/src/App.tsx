@@ -39,6 +39,7 @@ import { OfficialReportScreen, OfficialReportsScreen } from './screens/official-
 import { RefdataScreen } from './screens/refdata.tsx';
 import { ReportDetailScreen, ReviewQueueScreen } from './screens/review.tsx';
 import { PublicationsScreen, SitesScreen } from './screens/sites.tsx';
+import { CommandWindow } from './ui/command-window.tsx';
 import { ConfirmDialog, Field, Status } from './ui/primitives.tsx';
 
 /**
@@ -356,6 +357,7 @@ export function App({ config }: { config: RuntimeConfig }) {
         <p className="county">
           {config.countyName ? `${config.countyName} Emergency Management` : ''}
         </p>
+        {me ? <CommandWindow navigate={navigate} /> : null}
         <button type="button" className="link light" onClick={signOut}>
           Sign out
         </button>

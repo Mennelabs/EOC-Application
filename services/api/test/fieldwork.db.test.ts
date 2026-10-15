@@ -14,7 +14,7 @@
  * Runs only with API_DB_TEST_APP_URL and API_DB_TEST_WORKER_URL.
  */
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest';
 import { fakeProvider } from '@cg/ai';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
@@ -22,6 +22,7 @@ import { createDb, withTenant, type Database } from '@cg/db';
 import { westwindGraph } from '@cg/intake';
 import { loadDamageRecords } from '@cg/reporting';
 import type { Kysely } from 'kysely';
+import { enableAiTestDouble } from '../../../tools/seed/src/ai-test-double.ts';
 import { loadSeed } from '../../../tools/seed/src/load.ts';
 import { buildApp, type App } from '../src/app.ts';
 import { AuthError, type SubjectLoader } from '../src/auth/subject.ts';
@@ -527,6 +528,9 @@ describe.skipIf(!appUrl || !workerUrl)('field assessments and counters (database
         .where('tenant_id', '=', county)
         .where('feature', '=', 'field.voice_draft')
         .execute();
+    // ADR-0043: the test double for this test only; the register is put back at the end.
+    const restoreAi = await enableAiTestDouble(dbWorker, county);
+    onTestFinished(restoreAi);
     await setEnabled(true);
     const clientUuid = randomUUID();
     const r = await call('a1', 'POST', '/api/v1/field-assessments/draft', {

@@ -29,7 +29,7 @@ import { ApiError, errors } from '../errors.ts';
 import { loadGraph, sha } from '../public/submit.ts';
 
 export interface FieldVoiceDeps {
-  ai?: { providerFor(tenantId: string, trx: Transaction<Database>): Promise<AiProvider> };
+  ai?: { providerFor(tenantId: string, trx: Transaction<Database>): Promise<AiProvider | null> };
   defaultGraph?: QuestionGraph;
 }
 
@@ -107,7 +107,7 @@ export const fieldVoiceRoutes =
             .executeTakeFirst();
           if (!feature?.enabled) throw off();
           const provider = await ai.providerFor(s.tenantId, trx);
-          if (!provider.llm || provider.info.provider !== feature.provider) throw off();
+          if (!provider?.llm || provider.info.provider !== feature.provider) throw off();
           const graph = await loadGraph(trx, fallback.key, undefined, fallback);
           const { text } = redact(request.body.text); // AIG-05
           const started = Date.now();

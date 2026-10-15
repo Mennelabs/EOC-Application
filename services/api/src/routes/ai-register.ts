@@ -139,7 +139,8 @@ export const aiRegisterRoutes: FastifyPluginAsync = async (raw) => {
               tenant.locales,
               row.evaluation as unknown as EvaluationSummary | null,
             )
-          : { ok: false, reasons: ['provider_unknown'] };
+          : // ADR-0043: the provider is not configured here (no OPENAI_API_KEY): AI stays off.
+            { ok: false, reasons: ['provider_not_configured'] };
         if (!check.ok)
           throw new ApiError(
             409,

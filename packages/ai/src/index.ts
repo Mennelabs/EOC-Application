@@ -23,6 +23,13 @@ export {
 export {
   providers,
   providerByName,
+  registerProvider,
+  unregisterProvider,
+  describeProvider,
+  openAIDescriptor,
+  DEFAULT_PROVIDER,
+  type ProviderDescriptor,
+  type ProviderNeed,
   isCompliant,
   canEnable,
   AI_FEATURES,

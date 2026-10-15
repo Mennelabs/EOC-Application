@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { loadConfig, platformSchema } from '@cg/config';
+import { aiEnv, loadConfig, platformSchema } from '@cg/config';
 import {
   assertTopology,
   connectQueue,
@@ -19,7 +19,7 @@ import { FieldCrypto, OpenBaoKeyService, dbKeyStore } from '@cg/crypto';
 import { buildApp } from './app.ts';
 import { createSubjectLoader } from './auth/subject.ts';
 import { routesWith } from './routes/index.ts';
-import { fakeProvider, providerByName } from '@cg/ai';
+import { DEFAULT_PROVIDER, openAIFromEnv, providerByName, registerProvider } from '@cg/ai';
 import { westwindGraph } from '@cg/intake';
 import { dataUrlFetcher, twilioMediaFetcher } from './channels/media.ts';
 import { webhookRoutes } from './channels/routes.ts';
@@ -91,7 +91,11 @@ const submitDeps = {
   crypto: fieldCrypto,
   now: () => new Date(),
 };
-// AIG-12: the provider is tenant configuration; only registered, compliant providers exist here.
+// ADR-0043: OpenAI for every AI function when the key is configured; no fake provider in a
+// running system. AIG-12: the provider is tenant configuration (`ai.provider`, OpenAI by
+// default); a tenant whose provider is not registered here has its AI features off.
+const openai = openAIFromEnv(aiEnv(config));
+if (openai) registerProvider(openai);
 const ai = {
   async providerFor(
     _tenantId: string,
@@ -102,8 +106,8 @@ const ai = {
       .select('value')
       .where('key', '=', 'ai.provider')
       .executeTakeFirst();
-    const name = typeof row?.value === 'string' ? row.value : 'fake';
-    return providerByName(name) ?? fakeProvider;
+    const name = typeof row?.value === 'string' ? row.value : DEFAULT_PROVIDER;
+    return providerByName(name) ?? null;
   },
 };
 const sessions = new ChannelSessions({

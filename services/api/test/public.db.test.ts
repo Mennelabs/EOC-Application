@@ -14,6 +14,7 @@ import { fakeProvider } from '@cg/ai';
 import { westwindGraph } from '@cg/intake';
 import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
+import { enableAiTestDouble } from '../../../tools/seed/src/ai-test-double.ts';
 import { loadSeed } from '../../../tools/seed/src/load.ts';
 import { buildApp, type App } from '../src/app.ts';
 import { ReferenceCodeLeaser, CODE_PATTERN } from '../src/public/reference-codes.ts';
@@ -28,6 +29,9 @@ describe.skipIf(!appUrl || !workerUrl)('public intake API (database-backed)', ()
   let dbApp: Kysely<Database>;
   let dbWorker: Kysely<Database>;
   let tenantId: string;
+  // ADR-0043: the test double for this suite only; the register is put back afterwards.
+  let restoreAi: (() => Promise<void>) | undefined;
+  let seededRegister: { feature: string; enabled: boolean; provider: string }[] = [];
 
   const answers = {
     danger_now: { kind: 'value', value: 'no' },
@@ -61,6 +65,12 @@ describe.skipIf(!appUrl || !workerUrl)('public intake API (database-backed)', ()
     dbWorker = createDb(workerUrl!, 2);
     const seeded = await loadSeed(dbWorker);
     tenantId = seeded.tenants['county']!;
+    seededRegister = await dbWorker
+      .selectFrom('cg.ai_use_register')
+      .select(['feature', 'enabled', 'provider'])
+      .where('tenant_id', '=', tenantId)
+      .execute();
+    restoreAi = await enableAiTestDouble(dbWorker, tenantId);
     app = await buildApp({
       productName: 'Test Product',
       version: '0.0.0',
@@ -83,6 +93,7 @@ describe.skipIf(!appUrl || !workerUrl)('public intake API (database-backed)', ()
   });
 
   afterAll(async () => {
+    await restoreAi?.();
     await app?.close();
     await dbApp?.destroy();
     await dbWorker?.destroy();
@@ -286,16 +297,9 @@ describe.skipIf(!appUrl || !workerUrl)('public intake API (database-backed)', ()
     expect(inj.json().injectionSuspected).toBe(true);
   });
 
-  it('seeds the AI use register with the fake provider and keeps the severity suggestion off (AIG-01, PHO-12)', async () => {
-    const rows = await dbWorker
-      .selectFrom('cg.ai_use_register')
-      .select(['feature', 'enabled', 'provider'])
-      .where('tenant_id', '=', tenantId)
-      .execute();
-    expect(rows.find((r) => r.feature === 'intake.extraction')).toMatchObject({
-      enabled: true,
-      provider: 'fake',
-    });
-    expect(rows.find((r) => r.feature === 'photo.severity')).toMatchObject({ enabled: false });
+  it('ADR-0043, AIG-01, AIG-08: the seed lists OpenAI for every feature, switched off until evaluated; never the fake provider', async () => {
+    expect(seededRegister.length).toBeGreaterThan(0);
+    for (const r of seededRegister) expect(r.provider).toBe('openai');
+    expect(seededRegister.find((r) => r.feature === 'intake.extraction')?.enabled).toBe(false);
   });
 });

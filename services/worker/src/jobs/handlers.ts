@@ -3,7 +3,7 @@
  * work already done and records nothing new (BRD:FR-00.06).
  */
 import { roleTemplates } from '@cg/authz';
-import { evaluateProvider, fakeProvider } from '@cg/ai';
+import { openAIDescriptor } from '@cg/ai';
 import { westwindGraph } from '@cg/intake';
 import {
   ensureAiRegister,
@@ -45,7 +45,8 @@ export const tenantProvision: TopicHandler = async (ctx, msg) => {
     await ensureRetentionDefaults(trx, tenantId);
     await ensureTemplateRoles(trx, tenantId);
     await ensureIntakeGraph(trx, tenantId, westwindGraph);
-    await ensureAiRegister(trx, tenantId, fakeProvider, await evaluateProvider(fakeProvider));
+    // ADR-0043: OpenAI for every AI function, off until the tenant's languages pass the evaluation.
+    await ensureAiRegister(trx, tenantId, openAIDescriptor(), null);
     await systemAudit(trx, tenantId, 'tenant.provision', {
       action: 'tenant.provision',
       targetType: 'tenant',

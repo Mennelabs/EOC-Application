@@ -64,7 +64,7 @@ export interface PublicRouteDeps {
   residentTokenSecret: string;
   defaultGraph: QuestionGraph;
   /** Provider in force for a tenant (AIG-12); absent means no AI anywhere (INT-16). */
-  ai?: { providerFor(tenantId: string, trx: Transaction<Database>): Promise<AiProvider> };
+  ai?: { providerFor(tenantId: string, trx: Transaction<Database>): Promise<AiProvider | null> };
   now?: () => Date;
   /** The public site's base URL, for links the help endpoints hand out. */
   publicBase?: string | undefined;
@@ -490,7 +490,7 @@ export const publicRoutes =
             .executeTakeFirst();
           if (!feature?.enabled) throw off();
           const provider = await deps.ai!.providerFor(tenant.id, trx);
-          if (!provider.llm || provider.info.provider !== feature.provider) throw off();
+          if (!provider?.llm || provider.info.provider !== feature.provider) throw off();
           const graph = await loadGraph(
             trx,
             request.body.graphKey,

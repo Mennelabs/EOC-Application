@@ -158,7 +158,7 @@ export const photoProcess: TopicHandler = async (ctx, msg) => {
       .executeTakeFirst();
     if (feature?.enabled) {
       const provider = await ctx.ai.providerFor(row.tenant_id, trx);
-      if (provider.image && provider.info.provider === feature.provider) {
+      if (provider?.image && provider.info.provider === feature.provider) {
         try {
           const a = await provider.image.analyse(processed.derivatives.review, 'image/webp');
           if (a.output.detectorAvailable) {

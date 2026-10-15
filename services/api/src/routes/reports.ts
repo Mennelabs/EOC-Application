@@ -203,7 +203,7 @@ export interface ReportDeps {
     | undefined;
   ai?:
     | {
-        providerFor(tenantId: string, trx: Trx): Promise<import('@cg/ai').AiProvider>;
+        providerFor(tenantId: string, trx: Trx): Promise<import('@cg/ai').AiProvider | null>;
       }
     | undefined;
   submit?:
@@ -1131,7 +1131,7 @@ export const reportRoutes: FastifyPluginAsync = async (raw) => {
             'Machine translation is switched off for this organization.',
           );
         const provider = await ai.providerFor(row.tenant_id, trx);
-        if (!provider.translation || provider.info.provider !== feature.provider)
+        if (!provider?.translation || provider.info.provider !== feature.provider)
           throw new ApiError(
             409,
             'ai_off',

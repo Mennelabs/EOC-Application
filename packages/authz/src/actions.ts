@@ -290,6 +290,19 @@ export const actions = {
     'Approve or reject facilities and changes for the registry (never your own proposal)',
     { explicit: true },
   ),
+  // REC-13, REC-14: discovery finds places; a person qualifies each in or out.
+  'discovery.review': a(
+    'write',
+    'discovery_candidate',
+    'Review places found by resource discovery and qualify them in or out of the registry',
+    { explicit: true },
+  ),
+  'discovery.manage': a(
+    'admin',
+    'discovery_source',
+    "Name the county's own sources for resource discovery and switch them on or off",
+    { explicit: true },
+  ),
   // REC-02–REC-12: recommendations come from rules; a named person decides.
   'recommendation.request': a(
     'write',

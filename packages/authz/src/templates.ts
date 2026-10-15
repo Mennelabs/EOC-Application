@@ -1150,6 +1150,13 @@ const RECOMMENDATION_GRANTS: Record<string, string[]> = {
   coad_chair: ['recommendation.request'],
 };
 
+/** REC-13: county EM qualifies candidates in (with facility.approve); planning reviews; the administrator names sources. */
+const DISCOVERY_GRANTS: Record<string, string[]> = {
+  county_em_director: ['discovery.review', 'discovery.manage'],
+  planning_gis_lead: ['discovery.review'],
+  tenant_admin: ['discovery.manage'],
+};
+
 const FACILITY_GRANTS: Record<string, (string | Grant)[]> = {
   // Those who open a site call its contacts; the read of contacts is audited (SEC-18).
   county_em_director: [g('facility.read', ['contact']), 'facility.manage', 'facility.approve'],
@@ -1167,6 +1174,7 @@ export const roleTemplates: readonly RoleTemplate[] = templates.map((t) => ({
     ...t.grants,
     ...(FACILITY_GRANTS[t.key] ?? []).map((a) => (typeof a === 'string' ? g(a) : a)),
     ...(RECOMMENDATION_GRANTS[t.key] ?? []).map((a) => g(a)),
+    ...(DISCOVERY_GRANTS[t.key] ?? []).map((a) => g(a)),
     ...(NO_COMMAND_WINDOW.has(t.key) ? [] : [g('command.use')]),
   ],
 }));

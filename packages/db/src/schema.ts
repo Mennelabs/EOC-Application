@@ -799,7 +799,9 @@ export type NoticeKind =
   | 'publication'
   | 'publication_withdrawn'
   | 'ai_health'
-  | 'facility_recheck';
+  | 'facility_recheck'
+  | 'discovery_digest'
+  | 'discovery_alert';
 
 /** Layer 3's send-once ledger (notices and reminders sent): one row per subject and cycle (BRD:FR-00.06). */
 export interface NoticeLogTable {
@@ -813,7 +815,8 @@ export interface NoticeLogTable {
     | 'publication'
     | 'tenant'
     | 'ai_health_alert'
-    | 'facility';
+    | 'facility'
+    | 'discovery_candidate';
   subject_id: Uuid;
   cycle_key: string;
   due_at: ColumnType<Date, Date | string, Date | string>;
@@ -2290,6 +2293,72 @@ export interface RecommendationTable extends Stamped {
   execution_id: Uuid | null;
 }
 
+/** REC-13: a source the county names for resource discovery (its own feeds, or web search). */
+export interface DiscoverySourceTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  kind: 'hsds' | 'csv' | 'geojson' | 'web_search';
+  name: string;
+  url: string | null;
+  enabled: Generated<boolean>;
+  last_run_at: TsNullable;
+  last_outcome: string | null;
+}
+
+/** One discovery run, on the schedule or asked for (REC-13). */
+export interface DiscoveryRunTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  state: Generated<'requested' | 'running' | 'done' | 'failed'>;
+  requested_by: Uuid | null;
+  started_at: TsNullable;
+  finished_at: TsNullable;
+  summary: JsonGen<Record<string, unknown>>;
+}
+
+export type DiscoverySourceKind = 'partner_post' | 'hsds' | 'csv' | 'geojson' | 'web_search';
+
+/** A place found, waiting for a person to qualify it in or out (REC-13). */
+export interface DiscoveryCandidateTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  run_id: Uuid | null;
+  source_kind: DiscoverySourceKind;
+  source_id: Uuid | null;
+  change: Generated<'new' | 'update' | 'closed'>;
+  facility_id: Uuid | null;
+  name: string;
+  kind: FacilityTable['kind'];
+  address: JSONColumnType<
+    {
+      line1: string | null;
+      city: string | null;
+      state: string | null;
+      postal: string | null;
+    } | null,
+    string | null,
+    string | null
+  >;
+  lat: number | null;
+  lon: number | null;
+  attributes: JsonGen<Record<string, unknown>>;
+  unknown: Generated<string[]>;
+  source_links: Generated<string[]>;
+  precheck: JsonGen<Record<string, unknown>>;
+  note: string | null;
+  fingerprint: string;
+  content_hash: string;
+  state: Generated<'pending' | 'accepted' | 'rejected'>;
+  decided_by: Uuid | null;
+  decided_at: TsNullable;
+  decision_reason: string | null;
+  first_seen_at: TsGen;
+  last_seen_at: TsGen;
+  seen_count: Generated<number>;
+  near_unmet_need: Generated<boolean>;
+  ai_output_id: Uuid | null;
+}
+
 /** Facility registry (layer 7; REC-01). Null attributes are unknown, never guessed (REC-10). */
 export interface FacilityTable extends Stamped {
   id: Generated<Uuid>;
@@ -3076,6 +3145,9 @@ export interface Database {
   'cg.facility': FacilityTable;
   'cg.facility_change': FacilityChangeTable;
   'cg.recommendation': RecommendationTable;
+  'cg.discovery_source': DiscoverySourceTable;
+  'cg.discovery_run': DiscoveryRunTable;
+  'cg.discovery_candidate': DiscoveryCandidateTable;
   'cg.ai_health_alert': AiHealthAlertTable;
   'cg.official_report': OfficialReportTable;
   'cg.official_report_section': OfficialReportSectionTable;

@@ -34,10 +34,12 @@ describe('shipped role templates (ADM-04)', () => {
     const p = previewRole(admin.grants, admin.key);
     // Live positions are for dispatch and safety roles only, the CJIS enclave link for the
     // liaison, official casualty counts, issuing official reports, joint-assessment
-    // validation and a partner's own posting for roles that name them: no wildcard reaches
-    // them (DSP-08, SEC-12, DCL:DEC-08, RULE-10, FL:FR-10, partner posting 2026-10-15).
+    // validation, a partner's own posting and qualifying discovered places for roles that name
+    // them: no wildcard reaches them (DSP-08, SEC-12, DCL:DEC-08, RULE-10, FL:FR-10, partner
+    // posting 2026-10-15, REC-13).
     expect(p.deniedActions.sort()).toEqual([
       'casualty.record',
+      'discovery.review',
       'facility.approve',
       'joint_assessment.validate',
       'mission.cji.link',
@@ -51,6 +53,13 @@ describe('shipped role templates (ADM-04)', () => {
     expect(p.hiddenCategories.map((h) => h.category)).toEqual(
       expect.arrayContaining(['health', 'counseling', 'legal', 'cji']),
     );
+  });
+
+  it('REC-13: county EM and planning review discovered places; county EM and the administrator name sources', () => {
+    const holders = (action: string) =>
+      roleTemplates.filter((t) => t.grants.some((g) => g.action === action)).map((t) => t.key);
+    expect(holders('discovery.review').sort()).toEqual(['county_em_director', 'planning_gis_lead']);
+    expect(holders('discovery.manage').sort()).toEqual(['county_em_director', 'tenant_admin']);
   });
 
   it('partner posting (2026-10-15): only the NGO incident commander posts its own services', () => {

@@ -7,3 +7,4 @@ export * from './smtp.ts';
 export * from './comms.ts';
 export * from './webhooks.ts';
 export * from './link-check.ts';
+export * from './public-get.ts';

@@ -21,6 +21,9 @@ import type {
   ImageAnalysis,
   LanguageModel,
   ProviderInfo,
+  ScribeNote,
+  ScribeNoteLine,
+  ScribeNoteRequest,
   SpeechRequest,
   SpeechToText,
   TextToSpeech,
@@ -230,6 +233,46 @@ export class FakeLanguageModel implements LanguageModel {
     const started = performance.now();
     const output = { ...interpret(request.text), language: detectLanguage(request.text) };
     return { output, provider: INFO, latencyMs: performance.now() - started };
+  }
+
+  /**
+   * Tests only: each sentence of the conversation sorted by its words into
+   * needs, help given, follow-ups and referrals, quoted as said. Never more
+   * than was said; a sentence that tries to instruct the model sets the flag.
+   */
+  async scribeNote(request: ScribeNoteRequest): Promise<AiOutput<ScribeNote>> {
+    const started = performance.now();
+    const note: ScribeNote = {
+      needsHeard: [],
+      helpGiven: [],
+      followUps: [],
+      referrals: [],
+      injectionSuspected: INJECTION.test(request.transcript),
+    };
+    const rules: [keyof Omit<ScribeNote, 'injectionSuspected'>, RegExp][] = [
+      [
+        'referrals',
+        /\b(refer|referred|red cross|salvation army|case manag|cruz roja|ej[eé]rcito de salvaci[oó]n|refer[ií])/i,
+      ],
+      [
+        'followUps',
+        /\b(tomorrow|next week|come back|follow up|call you|ma[ñn]ana|la pr[oó]xima semana|volver[eé]|le llamo)/i,
+      ],
+      [
+        'helpGiven',
+        /\b(i gave|we gave|here is|here are|brought|le di|le dimos|aqu[ií] tiene|traje)/i,
+      ],
+      ['needsHeard', /\b(need|needs|we have no|out of|necesit|no tenemos|nos falta)/i],
+    ];
+    for (const sentence of request.transcript.split(/(?<=[.!?])\s+/)) {
+      const said = sentence.trim();
+      if (!said || INJECTION.test(said)) continue;
+      const hit = rules.find(([, re]) => re.test(said));
+      if (!hit) continue;
+      const line: ScribeNoteLine = { text: said.replace(/[.!?]+$/, ''), quote: said };
+      note[hit[0]].push(line);
+    }
+    return { output: note, provider: INFO, latencyMs: performance.now() - started };
   }
 
   /**

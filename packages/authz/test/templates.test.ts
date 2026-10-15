@@ -36,7 +36,8 @@ describe('shipped role templates (ADM-04)', () => {
     // liaison, official casualty counts, issuing official reports, joint-assessment
     // validation, a partner's own posting and qualifying discovered places for roles that name
     // them: no wildcard reaches them (DSP-08, SEC-12, DCL:DEC-08, RULE-10, FL:FR-10, partner
-    // posting 2026-10-15, REC-13).
+    // posting 2026-10-15, REC-13) and the conversation scribe, which only frontline roles use
+    // with a survivor's consent (FL-04).
     expect(p.deniedActions.sort()).toEqual([
       'casualty.record',
       'discovery.review',
@@ -46,6 +47,8 @@ describe('shipped role templates (ADM-04)', () => {
       'mission.cji.open',
       'official_report.issue',
       'position.read',
+      'scribe.read',
+      'scribe.use',
       'site.post',
       'site.post_publish',
     ]);
@@ -53,6 +56,17 @@ describe('shipped role templates (ADM-04)', () => {
     expect(p.hiddenCategories.map((h) => h.category)).toEqual(
       expect.arrayContaining(['health', 'counseling', 'legal', 'cji']),
     );
+  });
+
+  it('FL-04, FL-05, FL:FR-16: frontline roles use the scribe; counselors, chaplains and nurses never do', () => {
+    const holders = (action: string) =>
+      roleTemplates.filter((t) => t.grants.some((g) => g.action === action)).map((t) => t.key);
+    expect(holders('scribe.use')).not.toContain('crisis_counselor');
+    expect(holders('scribe.use')).not.toContain('shelter_nurse');
+    expect(holders('scribe.use')).toEqual(
+      expect.arrayContaining(['shelter_worker', 'case_manager', 'field_volunteer', 'canvasser']),
+    );
+    expect(holders('scribe.read')).toEqual(['case_manager']);
   });
 
   it('REC-13: county EM and planning review discovered places; county EM and the administrator name sources', () => {

@@ -290,6 +290,19 @@ export const actions = {
     'Approve or reject facilities and changes for the registry (never your own proposal)',
     { explicit: true },
   ),
+  // FL-04, FL-05, FL-18, FL:FR-16: the conversation scribe, never for counseling or spiritual care.
+  'scribe.use': a(
+    'write',
+    'scribe_session',
+    "Record a conversation with a survivor's consent and confirm the drafted note",
+    { explicit: true },
+  ),
+  'scribe.read': a(
+    'read',
+    'scribe_session',
+    "Read the organization's confirmed scribe notes (never a legal aid note, FL:FR-23)",
+    { explicit: true },
+  ),
   // REC-13, REC-14: discovery finds places; a person qualifies each in or out.
   'discovery.review': a(
     'write',

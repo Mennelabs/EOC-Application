@@ -117,6 +117,10 @@ Situation reports and briefings (CMD-16, CON-06, FR-15.02, AC-15C): the existing
 9. **Names join the redaction list** (AIG-05): the current redactor tokenizes contact details and street addresses but not names.
 10. **Translated consequential commands get the full review screen** (CMD-32), even when the action would otherwise take one tap.
 11. **Section 29 wins on dictation:** approved, always with review; the BRD's "if included" wording is superseded (Section 29.1).
+12. **The scribe drafts only what was said** (layer-7 task H, AI-09): each drafted line carries the words it rests on, and a line whose words are not in the conversation is dropped before the worker sees it. Names, phone numbers, emails and street addresses are removed before the model sees the conversation and put back for the worker. A conversation that tries to instruct the model drafts nothing.
+13. **The scribe's note is staff-facing**, so the public-text filter (AIG-07) marks a line that reads as a promise or advice for a second look rather than removing it: the worker is recording what was said, not telling a resident something new.
+14. **A legal aid note is only ever its author's** (FL:FR-23); other notes are read by caseworkers once confirmed, each read audited. Shelter nurses and counselors have no scribe (FL:FR-16; health details belong in the restricted health note).
+15. **AIG-09 for the scribe follows Adam's decision of alerts only**: the per-language correction rate comes from the confirmed notes the worker changed, through the existing AI health alerts; FL-18's automatic switch-off is not built.
 
 ## 13. Tests and gates
 

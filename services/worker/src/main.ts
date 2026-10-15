@@ -4,7 +4,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import pino from 'pino';
 import { aiEnv, loadConfig, workerSchema } from '@cg/config';
 import {
@@ -43,6 +43,7 @@ import { pruneReferenceSnapshots, scheduleReferencePulls } from './jobs/refdata.
 import { evaluateEquityAlerts } from './jobs/equity.ts';
 import { evaluateAiHealth } from './jobs/ai-health.ts';
 import { staleAbandonedPlans, sweepCommandHistory } from './jobs/commands.ts';
+import { expireScribeSessions } from './jobs/scribe.ts';
 import { notifyDiscovery, runDiscovery } from './jobs/discovery.ts';
 import { remindFacilityRechecks } from './jobs/facilities.ts';
 import { webhookSchedule } from './jobs/webhooks.ts';
@@ -139,6 +140,9 @@ const ctx: JobContext = {
         }),
       );
     },
+    async delete(key) {
+      await s3.send(new DeleteObjectCommand({ Bucket: config.S3_BUCKET, Key: key }));
+    },
     async putAnchor(key, body) {
       const until = new Date();
       until.setUTCFullYear(until.getUTCFullYear() + AUDIT_ANCHOR_YEARS);
@@ -221,6 +225,12 @@ const schedules: Schedule[] = [
     name: 'command-history',
     everyMs: 24 * 3600_000,
     run: (c) => sweepCommandHistory(c).then(() => undefined),
+  },
+  // FL-04, SEC-13: a scribe note never confirmed expires with the conversation retention, audio included.
+  {
+    name: 'scribe-expiry',
+    everyMs: 60 * 60_000,
+    run: (c) => expireScribeSessions(c).then(() => undefined),
   },
   {
     name: 'command-plans',

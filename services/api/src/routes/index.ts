@@ -40,6 +40,7 @@ import { reportRoutes } from './reports.ts';
 import { resourceRoutes } from './resources.ts';
 import { roleRoutes } from './roles.ts';
 import { rosterRoutes } from './roster.ts';
+import { scribeRoutesWith, type ScribeDeps } from './scribe.ts';
 import { siteRoutesWith } from './sites.ts';
 import { sharedRoutes } from './shared.ts';
 import { situationRoutes } from './situation.ts';
@@ -59,6 +60,7 @@ export interface RouteDeps {
   metrics?: { productName?: string };
   commands?: CommandDeps;
   drafting?: DraftingDeps;
+  scribe?: ScribeDeps;
 }
 
 /** Route plugins mounted under /api/v1. Each layer adds its modules here. */
@@ -78,6 +80,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   sharedRoutes,
   needRoutes,
   siteRoutesWith(deps.drafting),
+  scribeRoutesWith(deps.scribe),
   missionRoutesWith(deps.missions),
   rosterRoutes,
   volunteerRoutes,

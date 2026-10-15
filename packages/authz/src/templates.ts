@@ -598,6 +598,7 @@ const templates: readonly RoleTemplate[] = [
       g('device.register'),
       g('position.record'),
       g('team.read'),
+      g('scribe.use'), // FL-04: with the survivor's consent
     ],
   },
   {
@@ -682,6 +683,7 @@ const templates: readonly RoleTemplate[] = [
       g('device.register'),
       g('position.record'),
       g('team.read'),
+      g('scribe.use'), // FL-04: with the survivor's consent
     ],
   },
   {
@@ -744,6 +746,7 @@ const templates: readonly RoleTemplate[] = [
       g('referral.respond'),
       g('me.read'),
       { action: 'event.read', events: 'assigned' },
+      g('scribe.use'), // FL-05: only where the county turns it on for legal aid; notes stay the author's (FL:FR-23)
     ],
   },
   {
@@ -757,6 +760,7 @@ const templates: readonly RoleTemplate[] = [
       g('referral.respond'),
       g('me.read'),
       { action: 'event.read', events: 'assigned', dataCategories: ['contact'] },
+      g('scribe.use'), // FL-04: with the survivor's consent
     ],
   },
   {
@@ -776,6 +780,8 @@ const templates: readonly RoleTemplate[] = [
         events: 'assigned',
         dataCategories: ['contact', 'household', 'financial', 'free_text'],
       },
+      g('scribe.use'), // FL-04: with the survivor's consent
+      g('scribe.read'),
     ],
   },
   // Layer 4 task A: dispatch and field roles (docs/03 §25, layer-4 plan §8, DSP-07/08/09/10).
@@ -974,6 +980,7 @@ const templates: readonly RoleTemplate[] = [
       g('field.command'),
       g('field.photo'),
       g('field.area'),
+      g('scribe.use'), // FL-04: with the survivor's consent
     ],
   },
   {
@@ -1009,6 +1016,7 @@ const templates: readonly RoleTemplate[] = [
       g('field.command'),
       g('field.photo'),
       g('field.area'),
+      g('scribe.use'), // FL-04: with the survivor's consent
     ],
   },
   // Layer 4 task B: the other frontline roles of docs/04 in the field app (plan §8).

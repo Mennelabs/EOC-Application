@@ -155,6 +155,26 @@ export const AI_FEATURES: readonly RegisterEntry[] = [
     owner: 'Product owner (command window)',
   },
   {
+    feature: 'scribe.transcription',
+    needs: 'stt',
+    dataSent:
+      "A recorded conversation between a worker and a survivor, with the survivor's consent",
+    decisionInformed:
+      'A transcript that feeds the drafted note; deleted with the audio when the note is confirmed (FL-04)',
+    humanCheckpoint: 'The worker reviews and confirms the note; only the confirmed note is kept',
+    owner: 'Field operations lead',
+  },
+  {
+    feature: 'scribe.note',
+    needs: 'llm',
+    dataSent:
+      'The transcript, redacted of names, phone numbers, emails, street addresses and identifiers',
+    decisionInformed:
+      'Drafts the note (needs heard, help given, follow-ups, referrals), each line with the words it rests on (FL-04)',
+    humanCheckpoint: 'The worker confirms or changes every line; only the confirmed note is kept',
+    owner: 'Field operations lead',
+  },
+  {
     feature: 'discovery.web_search',
     needs: 'llm',
     dataSent:

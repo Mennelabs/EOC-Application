@@ -88,6 +88,68 @@ export interface LanguageModel {
   extract(request: ExtractionRequest): Promise<AiOutput<ExtractionOutput>>;
   /** Plain words to one shorthand line (layer-7 task B). Optional: without it, shorthand only. */
   interpretCommand?(request: CommandInterpretRequest): Promise<AiOutput<CommandInterpretation>>;
+  /** Web search for public places that could serve residents (layer-7 task F, REC-13). Optional. */
+  discoverPlaces?(request: DiscoveryRequest): Promise<AiOutput<DiscoveryOutput>>;
+}
+
+export type DiscoveryPlaceKind =
+  | 'school'
+  | 'place_of_worship'
+  | 'community_center'
+  | 'parking_lot'
+  | 'government'
+  | 'commercial'
+  | 'other';
+
+/**
+ * What a discovery search may carry (REC-13, AIG-05): the county's area in
+ * words, the kinds of place, and the registered public places to check for
+ * changes. Never a person, a request or anything a resident wrote.
+ */
+export interface DiscoveryRequest {
+  /** "Westwind County, Missouri". */
+  area: string;
+  placeTypes: string[];
+  /** Registered public places (name and street address) to check for closures, moves or new hours. */
+  registered: { id: string; name: string; address: string | null }[];
+  /** At most this many places in the answer. */
+  max: number;
+}
+
+/** A place a web page states; only what a source states is filled (REC-10). */
+export interface DiscoveredPlace {
+  name: string;
+  kind: DiscoveryPlaceKind;
+  address: {
+    line1: string | null;
+    city: string | null;
+    state: string | null;
+    postal: string | null;
+  } | null;
+  position: { lat: number; lon: number } | null;
+  facts: {
+    sqft?: number;
+    ada?: boolean;
+    kitchen?: boolean;
+    generator?: boolean;
+    parkingSpaces?: number;
+    hours?: string;
+    website?: string;
+  };
+  /** Pages that state it; only pages the search actually cited are kept. */
+  sourceUrls: string[];
+  change: 'new' | 'update' | 'closed';
+  /** For a change: which registered place it is about. */
+  registeredId: string | null;
+  note: string | null;
+}
+
+export interface DiscoveryOutput {
+  places: DiscoveredPlace[];
+  /** A page tried to instruct the model (AIG-02, OWASP LLM01). */
+  injectionSuspected: boolean;
+  /** Places dropped because no page the search cited states them. */
+  dropped: number;
 }
 
 export interface SpeechToText {

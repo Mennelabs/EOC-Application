@@ -13,6 +13,11 @@
  * three come with reasons, the fairgrounds lot is set aside as no shelter,
  * inputs carry their age and the equity check shows; mass care accepts with
  * a reason. Feeding stops, a POD and a MARC render too. Axe runs on each.
+ *
+ * Resource discovery (REC-13): a partner posts a service; county EM asks for
+ * a run, finds the place in the queue with where it came from and the
+ * pre-check, and qualifies it into the registry (desktop) or sets it aside
+ * (phone), with a reason.
  */
 import { devices, expect, test } from '@playwright/test';
 import {
@@ -252,5 +257,87 @@ test.describe('layer 7 console: the command window', () => {
     await expect(page.getByRole('table', { name: 'Recommendations for this event' })).toContainText(
       'Exercise: gym has a generator and showers',
     );
+  });
+
+  test('REC-13: a partner posts a service; county EM finds it through discovery and decides it with a reason', async ({
+    page,
+    context,
+    browser,
+  }, testInfo) => {
+    test.setTimeout(360_000);
+    const phone = testInfo.project.name === 'phone';
+    const name = `Exercise Community Center ${tag} ${testInfo.project.name}`;
+    // The partner posts a draft service (the first discovery source).
+    await onboard(
+      page,
+      context,
+      'ngo_incident_commander',
+      `Canteen lead D ${tag}`,
+      `l7d-${testInfo.project.name}`,
+      'canteen',
+    );
+    await page.getByRole('link', { name: 'Our services' }).click();
+    await page.getByLabel('Kind', { exact: true }).selectOption('feeding');
+    await page.getByLabel('Name', { exact: true }).fill(name);
+    await page.getByLabel('Street address', { exact: true }).fill('30 Exercise Loop');
+    await page.getByLabel('City', { exact: true }).fill('Westwind');
+    await page.getByLabel('ZIP', { exact: true }).fill('63003');
+    await page.getByLabel('Latitude', { exact: true }).fill('38.802');
+    await page.getByLabel('Longitude', { exact: true }).fill('-90.861');
+    await page.getByLabel('Wheelchair accessible').check();
+    await page.getByRole('button', { name: 'Post as draft' }).click();
+    await expect(page.getByRole('status')).toContainText('posted as a draft');
+
+    const project = phone ? devices['Pixel 7'] : devices['Desktop Chrome'];
+    const second = await browser.newContext({ ...project, baseURL: BASE, ignoreHTTPSErrors: true });
+    try {
+      const em = await second.newPage();
+      await onboard(
+        em,
+        second,
+        'county_em_director',
+        `EM director D ${tag}`,
+        `l7d2-${testInfo.project.name}`,
+      );
+      await em.goto('/console/discovery');
+      await expect(em.getByRole('heading', { level: 1, name: 'Resource discovery' })).toBeVisible();
+      await expectNoViolations(em);
+      await em.getByRole('button', { name: 'Find now' }).click();
+      await expect(em.getByText('Asked: the next run starts within a minute')).toBeVisible();
+      // The worker runs it within a minute.
+      await expect(async () => {
+        await em.getByRole('button', { name: 'Refresh' }).click();
+        await expect(em.getByRole('table', { name: 'Places found' })).toContainText(name, {
+          timeout: 3_000,
+        });
+      }).toPass({ timeout: 180_000, intervals: [5_000] });
+      await em.getByRole('table', { name: 'Places found' }).getByRole('button', { name }).click();
+      const detail = em.getByRole('region', { name });
+      await expect(detail).toContainText('Posted by Hope Canteen Services as a feeding site');
+      await expect(
+        detail.getByRole('table', { name: 'Pre-check against the registry criteria' }),
+      ).toContainText('Shelter');
+      await expect(detail).toContainText('ada: yes');
+      await expectNoViolations(em);
+      if (phone) await expectReflow(em);
+      if (phone) {
+        await detail.getByLabel('Decision', { exact: true }).selectOption('reject');
+        await detail
+          .getByLabel('Reason for the decision')
+          .fill('Exercise: a canteen stop, not a building');
+        await detail.getByRole('button', { name: 'Record the decision' }).click();
+        await expect(em.getByText(`${name}: set aside.`)).toBeVisible();
+      } else {
+        await detail
+          .getByLabel('Reason for the decision')
+          .fill('Exercise: walked it with the partner');
+        await detail.getByRole('button', { name: 'Record the decision' }).click();
+        await expect(em.getByText(`${name}: qualified in.`)).toBeVisible();
+        await em.goto('/console/facilities');
+        await expect(em.getByRole('table', { name: 'Facilities' })).toContainText(name);
+      }
+    } finally {
+      await second.close();
+    }
   });
 });

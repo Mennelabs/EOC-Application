@@ -155,6 +155,17 @@ export const AI_FEATURES: readonly RegisterEntry[] = [
     owner: 'Product owner (command window)',
   },
   {
+    feature: 'discovery.web_search',
+    needs: 'llm',
+    dataSent:
+      "The county's area in words, the kinds of place sought, and the names and street addresses of public places already in the facility registry; never a person or anything a resident wrote",
+    decisionInformed:
+      'Drafts candidate places, each with the pages that state it, for the review queue (REC-13); nothing enters, changes or leaves the registry on its own',
+    humanCheckpoint:
+      'County EM qualifies each candidate in or out with a reason; planning may set candidates aside',
+    owner: 'Planning and GIS lead',
+  },
+  {
     feature: 'photo.quality',
     needs: 'image',
     dataSent: 'A resident photo',

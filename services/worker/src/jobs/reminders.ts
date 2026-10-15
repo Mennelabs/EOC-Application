@@ -15,6 +15,7 @@
  * The full F09 model (owner, snooze, acknowledge, escalation) arrives with
  * missions in layer 4.
  */
+import { publicLinkCheck } from '@cg/adapters';
 import type { Database, NoticeKind } from '@cg/db';
 import type { Transaction } from 'kysely';
 import { allTenantIds, asSystem, enqueueOutbox, systemAudit } from '../system.ts';
@@ -186,22 +187,6 @@ export async function remindSiteConfirmations(ctx: JobContext): Promise<void> {
   }
 }
 
-async function defaultLinkCheck(url: string): Promise<boolean> {
-  try {
-    const head = await fetch(url, {
-      method: 'HEAD',
-      redirect: 'follow',
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (head.ok) return true;
-    if (head.status !== 405 && head.status !== 403) return false;
-    const get = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(5_000) });
-    return get.ok;
-  } catch {
-    return false;
-  }
-}
-
 async function resourceTitle(trx: Trx, tenantId: string, resourceId: string): Promise<string> {
   const texts = await trx
     .selectFrom('cg.resource_text')
@@ -227,7 +212,8 @@ async function resourceRecipients(trx: Trx, tenantId: string, ownerAccountId: st
 export async function reviewResources(ctx: JobContext): Promise<void> {
   const now = nowOf(ctx);
   const today = now.toISOString().slice(0, 10);
-  const check = ctx.linkCheck ?? defaultLinkCheck;
+  // Only public addresses, never the stack's own network (OWASP SSRF, ADR-0042).
+  const check = ctx.linkCheck ?? publicLinkCheck();
   for (const tenantId of await allTenantIds(ctx.db)) {
     await asSystem(ctx.db, tenantId, async (trx) => {
       // 1. Expiry: the status follows the date so nothing expired reads as current.
@@ -312,9 +298,13 @@ export async function reviewResources(ctx: JobContext): Promise<void> {
           },
         );
       }
+    });
 
-      // 3. Outside links, once a day, on what the public can see.
-      const toCheck = await trx
+    // 3. Outside links, once a day, on what the public can see. The checks go
+    // out with no transaction open; each result is kept only if the link is
+    // still the one checked.
+    const toCheck = await asSystem(ctx.db, tenantId, (trx) =>
+      trx
         .selectFrom('cg.resource')
         .select(['id', 'owner_account_id', 'reference_url', 'link_status', 'link_checked_at'])
         .where('tenant_id', '=', tenantId)
@@ -326,16 +316,25 @@ export async function reviewResources(ctx: JobContext): Promise<void> {
             eb('link_checked_at', '<', new Date(now.getTime() - DAY)),
           ]),
         )
-        .execute();
-      for (const r of toCheck) {
-        const url = r.reference_url!;
-        const ok = /^https?:\/\//i.test(url) ? await check(url) : true;
+        .execute(),
+    );
+    if (toCheck.length === 0) continue;
+    const checked: { r: (typeof toCheck)[number]; url: string; ok: boolean }[] = [];
+    for (const r of toCheck) {
+      const url = r.reference_url!;
+      checked.push({ r, url, ok: /^https?:\/\//i.test(url) ? await check(url) : true });
+    }
+    await asSystem(ctx.db, tenantId, async (trx) => {
+      for (const { r, url, ok } of checked) {
         const status = ok ? 'ok' : 'broken';
-        await trx
+        const kept = await trx
           .updateTable('cg.resource')
           .set({ link_status: status, link_checked_at: now })
           .where('id', '=', r.id)
-          .execute();
+          .where('reference_url', '=', url)
+          .returning('id')
+          .executeTakeFirst();
+        if (!kept) continue;
         if (status !== r.link_status)
           await systemAudit(trx, tenantId, 'resource.review', {
             action: 'resource.link_checked',

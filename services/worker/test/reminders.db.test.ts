@@ -348,6 +348,33 @@ describe.skipIf(!workerUrl)('worker reminders (database-backed)', () => {
     await reviewResources(ctx);
     expect((await drain()).filter((m) => m.subject.includes(tag))).toHaveLength(0);
     expect(await reminders('resource_review', reviewResourceId)).toHaveLength(1);
+
+    // MET-07: the checks go out with no transaction open, and a link edited while
+    // its check was out keeps its own state rather than the old link's answer.
+    const edited = `https://example.org/reminder-${tag}-edited`;
+    await db
+      .updateTable('cg.resource')
+      .set({ link_checked_at: null })
+      .where('id', '=', reviewResourceId)
+      .execute();
+    ctx.linkCheck = async (url) => {
+      if (url.endsWith('-edited')) return true;
+      // The page's owner fixes the link while the old one is being checked.
+      await db
+        .updateTable('cg.resource')
+        .set({ reference_url: edited })
+        .where('id', '=', reviewResourceId)
+        .execute();
+      return false;
+    };
+    await reviewResources(ctx);
+    const after = await db
+      .selectFrom('cg.resource')
+      .select(['reference_url', 'link_status', 'link_checked_at'])
+      .where('id', '=', reviewResourceId)
+      .executeTakeFirstOrThrow();
+    expect(after).toEqual({ reference_url: edited, link_status: 'broken', link_checked_at: null });
+    await drain();
   });
 
   it('sends one digest a week of contacts due for re-verification, without names or numbers (CNT-01, F17)', async () => {

@@ -8,10 +8,13 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p .",
-    "evaluate": "node src/evaluation/cli.ts"
+    "evaluate": "node src/evaluation/cli.ts",
+    "evaluate:live": "node src/evaluation/cli.ts openai"
   },
   "dependencies": {
+    "@cg/db": "workspace:*",
     "@cg/intake": "workspace:*",
+    "kysely": "0.29.6",
     "zod": "4.6.5"
   }
 }

@@ -51,6 +51,9 @@ import * as m0049 from './0049_joint_pda.ts';
 import * as m0050 from './0050_equity_alert.ts';
 import * as m0051 from './0051_integrations.ts';
 import * as m0052 from './0052_partner_posting.ts';
+import * as m0053 from './0053_partner_counts.ts';
+import * as m0054 from './0054_ai_register_openai.ts';
+import * as m0055 from './0055_ai_output.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -106,4 +109,7 @@ export const migrations: Record<string, Migration> = {
   '0050_equity_alert': m0050,
   '0051_integrations': m0051,
   '0052_partner_posting': m0052,
+  '0053_partner_counts': m0053,
+  '0054_ai_register_openai': m0054,
+  '0055_ai_output': m0055,
 };

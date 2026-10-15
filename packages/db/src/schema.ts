@@ -797,14 +797,16 @@ export type NoticeKind =
   | 'resource_expired'
   | 'contact_reverify'
   | 'publication'
-  | 'publication_withdrawn';
+  | 'publication_withdrawn'
+  | 'ai_health';
 
 /** Layer 3's send-once ledger (notices and reminders sent): one row per subject and cycle (BRD:FR-00.06). */
 export interface NoticeLogTable {
   id: Generated<Uuid>;
   tenant_id: Uuid;
   kind: NoticeKind;
-  subject_kind: 'site' | 'resource' | 'partner_contact' | 'publication' | 'tenant';
+  subject_kind:
+    'site' | 'resource' | 'partner_contact' | 'publication' | 'tenant' | 'ai_health_alert';
   subject_id: Uuid;
   cycle_key: string;
   due_at: ColumnType<Date, Date | string, Date | string>;
@@ -2251,6 +2253,51 @@ export type ReferenceDataset =
   | 'alert'
   | 'power_outage';
 
+/** Partner counts category (2026-10-15, DCL:DEC-09). */
+export type PartnerCategory = 'needs_met' | 'services' | 'sheltered' | 'teams' | 'donated';
+
+/** Which partner counts roll up: all, or the chosen organizations and categories. */
+export type PartnerRollup =
+  { all: true } | { all: false; partners: Uuid[]; categories: PartnerCategory[] };
+
+/** One AI call (AIG-01, layer-7 task A); never the prompt or the reply. */
+export interface AiOutputTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  feature: string;
+  provider: string;
+  model: string;
+  template_version: string | null;
+  language: string | null;
+  outcome: 'ok' | 'filtered' | 'invalid' | 'refused' | 'timeout' | 'error';
+  latency_ms: number;
+  execution_id: Uuid | null;
+  target_type: string | null;
+  target_id: Uuid | null;
+  human_action: 'accepted' | 'edited' | 'rejected' | null;
+  acted_by: Uuid | null;
+  acted_at: TsNullable;
+  created_at: Generated<Date>;
+}
+
+/** A feature people correct too often, or whose calls fail too often (AIG-09 as decided 2026-10-15). */
+export interface AiHealthAlertTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  feature: string;
+  language: Generated<string>;
+  kind: 'corrections' | 'failures';
+  window_size: number;
+  counted: number;
+  flagged: number;
+  rate: ColumnType<string, number | string, number | string>;
+  threshold: ColumnType<string, number | string, number | string>;
+  raised_at: Generated<Date>;
+  acknowledged_by: Uuid | null;
+  acknowledged_at: TsNullable;
+  cleared_at: TsNullable;
+}
+
 export interface DeclarationTable extends Stamped {
   id: Generated<Uuid>;
   tenant_id: Uuid;
@@ -2262,6 +2309,7 @@ export interface DeclarationTable extends Stamped {
   box8_draft: string | null;
   box9_draft: string | null;
   review_label: Generated<string>;
+  partner_rollup: JsonGen<PartnerRollup>;
 }
 
 export type OutageKind =
@@ -2356,6 +2404,7 @@ export interface OfficialReportTable extends Stamped {
   amends: Uuid | null;
   facts_at: ColumnType<Date, Date | string, Date | string>;
   definitions: JsonGen<unknown[]>;
+  partner_rollup: JsonGen<PartnerRollup>;
 }
 
 export interface OfficialReportSectionTable extends Stamped {
@@ -2890,6 +2939,8 @@ export interface Database {
   'cg.outage': OutageTable;
   'cg.casualty_count': CasualtyCountTable;
   'cg.pa_site': PaSiteTable;
+  'cg.ai_output': AiOutputTable;
+  'cg.ai_health_alert': AiHealthAlertTable;
   'cg.official_report': OfficialReportTable;
   'cg.official_report_section': OfficialReportSectionTable;
   'cg.official_report_snapshot': OfficialReportSnapshotTable;

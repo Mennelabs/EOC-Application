@@ -201,15 +201,16 @@ export async function onboard(
   // Required action 2: register a passkey. The label prompt and the
   // "account updated" page with its way back arrive at the runner's pace,
   // so this handles whatever Keycloak shows until the console is reached.
-  await page
+  const register = page
     .getByRole('button', { name: /register|sign in with (security key|passkey)/i })
-    .first()
-    .click({ timeout: 15_000 });
+    .first();
+  await register.click({ timeout: 15_000 });
+  let registerClicked = Date.now();
   const label = page.getByRole('textbox', { name: /label|name/i });
   const back = page.getByRole('link', { name: /back to application/i });
   const atConsole = () => /^\/console\/?/.test(new URL(page.url()).pathname);
   let labelled = false;
-  let wentBack = false;
+  let backClicked = 0;
   const deadline = Date.now() + 60_000;
   while (!atConsole() && Date.now() < deadline) {
     if (!labelled && (await label.isVisible())) {
@@ -219,13 +220,32 @@ export async function onboard(
         .getByRole('button', { name: /ok|save|submit|register/i })
         .first()
         .click();
-    } else if (!wentBack && (await back.isVisible())) {
-      wentBack = true;
+    } else if (Date.now() - backClicked > 5_000 && (await back.isVisible())) {
+      // A click that lands while the page is still settling is lost; try again after a pause.
+      backClicked = Date.now();
       await back.click();
+    } else if (!labelled && Date.now() - registerClicked > 5_000 && (await register.isVisible())) {
+      // The same for the passkey prompt: the first click can land before the page listens
+      // (the enclave sign-in had the same race, CI run 38742389152).
+      await register.click();
+      registerClicked = Date.now();
     }
     await page.waitForTimeout(500);
   }
-  await page.waitForURL((u) => /^\/console\/?/.test(u.pathname), { timeout: 30_000 });
+  // A redirect already under way when the loop ends still counts.
+  await page
+    .waitForURL((u) => /^\/console\/?/.test(u.pathname), { timeout: 15_000 })
+    .catch(() => undefined);
+  if (!atConsole()) {
+    const heading = await page
+      .getByRole('heading')
+      .first()
+      .textContent({ timeout: 1_000 })
+      .catch(() => null);
+    throw new Error(
+      `passkey registration did not return to the console: ${page.url()} (${heading})`,
+    );
+  }
 
   // Sign in to the console: the organization form, then Keycloak (password,
   // then the passkey) unless the SSO session from the invitation carries over.

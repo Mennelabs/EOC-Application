@@ -4,7 +4,7 @@
  * run again on a tenant that already has some of it.
  */
 import { sql, type Transaction } from 'kysely';
-import { AI_FEATURES, type AiProvider, type EvaluationSummary } from '@cg/ai';
+import { AI_FEATURES, type EvaluationSummary, type ProviderDescriptor } from '@cg/ai';
 import { roleTemplates } from '@cg/authz';
 import type { Database } from '@cg/db';
 
@@ -94,13 +94,14 @@ export async function ensureIntakeGraph(
 
 /**
  * AI use register rows for a tenant (AIG-01): every shipped feature with the
- * provider in force. Features turn on only for a compliant, evaluated
- * provider (AIG-06/08); the severity suggestion stays off (PHO-12).
+ * provider in force (OpenAI, ADR-0043). Features turn on only for a compliant,
+ * evaluated provider (AIG-06/08), so a new tenant starts with every feature
+ * off until its languages pass the evaluation.
  */
 export async function ensureAiRegister(
   trx: Transaction<Database>,
   tenantId: string,
-  provider: AiProvider,
+  provider: ProviderDescriptor,
   evaluation: EvaluationSummary | null,
 ): Promise<number> {
   let inserted = 0;
@@ -112,7 +113,7 @@ export async function ensureAiRegister(
       .where('feature', '=', f.feature)
       .executeTakeFirst();
     if (existing) continue;
-    const supported = Boolean(provider[f.needs]);
+    const supported = provider.supports.includes(f.needs);
     const compliant =
       provider.compliance.usRegion &&
       provider.compliance.zeroRetention &&

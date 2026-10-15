@@ -19,6 +19,7 @@ import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
 import { createDb, type Database } from '@cg/db';
 import { westwindGraph } from '@cg/intake';
 import type { Kysely } from 'kysely';
+import { enableAiTestDouble } from '../../../tools/seed/src/ai-test-double.ts';
 import { loadSeed } from '../../../tools/seed/src/load.ts';
 import type { KeycloakAdmin } from '../../worker/src/idp/keycloak.ts';
 import { sweepStoredSubmissions } from '../../worker/src/jobs/intake.ts';
@@ -40,6 +41,8 @@ describe.skipIf(!appUrl || !workerUrl)('staff review routes (database-backed)', 
   let dbApp: Kysely<Database>;
   let dbWorker: Kysely<Database>;
   let tenantId: string;
+  // ADR-0043: the test double for this suite only; the register is put back afterwards.
+  let restoreAi: (() => Promise<void>) | undefined;
   let eventId: string;
   let subjects: Record<string, AccountSubject>;
   const crypto = new FieldCrypto(new InMemoryKeyService(), new MemoryKeyStore());
@@ -56,6 +59,7 @@ describe.skipIf(!appUrl || !workerUrl)('staff review routes (database-backed)', 
     dbWorker = createDb(workerUrl!, 2);
     const seeded = await loadSeed(dbWorker);
     tenantId = seeded.tenants['county']!;
+    restoreAi = await enableAiTestDouble(dbWorker, tenantId);
     const tenant = await dbWorker
       .selectFrom('cg.tenant')
       .select(['path'])
@@ -152,6 +156,7 @@ describe.skipIf(!appUrl || !workerUrl)('staff review routes (database-backed)', 
   });
 
   afterAll(async () => {
+    await restoreAi?.();
     await app?.close();
     await dbApp?.destroy();
     await dbWorker?.destroy();

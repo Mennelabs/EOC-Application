@@ -48,7 +48,7 @@ export interface JobContext {
   productName?: string;
   devDirectGrant: boolean;
   /** Provider in force for a tenant (AIG-12); the fake provider by default. */
-  ai: { providerFor(tenantId: string, trx: Transaction<Database>): Promise<AiProvider> };
+  ai: { providerFor(tenantId: string, trx: Transaction<Database>): Promise<AiProvider | null> };
   /** Shipped question graph, used when a submission names a version that is not in the database. */
   defaultGraph: QuestionGraph;
   now?: () => Date;

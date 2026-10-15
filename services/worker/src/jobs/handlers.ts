@@ -3,7 +3,7 @@
  * work already done and records nothing new (BRD:FR-00.06).
  */
 import { roleTemplates } from '@cg/authz';
-import { evaluateProvider, fakeProvider } from '@cg/ai';
+import { openAIDescriptor } from '@cg/ai';
 import { westwindGraph } from '@cg/intake';
 import {
   ensureAiRegister,
@@ -24,6 +24,7 @@ import {
   reportWithdrawn,
 } from './reports.ts';
 import { exportRequested } from './exports.ts';
+import { aiEvaluate } from './ai-evaluate.ts';
 import { equityEvaluate } from './equity.ts';
 import { officialReportIssued } from './official-reports.ts';
 import type { JobContext, OutboxMessage, TopicHandler } from './types.ts';
@@ -45,7 +46,8 @@ export const tenantProvision: TopicHandler = async (ctx, msg) => {
     await ensureRetentionDefaults(trx, tenantId);
     await ensureTemplateRoles(trx, tenantId);
     await ensureIntakeGraph(trx, tenantId, westwindGraph);
-    await ensureAiRegister(trx, tenantId, fakeProvider, await evaluateProvider(fakeProvider));
+    // ADR-0043: OpenAI for every AI function, off until the tenant's languages pass the evaluation.
+    await ensureAiRegister(trx, tenantId, openAIDescriptor(), null);
     await systemAudit(trx, tenantId, 'tenant.provision', {
       action: 'tenant.provision',
       targetType: 'tenant',
@@ -257,6 +259,7 @@ export const topicHandlers: Record<string, TopicHandler> = {
   'official_report.issued': officialReportIssued, // RULE-10, ADR-0010
   'export.requested': exportRequested, // DEC-11, DEC-12, SEC-18
   'equity.evaluate': equityEvaluate, // EQ-12, CON-07
+  'ai.evaluate': aiEvaluate, // AIG-08, ADR-0043
 };
 
 // ---- schedules --------------------------------------------------------------

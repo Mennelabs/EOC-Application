@@ -16,7 +16,14 @@ import { sql, type Transaction } from 'kysely';
 import { z } from 'zod';
 import type { QueueConnection } from '@cg/adapters';
 import { renderPdf } from '@cg/pdf';
-import { extractionQuestions, redact, validateExtraction, type AiProvider } from '@cg/ai';
+import {
+  callAi,
+  extractionQuestions,
+  recordAiOutput,
+  redact,
+  validateExtraction,
+  type AiProvider,
+} from '@cg/ai';
 import type { Database } from '@cg/db';
 import { normalisePhone } from '@cg/crypto';
 import { upsertAfterAnswers } from '@cg/db';
@@ -64,7 +71,7 @@ export interface PublicRouteDeps {
   residentTokenSecret: string;
   defaultGraph: QuestionGraph;
   /** Provider in force for a tenant (AIG-12); absent means no AI anywhere (INT-16). */
-  ai?: { providerFor(tenantId: string, trx: Transaction<Database>): Promise<AiProvider> };
+  ai?: { providerFor(tenantId: string, trx: Transaction<Database>): Promise<AiProvider | null> };
   now?: () => Date;
   /** The public site's base URL, for links the help endpoints hand out. */
   publicBase?: string | undefined;
@@ -482,7 +489,8 @@ export const publicRoutes =
             'Help from a computer is switched off here. Please answer the questions directly.',
           );
         if (!deps.ai) throw off();
-        return request.tx(async (trx) => {
+        // The provider is called outside any transaction: a slow reply holds no connection.
+        const setup = await request.tx(async (trx) => {
           const feature = await trx
             .selectFrom('cg.ai_use_register')
             .select(['enabled', 'provider'])
@@ -490,21 +498,45 @@ export const publicRoutes =
             .executeTakeFirst();
           if (!feature?.enabled) throw off();
           const provider = await deps.ai!.providerFor(tenant.id, trx);
-          if (!provider.llm || provider.info.provider !== feature.provider) throw off();
+          if (!provider?.llm || provider.info.provider !== feature.provider) throw off();
           const graph = await loadGraph(
             trx,
             request.body.graphKey,
             request.body.graphVersion,
             deps.defaultGraph,
           );
-          const { text } = redact(request.body.text); // AIG-05
-          const started = Date.now();
-          const out = await provider.llm.extract({
+          return { provider, llm: provider.llm, graph };
+        });
+        const { text } = redact(request.body.text); // AIG-05
+        const call = await callAi(() =>
+          setup.llm.extract({
             text,
             ...(request.body.language ? { language: request.body.language } : {}),
-            questions: extractionQuestions(graph),
-          });
-          const valid = validateExtraction(graph, out.output); // AIG-03
+            questions: extractionQuestions(setup.graph),
+          }),
+        );
+        if (!call.ok) {
+          // AI-10: a failed call is recorded and the resident answers directly.
+          await request.tx((trx) =>
+            recordAiOutput(trx, {
+              tenantId: tenant.id,
+              feature: 'intake.extraction',
+              provider: setup.provider.info,
+              outcome: call.outcome,
+              latencyMs: call.latencyMs,
+              language: request.body.language ?? null,
+              executionId: request.body.executionId,
+            }),
+          );
+          throw new ApiError(
+            409,
+            'ai_unavailable',
+            'Help from a computer is not available right now. Please answer the questions directly.',
+          );
+        }
+        return request.tx(async (trx) => {
+          const out = call.out;
+          const valid = validateExtraction(setup.graph, out.output); // AIG-03
           const row = await trx
             .insertInto('cg.extraction')
             .values({
@@ -522,6 +554,18 @@ export const publicRoutes =
             })
             .returning('id')
             .executeTakeFirstOrThrow();
+          // AIG-01: the call's record; the resident's choices later say whether it helped.
+          await recordAiOutput(trx, {
+            tenantId: tenant.id,
+            feature: 'intake.extraction',
+            provider: out.provider,
+            outcome: valid.dropped.length > 0 ? 'filtered' : 'ok',
+            latencyMs: out.latencyMs,
+            language: valid.language ?? request.body.language ?? null,
+            executionId: request.body.executionId,
+            targetType: 'extraction',
+            targetId: row.id,
+          });
           await request.audit(trx, {
             action: 'intake.extract',
             targetType: 'extraction',
@@ -531,7 +575,7 @@ export const publicRoutes =
                 { name: 'provider', to: `${out.provider.provider}/${out.provider.model}` },
                 { name: 'candidates', to: valid.candidates.length },
                 { name: 'injection_suspected', to: valid.injectionSuspected },
-                { name: 'latency_ms', to: Date.now() - started },
+                { name: 'latency_ms', to: out.latencyMs },
               ],
             },
           });

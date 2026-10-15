@@ -279,9 +279,15 @@ importers:
 
   packages/ai:
     dependencies:
+      '@cg/db':
+        specifier: workspace:*
+        version: link:../db
       '@cg/intake':
         specifier: workspace:*
         version: link:../intake
+      kysely:
+        specifier: 0.29.6
+        version: 0.29.6
       zod:
         specifier: 4.6.5
         version: 4.6.5

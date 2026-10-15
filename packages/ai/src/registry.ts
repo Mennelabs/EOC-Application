@@ -3,16 +3,64 @@
  * The register lists every AI feature with its provider, the data sent, the
  * decision it informs, its human checkpoint and an owner; a tenant enables a
  * feature only through the register, and only for a compliant, evaluated
- * provider. Layer 2 ships the fake provider; real providers are added here
- * when Adam approves them (paid services).
+ * provider. OpenAI is the provider for every function (ADR-0043, decided
+ * 2026-10-15); the fake provider is a test double only.
  */
-import type { AiProvider, Compliance } from './types.ts';
-import { fakeProvider } from './providers/fake.ts';
+import type { AiProvider, Compliance, ProviderInfo } from './types.ts';
+import { OPENAI_COMPLIANCE, OPENAI_DEFAULT_MODELS } from './providers/openai.ts';
 
-export const providers: Record<string, AiProvider> = { fake: fakeProvider };
+/**
+ * The providers this process can call. Empty until the service registers one: OpenAI when
+ * `OPENAI_API_KEY` is set (ADR-0043). Running systems never register the fake provider; tests
+ * register it as their test double.
+ */
+export const providers: Record<string, AiProvider> = {};
+
+export function registerProvider(provider: AiProvider): void {
+  providers[provider.info.provider] = provider;
+}
+
+export function unregisterProvider(name: string): void {
+  delete providers[name];
+}
 
 export function providerByName(name: string): AiProvider | undefined {
   return providers[name];
+}
+
+/** The provider a tenant is configured for (`ai.provider`, OpenAI by default), or null: AI off. */
+export const DEFAULT_PROVIDER = 'openai';
+
+export type ProviderNeed = 'llm' | 'stt' | 'translation' | 'image' | 'classifier';
+
+/** What the register records about a provider, whether or not this process can call it. */
+export interface ProviderDescriptor {
+  info: ProviderInfo;
+  compliance: Compliance;
+  languages: readonly string[];
+  supports: readonly ProviderNeed[];
+}
+
+export function describeProvider(p: AiProvider): ProviderDescriptor {
+  const all: ProviderNeed[] = ['llm', 'stt', 'translation', 'image', 'classifier'];
+  return {
+    info: p.info,
+    compliance: p.compliance,
+    languages: p.languages,
+    supports: all.filter((n) => Boolean(p[n])),
+  };
+}
+
+/** OpenAI as the register lists it, even before a key is set (it then stays off). */
+export function openAIDescriptor(
+  models: Partial<typeof OPENAI_DEFAULT_MODELS> = {},
+): ProviderDescriptor {
+  return {
+    info: { provider: 'openai', model: models.text ?? OPENAI_DEFAULT_MODELS.text },
+    compliance: OPENAI_COMPLIANCE,
+    languages: ['en', 'es'],
+    supports: ['llm', 'stt', 'translation', 'image', 'classifier'],
+  };
 }
 
 export function isCompliant(c: Compliance): boolean {
@@ -29,7 +77,7 @@ export interface EvaluationSummary {
 
 /** AIG-06 and AIG-08 together: the only way a feature turns on for a tenant. */
 export function canEnable(
-  provider: AiProvider,
+  provider: Pick<ProviderDescriptor, 'compliance' | 'languages'>,
   tenantLanguages: readonly string[],
   evaluation: EvaluationSummary | null,
 ): { ok: boolean; reasons: string[] } {
@@ -51,7 +99,7 @@ export interface RegisterEntry {
   humanCheckpoint: string;
   owner: string;
   /** Interface the feature needs on the provider. */
-  needs: 'llm' | 'stt' | 'translation' | 'image';
+  needs: ProviderNeed;
   /** Shipped switched off regardless of provider (PHO-12, Q-01). */
   lockedOff?: boolean;
 }

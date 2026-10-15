@@ -8,7 +8,7 @@
  */
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
-import type { Region } from '@cg/ai';
+import { callAi, recordAiOutput, type Region } from '@cg/ai';
 import { sql } from 'kysely';
 import { asSystem, systemAudit } from '../system.ts';
 import type { TopicHandler } from './types.ts';
@@ -146,30 +146,54 @@ export const photoProcess: TopicHandler = async (ctx, msg) => {
     thumb: `${prefix}/thumb.webp`,
   };
 
-  await asSystem(ctx.db, row.tenant_id, async (trx) => {
-    // Sensitive regions through the image interface (PHO-07); never a severity rating (PHO-12).
-    let blurStatus: 'applied' | 'skipped_no_detector' | 'failed' = 'skipped_no_detector';
-    let written = processed.derivatives;
-    let regions = 0;
+  // Sensitive regions through the image interface (PHO-07); never a severity rating (PHO-12).
+  // The provider is called outside any transaction: a slow reply holds no connection.
+  const detector = await asSystem(ctx.db, row.tenant_id, async (trx) => {
     const feature = await trx
       .selectFrom('cg.ai_use_register')
       .select(['enabled', 'provider'])
       .where('feature', '=', 'photo.sensitive_regions')
       .executeTakeFirst();
-    if (feature?.enabled) {
-      const provider = await ctx.ai.providerFor(row.tenant_id, trx);
-      if (provider.image && provider.info.provider === feature.provider) {
-        try {
-          const a = await provider.image.analyse(processed.derivatives.review, 'image/webp');
-          if (a.output.detectorAvailable) {
-            regions = a.output.sensitiveRegions.length;
-            written = await blurredDerivatives(processed.derivatives, a.output.sensitiveRegions);
-            blurStatus = 'applied';
-          }
-        } catch (err) {
-          ctx.log.warn({ err, photoId: row.id }, 'sensitive-region detection failed');
-          blurStatus = 'failed';
-        }
+    if (!feature?.enabled) return null;
+    const provider = await ctx.ai.providerFor(row.tenant_id, trx);
+    return provider?.image && provider.info.provider === feature.provider
+      ? { info: provider.info, image: provider.image }
+      : null;
+  });
+  const analysis = detector
+    ? await callAi(() => detector.image.analyse(processed.derivatives.review, 'image/webp'))
+    : null;
+
+  await asSystem(ctx.db, row.tenant_id, async (trx) => {
+    let blurStatus: 'applied' | 'skipped_no_detector' | 'failed' = 'skipped_no_detector';
+    let written = processed.derivatives;
+    let regions = 0;
+    if (detector && analysis) {
+      // AIG-01: the call's record, whatever its outcome.
+      await recordAiOutput(trx, {
+        tenantId: row.tenant_id,
+        feature: 'photo.sensitive_regions',
+        provider: analysis.ok ? analysis.out.provider : detector.info,
+        outcome: analysis.ok ? 'ok' : analysis.outcome,
+        latencyMs: analysis.ok ? analysis.out.latencyMs : analysis.latencyMs,
+        executionId: row.execution_id,
+        targetType: 'photo',
+        targetId: row.id,
+      });
+      if (!analysis.ok) {
+        // AI-10: the photo stays restricted, unblurred, for staff with the evidence category.
+        ctx.log.warn(
+          { photoId: row.id, outcome: analysis.outcome },
+          'sensitive-region detection failed',
+        );
+        blurStatus = 'failed';
+      } else if (analysis.out.output.detectorAvailable) {
+        regions = analysis.out.output.sensitiveRegions.length;
+        written = await blurredDerivatives(
+          processed.derivatives,
+          analysis.out.output.sensitiveRegions,
+        );
+        blurStatus = 'applied';
       }
     }
     await ctx.objects!.put(keys.review, written.review, 'image/webp');

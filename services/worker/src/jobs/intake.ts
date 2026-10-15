@@ -10,6 +10,7 @@
 import { createHash } from 'node:crypto';
 import { sql, type Kysely, type Transaction } from 'kysely';
 import { z } from 'zod';
+import { recordHumanAction } from '@cg/ai';
 import { normalisePhone } from '@cg/crypto';
 import {
   countFreeCodes,
@@ -461,6 +462,8 @@ export async function fileSubmission(ctx: JobContext, input: FilingInput): Promi
         })
         .returning('id')
         .executeTakeFirstOrThrow();
+      // AIG-09: what the resident did with the computer's suggestions, for the feature's health.
+      if (payload.extractionId) await recordExtractionUse(trx, payload.extractionId, answers);
 
       const categories = new Set(graph.needCategories.map((c) => c.value));
       const needIds: string[] = [];
@@ -901,4 +904,39 @@ export async function topUpReferenceCodes(
       ctx.log.info({ tenantId, generated: n }, 'reference codes generated');
     });
   }
+}
+
+/** Comparable form of an answer: lists in a fixed order. */
+const comparable = (v: AnswerValue | undefined) =>
+  JSON.stringify(
+    v && v.kind === 'value' && Array.isArray(v.value) ? { ...v, value: [...v.value].sort() } : v,
+  );
+
+/**
+ * AIG-09 (as decided 2026-10-15): the resident kept every suggestion (accepted), some
+ * (edited) or none (rejected); the health job reads it. Nothing of the answers is copied.
+ */
+async function recordExtractionUse(
+  trx: Transaction<Database>,
+  extractionId: string,
+  answers: Answers,
+): Promise<void> {
+  const ex = await trx
+    .selectFrom('cg.extraction')
+    .select('output')
+    .where('id', '=', extractionId)
+    .executeTakeFirst();
+  const candidates =
+    (ex?.output as { candidates?: { questionId: string; value: AnswerValue }[] } | undefined)
+      ?.candidates ?? [];
+  if (candidates.length === 0) return;
+  const kept = candidates.filter(
+    (c) => comparable(answers[c.questionId]) === comparable(c.value),
+  ).length;
+  await recordHumanAction(
+    trx,
+    { type: 'extraction', id: extractionId },
+    kept === candidates.length ? 'accepted' : kept === 0 ? 'rejected' : 'edited',
+    null,
+  );
 }

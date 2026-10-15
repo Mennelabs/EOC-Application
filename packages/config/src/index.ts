@@ -76,6 +76,23 @@ export const platformSchema = baseSchema.extend({
    * only links there; it never calls the enclave. Absent: no link is shown.
    */
   CJIS_PUBLIC_URL: z.preprocess((v) => (v === '' ? undefined : v), url.optional()),
+  /**
+   * OpenAI for every AI function (ADR-0043, decided 2026-10-15). A secret: set in the
+   * environment's secrets, never in the repository or a log. Absent means every AI feature is
+   * off and the manual paths run; there is no fake provider in a running system.
+   */
+  OPENAI_API_KEY: optionalString,
+  /** A government-cloud or proxy endpoint for the same API; OpenAI's own by default. */
+  OPENAI_BASE_URL: z.preprocess((v) => (v === '' ? undefined : v), url.optional()),
+  OPENAI_ORGANIZATION: optionalString,
+  /** Model per function; configuration, not code (ADR-0043). Defaults in packages/ai. */
+  AI_MODEL_TEXT: optionalString,
+  AI_MODEL_VISION: optionalString,
+  AI_MODEL_CLASSIFIER: optionalString,
+  AI_MODEL_TRANSCRIPTION: optionalString,
+  AI_MODEL_SPEECH: optionalString,
+  /** Per call (BRD:INT-04); a timeout falls back to the manual path (AI-10). */
+  AI_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
 });
 
 /** Worker: platform settings plus identity-provider administration and mail. */
@@ -245,4 +262,19 @@ export function loadConfig<S extends z.ZodType>(
     throw new ConfigError(`Invalid or missing configuration: ${names.join(', ')}`);
   }
   return parsed.data;
+}
+
+/** The AI settings as the provider factory reads them (ADR-0043); the key stays out of logs. */
+export function aiEnv(c: z.infer<typeof platformSchema>): Record<string, string | undefined> {
+  return {
+    OPENAI_API_KEY: c.OPENAI_API_KEY,
+    OPENAI_BASE_URL: c.OPENAI_BASE_URL,
+    OPENAI_ORGANIZATION: c.OPENAI_ORGANIZATION,
+    AI_MODEL_TEXT: c.AI_MODEL_TEXT,
+    AI_MODEL_VISION: c.AI_MODEL_VISION,
+    AI_MODEL_CLASSIFIER: c.AI_MODEL_CLASSIFIER,
+    AI_MODEL_TRANSCRIPTION: c.AI_MODEL_TRANSCRIPTION,
+    AI_MODEL_SPEECH: c.AI_MODEL_SPEECH,
+    AI_TIMEOUT_MS: String(c.AI_TIMEOUT_MS),
+  };
 }

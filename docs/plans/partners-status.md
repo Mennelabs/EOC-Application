@@ -10,10 +10,10 @@ Resume record for the partner work Adam ordered on 2026-10-15, before layer 7. C
 
 ## Tasks
 
-| Task | What                                                                                                                                                                                                                             | State | Commits   | Notes                                                |
-| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | --------- | ---------------------------------------------------- |
-| A    | Partners publish their own services: migration 0052, `site.post` and `site.post_publish`, `/partner/sites` routes, "Our services" screen, "Posted by" on the county's Sites and publication log, notices naming the organization | done  | (this PR) | As-built notes in the plan §A; one harness fix below |
-| B    | Partner counts on the declaration view and official reports: roll up all, or choose partners and categories; counts-only function                                                                                                | next  |           | DCL:DEC-09, F15, RULE-10                             |
+| Task | What                                                                                                                                                                                                                             | State | Commits          | Notes                                                   |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ---------------- | ------------------------------------------------------- |
+| A    | Partners publish their own services: migration 0052, `site.post` and `site.post_publish`, `/partner/sites` routes, "Our services" screen, "Posted by" on the county's Sites and publication log, notices naming the organization | done  | 7274e7c (PR #18) | As-built notes in the plan §A; one harness fix below    |
+| B    | Partner counts on the declaration view and official reports: roll up all, or choose partners and categories; counts-only function                                                                                                | done  | 3768b70 (PR #19) | DCL:DEC-09, F15, RULE-10; as-built notes in the plan §B |
 
 ## Task A in detail
 
@@ -30,6 +30,24 @@ Resume record for the partner work Adam ordered on 2026-10-15, before layer 7. C
   - `packages/authz/test/templates.test.ts` (only the NGO incident commander holds the two actions; no wildcard reaches them).
 - **Harness fix:** `invitationLink` (`tests/e2e/support/console.ts`) read only the newest message to an invited address. Staff notices now reach invited accounts too, so a publication notice could land before the invitation was read; it now reads every message to the address.
 - **Harness fix:** the layer-6 declaration journey (`tests/e2e/console-l6.spec.ts`) read the newest package row before the list had reloaded, so an earlier "Whole event" package of the same event (left by the database suites on the shared database) could be taken for the new one. It now waits for the new row before reading it.
+
+## Task B in detail
+
+- **Data (migration 0053):** `partner_rollup` on `cg.declaration` and `cg.official_report` (`{"all": true}` by default, else the chosen partners and categories; a check keeps the shape), in the data dictionary.
+- **Counting function:** `cg.partner_counts(county, event)`. It runs as the caller, answers only for the county the caller is acting as (or the worker), counts the county's own partner organizations' records for one query, and returns numbers only. See the plan §B for why it is not security-definer.
+- **Reporting** (`packages/reporting/src/partners.ts`): reads the counts, applies the choice (a category left out is null) and states what is included. The declaration view and the official report's new "Partner organizations" fact use it. Donated hours and equipment follow the choice on the declaration view.
+- **API:**
+  - `PUT /events/:id/declaration` takes `partnerRollup`.
+  - `POST /official-reports` takes `partnerRollup`.
+  - `POST /official-reports/:id/partner-rollup` changes it on a draft, recomputes the facts and sends a reviewed report back to draft.
+  - An organization of another county is refused.
+  - The issued snapshot carries the choice (RULE-10).
+- **Console:** `screens/partner-rollup.tsx` has the "Roll up all partner counts" checkbox (ticked by default) and, when unticked, the organizations and categories. It appears on the Declaration screen and on a draft report.
+- **Tests:**
+  - `services/api/test/declaration.db.test.ts`: totals from partners' own records; the choice removes exactly an organization or a category; donated hours and equipment follow it; the function returns numbers only, restores the setting and refuses a partner's context.
+  - `services/api/test/official-reports.db.test.ts`: choice on a report; foreign organization refused; all, then back; issued snapshot keeps the choice; CSV holds exactly the chosen organization; an issued report's choice cannot change.
+  - `tests/e2e/console-l6.spec.ts`: the chooser on the Declaration screen, with axe, on desktop and phone.
+- **Changed behaviour:** a service log a partner keeps under its own accounts now counts in the county's figures, which is the gap Adam's decision closes. Before, it stayed with the partner.
 
 ## Open items
 

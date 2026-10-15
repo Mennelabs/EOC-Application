@@ -8,11 +8,11 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { canEnable, providerByName, type EvaluationSummary } from '@cg/ai';
+import { canEnable, DEFAULT_PROVIDER, providerByName, type EvaluationSummary } from '@cg/ai';
 import { diffForAudit } from '@cg/audit';
 import { ApiError, errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
-import { classifierFor, iso, stamped } from './helpers.ts';
+import { classifierFor, enqueueOutbox, iso, stamped } from './helpers.ts';
 
 const entryOut = z.object({
   ...stamped,
@@ -91,6 +91,44 @@ export const aiRegisterRoutes: FastifyPluginAsync = async (raw) => {
     },
   );
 
+  // AIG-08, ADR-0043: run the labelled set against the tenant's provider (OpenAI) in the
+  // worker; the result lands on the register. It calls a paid service, so it is confirmed.
+  app.post(
+    '/ai-register/evaluate',
+    { schema: { tags: ['ai'], response: { 202: z.object({ queued: z.literal(true) }) } } },
+    async (request, reply) => {
+      const s = request.subject;
+      if (s.kind !== 'account') throw errors.unauthorized();
+      await request.authorize('ai_register.write', {
+        type: 'ai_use_register',
+        tenantId: s.tenantId,
+      });
+      const { reason } = request.confirmation();
+      await request.tx(async (trx) => {
+        const cfg = await trx
+          .selectFrom('cg.tenant_config')
+          .select('value')
+          .where('key', '=', 'ai.provider')
+          .executeTakeFirst();
+        const name = typeof cfg?.value === 'string' ? cfg.value : DEFAULT_PROVIDER;
+        if (!providerByName(name))
+          throw new ApiError(
+            409,
+            'provider_not_configured',
+            'No AI provider is configured here (OPENAI_API_KEY is not set), so nothing can be evaluated.',
+          );
+        await enqueueOutbox(trx, s.tenantId, 'ai.evaluate', { reason }, request.executionId);
+        await request.audit(trx, {
+          action: 'ai_register.evaluate_requested',
+          targetType: 'tenant',
+          targetId: s.tenantId,
+          reason,
+        });
+      });
+      return reply.code(202).send({ queued: true });
+    },
+  );
+
   app.patch(
     '/ai-register/:feature',
     {
@@ -139,7 +177,8 @@ export const aiRegisterRoutes: FastifyPluginAsync = async (raw) => {
               tenant.locales,
               row.evaluation as unknown as EvaluationSummary | null,
             )
-          : { ok: false, reasons: ['provider_unknown'] };
+          : // ADR-0043: the provider is not configured here (no OPENAI_API_KEY): AI stays off.
+            { ok: false, reasons: ['provider_not_configured'] };
         if (!check.ok)
           throw new ApiError(
             409,

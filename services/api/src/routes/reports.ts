@@ -16,6 +16,7 @@ import { sql, type Selectable, type Transaction } from 'kysely';
 import { z } from 'zod';
 import type { FieldDescriptor } from '@cg/authz';
 import { diffForAudit } from '@cg/audit';
+import { callAi, recordAiOutput } from '@cg/ai';
 import type { Database, ReportFlag } from '@cg/db';
 import { normaliseCode } from '@cg/db';
 import { ApiError, errors } from '../errors.ts';
@@ -203,7 +204,7 @@ export interface ReportDeps {
     | undefined;
   ai?:
     | {
-        providerFor(tenantId: string, trx: Trx): Promise<import('@cg/ai').AiProvider>;
+        providerFor(tenantId: string, trx: Trx): Promise<import('@cg/ai').AiProvider | null>;
       }
     | undefined;
   submit?:
@@ -1118,7 +1119,8 @@ export const reportRoutes: FastifyPluginAsync = async (raw) => {
       const ai = deps().ai;
       if (!ai || !row.original_text_enc)
         throw new ApiError(409, 'nothing_to_translate', 'There are no words to translate.');
-      return request.tx(async (trx) => {
+      // The provider is called outside any transaction: a slow reply holds no connection.
+      const setup = await request.tx(async (trx) => {
         const feature = await trx
           .selectFrom('cg.ai_use_register')
           .select(['enabled', 'provider'])
@@ -1131,18 +1133,50 @@ export const reportRoutes: FastifyPluginAsync = async (raw) => {
             'Machine translation is switched off for this organization.',
           );
         const provider = await ai.providerFor(row.tenant_id, trx);
-        if (!provider.translation || provider.info.provider !== feature.provider)
+        if (!provider?.translation || provider.info.provider !== feature.provider)
           throw new ApiError(
             409,
             'ai_off',
             'Machine translation is switched off for this organization.',
           );
-        const original = await app.fieldCrypto.decrypt(row.tenant_id, row.original_text_enc!);
-        const out = await provider.translation.translate(
-          original,
-          request.body.to,
-          row.original_lang ?? undefined,
+        return { provider, translation: provider.translation };
+      });
+      const original = await app.fieldCrypto.decrypt(row.tenant_id, row.original_text_enc!);
+      const call = await callAi(() =>
+        setup.translation.translate(original, request.body.to, row.original_lang ?? undefined),
+      );
+      if (!call.ok) {
+        // AI-10: recorded; the reviewer reads the original.
+        await request.tx((trx) =>
+          recordAiOutput(trx, {
+            tenantId: row.tenant_id,
+            feature: 'review.translation',
+            provider: setup.provider.info,
+            outcome: call.outcome,
+            latencyMs: call.latencyMs,
+            language: request.body.to,
+            targetType: 'report',
+            targetId: row.id,
+          }),
         );
+        throw new ApiError(
+          409,
+          'ai_unavailable',
+          'Machine translation is not available right now. The original words are shown.',
+        );
+      }
+      return request.tx(async (trx) => {
+        const out = call.out;
+        await recordAiOutput(trx, {
+          tenantId: row.tenant_id,
+          feature: 'review.translation',
+          provider: out.provider,
+          outcome: 'ok',
+          latencyMs: out.latencyMs,
+          language: request.body.to,
+          targetType: 'report',
+          targetId: row.id,
+        });
         const label = `${out.provider.provider}/${out.provider.model}`;
         await trx
           .updateTable('cg.report')

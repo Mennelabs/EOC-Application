@@ -310,6 +310,7 @@ export function AssistedScreen() {
 
 interface RegisterEntry {
   id: string;
+  version: number;
   feature: string;
   provider: string;
   model: string;
@@ -326,29 +327,62 @@ interface RegisterEntry {
   updatedAt: string;
 }
 
+/**
+ * AI use register (AIG-01, AIG-06, AIG-08; ADR-0043): every AI feature, its provider and its
+ * human checkpoint; an administrator evaluates the configured provider (OpenAI) for the
+ * organization's languages and then switches features on or off, each with a reason.
+ */
 export function AiRegisterScreen() {
-  const { rows, error } = useList<RegisterEntry>('/ai-register');
+  const { rows, error, reload } = useList<RegisterEntry>('/ai-register');
+  const [msg, setMsg] = useState<{ kind: 'success' | 'error' | 'info'; text: string } | null>(null);
   const evalText = (e: unknown) => {
     const r = e as {
-      languages?: Record<string, { accuracy?: number; injectionResistance?: number }>;
+      accuracy?: Record<string, number>;
+      injectionResistance?: number;
       passed?: boolean;
+      evaluatedAt?: string;
     } | null;
-    if (!r?.languages) return '—';
-    return (
-      Object.entries(r.languages)
-        .map(([l, v]) => `${l}: ${v.accuracy !== undefined ? Math.round(v.accuracy * 100) : '?'}%`)
-        .join(', ') + (r.passed === false ? ' (not passed)' : '')
-    );
+    if (!r?.accuracy) return 'Not evaluated';
+    const langs = Object.entries(r.accuracy)
+      .map(([l, a]) => `${l} ${Math.round(a * 100)}%`)
+      .join(', ');
+    return `${langs}; injection blocked ${Math.round((r.injectionResistance ?? 0) * 100)}%${r.passed ? '' : ' (not passed)'}${r.evaluatedAt ? `, ${fmt(r.evaluatedAt)}` : ''}`;
+  };
+  const run = async (fn: () => Promise<unknown>, done: string) => {
+    setMsg(null);
+    try {
+      await fn();
+      setMsg({ kind: 'success', text: done });
+      reload();
+    } catch (err) {
+      setMsg({ kind: 'error', text: describeFailure(err) });
+    }
   };
   return (
     <section aria-labelledby="ai-h">
       <h1 id="ai-h">AI use register</h1>
       <p>
         Every AI feature, what it sends, what it informs, who checks it and whether it is on for
-        this organization (AIG-01). The severity suggestion stays off until a validated model exists
-        (PHO-12). Changes are made by administrators with a reason.
+        this organization (AIG-01). Features run on OpenAI and start switched off: an administrator
+        evaluates the provider for this organization&rsquo;s languages first, then switches each
+        feature on with a reason. People decide everything a feature suggests, and every feature has
+        a manual path.
       </p>
       {error ? <Status kind="error">{error}</Status> : null}
+      {msg ? <Status kind={msg.kind}>{msg.text}</Status> : null}
+      <Toolbar>
+        <button
+          type="button"
+          onClick={() =>
+            void run(
+              () => api('/ai-register/evaluate', { method: 'POST' }),
+              'The evaluation is running. The results appear here in a few minutes.',
+            )
+          }
+        >
+          Evaluate the configured provider…
+        </button>
+      </Toolbar>
       <DataTable
         caption="AI features"
         rows={rows ?? []}
@@ -376,6 +410,29 @@ export function AiRegisterScreen() {
           },
           { key: 'eval', header: 'Evaluation', render: (r) => evalText(r.evaluation) },
           { key: 'updated', header: 'Updated', render: (r) => fmt(r.updatedAt) },
+          {
+            key: 'act',
+            header: 'Change',
+            render: (r) => (
+              <button
+                type="button"
+                aria-label={`${r.enabled ? 'Switch off' : 'Switch on'} ${r.feature}…`}
+                onClick={() =>
+                  void run(
+                    () =>
+                      api(`/ai-register/${r.feature}`, {
+                        method: 'PATCH',
+                        body: { enabled: !r.enabled },
+                        version: r.version,
+                      }),
+                    `${r.feature} switched ${r.enabled ? 'off' : 'on'}.`,
+                  )
+                }
+              >
+                {r.enabled ? 'Switch off…' : 'Switch on…'}
+              </button>
+            ),
+          },
         ]}
       />
     </section>

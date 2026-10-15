@@ -2076,6 +2076,44 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     },
     { omit: ['id'] },
   ),
+  ai_output: table(
+    {
+      id: { c: 'internal' },
+      tenant_id: { c: 'internal' },
+      feature: { c: 'internal', d: 'AI feature from the AI use register (AIG-01)' },
+      provider: { c: 'internal' },
+      model: { c: 'internal', d: 'The model that answered (AI-03)' },
+      template_version: { c: 'internal', d: 'Prompt template version' },
+      language: { c: 'internal' },
+      outcome: { c: 'internal', d: 'ok, filtered, invalid, refused, timeout or error' },
+      latency_ms: { c: 'internal' },
+      execution_id: { c: 'internal' },
+      target_type: { c: 'internal' },
+      target_id: { c: 'internal' },
+      human_action: {
+        c: 'internal',
+        d: 'What a person did with the output: accepted, edited or rejected (AIG-09)',
+      },
+      acted_by: { c: 'internal' },
+      acted_at: { c: 'internal' },
+      created_at: { c: 'internal' },
+    },
+    { standard: false },
+  ),
+  ai_health_alert: table({
+    feature: { c: 'internal' },
+    language: { c: 'internal' },
+    kind: { c: 'internal', d: 'corrections (people corrected or rejected outputs) or failures' },
+    window_size: { c: 'internal' },
+    counted: { c: 'internal' },
+    flagged: { c: 'internal' },
+    rate: { c: 'internal' },
+    threshold: { c: 'internal' },
+    raised_at: { c: 'internal' },
+    acknowledged_by: { c: 'internal' },
+    acknowledged_at: { c: 'internal' },
+    cleared_at: { c: 'internal' },
+  }),
   extraction: table(
     {
       id: { c: 'internal' },
@@ -2107,6 +2145,10 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     box8_draft: { c: 'internal', d: 'Damage description draft, at most 3,000 characters (Box 8)' },
     box9_draft: { c: 'internal', d: 'Resources committed draft, at most 3,000 characters (Box 9)' },
     review_label: { c: 'internal' },
+    partner_rollup: {
+      c: 'internal',
+      d: 'Partner counts on the declaration view (2026-10-15, DCL:DEC-09): all, or the chosen partner organizations and categories',
+    },
   }),
   outage: table({
     event_id: { c: 'internal' },
@@ -2178,6 +2220,10 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     amends: { c: 'internal', d: 'The issued report this one corrects (RULE-10)' },
     facts_at: { c: 'internal', d: 'When the facts were last computed from the records' },
     definitions: { c: 'internal', d: 'Definitions and versions the facts use (F14)' },
+    partner_rollup: {
+      c: 'internal',
+      d: 'Partner counts the report states (2026-10-15, DCL:DEC-09): all, or the chosen partner organizations and categories; frozen when issued (RULE-10)',
+    },
   }),
   official_report_section: table({
     report_id: { c: 'internal' },

@@ -15,7 +15,7 @@ import { sql } from 'kysely';
 import { createDb, withTenant, type Database, type MissionTable } from '@cg/db';
 
 type MissionKind = MissionTable['kind'];
-import { evaluateProvider, fakeProvider } from '@cg/ai';
+import { openAIDescriptor } from '@cg/ai';
 import { westwindGraph } from '@cg/intake';
 import {
   ensureAiRegister,
@@ -1164,7 +1164,6 @@ async function ensureJobAids(trx: Transaction<Database>, tenantId: string): Prom
 
 export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
   const tenantIds: Record<string, string> = {};
-  const evaluation = await evaluateProvider(fakeProvider);
   const accountIds: Record<string, string> = {};
 
   // Hierarchy in dependency order (parents first, as listed in county.ts).
@@ -1191,7 +1190,8 @@ export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
       }
       await ensureTemplateRoles(trx, id);
       await ensureIntakeGraph(trx, id, westwindGraph);
-      await ensureAiRegister(trx, id, fakeProvider, evaluation);
+      // ADR-0043: OpenAI for every AI function, off until the tenant's languages pass the evaluation.
+      await ensureAiRegister(trx, id, openAIDescriptor(), null);
       if (spec.key === 'county') {
         await ensureExerciseEvent(trx, id);
         await ensureChannelNumber(trx, id);

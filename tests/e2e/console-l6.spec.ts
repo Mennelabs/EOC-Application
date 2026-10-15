@@ -235,6 +235,22 @@ test.describe('layer 6 console: reference data', () => {
     await expectNoViolations(page);
     await expectReflow(page);
 
+    // DCL:DEC-09 (2026-10-15): every partner count rolls up unless the county chooses.
+    const partners = page.getByRole('region', { name: 'Resources committed by partners' });
+    const rollUp = partners.getByLabel('Roll up all partner counts');
+    await expect(rollUp).toBeChecked();
+    await rollUp.uncheck();
+    await partners.getByLabel('Prairie Shelter Alliance').uncheck();
+    await partners.getByLabel('Teams checked in').uncheck();
+    await partners.getByRole('button', { name: 'Save the partner counts choice' }).click();
+    await expect(page.getByText('Partner counts choice saved.')).toBeVisible();
+    await expect(partners).toContainText('Chosen by the county');
+    await expect(partners).toContainText('teams not included');
+    await expectNoViolations(page);
+    await partners.getByLabel('Roll up all partner counts').check();
+    await partners.getByRole('button', { name: 'Save the partner counts choice' }).click();
+    await expect(partners).toContainText('All partner organizations and all their counts');
+
     // PHO-07: a photo can be chosen only once a detector has blurred it; none is enabled here.
     await expect(page.getByRole('heading', { name: 'Representative photos' })).toBeVisible();
     await expect(page.getByText(/No photo is cleared for sharing yet/)).toBeVisible();

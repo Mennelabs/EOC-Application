@@ -1,11 +1,24 @@
-/** Prints the evaluation report for a provider (default: fake). AIG-08 human review. */
-import { providerByName } from '../registry.ts';
+/**
+ * Prints the evaluation report for a provider (AIG-08 human review): `fake`, the test double
+ * (default, free, what CI runs), or `openai`, the live run against OpenAI with OPENAI_API_KEY
+ * from the environment (ADR-0043). A live regression blocks enabling the changed model or prompt.
+ */
+import { fakeProvider } from '../providers/fake.ts';
+import { openAIFromEnv } from '../providers/openai.ts';
+import type { AiProvider } from '../types.ts';
 import { evaluateProvider } from './harness.ts';
 
 const name = process.argv[2] ?? 'fake';
-const provider = providerByName(name);
-if (!provider) {
-  console.error(`unknown provider ${name}`);
+let provider: AiProvider | null = null;
+if (name === 'fake') provider = fakeProvider;
+else if (name === 'openai') {
+  provider = openAIFromEnv(process.env);
+  if (!provider) {
+    console.error('OPENAI_API_KEY is not set: the live evaluation needs it.');
+    process.exit(2);
+  }
+} else {
+  console.error(`unknown provider ${name}; use fake or openai`);
   process.exit(2);
 }
 const report = await evaluateProvider(provider);

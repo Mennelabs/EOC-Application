@@ -42,6 +42,15 @@ x-node-env: &node-env
   PUBLIC_IP_DENY_PER_10MIN: ${PUBLIC_IP_DENY_PER_10MIN:-120}
   # Where browsers reach the CJIS enclave; the console only links there (SEC-12, ADR-0038).
   CJIS_PUBLIC_URL: https://${GATEWAY_HOST:-localhost}:${CJIS_HTTPS_PORT:-8443}
+  # AI features (ADR-0043): OpenAI for every function. Without a key they stay off.
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+  OPENAI_ORGANIZATION: ${OPENAI_ORGANIZATION:-}
+  AI_MODEL_TEXT: ${AI_MODEL_TEXT:-}
+  AI_MODEL_VISION: ${AI_MODEL_VISION:-}
+  AI_MODEL_CLASSIFIER: ${AI_MODEL_CLASSIFIER:-}
+  AI_MODEL_TRANSCRIPTION: ${AI_MODEL_TRANSCRIPTION:-}
+  AI_MODEL_SPEECH: ${AI_MODEL_SPEECH:-}
 
 x-node-health: &node-health
   test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/health/ready']

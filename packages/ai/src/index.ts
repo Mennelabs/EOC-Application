@@ -10,8 +10,26 @@ export {
 } from './extraction.ts';
 export { fakeProvider, FakeLanguageModel } from './providers/fake.ts';
 export {
+  OpenAIProvider,
+  openAIFromEnv,
+  AiProviderError,
+  OPENAI_DEFAULT_MODELS,
+  OPENAI_TEMPLATES,
+  OPENAI_COMPLIANCE,
+  type OpenAIConfig,
+  type OpenAIFunction,
+  type AiProviderErrorKind,
+} from './providers/openai.ts';
+export {
   providers,
   providerByName,
+  registerProvider,
+  unregisterProvider,
+  describeProvider,
+  openAIDescriptor,
+  DEFAULT_PROVIDER,
+  type ProviderDescriptor,
+  type ProviderNeed,
   isCompliant,
   canEnable,
   AI_FEATURES,
@@ -25,3 +43,12 @@ export {
   type CaseResult,
 } from './evaluation/harness.ts';
 export { evaluationCases, type EvalCase } from './evaluation/cases.ts';
+export {
+  callAi,
+  recordAiOutput,
+  recordHumanAction,
+  type AiCall,
+  type AiOutcome,
+  type AiOutputRecord,
+  type HumanAction,
+} from './records.ts';

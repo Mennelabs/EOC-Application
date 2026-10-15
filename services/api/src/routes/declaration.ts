@@ -26,6 +26,7 @@ import {
   OUTAGE_KINDS,
   declarationData,
   declarationView,
+  foreignPartners,
   outageView,
   paSiteSelect,
   paSiteView,
@@ -34,7 +35,7 @@ import {
 } from '@cg/reporting';
 import { errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
-import { classifierFor, iso, uuidParam } from './helpers.ts';
+import { classifierFor, iso, partnerRollupIn, partnerRollupOut, uuidParam } from './helpers.ts';
 
 type Trx = Transaction<Database>;
 
@@ -57,6 +58,7 @@ const declarationOut = z.object({
   box9Draft: z.string().nullable(),
   reviewLabel: z.string(),
   updatedAt: z.iso.datetime(),
+  partnerRollup: partnerRollupOut,
 });
 
 const outageOut = z.object({
@@ -164,6 +166,8 @@ export const declarationRoutes: FastifyPluginAsync = async (raw) => {
               .optional(),
             box8Draft: z.string().max(3000).nullable().optional(),
             box9Draft: z.string().max(3000).nullable().optional(),
+            /** Partner counts: roll up all, or the chosen organizations and categories (2026-10-15). */
+            partnerRollup: partnerRollupIn.optional(),
           })
           .refine((b) => !b.incidentStart || !b.incidentEnd || b.incidentEnd >= b.incidentStart, {
             message: 'the incident cannot end before it starts',
@@ -190,9 +194,19 @@ export const declarationRoutes: FastifyPluginAsync = async (raw) => {
           : {}),
         ...(b.box8Draft !== undefined ? { box8_draft: b.box8Draft } : {}),
         ...(b.box9Draft !== undefined ? { box9_draft: b.box9Draft } : {}),
+        ...(b.partnerRollup !== undefined
+          ? { partner_rollup: JSON.stringify(b.partnerRollup) }
+          : {}),
       };
       const { row, created } = await request.tx(async (trx) => {
         const event = await eventOf(trx, eventId);
+        if (
+          b.partnerRollup &&
+          (await foreignPartners(trx, event.tenant_id, b.partnerRollup)).length
+        )
+          throw errors.validation([
+            { name: 'partnerRollup', message: "not one of the county's partner organizations" },
+          ]);
         const existing = await trx
           .selectFrom('cg.declaration')
           .selectAll()

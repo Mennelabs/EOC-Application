@@ -22,7 +22,8 @@ export type TemplateName =
   | 'publication_notice'
   | 'help_alert'
   | 'field_message'
-  | 'reminder_overdue';
+  | 'reminder_overdue'
+  | 'ai_quality_notice';
 
 export const TEMPLATE_NAMES: readonly TemplateName[] = [
   'confirmation',
@@ -42,6 +43,7 @@ export const TEMPLATE_NAMES: readonly TemplateName[] = [
   'help_alert',
   'field_message',
   'reminder_overdue',
+  'ai_quality_notice',
 ];
 
 export interface TemplateVars {
@@ -113,6 +115,8 @@ const EN = {
       `${v.county} dispatch: ${v.text ?? ''} (Reply through the app when you can; in danger now, call 911.)`,
     reminder_overdue: (v: TemplateVars) =>
       `${v.county} Emergency Mgmt: the reminder "${v.title ?? ''}" was due ${v.dueAt ?? 'earlier'} and nobody has acknowledged it. Open the console.`,
+    ai_quality_notice: (v: TemplateVars) =>
+      `${v.county} Emergency Mgmt: the AI feature "${v.title ?? ''}" needs a look: ${v.what ?? ''} It keeps running. Open the AI use register.`,
     resource_attention: (v: TemplateVars) =>
       `${v.county} Emergency Mgmt: the public resource "${v.title ?? ''}" ${v.what ?? 'needs attention'}.`,
     contact_reverify: (v: TemplateVars) =>
@@ -207,6 +211,12 @@ const EN = {
         `The reminder "${v.title ?? ''}" was due ${v.dueAt ?? 'earlier'} and nobody on ${v.county}'s console has acknowledged it.\n\n` +
         `${v.what ? `${v.what}\n\n` : ''}Open the console to acknowledge, snooze or complete it: ${v.url ?? ''}\n`,
     }),
+    ai_quality_notice: (v: TemplateVars) => ({
+      subject: `${v.county}: the AI feature "${v.title ?? ''}" needs a look`,
+      body:
+        `${v.county}: ${v.what ?? ''}\n\n` +
+        `The feature keeps running; people still decide everything it suggests. Look at recent outputs in the AI use register, and change the model or prompt, or switch the feature off, if it is not helping.\n`,
+    }),
     resource_attention: (v: TemplateVars) => ({
       subject: `${v.county}: public resource "${v.title ?? ''}" needs attention`,
       body:
@@ -267,6 +277,8 @@ const ES: typeof EN = {
       `Despacho de ${v.county}: ${v.text ?? ''} (Responda por la aplicación cuando pueda; si está en peligro ahora, llame al 911.)`,
     reminder_overdue: (v) =>
       `Gestión de Emergencias de ${v.county}: el recordatorio "${v.title ?? ''}" venció ${v.dueAt ?? 'antes'} y nadie lo ha atendido. Abra la consola.`,
+    ai_quality_notice: (v) =>
+      `Gestión de Emergencias de ${v.county}: la función de IA "${v.title ?? ''}" necesita revisión: ${v.what ?? ''} Sigue funcionando. Abra el registro de uso de IA.`,
     resource_attention: (v) =>
       `Manejo de Emergencias de ${v.county}: el recurso público "${v.title ?? ''}" ${v.what ?? 'necesita atención'}.`,
     contact_reverify: (v) =>
@@ -360,6 +372,12 @@ const ES: typeof EN = {
       body:
         `El recordatorio "${v.title ?? ''}" venció ${v.dueAt ?? 'antes'} y nadie en la consola de ${v.county} lo ha atendido.\n\n` +
         `${v.what ? `${v.what}\n\n` : ''}Abra la consola para atenderlo, posponerlo o completarlo: ${v.url ?? ''}\n`,
+    }),
+    ai_quality_notice: (v) => ({
+      subject: `${v.county}: la función de IA "${v.title ?? ''}" necesita revisión`,
+      body:
+        `${v.county}: ${v.what ?? ''}\n\n` +
+        `La función sigue funcionando; las personas siguen decidiendo todo lo que sugiere. Revise los resultados recientes en el registro de uso de IA y cambie el modelo o la instrucción, o apague la función, si no está ayudando.\n`,
     }),
     resource_attention: (v) => ({
       subject: `${v.county}: el recurso público "${v.title ?? ''}" necesita atención`,

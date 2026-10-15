@@ -10,10 +10,11 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
 import { createDb, type Database } from '@cg/db';
-import { fakeProvider } from '@cg/ai';
+import { AiProviderError, fakeProvider, type AiProvider } from '@cg/ai';
 import { westwindGraph } from '@cg/intake';
 import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
+import { enableAiTestDouble } from '../../../tools/seed/src/ai-test-double.ts';
 import { loadSeed } from '../../../tools/seed/src/load.ts';
 import { buildApp, type App } from '../src/app.ts';
 import { ReferenceCodeLeaser, CODE_PATTERN } from '../src/public/reference-codes.ts';
@@ -28,6 +29,11 @@ describe.skipIf(!appUrl || !workerUrl)('public intake API (database-backed)', ()
   let dbApp: Kysely<Database>;
   let dbWorker: Kysely<Database>;
   let tenantId: string;
+  // ADR-0043: the test double for this suite only; the register is put back afterwards.
+  let restoreAi: (() => Promise<void>) | undefined;
+  let seededRegister: { feature: string; enabled: boolean; provider: string }[] = [];
+  /** The test double, swapped for a failing one in the AI-10 case. */
+  let provider: AiProvider = fakeProvider;
 
   const answers = {
     danger_now: { kind: 'value', value: 'no' },
@@ -61,6 +67,12 @@ describe.skipIf(!appUrl || !workerUrl)('public intake API (database-backed)', ()
     dbWorker = createDb(workerUrl!, 2);
     const seeded = await loadSeed(dbWorker);
     tenantId = seeded.tenants['county']!;
+    seededRegister = await dbWorker
+      .selectFrom('cg.ai_use_register')
+      .select(['feature', 'enabled', 'provider'])
+      .where('tenant_id', '=', tenantId)
+      .execute();
+    restoreAi = await enableAiTestDouble(dbWorker, tenantId);
     app = await buildApp({
       productName: 'Test Product',
       version: '0.0.0',
@@ -76,13 +88,14 @@ describe.skipIf(!appUrl || !workerUrl)('public intake API (database-backed)', ()
           getQueue: () => undefined,
           residentTokenSecret: 'test-secret-'.repeat(4),
           defaultGraph: westwindGraph,
-          ai: { providerFor: async () => fakeProvider },
+          ai: { providerFor: async () => provider },
         }),
       ],
     });
   });
 
   afterAll(async () => {
+    await restoreAi?.();
     await app?.close();
     await dbApp?.destroy();
     await dbWorker?.destroy();
@@ -271,6 +284,21 @@ describe.skipIf(!appUrl || !workerUrl)('public intake API (database-backed)', ()
       .where('execution_id', '=', executionId)
       .executeTakeFirst();
     expect(row?.provider).toBe('fake');
+    // AIG-01: the call's record: feature, provider, model, outcome; never the words.
+    const record = await dbWorker
+      .selectFrom('cg.ai_output')
+      .selectAll()
+      .where('execution_id', '=', executionId)
+      .executeTakeFirstOrThrow();
+    expect(record).toMatchObject({
+      feature: 'intake.extraction',
+      provider: 'fake',
+      model: 'keyword-rules',
+      outcome: 'ok',
+      target_type: 'extraction',
+      human_action: null,
+    });
+    expect(JSON.stringify(record)).not.toContain('tree fell');
 
     const inj = await app.inject({
       method: 'POST',
@@ -286,16 +314,50 @@ describe.skipIf(!appUrl || !workerUrl)('public intake API (database-backed)', ()
     expect(inj.json().injectionSuspected).toBe(true);
   });
 
-  it('seeds the AI use register with the fake provider and keeps the severity suggestion off (AIG-01, PHO-12)', async () => {
-    const rows = await dbWorker
-      .selectFrom('cg.ai_use_register')
-      .select(['feature', 'enabled', 'provider'])
-      .where('tenant_id', '=', tenantId)
-      .execute();
-    expect(rows.find((r) => r.feature === 'intake.extraction')).toMatchObject({
-      enabled: true,
-      provider: 'fake',
-    });
-    expect(rows.find((r) => r.feature === 'photo.severity')).toMatchObject({ enabled: false });
+  it('AI-10, AIG-01: a provider that times out is recorded and the resident answers directly; nothing is extracted', async () => {
+    provider = {
+      ...fakeProvider,
+      llm: {
+        extract: async () => {
+          throw new AiProviderError('timeout');
+        },
+      },
+    };
+    try {
+      const executionId = randomUUID();
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/public/intake/county/extract',
+        payload: {
+          executionId,
+          text: 'The roof blew off.',
+          graphKey: westwindGraph.key,
+          graphVersion: westwindGraph.version,
+        },
+      });
+      expect(res.statusCode).toBe(409);
+      expect(res.json()).toMatchObject({ code: 'ai_unavailable' });
+      expect(res.json().message).toMatch(/answer the questions directly/);
+      const record = await dbWorker
+        .selectFrom('cg.ai_output')
+        .select(['outcome', 'target_id'])
+        .where('execution_id', '=', executionId)
+        .executeTakeFirstOrThrow();
+      expect(record).toEqual({ outcome: 'timeout', target_id: null });
+      const extracted = await dbWorker
+        .selectFrom('cg.extraction')
+        .select('id')
+        .where('execution_id', '=', executionId)
+        .execute();
+      expect(extracted).toEqual([]);
+    } finally {
+      provider = fakeProvider;
+    }
+  });
+
+  it('ADR-0043, AIG-01, AIG-08: the seed lists OpenAI for every feature, switched off until evaluated; never the fake provider', async () => {
+    expect(seededRegister.length).toBeGreaterThan(0);
+    for (const r of seededRegister) expect(r.provider).toBe('openai');
+    expect(seededRegister.find((r) => r.feature === 'intake.extraction')?.enabled).toBe(false);
   });
 });

@@ -8,6 +8,7 @@ export * from './facts.ts';
 export * from './fema/index.ts';
 export * from './area.ts';
 export * from './declaration.ts';
+export * from './partners.ts';
 export * from './csv.ts';
 export * from './zip.ts';
 export * from './report-export.ts';

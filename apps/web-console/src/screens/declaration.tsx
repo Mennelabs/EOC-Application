@@ -15,6 +15,7 @@ import { api, ApiFailure, describeFailure } from '../api/client.ts';
 import { DataTable, Field, Status, fmt } from '../ui/primitives.tsx';
 import { EventPicker, useOpenEvents } from './dispatch.tsx';
 import { PackageExports, PackagePhotos } from './fema-package.tsx';
+import { PartnerRollupChooser } from './partner-rollup.tsx';
 
 const DEGREES = ['affected', 'minor', 'major', 'destroyed'] as const;
 type Degree = (typeof DEGREES)[number];
@@ -232,27 +233,39 @@ export interface View {
     /** FL-17: equipment partners' teams brought, with the team's time on duty. */
     equipment?: { organization: string; team: string; item: string; hours: number }[];
   };
-  /** DCL:DEC-09: what partner organizations committed (absent from an older API). */
+  /**
+   * DCL:DEC-09: what partner organizations committed, from their own records; all of it, or
+   * the organizations and categories the county chose (2026-10-15). A category left out is
+   * null: not included, never zero. Absent from an older API.
+   */
   partners?: {
+    rollup?: {
+      all: boolean;
+      partners: { id: string; organization: string }[];
+      categories: string[];
+      statement: string;
+    };
+    organizations?: { id: string; organization: string }[];
     byOrganization: {
+      id?: string;
       organization: string;
-      needsMet: number;
-      services: Record<string, number>;
-      shelteredHouseholds: number;
-      shelteredPeople: number;
-      teams: number;
+      needsMet: number | null;
+      services: Record<string, number> | null;
+      shelteredHouseholds: number | null;
+      shelteredPeople: number | null;
+      teams: number | null;
     }[];
     totals: {
-      needsMet: number;
-      meals: number;
-      waterCases: number;
-      tarps: number;
-      cots: number;
-      rides: number;
-      peopleServed: number;
-      shelteredHouseholds: number;
-      shelteredPeople: number;
-      teams: number;
+      needsMet: number | null;
+      meals: number | null;
+      waterCases: number | null;
+      tarps: number | null;
+      cots: number | null;
+      rides: number | null;
+      peopleServed: number | null;
+      shelteredHouseholds: number | null;
+      shelteredPeople: number | null;
+      teams: number | null;
     };
   };
 }
@@ -360,7 +373,7 @@ export function DeclarationScreen() {
           <Casualties view={view} editable={can('casualty.record')} run={run} />
           <PublicDamage view={view} sites={sites} editable={can('pa_site.write')} run={run} />
           <Donated view={view} />
-          <Partners view={view} />
+          <Partners view={view} editable={can('declaration.write')} run={run} />
           <PackagePhotos eventId={view.eventId} canChoose={can('declaration.export')} />
           <PackageExports eventId={view.eventId} canExport={can('declaration.export')} />
         </>
@@ -1408,34 +1421,72 @@ export function Donated({ view }: { view: View }) {
   );
 }
 
-/** DCL:DEC-09: resources committed by partner organizations, counts only. */
-export function Partners({ view }: { view: View }) {
+/**
+ * DCL:DEC-09: resources committed by partner organizations, counts only, from their own records;
+ * all of them, or the organizations and categories the county chose (2026-10-15).
+ */
+export function Partners({
+  view,
+  editable = false,
+  run,
+}: {
+  view: View;
+  editable?: boolean;
+  run?: Run;
+}) {
   const p = view.partners;
   if (!p) return null;
   const t = p.totals;
-  const sv = (r: { services: Record<string, number> }, k: string) => n(r.services[k] ?? 0);
+  /** A category the county left out reads as not included, never as zero. */
+  const inc = (v: number | null | undefined) => (v === null ? 'not included' : n(v));
+  const sv = (r: { services: Record<string, number> | null }, k: string) =>
+    r.services === null ? 'not included' : n(r.services[k] ?? 0);
+  const rollup = p.rollup;
   return (
     <section aria-labelledby="decl-partners">
       <h2 id="decl-partners">Resources committed by partners</h2>
       <p>
-        From the needs partner organizations met, the services their teams logged, the shelters they
-        ran and their teams checked in: {n(t.needsMet)} needs met, {n(t.meals)} meals,{' '}
-        {n(t.waterCases)} cases of water, {n(t.tarps)} tarps, {n(t.cots)} cots, {n(t.rides)} rides,{' '}
-        {n(t.shelteredPeople)} people in {n(t.shelteredHouseholds)} households sheltered,{' '}
-        {n(t.teams)} teams.
+        From partner organizations’ own records: needs met {inc(t.needsMet)}; meals {inc(t.meals)};
+        cases of water {inc(t.waterCases)}; tarps {inc(t.tarps)}; cots {inc(t.cots)}; rides{' '}
+        {inc(t.rides)}; people sheltered {inc(t.shelteredPeople)} in {inc(t.shelteredHouseholds)}{' '}
+        households; teams {inc(t.teams)}.
       </p>
       <p className="hint">
-        Only what the county can see: services a partner records under its own accounts stay with
-        the partner unless it shares them.
+        Numbers only: no name, household or record leaves a partner organization.
       </p>
+      {rollup ? (
+        <PartnerRollupChooser
+          key={`${view.declaration?.version ?? 0}`}
+          id="decl-rollup"
+          value={{
+            all: rollup.all,
+            partners: rollup.partners.map((x) => x.id),
+            categories: rollup.categories,
+          }}
+          organizations={p.organizations ?? []}
+          statement={rollup.statement}
+          editable={editable && !!run}
+          onSave={(choice) =>
+            run!(
+              () =>
+                api(`/events/${view.eventId}/declaration`, {
+                  method: 'PUT',
+                  body: { partnerRollup: choice },
+                  ...(view.declaration ? { version: view.declaration.version } : {}),
+                }),
+              'Partner counts choice saved.',
+            )
+          }
+        />
+      ) : null}
       <DataTable
         caption="Resources committed by organization"
         rows={p.byOrganization}
-        rowKey={(r) => r.organization}
-        empty="No partner organization has recorded work for this event yet."
+        rowKey={(r) => r.id ?? r.organization}
+        empty="No partner organization is included, or none has recorded work for this event yet."
         columns={[
           { key: 'org', header: 'Organization', render: (r) => r.organization },
-          { key: 'needs', header: 'Needs met', render: (r) => n(r.needsMet) },
+          { key: 'needs', header: 'Needs met', render: (r) => inc(r.needsMet) },
           { key: 'meals', header: 'Meals', render: (r) => sv(r, 'meal') },
           { key: 'water', header: 'Water (cases)', render: (r) => sv(r, 'water_case') },
           { key: 'tarps', header: 'Tarps', render: (r) => sv(r, 'tarp') },
@@ -1443,9 +1494,12 @@ export function Partners({ view }: { view: View }) {
           {
             key: 'sheltered',
             header: 'Sheltered',
-            render: (r) => `${n(r.shelteredPeople)} people, ${n(r.shelteredHouseholds)} households`,
+            render: (r) =>
+              r.shelteredPeople === null
+                ? 'not included'
+                : `${n(r.shelteredPeople)} people, ${n(r.shelteredHouseholds)} households`,
           },
-          { key: 'teams', header: 'Teams', render: (r) => n(r.teams) },
+          { key: 'teams', header: 'Teams', render: (r) => inc(r.teams) },
         ]}
       />
     </section>

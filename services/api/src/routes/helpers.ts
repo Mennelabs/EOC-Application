@@ -7,6 +7,7 @@ import type { Transaction } from 'kysely';
 import { z } from 'zod';
 import { dictionary, type Database } from '@cg/db';
 import type { Classifier } from '@cg/audit';
+import { PARTNER_CATEGORY_KEYS } from '@cg/reporting';
 
 export const uuidParam = z.object({ id: z.uuid() });
 
@@ -72,3 +73,22 @@ export function stepKey(clientUuid: string, step: string): string {
   const h = createHash('sha256').update(`${clientUuid}:${step}`).digest('hex');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
+
+/**
+ * Partner counts on the declaration view and official reports (2026-10-15, DCL:DEC-09): roll
+ * up all, or the chosen partner organizations and categories.
+ */
+export const partnerRollupIn = z.union([
+  z.object({ all: z.literal(true) }),
+  z.object({
+    all: z.literal(false),
+    partners: z.array(z.uuid()).max(500),
+    categories: z.array(z.enum(PARTNER_CATEGORY_KEYS)).max(PARTNER_CATEGORY_KEYS.length),
+  }),
+]);
+
+export const partnerRollupOut = z.object({
+  all: z.boolean(),
+  partners: z.array(z.uuid()).optional(),
+  categories: z.array(z.string()).optional(),
+});

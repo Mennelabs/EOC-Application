@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import pino from 'pino';
-import { loadConfig, workerSchema } from '@cg/config';
+import { aiEnv, loadConfig, workerSchema } from '@cg/config';
 import {
   assertTopology,
   connectQueue,
@@ -22,7 +22,7 @@ import {
   TwilioSms,
   type QueueSupervisor,
 } from '@cg/adapters';
-import { fakeProvider, providerByName } from '@cg/ai';
+import { DEFAULT_PROVIDER, openAIFromEnv, providerByName, registerProvider } from '@cg/ai';
 import { FieldCrypto, OpenBaoKeyService, dbKeyStore } from '@cg/crypto';
 import { westwindGraph } from '@cg/intake';
 import { createDb } from '@cg/db';
@@ -41,6 +41,7 @@ import { dropPositionTrails, watchFieldSafety, watchReminders } from './jobs/fie
 import { assignLocationGeography } from './jobs/geography.ts';
 import { pruneReferenceSnapshots, scheduleReferencePulls } from './jobs/refdata.ts';
 import { evaluateEquityAlerts } from './jobs/equity.ts';
+import { evaluateAiHealth } from './jobs/ai-health.ts';
 import { webhookSchedule } from './jobs/webhooks.ts';
 import { consume, consumeIntake, relayOnce } from './jobs/relay.ts';
 import type { JobContext, Schedule } from './jobs/types.ts';
@@ -48,6 +49,9 @@ import { nullMailer, smtpMailer } from './mail.ts';
 
 const config = loadConfig(workerSchema);
 const log = pino({ level: config.LOG_LEVEL, base: { service: 'worker' } });
+// ADR-0043: OpenAI for every AI function when the key is configured; never a fake provider.
+const openai = openAIFromEnv(aiEnv(config));
+if (openai) registerProvider(openai);
 const pool = createPool(config.DATABASE_URL, 5);
 const db = createDb(config.DATABASE_URL, 5);
 // Key-service token is injected as a file by the keys-init container (ADR-0009).
@@ -140,15 +144,16 @@ const ctx: JobContext = {
     putLocked: lockedPut,
   },
   ai: {
-    // AIG-12: the provider is tenant configuration; only registered, compliant providers exist here.
+    // ADR-0043, AIG-12: the tenant's provider (`ai.provider`, OpenAI by default) if this
+    // process registered it; otherwise AI is off. Never the fake provider.
     async providerFor(_tenantId, trx) {
       const row = await trx
         .selectFrom('cg.tenant_config')
         .select('value')
         .where('key', '=', 'ai.provider')
         .executeTakeFirst();
-      const name = typeof row?.value === 'string' ? row.value : 'fake';
-      return providerByName(name) ?? fakeProvider;
+      const name = typeof row?.value === 'string' ? row.value : DEFAULT_PROVIDER;
+      return providerByName(name) ?? null;
     },
   },
   defaultGraph: westwindGraph,
@@ -190,6 +195,7 @@ const schedules: Schedule[] = [
   { name: 'resource-review', everyMs: 60 * 60_000, run: reviewResources }, // BRD:FR-16.03, AC-16B
   { name: 'contact-reverify', everyMs: 60 * 60_000, run: remindContactVerification }, // CNT-01
   { name: 'publication-notices', everyMs: 30_000, run: noticePublications }, // PUB-06
+  { name: 'ai-health', everyMs: 10 * 60_000, run: evaluateAiHealth }, // AIG-09 (alerts only)
   // DSP-04, DSP-07, FLD-16: check-in timers, acknowledgement windows, escalation; DSP-08 trails.
   { name: 'field-safety', everyMs: 60_000, run: watchFieldSafety },
   { name: 'reminders-f09', everyMs: 60_000, run: watchReminders }, // F09, FR-09.05/09.06

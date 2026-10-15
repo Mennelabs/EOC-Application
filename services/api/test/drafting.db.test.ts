@@ -138,6 +138,22 @@ describe.skipIf(!appUrl || !workerUrl)('AI drafting from facts (database-backed)
           enabled: false,
         })
         .execute();
+      await trx
+        .insertInto('cg.ai_use_register')
+        .values({
+          tenant_id: county,
+          feature: 'declaration.drafting',
+          provider: 'fake',
+          model: 'keyword-rules',
+          model_version: null,
+          data_sent: 'Declaration figures',
+          decision_informed: 'Box 8 and 9 drafts',
+          human_checkpoint: 'Staff save them',
+          owner: 'County EM',
+          evaluation: JSON.stringify({}),
+          enabled: true,
+        })
+        .execute();
       return (
         await trx
           .insertInto('cg.event')
@@ -319,5 +335,77 @@ describe.skipIf(!appUrl || !workerUrl)('AI drafting from facts (database-backed)
       ['ok', 'accepted'],
       ['invalid', null],
     ]);
+  });
+
+  it('DCL:DEC-14: Boxes 8 and 9 are drafted from the declaration figures, cited and checked; saving records what the person kept', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/v1/events/${eventId}/declaration/ai-draft`,
+      headers: { authorization: 'Bearer director', 'idempotency-key': randomUUID() },
+      payload: { box: 8 },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const box8 = res.json() as {
+      text: string;
+      sentences: { factIds: string[] }[];
+      facts: { id: string; value: unknown }[];
+      provider: string;
+      outputId: string;
+    };
+    expect(box8.provider).toBe('fake');
+    expect(box8.text.length).toBeLessThanOrEqual(3000);
+    expect(box8.facts.map((f) => f.id)).toEqual(
+      expect.arrayContaining([
+        'damage.units',
+        'damage.destroyed',
+        'damage.heavyUninsured',
+        'outages.over72',
+      ]),
+    );
+    expect(box8.sentences.every((x) => x.factIds.length > 0)).toBe(true);
+    const box9 = (
+      await app.inject({
+        method: 'POST',
+        url: `/api/v1/events/${eventId}/declaration/ai-draft`,
+        headers: { authorization: 'Bearer director', 'idempotency-key': randomUUID() },
+        payload: { box: 9 },
+      })
+    ).json() as { text: string; facts: { id: string }[]; outputId: string };
+    expect(box9.facts.map((f) => f.id)).toContain('donated.volunteerHours');
+    // Not saved: the draft comes back to the screen; the person saves what they keep.
+    const saved = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/events/${eventId}/declaration`,
+      headers: { authorization: 'Bearer director', 'idempotency-key': randomUUID() },
+      payload: {
+        box8Draft: box8.text,
+        box9Draft: `${box9.text} Exercise: county crews on 12-hour shifts.`,
+        ai: [
+          { outputId: box8.outputId, changed: false },
+          { outputId: box9.outputId, changed: true },
+        ],
+      },
+    });
+    expect(saved.statusCode, saved.body).toBe(201);
+    const rows = await dbWorker
+      .selectFrom('cg.ai_output')
+      .select(['id', 'outcome', 'target_type', 'human_action'])
+      .where('tenant_id', '=', county)
+      .where('feature', '=', 'declaration.drafting')
+      .execute();
+    expect(rows.find((r) => r.id === box8.outputId)).toMatchObject({
+      outcome: 'ok',
+      target_type: 'declaration',
+      human_action: 'accepted',
+    });
+    expect(rows.find((r) => r.id === box9.outputId)?.human_action).toBe('edited');
+    // Who may not write the declaration may not draft it.
+    const author = await app.inject({
+      method: 'POST',
+      url: `/api/v1/events/${eventId}/declaration/ai-draft`,
+      headers: { authorization: 'Bearer author', 'idempotency-key': randomUUID() },
+      payload: { box: 8 },
+    });
+    expect(author.statusCode).toBe(403);
   });
 });

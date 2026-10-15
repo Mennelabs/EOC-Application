@@ -173,6 +173,9 @@ test.describe('layer 6 console: reference data', () => {
     await page.getByLabel('Incident end date').fill(day(-7));
     await expect(page.getByText('The incident cannot end before it starts.')).toBeVisible();
     await page.getByLabel('Incident end date').fill(day(-5));
+    // Layer 7 (AI-10, DCL:DEC-14): with no AI provider configured the assistant says it is off.
+    await page.getByRole('button', { name: 'Draft Box 8 with the AI assistant' }).click();
+    await expect(page.getByText('The AI drafting assistant is off here.')).toBeVisible();
     await page.getByRole('button', { name: 'Save incident period and drafts' }).click();
     await expect(page.getByText('Incident period and drafts saved.')).toBeVisible();
     await expect(page.getByText(/25 days left/)).toBeVisible();

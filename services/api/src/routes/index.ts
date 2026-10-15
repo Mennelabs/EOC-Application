@@ -6,7 +6,7 @@ import { commandAliasRoutes } from './command-aliases.ts';
 import { commandRoutesWith, type CommandDeps } from './commands.ts';
 import { breakGlassRoutes } from './breakglass.ts';
 import { contactRoutes } from './contacts.ts';
-import { declarationRoutes } from './declaration.ts';
+import { declarationRoutesWith } from './declaration.ts';
 import { femaMappingRoutes } from './fema-mappings.ts';
 import { officialReportRoutesWith } from './official-reports.ts';
 import type { DraftingDeps } from './drafting.ts';
@@ -93,7 +93,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   messageRoutes,
   referralRoutes,
   refdataRoutes(deps.refdata),
-  declarationRoutes,
+  declarationRoutesWith(deps.drafting),
   officialReportRoutesWith(deps.drafting),
   femaMappingRoutes,
   exportRoutes(deps.exports),

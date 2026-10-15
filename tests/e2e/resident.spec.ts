@@ -2,7 +2,8 @@
  * Resident journey against the running stack (AC-11A, AC-11C, GATE-03,
  * GATE-06, RES-01/02, EQ-06, ACC-07, CHN-08): keyboard only from the deep
  * link to a reference number with an axe scan on every screen, the optional
- * questions, then "my report" through the one-time code from the mail sink,
+ * questions, then "my report" through the one-time code from the mail sink
+ * (with the resident's own PDF copy, FL:FR-32),
  * a consent change and a withdrawal. A Spanish run and a 320 px reflow check.
  */
 import AxeBuilder from '@axe-core/playwright';
@@ -186,6 +187,12 @@ test.describe('resident report', () => {
     await volunteers.focus();
     await page.keyboard.press('Space');
     await expect(volunteers).toBeChecked({ timeout: 10_000 });
+    // FL:FR-32: a copy for the resident or their insurer, as a PDF named by the reference.
+    const download = page.waitForEvent('download');
+    await pressButton(page, 'Download my copy (PDF)');
+    const file = await download;
+    expect(file.suggestedFilename()).toBe(`damage-report-${code!}.pdf`);
+    await expect(page.getByText('Your copy was downloaded.')).toBeVisible();
     page.once('dialog', (d) => void d.accept());
     await pressButton(page, 'Withdraw my report');
     await expect(page.getByText('Your report was withdrawn.')).toBeVisible({ timeout: 10_000 });

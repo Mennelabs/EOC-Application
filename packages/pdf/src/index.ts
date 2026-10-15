@@ -31,7 +31,13 @@ export type Block =
       widths?: number[];
     }
   | { kind: 'list'; items: string[] }
-  | { kind: 'pairs'; caption: string; items: [string, Cell][] }
+  | {
+      kind: 'pairs';
+      caption: string;
+      items: [string, Cell][];
+      /** Column headers in the document's language; "Item" and "Value" when absent. */
+      headers?: [string, string];
+    }
   | {
       kind: 'figure';
       /** JPEG or PNG bytes. */
@@ -204,7 +210,7 @@ export async function renderPdf(model: PdfDocumentModel): Promise<Buffer> {
         const caption = b.caption;
         // The caption is the table's visible title; it is read before the table.
         text('Caption', caption, { font: 'bold', size: SIZE.body, gap: 0.2 });
-        const columns = b.kind === 'pairs' ? ['Item', 'Value'] : b.columns;
+        const columns = b.kind === 'pairs' ? (b.headers ?? ['Item', 'Value']) : b.columns;
         const rows: Cell[][] = b.kind === 'pairs' ? b.items.map(([k, v]) => [k, v]) : b.rows;
         const rowHeaders = b.kind === 'pairs' ? true : (b.rowHeaders ?? false);
         const weights =

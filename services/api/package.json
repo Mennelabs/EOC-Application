@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "samples": "node src/public/pdf-samples.ts",
     "start": "node src/main.ts",
     "dev": "node --watch src/main.ts",
     "typecheck": "tsc --noEmit -p ."
@@ -29,6 +30,7 @@
     "fastify-type-provider-zod": "7.0.0",
     "jose": "6.2.12",
     "kysely": "0.29.6",
+    "sharp": "0.35.5",
     "zod": "4.6.5"
   }
 }

@@ -91,7 +91,11 @@ export async function up(db: Kysely<unknown>): Promise<void> {
 }
 
 export async function down(db: Kysely<unknown>): Promise<void> {
+  // The migrator owns the table: row security is lifted for this one delete, or it sees no rows
+  // and the narrower constraint below fails on the health notices it left behind.
+  await sql`alter table cg.notice_log no force row level security`.execute(db);
   await sql`delete from cg.notice_log where kind = 'ai_health'`.execute(db);
+  await sql`alter table cg.notice_log force row level security`.execute(db);
   await sql`alter table cg.notice_log drop constraint notice_log_kind_check`.execute(db);
   await sql`alter table cg.notice_log add constraint notice_log_kind_check check (kind in (
     'site_reconfirm', 'site_hidden', 'resource_review', 'resource_link', 'resource_expired',

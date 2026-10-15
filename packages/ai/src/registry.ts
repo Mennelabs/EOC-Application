@@ -144,6 +144,17 @@ export const AI_FEATURES: readonly RegisterEntry[] = [
     owner: 'Damage assessment lead',
   },
   {
+    feature: 'command.interpret',
+    needs: 'llm',
+    dataSent:
+      "A staff member's request to the command window, redacted of phone numbers, emails, street addresses, identifiers and names; the shorthand the person may use",
+    decisionInformed:
+      'Turns the request into one line of shorthand that the server checks like typed shorthand; the plan is shown before anything changes (CMD-10, CMD-20)',
+    humanCheckpoint:
+      'The person confirms every change on the plan screen; lookups only read what the person may see (CMD-21, CMD-22)',
+    owner: 'Product owner (command window)',
+  },
+  {
     feature: 'photo.quality',
     needs: 'image',
     dataSent: 'A resident photo',

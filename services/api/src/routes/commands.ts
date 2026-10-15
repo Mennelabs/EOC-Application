@@ -21,6 +21,7 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import type { Selectable, Transaction } from 'kysely';
 import { z } from 'zod';
+import { callAi, recordAiOutput, recordHumanAction, redact, type AiProvider } from '@cg/ai';
 import { actions, decide, isActionKey } from '@cg/authz';
 import type { CommandExecutionTable, Database } from '@cg/db';
 import {
@@ -105,6 +106,7 @@ const executionOut = z.object({
       args: z.record(z.string(), z.unknown()),
       target: targetOut.nullable(),
       eventId: z.uuid().nullable(),
+      interpretation: z.string().nullable(),
     })
     .nullable(),
   planHash: z.string().nullable(),
@@ -127,6 +129,8 @@ interface Plan {
   args: Record<string, unknown>;
   target: Target | null;
   eventId: string | null;
+  /** CMD-10: the shorthand plain words were read as, shown with the plan. */
+  interpretation?: string;
 }
 
 interface StoredResult {
@@ -247,6 +251,7 @@ function view(row: Row, now: Date, live?: Verified): ExecutionOut {
       args: plan.args ?? {},
       target: plan.target ?? null,
       eventId: plan.eventId ?? null,
+      interpretation: plan.interpretation ?? null,
     },
     planHash: row.state === 'awaiting_confirmation' ? row.plan_hash : null,
     result: verified
@@ -373,631 +378,744 @@ async function resolveTarget(
   };
 }
 
-export const commandRoutes: FastifyPluginAsync = async (base) => {
-  const app = base.withTypeProvider<ZodTypeProvider>();
+export interface CommandDeps {
+  ai?: { providerFor(tenantId: string, trx: Transaction<Database>): Promise<AiProvider | null> };
+}
 
-  const account = (request: FastifyRequest) => {
-    const s = request.subject;
-    if (s.kind !== 'account') throw errors.unauthorized();
-    return s;
-  };
+const AI_OFF =
+  'Plain-language commands need the AI assistant, which is off here. Type /help for the shorthand, which always works.';
 
-  /** Section 30.2: phases 1 and 2 on by default; a county turns on 3 and 4 in its configuration. */
-  async function settings(request: FastifyRequest, tenantId: string) {
-    return request.tx(async (trx) => {
-      const cfg = await trx
-        .selectFrom('cg.tenant_config')
-        .select('value')
-        .where('tenant_id', '=', tenantId)
-        .where('key', '=', 'command.phases')
-        .executeTakeFirst();
-      const t = await trx
-        .selectFrom('cg.tenant')
-        .select('timezone')
-        .where('id', '=', tenantId)
-        .executeTakeFirst();
-      const raw = cfg?.value;
-      const phases =
-        Array.isArray(raw) && raw.every((p) => typeof p === 'number')
-          ? (raw as number[])
-          : [...DEFAULT_PHASES];
-      return { phases, timeZone: t?.timezone ?? 'UTC' };
-    });
-  }
+/** Puts back what redaction took out of the request (AIG-05), in the line the model wrote. */
+const restore = (line: string, tokens: Record<string, string>) =>
+  Object.entries(tokens).reduce((acc, [token, original]) => acc.replaceAll(token, original), line);
 
-  /** Whether the person's roles hold the command's action at all (the operation checks the record). */
-  const holds = (request: FastifyRequest, spec: CommandSpec) => {
-    const s = account(request);
-    const resource = isActionKey(spec.action) ? actions[spec.action].resource : spec.action;
-    return decide(s, spec.action, { type: resource, tenantId: s.tenantId }).effect === 'allow';
-  };
+export const commandRoutesWith =
+  (deps: CommandDeps = {}): FastifyPluginAsync =>
+  async (base) => {
+    const app = base.withTypeProvider<ZodTypeProvider>();
 
-  const loadOwn = (trx: Transaction<Database>, id: string, accountId: string) =>
-    trx
-      .selectFrom('cg.command_execution')
-      .selectAll()
-      .where('id', '=', id)
-      .where('account_id', '=', accountId)
-      .executeTakeFirst();
-
-  /** Runs the operation and records what it answered; never claims more than it said (CMD-26). */
-  async function execute(
-    request: FastifyRequest,
-    row: Row,
-    spec: CommandSpec,
-    req: OpRequest,
-    extraHeaders: Record<string, string>,
-  ): Promise<ExecutionOut> {
-    const s = account(request);
-    // CMD-24: an operation that did not answer is reported as such, never as done or undone.
-    const res = await op(request, req, {
-      'idempotency-key': row.execution_id,
-      ...extraHeaders,
-    }).catch((err: unknown) => {
-      request.log.error({ err, command: spec.name }, 'command operation did not answer');
-      return {
-        status: 504,
-        body: {
-          code: 'no_answer',
-          message: 'The operation did not answer. Check the record before trying again.',
-        },
-      };
-    });
-    const ok = res.status >= 200 && res.status < 300;
-    const now = new Date();
-    const verified = ok
-      ? row.reversal_of
-        ? undoVerified(res.body)
-        : spec.verify(res.body)
-      : undefined;
-    // Lookups answer the person now; the record keeps which records, not what they said.
-    const stored: StoredResult = ok
-      ? {
-          httpStatus: res.status,
-          verified:
-            spec.kind === 'lookup' && !row.reversal_of
-              ? {
-                  state: verified!.state,
-                  summary: '',
-                  records: verified!.records.map((r) => ({ kind: r.kind, id: r.id })),
-                }
-              : verified!,
-        }
-      : { httpStatus: res.status, error: errorOf(res.status, res.body) };
-    const plan = withoutFreeText(row.plan as unknown as Plan, spec);
-    const done = await request.tx(async (trx) => {
-      const updated = await trx
-        .updateTable('cg.command_execution')
-        .set({
-          state: ok ? 'succeeded' : 'failed',
-          result: JSON.stringify(stored),
-          plan: JSON.stringify(plan),
-          undo_until:
-            ok && spec.reversal === 'undo_15_min' && spec.undo && !row.reversal_of
-              ? new Date(now.getTime() + UNDO_MS)
-              : null,
-          updated_by: s.accountId,
-        })
-        .where('id', '=', row.id)
-        .returningAll()
-        .executeTakeFirstOrThrow();
-      if (ok && row.reversal_of)
-        await trx
-          .updateTable('cg.command_execution')
-          .set({ undone_by: row.id, undo_until: null, updated_by: s.accountId })
-          .where('id', '=', row.reversal_of)
-          .execute();
-      if (spec.kind !== 'lookup' || row.reversal_of)
-        await request.audit(trx, {
-          action: row.reversal_of ? 'command.undo' : 'command.execute',
-          targetType: 'command_execution',
-          targetId: row.id,
-          targetVersion: updated.version,
-          executionId: row.execution_id,
-          reason: `${spec.name}@${spec.version}: ${ok ? 'succeeded' : `failed (${stored.error?.code})`}${row.reason ? `; ${row.reason}` : ''}`,
-        });
-      return updated;
-    });
-    return view(done, now, verified);
-  }
-
-  const undoVerified = (body: unknown): Verified => {
-    const b = (body ?? {}) as Record<string, unknown>;
-    const rec = (b['need'] as Record<string, unknown> | undefined) ?? b;
-    return {
-      state: 'saved',
-      summary: 'Undone.',
-      records:
-        typeof rec['id'] === 'string'
-          ? [
-              {
-                kind: 'record',
-                id: rec['id'],
-                ...(typeof rec['version'] === 'number' ? { version: rec['version'] } : {}),
-              },
-            ]
-          : [],
+    const account = (request: FastifyRequest) => {
+      const s = request.subject;
+      if (s.kind !== 'account') throw errors.unauthorized();
+      return s;
     };
-  };
 
-  // ---------------------------------------------------------------- catalog (the help)
-  app.get(
-    '/commands/catalog',
-    {
-      schema: {
-        tags: ['commands'],
-        response: {
-          200: z.array(commandMeta.extend({ enabled: z.boolean(), allowed: z.boolean() })),
-        },
-      },
-    },
-    async (request) => {
-      const s = account(request);
-      await request.authorize('command.use', { type: 'command', tenantId: s.tenantId });
-      const { phases } = await settings(request, s.tenantId);
-      return CATALOG.map((c) => ({
-        ...meta(c),
-        enabled: phases.includes(c.phase),
-        allowed: holds(request, c),
-      }));
-    },
-  );
+    /** Section 30.2: phases 1 and 2 on by default; a county turns on 3 and 4 in its configuration. */
+    async function settings(request: FastifyRequest, tenantId: string) {
+      return request.tx(async (trx) => {
+        const cfg = await trx
+          .selectFrom('cg.tenant_config')
+          .select('value')
+          .where('tenant_id', '=', tenantId)
+          .where('key', '=', 'command.phases')
+          .executeTakeFirst();
+        const t = await trx
+          .selectFrom('cg.tenant')
+          .select('timezone')
+          .where('id', '=', tenantId)
+          .executeTakeFirst();
+        const raw = cfg?.value;
+        const phases =
+          Array.isArray(raw) && raw.every((p) => typeof p === 'number')
+            ? (raw as number[])
+            : [...DEFAULT_PHASES];
+        return { phases, timeZone: t?.timezone ?? 'UTC' };
+      });
+    }
 
-  // ---------------------------------------------------------------- history (own executions)
-  app.get(
-    '/commands',
-    {
-      schema: {
-        tags: ['commands'],
-        querystring: z.object({ limit: z.coerce.number().int().min(1).max(100).default(20) }),
-        response: { 200: z.array(executionOut) },
-      },
-    },
-    async (request) => {
+    /** Whether the person's roles hold the command's action at all (the operation checks the record). */
+    const holds = (request: FastifyRequest, spec: CommandSpec) => {
       const s = account(request);
-      await request.authorize('command.use', { type: 'command', tenantId: s.tenantId });
-      const rows = await request.tx((trx) =>
-        trx
-          .selectFrom('cg.command_execution')
-          .selectAll()
-          .where('account_id', '=', s.accountId)
-          .orderBy('created_at', 'desc')
-          .limit(request.query.limit)
-          .execute(),
-      );
+      const resource = isActionKey(spec.action) ? actions[spec.action].resource : spec.action;
+      return decide(s, spec.action, { type: resource, tenantId: s.tenantId }).effect === 'allow';
+    };
+
+    const loadOwn = (trx: Transaction<Database>, id: string, accountId: string) =>
+      trx
+        .selectFrom('cg.command_execution')
+        .selectAll()
+        .where('id', '=', id)
+        .where('account_id', '=', accountId)
+        .executeTakeFirst();
+
+    /** Runs the operation and records what it answered; never claims more than it said (CMD-26). */
+    async function execute(
+      request: FastifyRequest,
+      row: Row,
+      spec: CommandSpec,
+      req: OpRequest,
+      extraHeaders: Record<string, string>,
+    ): Promise<ExecutionOut> {
+      const s = account(request);
+      // CMD-24: an operation that did not answer is reported as such, never as done or undone.
+      const res = await op(request, req, {
+        'idempotency-key': row.execution_id,
+        ...extraHeaders,
+      }).catch((err: unknown) => {
+        request.log.error({ err, command: spec.name }, 'command operation did not answer');
+        return {
+          status: 504,
+          body: {
+            code: 'no_answer',
+            message: 'The operation did not answer. Check the record before trying again.',
+          },
+        };
+      });
+      const ok = res.status >= 200 && res.status < 300;
       const now = new Date();
-      return rows.map((r) => view(r, now));
-    },
-  );
-
-  app.get(
-    '/commands/:id',
-    { schema: { tags: ['commands'], params: uuidParam, response: { 200: executionOut } } },
-    async (request) => {
-      const s = account(request);
-      await request.authorize('command.use', { type: 'command', tenantId: s.tenantId });
-      const row = await request.tx((trx) => loadOwn(trx, request.params.id, s.accountId));
-      if (!row) throw errors.notFound();
-      return view(row, new Date());
-    },
-  );
-
-  // ---------------------------------------------------------------- prepare
-  app.post(
-    '/commands',
-    {
-      schema: {
-        tags: ['commands'],
-        body: z.object({
-          /** CMD-25: the client's id for this request; the same id returns the same execution. */
-          executionId: z.uuid(),
-          input: z.string().trim().min(1).max(2000),
-          eventId: z.uuid().optional(),
-          /** The record chosen from a clarification (CMD-08). */
-          targetId: z.uuid().optional(),
-        }),
-        response: { 200: executionOut },
-      },
-    },
-    async (request): Promise<ExecutionOut> => {
-      const s = account(request);
-      await request.authorize('command.use', { type: 'command', tenantId: s.tenantId });
-      const b = request.body;
-      const now = new Date();
-
-      const prior = await request.tx((trx) =>
-        trx
-          .selectFrom('cg.command_execution')
-          .selectAll()
-          .where('execution_id', '=', b.executionId)
-          .executeTakeFirst(),
-      );
-      if (prior) {
-        if (prior.account_id !== s.accountId) throw errors.idempotencyMismatch();
-        return view(prior, now);
-      }
-
-      const { phases, timeZone } = await settings(request, s.tenantId);
-      if (!b.input.startsWith('/'))
-        return blank(
-          b.executionId,
-          'unsupported',
-          'Plain-language commands need the AI assistant. Type /help for the shorthand, which always works.',
-        );
-      const parsed = parseShorthand(b.input, { now, timeZone });
-      if (!parsed.ok) {
-        if (parsed.error === 'help')
-          return {
-            ...blank(b.executionId, 'help', parsed.message),
-            commands: CATALOG.map((c) => ({
-              ...meta(c),
-              enabled: phases.includes(c.phase),
-              allowed: holds(request, c),
-            })),
-          };
-        return {
-          ...blank(
-            b.executionId,
-            parsed.error === 'usage' ? 'clarify' : 'unsupported',
-            parsed.message,
-          ),
-          usage: parsed.usage ?? null,
-        };
-      }
-
-      const spec = commandByName(parsed.command)!;
-      const head = {
-        ...blank(b.executionId, 'unsupported', ''),
-        command: meta(spec),
-        usage: spec.usage,
-      };
-      if (!phases.includes(spec.phase))
-        return {
-          ...head,
-          message: `"${spec.title}" is not switched on for the command window here. Use the screen for it.`,
-        };
-      if (!holds(request, spec))
-        return { ...head, status: 'denied', message: 'Your role cannot do that.' };
-      const args = spec.args.safeParse(parsed.args);
-      if (!args.success)
-        return {
-          ...head,
-          status: 'clarify',
-          message: args.error.issues[0]?.message ?? 'Something in the command needs a second look.',
-        };
-
-      let target: Target | null = null;
-      if (spec.target) {
-        const r = await resolveTarget(request, spec.target, parsed.ref ?? '', b.targetId);
-        if (r.kind === 'none')
-          return {
-            ...head,
-            status: 'not_found',
-            message: `No ${spec.target} you can see matches "${parsed.ref ?? ''}".`,
-          };
-        if (r.kind === 'many')
-          return {
-            ...head,
-            status: 'clarify',
-            message: `More than one ${spec.target} matches. Which one?`,
-            options: r.options,
-          };
-        target = r.target;
-      }
-
-      let eventId: string | null = null;
-      if (spec.needsEvent) {
-        const ev = await op(request, { method: 'GET', path: '/events?limit=100' });
-        const open = (Array.isArray(ev.body) ? (ev.body as ListRow[]) : []).filter(
-          (e) => e['status'] === 'active' && (!b.eventId || e['id'] === b.eventId),
-        );
-        if (open.length !== 1)
-          return {
-            ...head,
-            status: 'clarify',
-            message: open.length
-              ? 'Which event is this about?'
-              : 'There is no open event to report on.',
-            options: open.map((e) => ({ kind: 'event', id: str(e['id']), label: str(e['name']) })),
-          };
-        eventId = str(open[0]!['id']);
-      }
-
-      const plan: Plan = {
-        command: spec.name,
-        version: spec.version,
-        args: args.data,
-        target,
-        eventId,
-      };
-      const hash = planHash(plan, s.tenantId, s.accountId);
-      const immediate = spec.confirmation === 'none';
-      const row = await request.tx((trx) =>
-        trx
-          .insertInto('cg.command_execution')
-          .values({
-            tenant_id: s.tenantId,
-            account_id: s.accountId,
-            execution_id: b.executionId,
-            input_kind: 'shorthand',
-            command: spec.name,
-            command_version: spec.version,
-            phase: spec.phase,
+      const verified = ok
+        ? row.reversal_of
+          ? undoVerified(res.body)
+          : spec.verify(res.body)
+        : undefined;
+      // Lookups answer the person now; the record keeps which records, not what they said.
+      const stored: StoredResult = ok
+        ? {
+            httpStatus: res.status,
+            verified:
+              spec.kind === 'lookup' && !row.reversal_of
+                ? {
+                    state: verified!.state,
+                    summary: '',
+                    records: verified!.records.map((r) => ({ kind: r.kind, id: r.id })),
+                  }
+                : verified!,
+          }
+        : { httpStatus: res.status, error: errorOf(res.status, res.body) };
+      const plan = withoutFreeText(row.plan as unknown as Plan, spec);
+      const done = await request.tx(async (trx) => {
+        const updated = await trx
+          .updateTable('cg.command_execution')
+          .set({
+            state: ok ? 'succeeded' : 'failed',
+            result: JSON.stringify(stored),
             plan: JSON.stringify(plan),
-            plan_hash: hash,
-            confirmation: spec.confirmation,
-            reversal: spec.reversal,
-            state: immediate ? 'executing' : 'awaiting_confirmation',
-            created_by: s.accountId,
+            undo_until:
+              ok && spec.reversal === 'undo_15_min' && spec.undo && !row.reversal_of
+                ? new Date(now.getTime() + UNDO_MS)
+                : null,
             updated_by: s.accountId,
           })
+          .where('id', '=', row.id)
           .returningAll()
-          .executeTakeFirstOrThrow(),
-      );
-      if (!immediate) return view(row, now);
-      return execute(
-        request,
-        row,
-        spec,
-        spec.request(plan.args, plan.target, { now, eventId, executionId: b.executionId }),
-        {},
-      );
-    },
-  );
+          .executeTakeFirstOrThrow();
+        if (ok && row.reversal_of)
+          await trx
+            .updateTable('cg.command_execution')
+            .set({ undone_by: row.id, undo_until: null, updated_by: s.accountId })
+            .where('id', '=', row.reversal_of)
+            .execute();
+        if (spec.kind !== 'lookup' || row.reversal_of)
+          await request.audit(trx, {
+            action: row.reversal_of ? 'command.undo' : 'command.execute',
+            targetType: 'command_execution',
+            targetId: row.id,
+            targetVersion: updated.version,
+            executionId: row.execution_id,
+            reason: `${spec.name}@${spec.version}: ${ok ? 'succeeded' : `failed (${stored.error?.code})`}${row.reason ? `; ${row.reason}` : ''}`,
+          });
+        return updated;
+      });
+      return view(done, now, verified);
+    }
 
-  // ---------------------------------------------------------------- confirm
-  app.post(
-    '/commands/:id/confirm',
-    {
-      schema: {
-        tags: ['commands'],
-        params: uuidParam,
-        body: z.object({ planHash: z.string().regex(/^[0-9a-f]{64}$/) }),
-        response: { 200: executionOut },
-      },
-    },
-    async (request) => {
+    const undoVerified = (body: unknown): Verified => {
+      const b = (body ?? {}) as Record<string, unknown>;
+      const rec = (b['need'] as Record<string, unknown> | undefined) ?? b;
+      return {
+        state: 'saved',
+        summary: 'Undone.',
+        records:
+          typeof rec['id'] === 'string'
+            ? [
+                {
+                  kind: 'record',
+                  id: rec['id'],
+                  ...(typeof rec['version'] === 'number' ? { version: rec['version'] } : {}),
+                },
+              ]
+            : [],
+      };
+    };
+
+    /**
+     * Plain words to one line of shorthand through the tenant's provider, when
+     * the register has the feature on (AIG-01, AIG-06, AIG-08). The model sees
+     * only the redacted request and the commands this person may use here
+     * (CMD-35, AIG-05); its line is then parsed and checked like typed
+     * shorthand, so it can name nothing the catalog does not hold (CMD-12).
+     * Off, failing or refusing, the answer points to the shorthand (AI-10).
+     */
+    async function interpretWords(
+      request: FastifyRequest,
+      executionId: string,
+      text: string,
+      now: Date,
+      timeZone: string,
+      phases: number[],
+    ): Promise<{ answer: ExecutionOut } | { shorthand: string; aiOutputId: string }> {
       const s = account(request);
-      await request.authorize('command.use', { type: 'command', tenantId: s.tenantId });
-      const now = new Date();
-      const row = await request.tx((trx) => loadOwn(trx, request.params.id, s.accountId));
-      if (!row) throw errors.notFound();
-      // AC-C06: confirming again returns what happened the first time.
-      if (row.state !== 'awaiting_confirmation') return view(row, now);
-      if (request.body.planHash !== row.plan_hash)
-        throw new ApiError(
-          409,
-          'plan_changed',
-          'This is not the plan you were shown. Prepare the command again.',
-        );
+      const off = (message: string) => ({ answer: blank(executionId, 'unsupported', message) });
+      const ai = deps.ai;
+      if (!ai) return off(AI_OFF);
+      // The provider is called outside any transaction: a slow reply holds no connection.
+      const provider = await request.tx(async (trx) => {
+        const feature = await trx
+          .selectFrom('cg.ai_use_register')
+          .select(['enabled', 'provider'])
+          .where('feature', '=', 'command.interpret')
+          .executeTakeFirst();
+        if (!feature?.enabled) return null;
+        const p = await ai.providerFor(s.tenantId, trx);
+        return p?.llm?.interpretCommand && p.info.provider === feature.provider ? p : null;
+      });
+      const llm = provider?.llm;
+      if (!provider || !llm?.interpretCommand) return off(AI_OFF);
+      const commands = CATALOG.filter((c) => phases.includes(c.phase) && holds(request, c)).map(
+        (c) => ({ usage: c.usage, title: c.title }),
+      );
+      const { text: redacted, tokens } = redact(text);
+      const call = await callAi(() =>
+        llm.interpretCommand!({ text: redacted, commands, now: now.toISOString(), timeZone }),
+      );
+      const out = call.ok ? call.out.output : null;
+      const aiOutputId = await request.tx((trx) =>
+        recordAiOutput(trx, {
+          tenantId: s.tenantId,
+          feature: 'command.interpret',
+          provider: call.ok ? call.out.provider : provider.info,
+          outcome: call.ok ? (out?.injectionSuspected ? 'filtered' : 'ok') : call.outcome,
+          latencyMs: call.ok ? call.out.latencyMs : call.latencyMs,
+          language: out?.language ?? null,
+          executionId,
+        }),
+      );
+      if (!out)
+        return off('The AI assistant did not answer. Type the shorthand instead; /help lists it.');
+      if (out.injectionSuspected) return off('That request cannot be run from the command window.');
+      if (!out.shorthand)
+        return out.question
+          ? { answer: blank(executionId, 'clarify', restore(out.question, tokens)) }
+          : off('No command here fits that. Type /help for what the command window can do.');
+      return { shorthand: restore(out.shorthand, tokens), aiOutputId };
+    }
 
-      const spec = commandByName(row.command);
-      const plan = row.plan as unknown as Plan;
-      const { phases } = await settings(request, s.tenantId);
-      const stale = async (why: string) => {
-        const r = await request.tx((trx) =>
+    // ---------------------------------------------------------------- catalog (the help)
+    app.get(
+      '/commands/catalog',
+      {
+        schema: {
+          tags: ['commands'],
+          response: {
+            200: z.array(commandMeta.extend({ enabled: z.boolean(), allowed: z.boolean() })),
+          },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('command.use', { type: 'command', tenantId: s.tenantId });
+        const { phases } = await settings(request, s.tenantId);
+        return CATALOG.map((c) => ({
+          ...meta(c),
+          enabled: phases.includes(c.phase),
+          allowed: holds(request, c),
+        }));
+      },
+    );
+
+    // ---------------------------------------------------------------- history (own executions)
+    app.get(
+      '/commands',
+      {
+        schema: {
+          tags: ['commands'],
+          querystring: z.object({ limit: z.coerce.number().int().min(1).max(100).default(20) }),
+          response: { 200: z.array(executionOut) },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('command.use', { type: 'command', tenantId: s.tenantId });
+        const rows = await request.tx((trx) =>
           trx
+            .selectFrom('cg.command_execution')
+            .selectAll()
+            .where('account_id', '=', s.accountId)
+            .orderBy('created_at', 'desc')
+            .limit(request.query.limit)
+            .execute(),
+        );
+        const now = new Date();
+        return rows.map((r) => view(r, now));
+      },
+    );
+
+    app.get(
+      '/commands/:id',
+      { schema: { tags: ['commands'], params: uuidParam, response: { 200: executionOut } } },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('command.use', { type: 'command', tenantId: s.tenantId });
+        const row = await request.tx((trx) => loadOwn(trx, request.params.id, s.accountId));
+        if (!row) throw errors.notFound();
+        return view(row, new Date());
+      },
+    );
+
+    // ---------------------------------------------------------------- prepare
+    app.post(
+      '/commands',
+      {
+        schema: {
+          tags: ['commands'],
+          body: z.object({
+            /** CMD-25: the client's id for this request; the same id returns the same execution. */
+            executionId: z.uuid(),
+            input: z.string().trim().min(1).max(2000),
+            eventId: z.uuid().optional(),
+            /** The record chosen from a clarification (CMD-08). */
+            targetId: z.uuid().optional(),
+          }),
+          response: { 200: executionOut },
+        },
+      },
+      async (request): Promise<ExecutionOut> => {
+        const s = account(request);
+        await request.authorize('command.use', { type: 'command', tenantId: s.tenantId });
+        const b = request.body;
+        const now = new Date();
+
+        const prior = await request.tx((trx) =>
+          trx
+            .selectFrom('cg.command_execution')
+            .selectAll()
+            .where('execution_id', '=', b.executionId)
+            .executeTakeFirst(),
+        );
+        if (prior) {
+          if (prior.account_id !== s.accountId) throw errors.idempotencyMismatch();
+          return view(prior, now);
+        }
+
+        const { phases, timeZone } = await settings(request, s.tenantId);
+        let line = b.input;
+        let natural: { shorthand: string; aiOutputId: string } | null = null;
+        if (!line.startsWith('/')) {
+          const r = await interpretWords(request, b.executionId, b.input, now, timeZone, phases);
+          if ('answer' in r) return r.answer;
+          natural = r;
+          line = r.shorthand;
+        }
+        const parsed = parseShorthand(line, { now, timeZone });
+        if (!parsed.ok) {
+          if (parsed.error === 'help')
+            return {
+              ...blank(b.executionId, 'help', parsed.message),
+              commands: CATALOG.map((c) => ({
+                ...meta(c),
+                enabled: phases.includes(c.phase),
+                allowed: holds(request, c),
+              })),
+            };
+          return {
+            ...blank(
+              b.executionId,
+              parsed.error === 'usage' ? 'clarify' : 'unsupported',
+              parsed.message,
+            ),
+            usage: parsed.usage ?? null,
+          };
+        }
+
+        const spec = commandByName(parsed.command)!;
+        const head = {
+          ...blank(b.executionId, 'unsupported', ''),
+          command: meta(spec),
+          usage: spec.usage,
+        };
+        if (!phases.includes(spec.phase))
+          return {
+            ...head,
+            message: `"${spec.title}" is not switched on for the command window here. Use the screen for it.`,
+          };
+        if (!holds(request, spec))
+          return { ...head, status: 'denied', message: 'Your role cannot do that.' };
+        const args = spec.args.safeParse(parsed.args);
+        if (!args.success)
+          return {
+            ...head,
+            status: 'clarify',
+            message:
+              args.error.issues[0]?.message ?? 'Something in the command needs a second look.',
+          };
+
+        let target: Target | null = null;
+        if (spec.target) {
+          const r = await resolveTarget(request, spec.target, parsed.ref ?? '', b.targetId);
+          if (r.kind === 'none')
+            return {
+              ...head,
+              status: 'not_found',
+              message: `No ${spec.target} you can see matches "${parsed.ref ?? ''}".`,
+            };
+          if (r.kind === 'many')
+            return {
+              ...head,
+              status: 'clarify',
+              message: `More than one ${spec.target} matches. Which one?`,
+              options: r.options,
+            };
+          target = r.target;
+        }
+
+        let eventId: string | null = null;
+        if (spec.needsEvent) {
+          const ev = await op(request, { method: 'GET', path: '/events?limit=100' });
+          const open = (Array.isArray(ev.body) ? (ev.body as ListRow[]) : []).filter(
+            (e) => e['status'] === 'active' && (!b.eventId || e['id'] === b.eventId),
+          );
+          if (open.length !== 1)
+            return {
+              ...head,
+              status: 'clarify',
+              message: open.length
+                ? 'Which event is this about?'
+                : 'There is no open event to report on.',
+              options: open.map((e) => ({
+                kind: 'event',
+                id: str(e['id']),
+                label: str(e['name']),
+              })),
+            };
+          eventId = str(open[0]!['id']);
+        }
+
+        const plan: Plan = {
+          command: spec.name,
+          version: spec.version,
+          args: args.data,
+          target,
+          eventId,
+          ...(natural ? { interpretation: natural.shorthand } : {}),
+        };
+        const hash = planHash(plan, s.tenantId, s.accountId);
+        const immediate = spec.confirmation === 'none';
+        const row = await request.tx(async (trx) => {
+          const inserted = await trx
+            .insertInto('cg.command_execution')
+            .values({
+              tenant_id: s.tenantId,
+              account_id: s.accountId,
+              execution_id: b.executionId,
+              input_kind: natural ? 'natural' : 'shorthand',
+              command: spec.name,
+              command_version: spec.version,
+              phase: spec.phase,
+              plan: JSON.stringify(plan),
+              plan_hash: hash,
+              confirmation: spec.confirmation,
+              reversal: spec.reversal,
+              state: immediate ? 'executing' : 'awaiting_confirmation',
+              created_by: s.accountId,
+              updated_by: s.accountId,
+            })
+            .returningAll()
+            .executeTakeFirstOrThrow();
+          // AIG-01: the interpretation's record points at the plan, so what the person does with it counts.
+          if (natural)
+            await trx
+              .updateTable('cg.ai_output')
+              .set({ target_type: 'command_execution', target_id: inserted.id })
+              .where('id', '=', natural.aiOutputId)
+              .execute();
+          return inserted;
+        });
+        if (!immediate) return view(row, now);
+        return execute(
+          request,
+          row,
+          spec,
+          spec.request(plan.args, plan.target, { now, eventId, executionId: b.executionId }),
+          {},
+        );
+      },
+    );
+
+    // ---------------------------------------------------------------- confirm
+    app.post(
+      '/commands/:id/confirm',
+      {
+        schema: {
+          tags: ['commands'],
+          params: uuidParam,
+          body: z.object({ planHash: z.string().regex(/^[0-9a-f]{64}$/) }),
+          response: { 200: executionOut },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('command.use', { type: 'command', tenantId: s.tenantId });
+        const now = new Date();
+        const row = await request.tx((trx) => loadOwn(trx, request.params.id, s.accountId));
+        if (!row) throw errors.notFound();
+        // AC-C06: confirming again returns what happened the first time.
+        if (row.state !== 'awaiting_confirmation') return view(row, now);
+        if (request.body.planHash !== row.plan_hash)
+          throw new ApiError(
+            409,
+            'plan_changed',
+            'This is not the plan you were shown. Prepare the command again.',
+          );
+
+        const spec = commandByName(row.command);
+        const plan = row.plan as unknown as Plan;
+        const { phases } = await settings(request, s.tenantId);
+        const stale = async (why: string) => {
+          const r = await request.tx((trx) =>
+            trx
+              .updateTable('cg.command_execution')
+              .set({
+                state: 'stale',
+                plan: JSON.stringify(withoutFreeText(plan, spec)),
+                result: JSON.stringify({
+                  httpStatus: 409,
+                  error: { code: 'plan_stale', message: why },
+                }),
+                updated_by: s.accountId,
+              })
+              .where('id', '=', row.id)
+              .where('state', '=', 'awaiting_confirmation')
+              .returningAll()
+              .executeTakeFirst(),
+          );
+          throw new ApiError(409, 'plan_stale', why, { details: r ? view(r, now) : null });
+        };
+        if (!spec || spec.version !== row.command_version || !phases.includes(spec.phase))
+          return stale('The command changed or was switched off since this was prepared.');
+        if (now.getTime() - row.created_at.getTime() > PLAN_TTL_MS)
+          return stale('This plan waited too long. Prepare it again.');
+        // CMD-21, AC-C05: the person's roles are checked again now, and again by the operation.
+        if (!holds(request, spec)) throw errors.forbidden();
+
+        // CMD-22: the full review screen sends the confirmation and a reason.
+        const consequential =
+          isActionKey(spec.action) && actions[spec.action].consequential === true;
+        const extra: Record<string, string> = {};
+        if (spec.confirmation === 'full_review' || consequential) {
+          const c = request.confirmation();
+          if (!c.confirmed || !c.reason) throw errors.confirmationRequired(spec.action, spec.title);
+          extra['x-confirm'] = 'true';
+          extra['x-reason'] = c.reason;
+        }
+
+        // Section 30.2: no more than 30 consequential commands a minute.
+        const recent = await request.tx((trx) =>
+          trx
+            .selectFrom('cg.command_execution')
+            .select((eb) => eb.fn.countAll<string>().as('n'))
+            .where('account_id', '=', s.accountId)
+            .where('confirmed_at', '>', new Date(now.getTime() - 60_000))
+            .executeTakeFirstOrThrow(),
+        );
+        if (Number(recent.n) >= RATE_PER_MINUTE)
+          throw new ApiError(429, 'rate_limited', 'Too many commands in a minute. Wait a moment.', {
+            retryable: true,
+          });
+
+        // CMD-09, AC-C04: the record is read again; a different version means a different plan.
+        if (plan.target) {
+          const cur = await op(request, {
+            method: 'GET',
+            path: RECORDS[plan.target.kind].one(plan.target.id),
+          });
+          if (cur.status === 403 || cur.status === 404) throw errors.forbidden();
+          const version = (cur.body as { version?: unknown } | null)?.version;
+          if (cur.status !== 200 || version !== plan.target.version)
+            return stale(`${plan.target.label} changed since this was prepared. Prepare it again.`);
+        }
+
+        const claimed = await request.tx(async (trx) => {
+          const r = await trx
             .updateTable('cg.command_execution')
             .set({
-              state: 'stale',
-              plan: JSON.stringify(withoutFreeText(plan, spec)),
-              result: JSON.stringify({
-                httpStatus: 409,
-                error: { code: 'plan_stale', message: why },
-              }),
+              state: 'executing',
+              confirmed_by: s.accountId,
+              confirmed_at: now,
+              reason: extra['x-reason'] ?? null,
               updated_by: s.accountId,
             })
             .where('id', '=', row.id)
             .where('state', '=', 'awaiting_confirmation')
             .returningAll()
-            .executeTakeFirst(),
+            .executeTakeFirst();
+          // AIG-09: the person took the interpretation as shown.
+          if (r && r.input_kind === 'natural')
+            await recordHumanAction(
+              trx,
+              { type: 'command_execution', id: r.id },
+              'accepted',
+              s.accountId,
+              now,
+            );
+          return r;
+        });
+        // Two confirmations racing: the second sees the first one's execution.
+        if (!claimed) {
+          const cur = await request.tx((trx) => loadOwn(trx, row.id, s.accountId));
+          return view(cur!, now);
+        }
+        return execute(
+          request,
+          claimed,
+          spec,
+          spec.request(plan.args, plan.target, {
+            now,
+            eventId: plan.eventId,
+            executionId: row.execution_id,
+          }),
+          extra,
         );
-        throw new ApiError(409, 'plan_stale', why, { details: r ? view(r, now) : null });
-      };
-      if (!spec || spec.version !== row.command_version || !phases.includes(spec.phase))
-        return stale('The command changed or was switched off since this was prepared.');
-      if (now.getTime() - row.created_at.getTime() > PLAN_TTL_MS)
-        return stale('This plan waited too long. Prepare it again.');
-      // CMD-21, AC-C05: the person's roles are checked again now, and again by the operation.
-      if (!holds(request, spec)) throw errors.forbidden();
+      },
+    );
 
-      // CMD-22: the full review screen sends the confirmation and a reason.
-      const consequential = isActionKey(spec.action) && actions[spec.action].consequential === true;
-      const extra: Record<string, string> = {};
-      if (spec.confirmation === 'full_review' || consequential) {
-        const c = request.confirmation();
-        if (!c.confirmed || !c.reason) throw errors.confirmationRequired(spec.action, spec.title);
-        extra['x-confirm'] = 'true';
-        extra['x-reason'] = c.reason;
-      }
-
-      // Section 30.2: no more than 30 consequential commands a minute.
-      const recent = await request.tx((trx) =>
-        trx
-          .selectFrom('cg.command_execution')
-          .select((eb) => eb.fn.countAll<string>().as('n'))
-          .where('account_id', '=', s.accountId)
-          .where('confirmed_at', '>', new Date(now.getTime() - 60_000))
-          .executeTakeFirstOrThrow(),
-      );
-      if (Number(recent.n) >= RATE_PER_MINUTE)
-        throw new ApiError(429, 'rate_limited', 'Too many commands in a minute. Wait a moment.', {
-          retryable: true,
+    // ---------------------------------------------------------------- cancel
+    app.post(
+      '/commands/:id/cancel',
+      { schema: { tags: ['commands'], params: uuidParam, response: { 200: executionOut } } },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('command.use', { type: 'command', tenantId: s.tenantId });
+        const now = new Date();
+        const row = await request.tx(async (trx) => {
+          const cur = await loadOwn(trx, request.params.id, s.accountId);
+          if (!cur) throw errors.notFound();
+          if (cur.state === 'canceled') return cur;
+          // CMD-27: cancelling stops only what has not run; it never reverses what has.
+          if (cur.state !== 'awaiting_confirmation')
+            throw new ApiError(
+              409,
+              'already_run',
+              cur.state === 'executing'
+                ? 'It is already running; cancelling cannot stop it. The result shows when it finishes.'
+                : 'It already ran. Cancelling does not reverse it; use undo where offered, or the screen.',
+            );
+          const updated = await trx
+            .updateTable('cg.command_execution')
+            .set({
+              state: 'canceled',
+              plan: JSON.stringify(
+                withoutFreeText(cur.plan as unknown as Plan, commandByName(cur.command)),
+              ),
+              updated_by: s.accountId,
+            })
+            .where('id', '=', cur.id)
+            .where('state', '=', 'awaiting_confirmation')
+            .returningAll()
+            .executeTakeFirstOrThrow();
+          // AIG-09: a cancelled interpretation counts as rejected.
+          if (cur.input_kind === 'natural')
+            await recordHumanAction(
+              trx,
+              { type: 'command_execution', id: cur.id },
+              'rejected',
+              s.accountId,
+              now,
+            );
+          await request.audit(trx, {
+            action: 'command.cancel',
+            targetType: 'command_execution',
+            targetId: cur.id,
+            targetVersion: updated.version,
+            reason: cur.command,
+          });
+          return updated;
         });
+        return view(row, now);
+      },
+    );
 
-      // CMD-09, AC-C04: the record is read again; a different version means a different plan.
-      if (plan.target) {
-        const cur = await op(request, {
-          method: 'GET',
-          path: RECORDS[plan.target.kind].one(plan.target.id),
-        });
-        if (cur.status === 403 || cur.status === 404) throw errors.forbidden();
-        const version = (cur.body as { version?: unknown } | null)?.version;
-        if (cur.status !== 200 || version !== plan.target.version)
-          return stale(`${plan.target.label} changed since this was prepared. Prepare it again.`);
-      }
-
-      const claimed = await request.tx((trx) =>
-        trx
-          .updateTable('cg.command_execution')
-          .set({
-            state: 'executing',
-            confirmed_by: s.accountId,
-            confirmed_at: now,
-            reason: extra['x-reason'] ?? null,
-            updated_by: s.accountId,
-          })
-          .where('id', '=', row.id)
-          .where('state', '=', 'awaiting_confirmation')
-          .returningAll()
-          .executeTakeFirst(),
-      );
-      // Two confirmations racing: the second sees the first one's execution.
-      if (!claimed) {
-        const cur = await request.tx((trx) => loadOwn(trx, row.id, s.accountId));
-        return view(cur!, now);
-      }
-      return execute(
-        request,
-        claimed,
-        spec,
-        spec.request(plan.args, plan.target, {
-          now,
-          eventId: plan.eventId,
-          executionId: row.execution_id,
-        }),
-        extra,
-      );
-    },
-  );
-
-  // ---------------------------------------------------------------- cancel
-  app.post(
-    '/commands/:id/cancel',
-    { schema: { tags: ['commands'], params: uuidParam, response: { 200: executionOut } } },
-    async (request) => {
-      const s = account(request);
-      await request.authorize('command.use', { type: 'command', tenantId: s.tenantId });
-      const now = new Date();
-      const row = await request.tx(async (trx) => {
-        const cur = await loadOwn(trx, request.params.id, s.accountId);
-        if (!cur) throw errors.notFound();
-        if (cur.state === 'canceled') return cur;
-        // CMD-27: cancelling stops only what has not run; it never reverses what has.
-        if (cur.state !== 'awaiting_confirmation')
+    // ---------------------------------------------------------------- undo
+    app.post(
+      '/commands/:id/undo',
+      {
+        schema: {
+          tags: ['commands'],
+          params: uuidParam,
+          body: z.object({ executionId: z.uuid() }),
+          response: { 200: executionOut },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('command.use', { type: 'command', tenantId: s.tenantId });
+        const now = new Date();
+        const { prior, original } = await request.tx(async (trx) => ({
+          prior: await trx
+            .selectFrom('cg.command_execution')
+            .selectAll()
+            .where('execution_id', '=', request.body.executionId)
+            .executeTakeFirst(),
+          original: await loadOwn(trx, request.params.id, s.accountId),
+        }));
+        if (prior) {
+          if (prior.account_id !== s.accountId || prior.reversal_of !== request.params.id)
+            throw errors.idempotencyMismatch();
+          return view(prior, now);
+        }
+        if (!original) throw errors.notFound();
+        const spec = commandByName(original.command);
+        const stored = original.result as StoredResult | null;
+        // CMD-28, AC-C08: only what can safely be reversed, within its window, once.
+        if (
+          !spec?.undo ||
+          original.state !== 'succeeded' ||
+          original.undone_by ||
+          !original.undo_until ||
+          original.undo_until.getTime() <= now.getTime() ||
+          !stored?.verified
+        )
           throw new ApiError(
             409,
-            'already_run',
-            cur.state === 'executing'
-              ? 'It is already running; cancelling cannot stop it. The result shows when it finishes.'
-              : 'It already ran. Cancelling does not reverse it; use undo where offered, or the screen.',
+            'undo_unavailable',
+            spec?.reversal === 'compensating'
+              ? 'This cannot be undone here. Correct it on the screen with a new entry; the original stays in the history.'
+              : 'Undo is no longer available for this.',
           );
-        const updated = await trx
-          .updateTable('cg.command_execution')
-          .set({
-            state: 'canceled',
-            plan: JSON.stringify(
-              withoutFreeText(cur.plan as unknown as Plan, commandByName(cur.command)),
-            ),
-            updated_by: s.accountId,
-          })
-          .where('id', '=', cur.id)
-          .where('state', '=', 'awaiting_confirmation')
-          .returningAll()
-          .executeTakeFirstOrThrow();
-        await request.audit(trx, {
-          action: 'command.cancel',
-          targetType: 'command_execution',
-          targetId: cur.id,
-          targetVersion: updated.version,
-          reason: cur.command,
-        });
-        return updated;
-      });
-      return view(row, now);
-    },
-  );
-
-  // ---------------------------------------------------------------- undo
-  app.post(
-    '/commands/:id/undo',
-    {
-      schema: {
-        tags: ['commands'],
-        params: uuidParam,
-        body: z.object({ executionId: z.uuid() }),
-        response: { 200: executionOut },
-      },
-    },
-    async (request) => {
-      const s = account(request);
-      await request.authorize('command.use', { type: 'command', tenantId: s.tenantId });
-      const now = new Date();
-      const { prior, original } = await request.tx(async (trx) => ({
-        prior: await trx
-          .selectFrom('cg.command_execution')
-          .selectAll()
-          .where('execution_id', '=', request.body.executionId)
-          .executeTakeFirst(),
-        original: await loadOwn(trx, request.params.id, s.accountId),
-      }));
-      if (prior) {
-        if (prior.account_id !== s.accountId || prior.reversal_of !== request.params.id)
-          throw errors.idempotencyMismatch();
-        return view(prior, now);
-      }
-      if (!original) throw errors.notFound();
-      const spec = commandByName(original.command);
-      const stored = original.result as StoredResult | null;
-      // CMD-28, AC-C08: only what can safely be reversed, within its window, once.
-      if (
-        !spec?.undo ||
-        original.state !== 'succeeded' ||
-        original.undone_by ||
-        !original.undo_until ||
-        original.undo_until.getTime() <= now.getTime() ||
-        !stored?.verified
-      )
-        throw new ApiError(
-          409,
-          'undo_unavailable',
-          spec?.reversal === 'compensating'
-            ? 'This cannot be undone here. Correct it on the screen with a new entry; the original stays in the history.'
-            : 'Undo is no longer available for this.',
+        const plan = original.plan as unknown as Plan;
+        const req = spec.undo(plan.args, plan.target, stored.verified);
+        const undoPlan = {
+          ...plan,
+          undoOf: original.id,
+          request: { method: req.method, path: req.path },
+        };
+        const row = await request.tx((trx) =>
+          trx
+            .insertInto('cg.command_execution')
+            .values({
+              tenant_id: s.tenantId,
+              account_id: s.accountId,
+              execution_id: request.body.executionId,
+              input_kind: original.input_kind,
+              command: original.command,
+              command_version: original.command_version,
+              phase: original.phase,
+              plan: JSON.stringify(undoPlan),
+              plan_hash: createHash('sha256').update(canonical(undoPlan)).digest('hex'),
+              confirmation: 'one_tap',
+              reversal: 'none',
+              state: 'executing',
+              confirmed_by: s.accountId,
+              confirmed_at: now,
+              reversal_of: original.id,
+              created_by: s.accountId,
+              updated_by: s.accountId,
+            })
+            .returningAll()
+            .executeTakeFirstOrThrow(),
         );
-      const plan = original.plan as unknown as Plan;
-      const req = spec.undo(plan.args, plan.target, stored.verified);
-      const undoPlan = {
-        ...plan,
-        undoOf: original.id,
-        request: { method: req.method, path: req.path },
-      };
-      const row = await request.tx((trx) =>
-        trx
-          .insertInto('cg.command_execution')
-          .values({
-            tenant_id: s.tenantId,
-            account_id: s.accountId,
-            execution_id: request.body.executionId,
-            input_kind: original.input_kind,
-            command: original.command,
-            command_version: original.command_version,
-            phase: original.phase,
-            plan: JSON.stringify(undoPlan),
-            plan_hash: createHash('sha256').update(canonical(undoPlan)).digest('hex'),
-            confirmation: 'one_tap',
-            reversal: 'none',
-            state: 'executing',
-            confirmed_by: s.accountId,
-            confirmed_at: now,
-            reversal_of: original.id,
-            created_by: s.accountId,
-            updated_by: s.accountId,
-          })
-          .returningAll()
-          .executeTakeFirstOrThrow(),
-      );
-      return execute(request, row, spec, req, {});
-    },
-  );
-};
+        return execute(request, row, spec, req, {});
+      },
+    );
+  };
+
+export const commandRoutes = commandRoutesWith();

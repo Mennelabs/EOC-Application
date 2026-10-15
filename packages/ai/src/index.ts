@@ -1,7 +1,14 @@
 export * from './types.ts';
 export { redact, type Redaction } from './redact.ts';
 export { filterGeneratedText, type FilterResult } from './filter.ts';
-export { buildExtractionPrompt, RESIDENT_TEXT_OPEN, RESIDENT_TEXT_CLOSE } from './prompt.ts';
+export {
+  buildCommandPrompt,
+  buildExtractionPrompt,
+  RESIDENT_TEXT_OPEN,
+  RESIDENT_TEXT_CLOSE,
+  STAFF_REQUEST_OPEN,
+  STAFF_REQUEST_CLOSE,
+} from './prompt.ts';
 export {
   extractionOutputSchema,
   extractionQuestions,
@@ -42,7 +49,13 @@ export {
   type EvaluationReport,
   type CaseResult,
 } from './evaluation/harness.ts';
-export { evaluationCases, type EvalCase } from './evaluation/cases.ts';
+export {
+  COMMAND_EVAL_CATALOG,
+  commandEvaluationCases,
+  evaluationCases,
+  type CommandEvalCase,
+  type EvalCase,
+} from './evaluation/cases.ts';
 export {
   callAi,
   recordAiOutput,

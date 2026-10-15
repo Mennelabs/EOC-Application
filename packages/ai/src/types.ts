@@ -61,8 +61,33 @@ export interface ExtractionRequest {
   questions: ExtractionQuestion[];
 }
 
+/** A staff request in plain words for the command window (CMD-03, ADR-0044). */
+export interface CommandInterpretRequest {
+  /** Redacted request text (AIG-05), passed as data (AIG-02, CMD-11). */
+  text: string;
+  /** The shorthand lines the person may use here, from the catalog (CMD-12). */
+  commands: { usage: string; title: string }[];
+  /** The organization's time and zone, for relative times (CMD-10). */
+  now: string;
+  timeZone: string;
+}
+
+/**
+ * At most one line of shorthand from the listed commands; the server parses
+ * and checks it like typed shorthand. A question when the request is
+ * ambiguous (CMD-08); neither when nothing listed fits (CMD-12).
+ */
+export interface CommandInterpretation {
+  shorthand: string | null;
+  question: string | null;
+  language?: string;
+  injectionSuspected?: boolean;
+}
+
 export interface LanguageModel {
   extract(request: ExtractionRequest): Promise<AiOutput<ExtractionOutput>>;
+  /** Plain words to one shorthand line (layer-7 task B). Optional: without it, shorthand only. */
+  interpretCommand?(request: CommandInterpretRequest): Promise<AiOutput<CommandInterpretation>>;
 }
 
 export interface SpeechToText {

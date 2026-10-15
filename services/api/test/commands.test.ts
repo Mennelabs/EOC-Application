@@ -6,6 +6,7 @@
  * "tomorrow morning" is not guessed.
  */
 import { describe, expect, it } from 'vitest';
+import { COMMAND_EVAL_CATALOG } from '@cg/ai';
 import { actions } from '@cg/authz';
 import { CATALOG, DEFAULT_PHASES } from '../src/commands/catalog.ts';
 import {
@@ -36,6 +37,10 @@ describe('the command catalog', () => {
       expect(c.reversal === 'undo_15_min', c.name).toBe(typeof c.undo === 'function');
       if (c.kind !== 'change') expect(c.reversal, c.name).toBe('none');
     }
+  });
+
+  it('AIG-08: the evaluation set asks the model about exactly the commands the catalog holds', () => {
+    expect(COMMAND_EVAL_CATALOG).toEqual(CATALOG.map((c) => ({ usage: c.usage, title: c.title })));
   });
 
   it('Section 30.2: phases 1 and 2 are on by default; status changes are phase 3', () => {

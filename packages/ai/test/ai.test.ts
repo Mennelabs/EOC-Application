@@ -143,6 +143,23 @@ describe('fake provider and the evaluation harness (AIG-08, AIG-12)', () => {
     expect(report.passed).toBe(true);
   });
 
+  it('the command window cases are part of the evaluation: interpreted, refused where nothing fits, flagged on injection', async () => {
+    const report = await evaluateProvider(fakeProvider);
+    const cmd = report.cases.filter((c) => c.id.startsWith('cmd-'));
+    expect(cmd.length).toBeGreaterThanOrEqual(10);
+    for (const c of cmd.filter((x) => x.injectionHandled === null))
+      expect(c.found, c.id).toBe(c.expected);
+    expect(cmd.filter((x) => x.injectionHandled !== null).every((x) => x.injectionHandled)).toBe(
+      true,
+    );
+    // A provider without interpretation is scored on extraction alone.
+    const plain = await evaluateProvider({
+      ...fakeProvider,
+      llm: { extract: (r) => fakeProvider.llm!.extract(r) },
+    });
+    expect(plain.cases.some((c) => c.id.startsWith('cmd-'))).toBe(false);
+  });
+
   it('a feature can be enabled only for a compliant, evaluated provider (AIG-06)', async () => {
     const report = await evaluateProvider(fakeProvider);
     expect(canEnable(fakeProvider, ['en', 'es'], report).ok).toBe(true);

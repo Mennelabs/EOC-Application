@@ -55,6 +55,7 @@ import * as m0053 from './0053_partner_counts.ts';
 import * as m0054 from './0054_ai_register_openai.ts';
 import * as m0055 from './0055_ai_output.ts';
 import * as m0056 from './0056_command_execution.ts';
+import * as m0057 from './0057_ai_register_command.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -114,4 +115,5 @@ export const migrations: Record<string, Migration> = {
   '0054_ai_register_openai': m0054,
   '0055_ai_output': m0055,
   '0056_command_execution': m0056,
+  '0057_ai_register_command': m0057,
 };

@@ -66,7 +66,8 @@
 }
 .cg-menu__item[data-selected]::before,
 .cg-menu__item[aria-checked='true']::before {
-  content: '✓';
+  /* The check is decoration: the alternative text is empty so it never joins the item's name. */
+  content: '✓' / '';
   inline-size: 1rem;
   font-weight: var(--cg-weight-bold);
 }
@@ -146,7 +147,7 @@
   font-weight: var(--cg-weight-semibold);
 }
 .cg-option[data-selected]::before {
-  content: '✓';
+  content: '✓' / '';
   inline-size: 1rem;
 }
 .cg-option:not([data-selected])::before {

@@ -248,7 +248,18 @@ function Page() {
         </TopBar>
       }
       banner={null}
-      nav={(p) => <SideNav groups={groups} currentPath={path} onNavigate={setPath} {...p} />}
+      nav={({ id, open, close }) => (
+        <SideNav
+          groups={groups}
+          currentPath={path}
+          id={id}
+          open={open}
+          onNavigate={(to) => {
+            setPath(to);
+            close();
+          }}
+        />
+      )}
     >
       <PageHeader
         title="Design showcase"

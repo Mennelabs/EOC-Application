@@ -314,14 +314,8 @@ export function HomeScreen({
               const Icon = i.icon;
               return (
                 <li key={i.path}>
-                  <a
-                    className="cg-stat"
-                    href={i.path}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      navigate(i.path);
-                    }}
-                  >
+                  {/* A button, not a second link with the workspace's name: the navigation holds the link. */}
+                  <button type="button" className="cg-stat" onClick={() => navigate(i.path)}>
                     <span
                       className="cg-stat__label"
                       style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}
@@ -329,7 +323,7 @@ export function HomeScreen({
                       {Icon ? <Icon width={18} height={18} aria-hidden="true" /> : null}
                       {i.label}
                     </span>
-                  </a>
+                  </button>
                 </li>
               );
             })}

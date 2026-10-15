@@ -328,11 +328,6 @@ label.inline > select {
   font-weight: var(--cg-weight-semibold);
   outline: none;
 }
-.layer-toggles button[aria-pressed='true']::before,
-.cg-segmented .cg-button[aria-pressed='true']::before {
-  content: '✓';
-  font-size: 0.85em;
-}
 .kbd,
 .cg-kbd {
   display: inline-block;

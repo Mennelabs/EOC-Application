@@ -12,8 +12,8 @@ export function Shell({
 }: {
   topBar: ReactNode;
   banner?: ReactNode;
-  /** A SideNav; on narrow screens the toggle opens and closes it. */
-  nav: (navProps: { id: string; open: boolean }) => ReactNode;
+  /** A SideNav; on narrow screens the toggle opens the drawer and `close` shuts it after a move. */
+  nav: (navProps: { id: string; open: boolean; close: () => void }) => ReactNode;
   children: ReactNode;
   mainId?: string;
 }) {
@@ -36,7 +36,7 @@ export function Shell({
             Workspaces
           </Button>
         </div>
-        {nav({ id: navId, open })}
+        {nav({ id: navId, open, close: () => setOpen(false) })}
         <main id={mainId} tabIndex={-1} className="cg-main">
           {children}
         </main>

@@ -1,7 +1,7 @@
 /** Display-only pieces: pills, cards, tiles, notices, page headers, empty states, timelines. */
 import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { AlertTriangle, CircleAlert, CircleCheck, Info, Sparkles } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CircleAlert, CircleCheck, Info, Sparkles } from 'lucide-react';
 
 export type Tone = 'neutral' | 'ok' | 'warn' | 'danger' | 'info' | 'ai';
 
@@ -94,7 +94,10 @@ export function StatTile({
 }) {
   const body = (
     <>
-      <span className="cg-stat__label">{label}</span>
+      <span className="cg-stat__label">
+        {label}
+        {href ? <ArrowRight aria-hidden="true" /> : null}
+      </span>
       <span className="cg-stat__value">
         {value}
         {unit ? <small> {unit}</small> : null}

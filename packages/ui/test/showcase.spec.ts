@@ -56,6 +56,10 @@ test('the navigation marks the current workspace and keeps counts out of link na
     await page.getByRole('button', { name: 'Workspaces' }).click();
   }
   await nav.getByRole('link', { name: 'Review queue', exact: true }).click();
+  // On a phone the drawer closes after a move; open it again to read the state.
+  if (await page.getByRole('button', { name: 'Workspaces' }).isVisible()) {
+    await page.getByRole('button', { name: 'Workspaces' }).click();
+  }
   await expect(nav.getByRole('link', { name: 'Review queue', exact: true })).toHaveAttribute(
     'aria-current',
     'page',

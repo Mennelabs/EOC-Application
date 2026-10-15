@@ -488,7 +488,18 @@ export function App({ config }: { config: RuntimeConfig }) {
             {meError ? <Status kind="error">{meError}</Status> : null}
           </>
         }
-        nav={(p) => <SideNav groups={groups} currentPath={path} onNavigate={navigate} {...p} />}
+        nav={({ id, open, close }) => (
+          <SideNav
+            groups={groups}
+            currentPath={path}
+            id={id}
+            open={open}
+            onNavigate={(to) => {
+              navigate(to);
+              close();
+            }}
+          />
+        )}
       >
         {screen}
       </Shell>

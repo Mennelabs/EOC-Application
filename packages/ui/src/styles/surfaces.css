@@ -390,8 +390,32 @@ a.cg-stat:hover {
 a.cg-stat .cg-stat__label {
   color: var(--cg-accent);
 }
-a.cg-stat .cg-stat__label::after {
-  content: ' →';
+a.cg-stat .cg-stat__label svg,
+button.cg-stat .cg-stat__label svg {
+  inline-size: 1rem;
+  block-size: 1rem;
+  vertical-align: -0.15em;
+  margin-inline-start: 0.25rem;
+}
+button.cg-stat {
+  inline-size: 100%;
+  text-align: start;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  justify-items: start;
+  transition:
+    border-color var(--cg-motion-fast) var(--cg-ease),
+    box-shadow var(--cg-motion-fast) var(--cg-ease);
+}
+button.cg-stat:hover {
+  border-color: var(--cg-accent);
+  box-shadow: var(--cg-shadow-2);
+  background: var(--cg-surface);
+  color: inherit;
+}
+button.cg-stat .cg-stat__label {
+  color: var(--cg-accent);
 }
 
 /* Decision cards: something a named person must decide. */

@@ -21,7 +21,7 @@ const RESIDENT = join(ROOT, 'apps/web-resident/dist');
 const HELP = join(ROOT, 'apps/web-help/dist');
 const OUT = join(ROOT, 'test-results/public-preview');
 mkdirSync(OUT, { recursive: true });
-const PORT = 4320;
+const PORT = Number(process.env.PORT ?? 4320);
 const ago = (min) => new Date(Date.now() - min * 60e3).toISOString();
 const site = (id, name, kind, status, services, km) => ({
   id,

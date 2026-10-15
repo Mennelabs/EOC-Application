@@ -42,6 +42,22 @@ export async function expectReflow(page: Page) {
   expect(scroll, 'page wider than the screen').toBeLessThanOrEqual(client + 1);
 }
 
+/**
+ * Opens a workspace from the side navigation (CON-01). On a phone the navigation
+ * is a drawer behind the "Workspaces" button (ACC-07), so it is opened first;
+ * the link is found inside the navigation by its exact name, never on the page.
+ */
+export async function goTo(page: Page, label: string): Promise<void> {
+  const toggle = page.getByRole('button', { name: 'Workspaces' });
+  if ((await toggle.isVisible()) && (await toggle.getAttribute('aria-expanded')) !== 'true') {
+    await toggle.click();
+  }
+  await page
+    .getByRole('navigation', { name: 'Workspaces' })
+    .getByRole('link', { name: label, exact: true })
+    .click();
+}
+
 /** True once the element is visible, false after `ms`. `isVisible()` alone never waits. */
 export async function appears(locator: Locator, ms: number): Promise<boolean> {
   return locator.waitFor({ state: 'visible', timeout: ms }).then(

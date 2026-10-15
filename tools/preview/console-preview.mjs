@@ -22,7 +22,7 @@ const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const DIST = join(ROOT, 'apps/web-console/dist');
 const OUT = join(ROOT, 'test-results/console-preview');
 mkdirSync(OUT, { recursive: true });
-const PORT = 4319;
+const PORT = Number(process.env.PORT ?? 4319);
 const EVENT = {
   id: '11111111-1111-4111-8111-111111111111',
   name: 'WESTWIND',

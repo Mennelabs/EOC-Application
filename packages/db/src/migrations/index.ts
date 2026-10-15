@@ -68,6 +68,7 @@ import * as m0066 from './0066_ai_register_drafting.ts';
 import * as m0067 from './0067_public_audio.ts';
 import * as m0068 from './0068_scribe.ts';
 import * as m0069 from './0069_shift_handover.ts';
+import * as m0070 from './0070_ai_register_field_translation.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -140,4 +141,5 @@ export const migrations: Record<string, Migration> = {
   '0067_public_audio': m0067,
   '0068_scribe': m0068,
   '0069_shift_handover': m0069,
+  '0070_ai_register_field_translation': m0070,
 };

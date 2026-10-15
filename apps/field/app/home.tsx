@@ -204,6 +204,13 @@ export default function Home() {
               onPress={() => router.push('/scribe')}
             />
           ) : null}
+          {f.can('translation.use') ? (
+            <Button
+              kind="secondary"
+              label={t('translate.heading')}
+              onPress={() => router.push('/translate')}
+            />
+          ) : null}
           {f.can('interpreter.respond') ? (
             <Button
               kind="secondary"

@@ -185,6 +185,17 @@ export const AI_FEATURES: readonly RegisterEntry[] = [
     owner: 'Field operations lead',
   },
   {
+    feature: 'field.translation',
+    needs: 'translation',
+    dataSent:
+      'What a worker or a survivor says in a general conversation, one turn at a time; never consent, legal or medical conversations',
+    decisionInformed:
+      'A labelled machine translation shown on the phone between worker and survivor (FL-14); nothing is kept',
+    humanCheckpoint:
+      'One tap brings in a human interpreter; consent, legal and medical conversations always use one',
+    owner: 'Equity lead',
+  },
+  {
     feature: 'discovery.web_search',
     needs: 'llm',
     dataSent:

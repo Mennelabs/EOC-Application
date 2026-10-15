@@ -486,6 +486,27 @@ const en = {
   'handover.skip': 'Check out without a hand-over',
   'handover.last': 'From the last shift',
   'handover.lastBy': '{name}, {time}',
+  // Layer 7 task H: live translation with an interpreter one tap away (FL-14, FL:FR-24).
+  'translate.heading': 'Live translation',
+  'translate.intro':
+    'Machine translation for a general conversation, one turn at a time. It can make mistakes. Nothing said is kept.',
+  'translate.their': 'Their language',
+  'translate.topic': 'This conversation',
+  'translate.topic.general': 'General',
+  'translate.topic.consent': 'Consent',
+  'translate.topic.legal': 'Legal',
+  'translate.topic.medical': 'Medical',
+  'translate.human':
+    'Consent, legal and medical conversations always use a human interpreter. Ask for one below.',
+  'translate.mine': 'What you say',
+  'translate.theirs': 'What they say',
+  'translate.forThem': 'Translate for them',
+  'translate.forMe': 'Translate for me',
+  'translate.label':
+    'Machine translation ({provider}, {model}). For anything important, bring in an interpreter.',
+  'translate.interpreter': 'Bring in an interpreter',
+  'translate.requested':
+    'Interpreter requested by phone. The interpreter queue has it; it is sent as soon as there is signal.',
   'check.heading': 'Checkpoint',
   'check.intro': 'Scan or type a badge code. You see only the name, agency and access.',
   'check.where': 'Checkpoint (optional)',
@@ -1010,6 +1031,26 @@ const es: Record<MessageKey, string> = {
   'handover.skip': 'Terminar el turno sin entrega',
   'handover.last': 'Del turno anterior',
   'handover.lastBy': '{name}, {time}',
+  'translate.heading': 'Traducción en vivo',
+  'translate.intro':
+    'Traducción automática para una conversación general, un turno a la vez. Puede tener errores. No se guarda nada de lo dicho.',
+  'translate.their': 'Su idioma',
+  'translate.topic': 'Esta conversación',
+  'translate.topic.general': 'General',
+  'translate.topic.consent': 'Consentimiento',
+  'translate.topic.legal': 'Legal',
+  'translate.topic.medical': 'Médica',
+  'translate.human':
+    'Las conversaciones de consentimiento, legales y médicas siempre usan un intérprete humano. Pida uno abajo.',
+  'translate.mine': 'Lo que usted dice',
+  'translate.theirs': 'Lo que la persona dice',
+  'translate.forThem': 'Traducir para la persona',
+  'translate.forMe': 'Traducir para mí',
+  'translate.label':
+    'Traducción automática ({provider}, {model}). Para algo importante, traiga a un intérprete.',
+  'translate.interpreter': 'Traer a un intérprete',
+  'translate.requested':
+    'Se pidió un intérprete por teléfono. La cola de intérpretes lo tiene; se envía en cuanto haya señal.',
   'check.heading': 'Punto de control',
   'check.intro':
     'Escanee o escriba el código de una credencial. Solo verá el nombre, la agencia y el acceso.',

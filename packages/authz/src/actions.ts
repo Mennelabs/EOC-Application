@@ -303,6 +303,13 @@ export const actions = {
     "Read the organization's confirmed scribe notes (never a legal aid note, FL:FR-23)",
     { explicit: true },
   ),
+  // FL-14: machine translation between worker and survivor; consent, legal and medical never.
+  'translation.use': a(
+    'write',
+    'translation',
+    'Use labelled machine translation in a general conversation with a survivor',
+    { explicit: true },
+  ),
   // REC-13, REC-14: discovery finds places; a person qualifies each in or out.
   'discovery.review': a(
     'write',

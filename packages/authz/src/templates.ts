@@ -599,6 +599,7 @@ const templates: readonly RoleTemplate[] = [
       g('position.record'),
       g('team.read'),
       g('scribe.use'), // FL-04: with the survivor's consent
+      g('translation.use'), // FL-14: labelled; an interpreter one tap away
     ],
   },
   {
@@ -684,6 +685,7 @@ const templates: readonly RoleTemplate[] = [
       g('position.record'),
       g('team.read'),
       g('scribe.use'), // FL-04: with the survivor's consent
+      g('translation.use'), // FL-14: labelled; an interpreter one tap away
     ],
   },
   {
@@ -747,6 +749,8 @@ const templates: readonly RoleTemplate[] = [
       g('me.read'),
       { action: 'event.read', events: 'assigned' },
       g('scribe.use'), // FL-05: only where the county turns it on for legal aid; notes stay the author's (FL:FR-23)
+      g('translation.use'), // FL-14: labelled; an interpreter one tap away
+      g('interpreter.request'), // FL-14: the interpreter is that one tap
     ],
   },
   {
@@ -761,6 +765,8 @@ const templates: readonly RoleTemplate[] = [
       g('me.read'),
       { action: 'event.read', events: 'assigned', dataCategories: ['contact'] },
       g('scribe.use'), // FL-04: with the survivor's consent
+      g('translation.use'), // FL-14: labelled; an interpreter one tap away
+      g('interpreter.request'), // FL-14: the interpreter is that one tap
     ],
   },
   {
@@ -781,6 +787,8 @@ const templates: readonly RoleTemplate[] = [
         dataCategories: ['contact', 'household', 'financial', 'free_text'],
       },
       g('scribe.use'), // FL-04: with the survivor's consent
+      g('translation.use'), // FL-14: labelled; an interpreter one tap away
+      g('interpreter.request'), // FL-14: the interpreter is that one tap
       g('scribe.read'),
     ],
   },
@@ -981,6 +989,8 @@ const templates: readonly RoleTemplate[] = [
       g('field.photo'),
       g('field.area'),
       g('scribe.use'), // FL-04: with the survivor's consent
+      g('translation.use'), // FL-14: labelled; an interpreter one tap away
+      g('interpreter.request'), // FL-14: the interpreter is that one tap
     ],
   },
   {
@@ -1017,6 +1027,8 @@ const templates: readonly RoleTemplate[] = [
       g('field.photo'),
       g('field.area'),
       g('scribe.use'), // FL-04: with the survivor's consent
+      g('translation.use'), // FL-14: labelled; an interpreter one tap away
+      g('interpreter.request'), // FL-14: the interpreter is that one tap
     ],
   },
   // Layer 4 task B: the other frontline roles of docs/04 in the field app (plan §8).

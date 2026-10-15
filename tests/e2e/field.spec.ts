@@ -5,7 +5,8 @@
  * code, saves a quick report while offline ("On this phone") that is
  * received once the signal returns, records a damage assessment with the
  * details FEMA asks for, asks the command window for its reminders, opens
- * the conversation note-taker (consent in Spanish; AI off here), presses
+ * the conversation note-taker (consent in Spanish; AI off here), uses live
+ * translation (medical refused; off here) and asks for an interpreter, presses
  * the help button, leaves a hand-over for the next shift and checks out. Every screen
  * passes axe WCAG 2.2 AA. The session comes from the development test
  * client (the browser sign-in itself is covered by the console journeys);
@@ -166,6 +167,35 @@ test.describe('field app (web build)', () => {
     await page.getByRole('button', { name: 'They tapped yes' }).click();
     await expect(page.getByText(/The scribe is off here/)).toBeVisible();
     await expect(page.getByText(/^Listening/)).toHaveCount(0);
+
+    // FL-14, FL:FR-24: live translation is labelled and never for consent, legal or medical
+    // conversations; an interpreter is one tap away (with no AI provider, translation is off).
+    await page.getByRole('link', { name: 'Home' }).click();
+    await page.getByRole('button', { name: 'Live translation' }).click();
+    await expect(page.getByRole('heading', { name: 'Live translation' })).toBeVisible();
+    await page.getByRole('radio', { name: 'Medical' }).click();
+    await expect(page.getByText(/always use a human interpreter/)).toBeVisible();
+    await expect(page.getByLabel('What you say')).toHaveCount(0);
+    await page.getByRole('radio', { name: 'General' }).click();
+    await page.getByLabel('What you say').fill('We have water and cots tonight.');
+    await page.getByRole('button', { name: 'Translate for them' }).click();
+    await expect(page.getByText(/Machine translation is off here/)).toBeVisible();
+    await expectNoViolations(page);
+    await page.getByRole('button', { name: 'Bring in an interpreter' }).click();
+    await expect(page.getByText(/Interpreter requested by phone/)).toBeVisible();
+    // Mass care reads the interpreter queue (FL:FR-24); the request is there once it is sent.
+    const massCare = await token('county', 'luis.masscare@example.org');
+    await expect
+      .poll(
+        async () => {
+          const r = await api(massCare, '/field-records/interpreter_request?state=open');
+          return Array.isArray(r.body)
+            ? (r.body as { note: string | null }[]).some((x) => x.note === 'From live translation')
+            : r.status;
+        },
+        { timeout: 60_000 },
+      )
+      .toBe(true);
 
     // FLD-16: the help button asks once, then dispatch has the alert.
     await page.getByRole('link', { name: 'Home' }).click();

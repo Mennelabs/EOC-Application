@@ -121,6 +121,7 @@ Situation reports and briefings (CMD-16, CON-06, FR-15.02, AC-15C): the existing
 13. **The scribe's note is staff-facing**, so the public-text filter (AIG-07) marks a line that reads as a promise or advice for a second look rather than removing it: the worker is recording what was said, not telling a resident something new.
 14. **A legal aid note is only ever its author's** (FL:FR-23); other notes are read by caseworkers once confirmed, each read audited. Shelter nurses and counselors have no scribe (FL:FR-16; health details belong in the restricted health note).
 15. **AIG-09 for the scribe follows Adam's decision of alerts only**: the per-language correction rate comes from the confirmed notes the worker changed, through the existing AI health alerts; FL-18's automatic switch-off is not built.
+16. **Machine translation keeps nothing and never decides** (FL-14, EQ-08): the words go to the provider for one turn and come back labelled; the record keeps the languages, outcome and model only. Consent, legal and medical conversations are refused by the server, not only hidden on the phone, and every role that may translate may also call an interpreter.
 
 ## 13. Tests and gates
 

@@ -51,6 +51,7 @@ describe('shipped role templates (ADM-04)', () => {
       'scribe.use',
       'site.post',
       'site.post_publish',
+      'translation.use',
     ]);
     expect(p.visibleCategories).not.toContain('health');
     expect(p.hiddenCategories.map((h) => h.category)).toEqual(
@@ -67,6 +68,10 @@ describe('shipped role templates (ADM-04)', () => {
       expect.arrayContaining(['shelter_worker', 'case_manager', 'field_volunteer', 'canvasser']),
     );
     expect(holders('scribe.read')).toEqual(['case_manager']);
+    // FL-14: the same frontline roles may use machine translation; never the nurse (medical).
+    expect(holders('translation.use').sort()).toEqual(holders('scribe.use').sort());
+    for (const key of holders('translation.use'))
+      expect(holders('interpreter.request')).toContain(key);
   });
 
   it('REC-13: county EM and planning review discovered places; county EM and the administrator name sources', () => {

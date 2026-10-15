@@ -200,8 +200,9 @@ export function ReviewQueueScreen({ navigate }: { navigate: (to: string) => void
       <h1 id="queue-h">Review queue</h1>
       <p>
         People first: reports with someone unsafe, no shelter or a medical need come first, then the
-        oldest waiting (PHO-14). Severity suggestions are off until a validated model exists
-        (PHO-12).
+        oldest waiting (PHO-14). Where the county has switched it on, an AI severity suggestion from
+        the photos waits on each report for its reviewer; it never changes the order ahead of
+        people's needs and never sets a degree (PHO-12).
       </p>
       <form
         className="form-grid"
@@ -968,6 +969,7 @@ function Decisions({
           ))}
         </tbody>
       </table>
+      <SeveritySuggestion reportId={report.id} />
       <form
         className="form-grid"
         onSubmit={(e) => {
@@ -1037,5 +1039,59 @@ function Decisions({
         </div>
       </form>
     </section>
+  );
+}
+
+interface Suggestion {
+  label: string;
+  degree: string;
+  confidence: number;
+  visibleFeatures: string[];
+  photoCount: number;
+  provider: string;
+  model: string;
+  createdAt: string;
+}
+
+/**
+ * PHO-09, PHO-10, PHO-11 (as decided 2026-10-15): the AI suggestion from the
+ * photos, for the reviewer only, labelled as not verified, with what it rests
+ * on. The reviewer sets the degree; the decision records whether they agreed.
+ */
+function SeveritySuggestion({ reportId }: { reportId: string }) {
+  const [s, setS] = useState<Suggestion | null>(null);
+  useEffect(() => {
+    let live = true;
+    api<Suggestion | null>(`/reports/${reportId}/suggestion`)
+      .then((r) => live && setS(r))
+      .catch(() => live && setS(null));
+    return () => {
+      live = false;
+    };
+  }, [reportId]);
+  if (!s) return null;
+  return (
+    <div className="panel" role="region" aria-label={s.label}>
+      <h4>{s.label}</h4>
+      <p>
+        Suggested degree: <strong>{s.degree.replace(/_/g, ' ')}</strong>, confidence{' '}
+        {Math.round(s.confidence * 100)}%, from {s.photoCount}{' '}
+        {s.photoCount === 1 ? 'photo' : 'photos'} ({s.provider}, {s.model}).
+      </p>
+      {s.visibleFeatures.length ? (
+        <>
+          <p>What it rests on:</p>
+          <ul>
+            {s.visibleFeatures.map((f) => (
+              <li key={f}>{f}</li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      <p>
+        A suggestion from the photos only, never shown to the resident. Set the degree yourself from
+        the matrix, the answers and the photos; your decision records whether you agreed.
+      </p>
+    </div>
   );
 }

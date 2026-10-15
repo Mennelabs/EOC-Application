@@ -92,6 +92,8 @@ export interface LanguageModel {
   discoverPlaces?(request: DiscoveryRequest): Promise<AiOutput<DiscoveryOutput>>;
   /** A draft written from computed facts only, each sentence citing its facts (layer-7 task G). Optional. */
   draft?(request: DraftRequest): Promise<AiOutput<DraftOutput>>;
+  /** The conversation scribe's draft note (layer-7 task H, FL-04). Optional. */
+  scribeNote?(request: ScribeNoteRequest): Promise<AiOutput<ScribeNote>>;
 }
 
 /** What a draft is for (CMD-16, CON-06, DCL:DEC-14, PUB-11, PUB-12, PUB-14). */
@@ -101,7 +103,8 @@ export type DraftPurpose =
   | 'declaration_box9'
   | 'pio_post'
   | 'radio_script'
-  | 'wea_alert';
+  | 'wea_alert'
+  | 'handover';
 
 /** One computed fact a draft may state; nothing else may be stated (AI-04, AI-09). */
 export interface DraftFact {
@@ -130,6 +133,32 @@ export interface DraftSentence {
 export interface DraftOutput {
   sentences: DraftSentence[];
   /** Fact text tried to instruct the model (AIG-02). */
+  injectionSuspected: boolean;
+}
+
+/**
+ * The conversation scribe (FL-04, layer-7 task H): what was said, already
+ * redacted of names, phone numbers, emails and street addresses, in, a draft
+ * note out. Each line carries the words it rests on, so the worker can check
+ * it at a glance and the server can drop a line whose words were never said.
+ */
+export interface ScribeNoteRequest {
+  transcript: string;
+  language: string;
+}
+
+export interface ScribeNoteLine {
+  text: string;
+  /** The words from the conversation the line rests on, as said. */
+  quote: string;
+}
+
+export interface ScribeNote {
+  needsHeard: ScribeNoteLine[];
+  helpGiven: ScribeNoteLine[];
+  followUps: ScribeNoteLine[];
+  referrals: ScribeNoteLine[];
+  /** The conversation held words that tried to instruct the model (AIG-02). */
   injectionSuspected: boolean;
 }
 

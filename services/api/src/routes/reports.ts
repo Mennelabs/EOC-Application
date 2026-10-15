@@ -14,6 +14,7 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { sql, type Selectable, type Transaction } from 'kysely';
 import { z } from 'zod';
+import { decide } from '@cg/authz';
 import type { FieldDescriptor } from '@cg/authz';
 import { diffForAudit } from '@cg/audit';
 import { callAi, recordAiOutput } from '@cg/ai';
@@ -1073,6 +1074,14 @@ export const reportRoutes: FastifyPluginAsync = async (raw) => {
             .executeTakeFirst(),
           toSummary(current),
         );
+        // PHO-11, PHO-13: the decision says whether the reviewer agreed with the suggestion they had.
+        const suggestion = await trx
+          .selectFrom('cg.damage_suggestion')
+          .select(['id', 'degree', 'ai_output_id'])
+          .where('report_id', '=', current.id)
+          .orderBy('created_at', 'desc')
+          .executeTakeFirst();
+        const agreed = suggestion ? suggestion.degree === request.body.degree : null;
         await trx
           .insertInto('cg.review_decision')
           .values({
@@ -1083,8 +1092,21 @@ export const reportRoutes: FastifyPluginAsync = async (raw) => {
             decision: 'set_degree',
             reason: request.body.reason,
             evidence_refs: '[]',
+            ai_suggestion_id: suggestion?.id ?? null,
+            agreed_with_ai: agreed,
           })
           .execute();
+        if (suggestion?.ai_output_id)
+          await trx
+            .updateTable('cg.ai_output')
+            .set({
+              human_action: agreed ? 'accepted' : 'rejected',
+              acted_by: s.accountId,
+              acted_at: new Date(),
+            })
+            .where('id', '=', suggestion.ai_output_id)
+            .where('human_action', 'is', null)
+            .execute();
         await request.audit(trx, {
           action: 'report.set_degree',
           targetType: 'report',
@@ -1095,6 +1117,68 @@ export const reportRoutes: FastifyPluginAsync = async (raw) => {
         return row;
       });
       return toSummary(updated);
+    },
+  );
+
+  // ------------------------------------------------------------- AI severity suggestion
+  /**
+   * PHO-09, PHO-10, PHO-12 as decided 2026-10-15: the latest suggestion for
+   * reviewers only, labelled as not verified. Residents never see it; null
+   * when there is none (the feature off, no photos, or not yet looked at).
+   */
+  app.get(
+    '/reports/:id/suggestion',
+    {
+      schema: {
+        tags: ['reports'],
+        params: uuidParam,
+        response: {
+          200: z
+            .object({
+              id: z.uuid(),
+              label: z.literal('AI suggestion — not verified'),
+              degree: z.enum(['affected', 'minor', 'major', 'destroyed', 'cannot_tell']),
+              confidence: z.number(),
+              visibleFeatures: z.array(z.string()),
+              photoCount: z.number().int(),
+              provider: z.string(),
+              model: z.string(),
+              createdAt: z.string(),
+            })
+            .nullable(),
+        },
+      },
+    },
+    async (request) => {
+      const current = await load(request, request.params.id);
+      // Those who may set the degree read it; setting it is the step that asks for confirmation.
+      await request.authorize('report.read', resourceOf(current), { asNotFound: true });
+      const s = request.subject;
+      if (
+        s.kind !== 'account' ||
+        decide(s, 'report.set_degree', resourceOf(current)).effect !== 'allow'
+      )
+        throw errors.notFound();
+      const row = await request.tx((trx) =>
+        trx
+          .selectFrom('cg.damage_suggestion')
+          .selectAll()
+          .where('report_id', '=', current.id)
+          .orderBy('created_at', 'desc')
+          .executeTakeFirst(),
+      );
+      if (!row) return null;
+      return {
+        id: row.id,
+        label: 'AI suggestion — not verified' as const,
+        degree: row.degree,
+        confidence: Number(row.confidence),
+        visibleFeatures: row.visible_features,
+        photoCount: row.photo_ids.length,
+        provider: row.provider,
+        model: row.model,
+        createdAt: new Date(row.created_at).toISOString(),
+      };
     },
   );
 
@@ -1123,6 +1207,7 @@ export const reportRoutes: FastifyPluginAsync = async (raw) => {
       const setup = await request.tx(async (trx) => {
         const feature = await trx
           .selectFrom('cg.ai_use_register')
+          .where('tenant_id', '=', sql<string>`cg.current_tenant_id()`)
           .select(['enabled', 'provider'])
           .where('feature', '=', 'review.translation')
           .executeTakeFirst();

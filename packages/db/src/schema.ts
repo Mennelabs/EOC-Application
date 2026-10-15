@@ -2294,6 +2294,62 @@ export interface RecommendationTable extends Stamped {
 }
 
 /** REC-13: a source the county names for resource discovery (its own feeds, or web search). */
+/** PHO-09–PHO-13: a severity suggestion for reviewers only (layer-7 task I). */
+export interface DamageSuggestionTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  report_id: Uuid;
+  degree: 'affected' | 'minor' | 'major' | 'destroyed' | 'cannot_tell';
+  confidence: ColumnType<string, number | string, number | string>;
+  visible_features: Generated<string[]>;
+  photo_ids: string[];
+  provider: string;
+  model: string;
+  template_version: string | null;
+  ai_output_id: Uuid | null;
+  created_at: TsGen;
+}
+
+/** FL-12: the note a worker leaves for the next shift (layer-7 task H). */
+export interface ShiftHandoverTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  check_in_id: Uuid;
+  personnel_id: Uuid;
+  team_id: Uuid | null;
+  language: 'en' | 'es';
+  text: string;
+  sources: Generated<string[]>;
+  ai_output_id: Uuid | null;
+}
+
+/** FL-04, FL-18: one conversation the scribe recorded with a survivor's consent (layer-7 task H). */
+export interface ScribeSessionTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  client_uuid: Uuid;
+  account_id: Uuid;
+  context: 'general' | 'legal_aid' | 'child';
+  language: 'en' | 'es';
+  consent_method: 'spoken' | 'tapped';
+  consent_text: string;
+  consent_at: Date;
+  related_type: string | null;
+  related_id: Uuid | null;
+  state: Generated<'consented' | 'recorded' | 'drafted' | 'confirmed' | 'discarded' | 'expired'>;
+  stopped_by: 'worker' | 'survivor' | null;
+  audio_object_key: string | null;
+  audio_mime: string | null;
+  audio_bytes: number | null;
+  transcript_enc: Buffer | null;
+  draft_enc: Buffer | null;
+  draft_output_id: Uuid | null;
+  note_enc: Buffer | null;
+  confirmed_at: TsNullable;
+  edited: boolean | null;
+}
+
 /** PUB-14: an AI-voiced audio file of an approved radio script (layer-7 task G). */
 export interface PublicAudioTable extends Stamped {
   id: Generated<Uuid>;
@@ -3163,6 +3219,9 @@ export interface Database {
   'cg.facility_change': FacilityChangeTable;
   'cg.recommendation': RecommendationTable;
   'cg.public_audio': PublicAudioTable;
+  'cg.scribe_session': ScribeSessionTable;
+  'cg.shift_handover': ShiftHandoverTable;
+  'cg.damage_suggestion': DamageSuggestionTable;
   'cg.discovery_source': DiscoverySourceTable;
   'cg.discovery_run': DiscoveryRunTable;
   'cg.discovery_candidate': DiscoveryCandidateTable;

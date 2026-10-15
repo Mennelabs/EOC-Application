@@ -2,6 +2,7 @@
  * Outbox topic handlers. Each is idempotent: a redelivered message finds the
  * work already done and records nothing new (BRD:FR-00.06).
  */
+import { reportSeverity } from './severity.ts';
 import { roleTemplates } from '@cg/authz';
 import { openAIDescriptor } from '@cg/ai';
 import { westwindGraph } from '@cg/intake';
@@ -248,6 +249,7 @@ export const topicHandlers: Record<string, TopicHandler> = {
   'break_glass.started': breakGlassStarted,
   'event.opened': async () => undefined, // channels announce the keyword and link in F
   'photo.process': photoProcess,
+  'report.severity': reportSeverity, // PHO-09, PHO-12 as decided 2026-10-15
   'message.send': messageSend,
   'correction.requested': correctionRequested,
   'report.withdrawn': reportWithdrawn,

@@ -20,7 +20,7 @@
  */
 import type { FastifyPluginAsync } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import type { Transaction } from 'kysely';
+import { sql, type Transaction } from 'kysely';
 import { z } from 'zod';
 import {
   callAi,
@@ -110,6 +110,7 @@ export const fieldVoiceRoutes =
         const setup = await request.tx(async (trx) => {
           const feature = await trx
             .selectFrom('cg.ai_use_register')
+            .where('tenant_id', '=', sql<string>`cg.current_tenant_id()`)
             .select(['enabled', 'provider'])
             .where('feature', '=', 'field.voice_draft')
             .executeTakeFirst();

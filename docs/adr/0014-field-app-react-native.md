@@ -11,6 +11,7 @@
 - **Storage:** `op-sqlite` with SQLCipher encryption; key in iOS Keychain / Android Keystore via `expo-secure-store`; app unlock with PIN or biometrics (`expo-local-authentication`).
 - **Location:** `expo-location` with `expo-task-manager` background updates, only while checked in (DSP-08). Finding Q-07 covers the paid Transistor alternative.
 - **Camera / QR:** `expo-camera` (photo-first capture, QR check-in).
+- **Recording (layer 7, 2026-10-15):** `expo-audio` for the conversation scribe (FL-04): one recorder API on iOS, Android and the web build (MediaRecorder underneath), foreground only (`enableBackgroundRecording: false`; the screen also stops when the app leaves it, FL-18), M4A on the phone and WebM on the web, both accepted by the transcription service. `expo-av` was the older choice and is deprecated in current Expo SDKs.
 - **Device management:** managed app configuration (`react-native-mdm`-style AppConfig keys) for tenant URL and single-app mode.
 - **Screenshots:** blocked on screens with personal details (`expo-screen-capture`).
 

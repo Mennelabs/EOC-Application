@@ -14,6 +14,7 @@
     "@cg/field-core": "workspace:*",
     "@expo/metro-runtime": "~57.0.16",
     "expo": "57.0.26",
+    "expo-audio": "~57.0.5",
     "expo-auth-session": "~57.0.13",
     "expo-camera": "~57.0.6",
     "expo-constants": "~57.0.20",

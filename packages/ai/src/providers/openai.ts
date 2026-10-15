@@ -36,6 +36,8 @@ import type {
   LanguageModel,
   ProviderInfo,
   Region,
+  ScribeNote,
+  ScribeNoteRequest,
   SpeechRequest,
   SpeechToText,
   TextToSpeech,
@@ -46,6 +48,7 @@ import {
   buildDiscoveryPrompt,
   buildDraftPrompt,
   buildExtractionPrompt,
+  buildScribePrompt,
 } from '../prompt.ts';
 
 export type OpenAIFunction = 'text' | 'vision' | 'classifier' | 'transcription' | 'speech';
@@ -69,6 +72,7 @@ export const OPENAI_TEMPLATES = {
   command: 'command-interpret-1',
   discovery: 'discovery-search-1',
   draft: 'draft-from-facts-1',
+  scribe: 'scribe-note-1',
   speech: 'speech-1',
 } as const;
 
@@ -212,6 +216,18 @@ const DRAFT_SCHEMA = strictObject({
   injectionSuspected: { type: 'boolean' },
 });
 
+const NOTE_LINES = {
+  type: 'array',
+  items: strictObject({ text: { type: 'string' }, quote: { type: 'string' } }),
+};
+const SCRIBE_SCHEMA = strictObject({
+  needsHeard: NOTE_LINES,
+  helpGiven: NOTE_LINES,
+  followUps: NOTE_LINES,
+  referrals: NOTE_LINES,
+  injectionSuspected: { type: 'boolean' },
+});
+
 const TRANSLATION_SCHEMA = strictObject({
   text: { type: 'string' },
   detectedLanguage: { type: ['string', 'null'] },
@@ -283,6 +299,7 @@ export class OpenAIProvider implements AiProvider {
       interpretCommand: (r) => this.interpretCommand(r),
       discoverPlaces: (r) => this.discover(r),
       draft: (r) => this.draft(r),
+      scribeNote: (r) => this.scribeNote(r),
     };
     this.stt = { transcribe: (a, m, l) => this.transcribe(a, m, l) };
     this.tts = { speak: (r) => this.speak(r) };
@@ -596,6 +613,36 @@ export class OpenAIProvider implements AiProvider {
       },
       model,
       OPENAI_TEMPLATES.draft,
+      started,
+    );
+  }
+
+  /** FL-04: the scribe's draft note from a redacted conversation, each line with its words. */
+  async scribeNote(request: ScribeNoteRequest): Promise<AiOutput<ScribeNote>> {
+    const started = this.now();
+    const { system, user } = buildScribePrompt(request);
+    const { json, model } = await this.respond(
+      'text',
+      'scribe_note',
+      system,
+      [{ type: 'input_text', text: user }],
+      SCRIBE_SCHEMA,
+    );
+    const lines = (k: string) =>
+      (Array.isArray(json[k]) ? (json[k] as Json[]) : []).slice(0, 30).map((x) => ({
+        text: String(x['text'] ?? '').slice(0, 500),
+        quote: String(x['quote'] ?? '').slice(0, 500),
+      }));
+    return this.out(
+      {
+        needsHeard: lines('needsHeard'),
+        helpGiven: lines('helpGiven'),
+        followUps: lines('followUps'),
+        referrals: lines('referrals'),
+        injectionSuspected: json['injectionSuspected'] === true,
+      },
+      model,
+      OPENAI_TEMPLATES.scribe,
       started,
     );
   }

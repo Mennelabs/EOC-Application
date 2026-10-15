@@ -31,7 +31,8 @@ export interface DraftingDeps {
   objects?: { client: Pick<S3Client, 'send'>; bucket: string };
 }
 
-export type DraftFeature = 'report.drafting' | 'declaration.drafting' | 'public.drafting';
+export type DraftFeature =
+  'report.drafting' | 'declaration.drafting' | 'public.drafting' | 'field.handover';
 
 type Prepared = NonNullable<Awaited<ReturnType<NonNullable<DraftingDeps['ai']>['providerFor']>>>;
 

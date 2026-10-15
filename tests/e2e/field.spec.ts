@@ -4,8 +4,10 @@
  * field lead of the Field Exercise Team sets a PIN, checks in by the event
  * code, saves a quick report while offline ("On this phone") that is
  * received once the signal returns, records a damage assessment with the
- * details FEMA asks for, asks the command window for its reminders, presses
- * the help button, and checks out. Every screen
+ * details FEMA asks for, asks the command window for its reminders, opens
+ * the conversation note-taker (consent in Spanish; AI off here), uses live
+ * translation (medical refused; off here) and asks for an interpreter, presses
+ * the help button, leaves a hand-over for the next shift and checks out. Every screen
  * passes axe WCAG 2.2 AA. The session comes from the development test
  * client (the browser sign-in itself is covered by the console journeys);
  * the app keeps it in sessionStorage exactly as after its own sign-in.
@@ -153,6 +155,48 @@ test.describe('field app (web build)', () => {
     await expect(page.getByText(/open reminder|reminders?:/i)).toBeVisible();
     await expectNoViolations(page);
 
+    // FL-04, FL-05, FL-18: the conversation note-taker asks first, in the person's language,
+    // and is never for counseling; with no AI provider configured it says so and records nothing.
+    await page.getByRole('link', { name: 'Home' }).click();
+    await page.getByRole('button', { name: 'Conversation note-taker' }).click();
+    await expect(page.getByRole('heading', { name: 'Conversation note-taker' })).toBeVisible();
+    await expect(page.getByText(/Never for counseling, spiritual care or prayer/)).toBeVisible();
+    await page.getByRole('radio', { name: 'Español' }).click();
+    await expect(page.getByText(/¿Puedo usar un asistente de notas/)).toBeVisible();
+    await expectNoViolations(page);
+    await page.getByRole('button', { name: 'They tapped yes' }).click();
+    await expect(page.getByText(/The scribe is off here/)).toBeVisible();
+    await expect(page.getByText(/^Listening/)).toHaveCount(0);
+
+    // FL-14, FL:FR-24: live translation is labelled and never for consent, legal or medical
+    // conversations; an interpreter is one tap away (with no AI provider, translation is off).
+    await page.getByRole('link', { name: 'Home' }).click();
+    await page.getByRole('button', { name: 'Live translation' }).click();
+    await expect(page.getByRole('heading', { name: 'Live translation' })).toBeVisible();
+    await page.getByRole('radio', { name: 'Medical' }).click();
+    await expect(page.getByText(/always use a human interpreter/)).toBeVisible();
+    await expect(page.getByLabel('What you say')).toHaveCount(0);
+    await page.getByRole('radio', { name: 'General' }).click();
+    await page.getByLabel('What you say').fill('We have water and cots tonight.');
+    await page.getByRole('button', { name: 'Translate for them' }).click();
+    await expect(page.getByText(/Machine translation is off here/)).toBeVisible();
+    await expectNoViolations(page);
+    await page.getByRole('button', { name: 'Bring in an interpreter' }).click();
+    await expect(page.getByText(/Interpreter requested by phone/)).toBeVisible();
+    // Mass care reads the interpreter queue (FL:FR-24); the request is there once it is sent.
+    const massCare = await token('county', 'luis.masscare@example.org');
+    await expect
+      .poll(
+        async () => {
+          const r = await api(massCare, '/field-records/interpreter_request?state=open');
+          return Array.isArray(r.body)
+            ? (r.body as { note: string | null }[]).some((x) => x.note === 'From live translation')
+            : r.status;
+        },
+        { timeout: 60_000 },
+      )
+      .toBe(true);
+
     // FLD-16: the help button asks once, then dispatch has the alert.
     await page.getByRole('link', { name: 'Home' }).click();
     await page.getByRole('button', { name: /Need help/ }).click();
@@ -180,7 +224,26 @@ test.describe('field app (web build)', () => {
     await page.getByRole('link', { name: 'Settings' }).click();
     await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
     await expectNoViolations(page);
-    await page.getByRole('button', { name: 'Check out' }).click();
+    // FL-12: the hand-over for the next shift, drafted from this shift's own records, then check-out.
+    await page.getByRole('button', { name: 'Hand-over for the next shift' }).click();
+    await expect(page.getByRole('heading', { name: 'Hand-over for the next shift' })).toBeVisible();
+    const note = page.getByLabel('Hand-over note');
+    await expect(note).toHaveValue(/Damage assessments recorded: \d+/, { timeout: 30_000 });
+    await page.getByRole('button', { name: 'Draft with the AI assistant' }).click();
+    await expect(page.getByText(/The AI drafting assistant is off here/)).toBeVisible();
+    await expectNoViolations(page);
+    const handoverTag = `Exercise: north door sticks ${Date.now()}`;
+    await note.fill(`${await note.inputValue()} ${handoverTag}`);
+    await page.getByRole('button', { name: 'Save and check out' }).click();
+    await expect
+      .poll(
+        async () =>
+          (
+            (await api(accessToken, '/handovers?mine=true&limit=5')).body as { text: string }[]
+          ).some((h) => h.text.includes(handoverTag)),
+        { timeout: 30_000 },
+      )
+      .toBe(true);
     await expect
       .poll(
         async () =>

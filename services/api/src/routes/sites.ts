@@ -1481,7 +1481,11 @@ export const siteRoutesWith =
         const done = await request.tx((trx) =>
           trx
             .updateTable('cg.ai_output')
-            .set({ human_action: request.body.changed ? 'edited' : 'accepted' })
+            .set({
+              human_action: request.body.changed ? 'edited' : 'accepted',
+              acted_by: s.accountId,
+              acted_at: new Date(),
+            })
             .where('id', '=', request.params.outputId)
             .where('tenant_id', '=', s.tenantId)
             .where('feature', '=', 'public.drafting')

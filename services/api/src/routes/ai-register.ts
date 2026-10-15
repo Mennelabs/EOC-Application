@@ -7,6 +7,7 @@
  */
 import type { FastifyPluginAsync } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import { sql } from 'kysely';
 import { z } from 'zod';
 import { canEnable, DEFAULT_PROVIDER, providerByName, type EvaluationSummary } from '@cg/ai';
 import { diffForAudit } from '@cg/audit';
@@ -85,7 +86,12 @@ export const aiRegisterRoutes: FastifyPluginAsync = async (raw) => {
         tenantId: s.tenantId,
       });
       const rows = await request.tx((trx) =>
-        trx.selectFrom('cg.ai_use_register').selectAll().orderBy('feature').execute(),
+        trx
+          .selectFrom('cg.ai_use_register')
+          .where('tenant_id', '=', sql<string>`cg.current_tenant_id()`)
+          .selectAll()
+          .orderBy('feature')
+          .execute(),
       );
       return rows.map(toEntry);
     },
@@ -107,6 +113,7 @@ export const aiRegisterRoutes: FastifyPluginAsync = async (raw) => {
       await request.tx(async (trx) => {
         const cfg = await trx
           .selectFrom('cg.tenant_config')
+          .where('tenant_id', '=', sql<string>`cg.current_tenant_id()`)
           .select('value')
           .where('key', '=', 'ai.provider')
           .executeTakeFirst();
@@ -145,6 +152,7 @@ export const aiRegisterRoutes: FastifyPluginAsync = async (raw) => {
       const row = await request.tx((trx) =>
         trx
           .selectFrom('cg.ai_use_register')
+          .where('tenant_id', '=', sql<string>`cg.current_tenant_id()`)
           .selectAll()
           .where('feature', '=', request.params.feature)
           .executeTakeFirst(),
@@ -157,12 +165,6 @@ export const aiRegisterRoutes: FastifyPluginAsync = async (raw) => {
       });
       const expected = request.expectedVersion();
       if (request.body.enabled) {
-        if (row.feature === 'photo.severity')
-          throw new ApiError(
-            409,
-            'feature_locked',
-            'The severity suggestion stays off until a validated model exists (PHO-12).',
-          );
         const provider = providerByName(row.provider);
         const tenant = await request.tx((trx) =>
           trx

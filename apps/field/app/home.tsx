@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { timerLabel, timerPhase } from '@cg/field-core';
 import { useField, useHazardWarnings } from '../src/field';
+import { useOnline } from '../src/online';
 import { clock, duration } from '../src/format';
 import { MODULES } from '../src/records';
 import { label } from '../src/vocab';
@@ -44,8 +45,27 @@ export default function Home() {
   const unread = messages.filter((m) => !m.receipt?.acknowledgedAt);
   const latest = unread[0] ?? null;
   const phase = timer ? timerPhase(timer, now) : 'ok';
+  // FL-12: the last hand-over left for this worker's team (needs signal; quiet without it).
+  const handovers = useOnline(checkIn && !checkIn.endedAt ? `handovers:${checkIn.id}` : null, () =>
+    f.online<
+      { checkInId: string; personnelName: string | null; createdAt: string; text: string }[]
+    >('/handovers?mine=true&limit=1'),
+  );
+  const last = handovers.data?.find((h) => h.checkInId !== checkIn?.id) ?? null;
   return (
     <Page title={t('home.heading')}>
+      {last ? (
+        <Card label={t('handover.last')}>
+          <Heading level={2}>{t('handover.last')}</Heading>
+          <Body muted>
+            {t('handover.lastBy', {
+              name: last.personnelName ?? '—',
+              time: clock(last.createdAt, locale),
+            })}
+          </Body>
+          <Body>{last.text}</Body>
+        </Card>
+      ) : null}
       <Card label={t('home.heading')}>
         <Heading level={2}>
           {team
@@ -175,6 +195,20 @@ export default function Home() {
               kind="secondary"
               label={t('stock.heading')}
               onPress={() => router.push('/stock')}
+            />
+          ) : null}
+          {f.can('scribe.use') ? (
+            <Button
+              kind="secondary"
+              label={t('scribe.heading')}
+              onPress={() => router.push('/scribe')}
+            />
+          ) : null}
+          {f.can('translation.use') ? (
+            <Button
+              kind="secondary"
+              label={t('translate.heading')}
+              onPress={() => router.push('/translate')}
             />
           ) : null}
           {f.can('interpreter.respond') ? (

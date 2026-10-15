@@ -54,9 +54,11 @@ export const messageSend: TopicHandler = async (ctx, msg) => {
       .select(['name', 'slug'])
       .where('id', '=', tenantId)
       .executeTakeFirstOrThrow();
+    // This county's help line, never another's (the worker sees every tenant).
     const help = await trx
       .selectFrom('cg.tenant_config')
       .select('value')
+      .where('tenant_id', '=', tenantId)
       .where('key', '=', 'intake.help_phone')
       .executeTakeFirst();
     const number =

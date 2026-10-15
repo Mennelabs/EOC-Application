@@ -100,11 +100,16 @@ export interface RegisterEntry {
   owner: string;
   /** Interface the feature needs on the provider. */
   needs: ProviderNeed;
-  /** Shipped switched off regardless of provider (PHO-12, Q-01). */
+  /** Can never be switched on (none at present; PHO-12's lock was lifted on 2026-10-15). */
   lockedOff?: boolean;
+  /** Provisioned off even when the evaluation passed: an administrator switches it on (AIG-08). */
+  startsOff?: boolean;
 }
 
-/** The product's AI features (AIG-01). The severity suggestion stays off until a validated classifier exists (PHO-12). */
+/**
+ * The product's AI features (AIG-01). The severity suggestion comes from the provider's
+ * classifier (OpenAI's vision model, decided 2026-10-15) and starts off for every tenant.
+ */
 export const AI_FEATURES: readonly RegisterEntry[] = [
   {
     feature: 'intake.extraction',
@@ -153,6 +158,47 @@ export const AI_FEATURES: readonly RegisterEntry[] = [
     humanCheckpoint:
       'The person confirms every change on the plan screen; lookups only read what the person may see (CMD-21, CMD-22)',
     owner: 'Product owner (command window)',
+  },
+  {
+    feature: 'scribe.transcription',
+    needs: 'stt',
+    dataSent:
+      "A recorded conversation between a worker and a survivor, with the survivor's consent",
+    decisionInformed:
+      'A transcript that feeds the drafted note; deleted with the audio when the note is confirmed (FL-04)',
+    humanCheckpoint: 'The worker reviews and confirms the note; only the confirmed note is kept',
+    owner: 'Field operations lead',
+  },
+  {
+    feature: 'scribe.note',
+    needs: 'llm',
+    dataSent:
+      'The transcript, redacted of names, phone numbers, emails, street addresses and identifiers',
+    decisionInformed:
+      'Drafts the note (needs heard, help given, follow-ups, referrals), each line with the words it rests on (FL-04)',
+    humanCheckpoint: 'The worker confirms or changes every line; only the confirmed note is kept',
+    owner: 'Field operations lead',
+  },
+  {
+    feature: 'field.handover',
+    needs: 'llm',
+    dataSent:
+      "Counts and summaries of a worker's own records from their shift, redacted of names, phone numbers, emails and street addresses; open assignments by mission name",
+    decisionInformed:
+      'Drafts the hand-over note for the next shift, each sentence citing its facts (FL-12)',
+    humanCheckpoint: 'The worker edits and confirms the note before checking out',
+    owner: 'Field operations lead',
+  },
+  {
+    feature: 'field.translation',
+    needs: 'translation',
+    dataSent:
+      'What a worker or a survivor says in a general conversation, one turn at a time; never consent, legal or medical conversations',
+    decisionInformed:
+      'A labelled machine translation shown on the phone between worker and survivor (FL-14); nothing is kept',
+    humanCheckpoint:
+      'One tap brings in a human interpreter; consent, legal and medical conversations always use one',
+    owner: 'Equity lead',
   },
   {
     feature: 'discovery.web_search',
@@ -225,12 +271,13 @@ export const AI_FEATURES: readonly RegisterEntry[] = [
   },
   {
     feature: 'photo.severity',
-    needs: 'image',
-    dataSent: 'A resident photo and its hazard',
+    needs: 'classifier',
+    dataSent: "A report's photos (blurred review copies), its home type and hazard",
     decisionInformed:
-      'A suggested FEMA degree of damage shown only to reviewers, labelled as a suggestion (PHO-09/10)',
-    humanCheckpoint: 'A credentialed reviewer sets the degree (PHO-11)',
+      'A suggested FEMA degree of damage with its confidence and the features it rests on, shown only to reviewers, labelled "AI suggestion — not verified" (PHO-09/10)',
+    humanCheckpoint:
+      'A credentialed reviewer sets the degree (PHO-11); agreement is reported (PHO-13)',
     owner: 'Damage assessment lead',
-    lockedOff: true,
+    startsOff: true,
   },
 ];

@@ -66,6 +66,10 @@ import * as m0064 from './0064_discovery.ts';
 import * as m0065 from './0065_ai_register_discovery.ts';
 import * as m0066 from './0066_ai_register_drafting.ts';
 import * as m0067 from './0067_public_audio.ts';
+import * as m0068 from './0068_scribe.ts';
+import * as m0069 from './0069_shift_handover.ts';
+import * as m0070 from './0070_ai_register_field_translation.ts';
+import * as m0071 from './0071_damage_suggestion.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -136,4 +140,8 @@ export const migrations: Record<string, Migration> = {
   '0065_ai_register_discovery': m0065,
   '0066_ai_register_drafting': m0066,
   '0067_public_audio': m0067,
+  '0068_scribe': m0068,
+  '0069_shift_handover': m0069,
+  '0070_ai_register_field_translation': m0070,
+  '0071_damage_suggestion': m0071,
 };

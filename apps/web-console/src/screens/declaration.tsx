@@ -18,7 +18,7 @@ import { PackageExports, PackagePhotos } from './fema-package.tsx';
 
 const DEGREES = ['affected', 'minor', 'major', 'destroyed'] as const;
 type Degree = (typeof DEGREES)[number];
-const DEGREE_NAMES: Record<Degree, string> = {
+export const DEGREE_NAMES: Record<Degree, string> = {
   affected: 'Affected',
   minor: 'Minor',
   major: 'Major',
@@ -159,7 +159,7 @@ interface Citation {
   retrievedAt: string;
 }
 
-interface View {
+export interface View {
   eventId: string;
   asOf: string;
   declaration: Declaration | null;
@@ -343,9 +343,9 @@ export function DeclarationScreen() {
   );
 }
 
-type Run = (fn: () => Promise<unknown>, done: string) => Promise<boolean>;
+export type Run = (fn: () => Promise<unknown>, done: string) => Promise<boolean>;
 
-function Clock({ view }: { view: View }) {
+export function Clock({ view }: { view: View }) {
   const c = view.clock;
   return (
     <section aria-labelledby="decl-clock">
@@ -564,7 +564,7 @@ function IncidentForm({
   );
 }
 
-function Damage({ view }: { view: View }) {
+export function Damage({ view }: { view: View }) {
   const d = view.damage;
   const s = d.shownSeparately;
   const apart: { label: string; count: number }[] = [
@@ -658,7 +658,7 @@ function Damage({ view }: { view: View }) {
   );
 }
 
-function Profile({ view }: { view: View }) {
+export function Profile({ view }: { view: View }) {
   const p = view.profile;
   const t = p.total;
   const source = p.profiles
@@ -704,7 +704,7 @@ function Profile({ view }: { view: View }) {
   );
 }
 
-function Outages({ view, editable, run }: { view: View; editable: boolean; run: Run }) {
+export function Outages({ view, editable, run }: { view: View; editable: boolean; run: Run }) {
   const o = view.outages;
   const blank = {
     kind: 'power' as OutageKind,
@@ -919,7 +919,7 @@ function Outages({ view, editable, run }: { view: View; editable: boolean; run: 
   );
 }
 
-function Casualties({ view, editable, run }: { view: View; editable: boolean; run: Run }) {
+export function Casualties({ view, editable, run }: { view: View; editable: boolean; run: Run }) {
   const kinds = Object.keys(CASUALTY_KINDS) as CasualtyKind[];
   const blank = {
     kind: 'injured' as CasualtyKind,
@@ -1053,14 +1053,15 @@ function Casualties({ view, editable, run }: { view: View; editable: boolean; ru
   );
 }
 
-function PublicDamage({
+export function PublicDamage({
   view,
   sites,
   editable,
   run,
 }: {
   view: View;
-  sites: PaSite[];
+  /** Null when the sites are not shown (the state liaison sees category totals only). */
+  sites: PaSite[] | null;
   editable: boolean;
   run: Run;
 }) {
@@ -1140,61 +1141,63 @@ function PublicDamage({
           { key: 'cost', header: 'Cost', render: (c) => usd(pa.byCategory[c].cost) },
         ]}
       />
-      <DataTable
-        caption="Public damage sites"
-        rows={sites}
-        rowKey={(s) => s.id}
-        empty="No public damage sites for this event."
-        columns={[
-          { key: 'name', header: 'Site', render: (s) => `${s.name} (${s.applicant})` },
-          { key: 'cat', header: 'Category', render: (s) => s.category },
-          {
-            key: 'cost',
-            header: 'Cost',
-            render: (s) =>
-              `${usd(s.estimatedCost)}${s.estimatedCost !== null ? (s.costBasis === 'verified' ? ', verified' : ', estimate') : ''}`,
-          },
-          {
-            key: 'done',
-            header: 'Complete',
-            render: (s) => (s.percentComplete === null ? 'Unknown' : `${s.percentComplete}%`),
-          },
-          { key: 'ins', header: 'Insured', render: (s) => YNU[s.insured] ?? s.insured },
-          {
-            key: 'ofa',
-            header: 'Other federal agency',
-            render: (s) => YNU[s.otherFederalAgency] ?? s.otherFederalAgency,
-          },
-          { key: 'photos', header: 'Photos', render: (s) => n(s.photos) },
-          {
-            key: 'status',
-            header: 'Status',
-            render: (s) =>
-              s.status === 'withdrawn' ? (
-                'Withdrawn'
-              ) : editable ? (
-                <button
-                  type="button"
-                  onClick={() =>
-                    void run(
-                      () =>
-                        api(`/pa-sites/${s.id}`, {
-                          method: 'PATCH',
-                          version: s.version,
-                          body: { status: 'withdrawn' },
-                        }),
-                      `${s.name} withdrawn.`,
-                    )
-                  }
-                >
-                  Withdraw {s.name}
-                </button>
-              ) : (
-                'Active'
-              ),
-          },
-        ]}
-      />
+      {sites ? (
+        <DataTable
+          caption="Public damage sites"
+          rows={sites}
+          rowKey={(s) => s.id}
+          empty="No public damage sites for this event."
+          columns={[
+            { key: 'name', header: 'Site', render: (s) => `${s.name} (${s.applicant})` },
+            { key: 'cat', header: 'Category', render: (s) => s.category },
+            {
+              key: 'cost',
+              header: 'Cost',
+              render: (s) =>
+                `${usd(s.estimatedCost)}${s.estimatedCost !== null ? (s.costBasis === 'verified' ? ', verified' : ', estimate') : ''}`,
+            },
+            {
+              key: 'done',
+              header: 'Complete',
+              render: (s) => (s.percentComplete === null ? 'Unknown' : `${s.percentComplete}%`),
+            },
+            { key: 'ins', header: 'Insured', render: (s) => YNU[s.insured] ?? s.insured },
+            {
+              key: 'ofa',
+              header: 'Other federal agency',
+              render: (s) => YNU[s.otherFederalAgency] ?? s.otherFederalAgency,
+            },
+            { key: 'photos', header: 'Photos', render: (s) => n(s.photos) },
+            {
+              key: 'status',
+              header: 'Status',
+              render: (s) =>
+                s.status === 'withdrawn' ? (
+                  'Withdrawn'
+                ) : editable ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void run(
+                        () =>
+                          api(`/pa-sites/${s.id}`, {
+                            method: 'PATCH',
+                            version: s.version,
+                            body: { status: 'withdrawn' },
+                          }),
+                        `${s.name} withdrawn.`,
+                      )
+                    }
+                  >
+                    Withdraw {s.name}
+                  </button>
+                ) : (
+                  'Active'
+                ),
+            },
+          ]}
+        />
+      ) : null}
       {editable ? (
         <form onSubmit={add} className="form-grid" aria-labelledby="decl-pa-add">
           <h3 id="decl-pa-add">Add a public damage site</h3>
@@ -1333,7 +1336,7 @@ function PublicDamage({
   );
 }
 
-function Donated({ view }: { view: View }) {
+export function Donated({ view }: { view: View }) {
   const d = view.donated;
   return (
     <section aria-labelledby="decl-donated">

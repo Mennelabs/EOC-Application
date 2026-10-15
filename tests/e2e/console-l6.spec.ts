@@ -18,12 +18,17 @@
  * shows its hash and, once the worker has written it, its object lock; an
  * amendment is drafted from it; the issued report is exported as a PDF.
  * The director also makes the IDA package and downloads it, and sees why no
- * photo can be chosen yet (no detector). Axe runs on each state, and each layer-6
+ * photo can be chosen yet (no detector). The joint assessment (FL:FR-10):
+ * the director schedules it and draws the sample; a FEMA validator, on a
+ * role that ends within 30 days and in their own browser, sees the stops
+ * without addresses and marks two. A state liaison reads the county's
+ * figures once the county has signed a counts-only agreement with the state
+ * (DEC-13): read-only, no sites, no forms. Axe runs on each state, and each layer-6
  * screen is checked for reflow: no sideways scrolling at phone width
  * (WCAG 1.4.10, ACC-07).
  */
 import { devices, expect, test } from '@playwright/test';
-import { BASE, expectNoViolations, expectReflow, onboard } from './support/console.ts';
+import { BASE, api, expectNoViolations, expectReflow, onboard, token } from './support/console.ts';
 
 const tag = Date.now().toString(36);
 
@@ -336,5 +341,160 @@ test.describe('layer 6 console: reference data', () => {
     } finally {
       await second.close();
     }
+  });
+
+  test('the county plans the joint assessment; a FEMA validator marks the sample', async ({
+    page,
+    context,
+    browser,
+  }, testInfo) => {
+    test.setTimeout(300_000);
+    const run = `${tag}-${testInfo.project.name}`;
+    const day = (offset: number) =>
+      new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+    await onboard(
+      page,
+      context,
+      'county_em_director',
+      `EM director J ${tag}`,
+      `l6j-${testInfo.project.name}`,
+    );
+    await page.goto('/console/joint-assessment');
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Joint damage assessment' }),
+    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Sample route' })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expectNoViolations(page);
+    await expectReflow(page);
+    await page.getByLabel('First day').fill(day(3));
+    await page.getByLabel('Last day').fill(day(2));
+    await expect(page.getByText('The assessment cannot end before it starts.')).toBeVisible();
+    await page.getByLabel('Last day').fill(day(4));
+    await page.getByLabel('Areas to assess').fill('North river district\nHarmon City');
+    await page.getByLabel('Team 1 name').fill(`Team ${run}`);
+    await page
+      .getByLabel('Team 1 members')
+      .fill('FEMA IA validator; SEMA liaison; county assessor');
+    await page.getByRole('button', { name: 'Save schedule' }).click();
+    await expect(page.getByText('Schedule saved.')).toBeVisible();
+    await page.getByLabel('Homes in the sample').fill('six');
+    await expect(page.getByText('Enter a whole number from 1 to 500.')).toBeVisible();
+    await page.getByLabel('Homes in the sample').fill('6');
+    await page.getByRole('button', { name: 'Draw the sample' }).click();
+    // A sample a validator has already marked (an earlier run) stands and is not redrawn.
+    await expect(
+      page.getByText(/^Sample drawn\.$|Validators have marked this sample; it is not redrawn\./),
+    ).toBeVisible();
+    const route = page.getByRole('table', { name: 'Sample route' });
+    await expect(route.getByRole('row').nth(1)).toBeVisible();
+    // The director plans; validating is for the validators.
+    await expect(page.getByRole('heading', { name: 'Mark a stop' })).toHaveCount(0);
+    await expectNoViolations(page);
+    await expectReflow(page);
+
+    const project =
+      testInfo.project.name === 'phone' ? devices['Pixel 7'] : devices['Desktop Chrome'];
+    const second = await browser.newContext({ ...project, baseURL: BASE, ignoreHTTPSErrors: true });
+    try {
+      const validator = await second.newPage();
+      await onboard(
+        validator,
+        second,
+        'fema_validator',
+        `FEMA validator ${tag}`,
+        `l6v-${testInfo.project.name}`,
+        'county',
+        { validTo: new Date(Date.now() + 14 * 86_400_000).toISOString() },
+      );
+      await validator.goto('/console/joint-assessment');
+      await expect(validator.getByRole('heading', { name: 'Mark a stop' })).toBeVisible({
+        timeout: 30_000,
+      });
+      // Read-only schedule; the stops show no address.
+      await expect(validator.getByRole('button', { name: 'Save schedule' })).toHaveCount(0);
+      await expect(validator.getByText(`Team ${run}`)).toBeVisible();
+      await expect(validator.getByRole('table', { name: 'Sample route' })).not.toContainText(
+        /\d+ [A-Z][a-z]+ (St|Ave|Rd|Road|Street|Drive|Lane)\b/,
+      );
+      await expectNoViolations(validator);
+      await expectReflow(validator);
+      const stopLabel = await validator
+        .getByLabel('Stop', { exact: true })
+        .locator('option:checked')
+        .innerText();
+      const seq = /^Stop (\d+)/.exec(stopLabel)![1]!;
+      await validator.getByLabel('Damage as recorded').check();
+      await validator.getByRole('button', { name: `Save mark for stop ${seq}` }).click();
+      await expect(validator.getByText(`Stop ${seq} marked.`)).toBeVisible();
+      await expect(
+        validator.getByRole('table', { name: 'Sample route' }).getByRole('row').nth(Number(seq)),
+      ).toContainText('Validated by FEMA validator');
+      await validator.getByLabel('A different degree of damage').check();
+      await validator.getByLabel('Degree seen').selectOption({ label: 'Major' });
+      await validator
+        .getByLabel('Note (optional)')
+        .fill('Exercise: water line higher than reported.');
+      await expectNoViolations(validator);
+      const next = /^Stop (\d+)/.exec(
+        await validator.getByLabel('Stop', { exact: true }).locator('option:checked').innerText(),
+      )![1]!;
+      await validator.getByRole('button', { name: `Save mark for stop ${next}` }).click();
+      await expect(validator.getByText(`Stop ${next} marked.`)).toBeVisible();
+      await expect(
+        validator.getByRole('table', { name: 'Sample route' }).getByRole('row').nth(Number(next)),
+      ).toContainText('Seen as Major');
+      await expectReflow(validator);
+    } finally {
+      await second.close();
+    }
+  });
+
+  test('a state liaison reads a county’s figures under its signed agreement', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    // DEC-13, SCL-01: the county offers counts only; the state signs.
+    const county = await token('county', 'dana.director@example.org');
+    const stateAdmin = await token('state', 'admin.state@example.org');
+    const stateId = (await api(stateAdmin, '/me')).body['tenantId'] as string;
+    const offered = await api(county, '/agreements', {
+      body: { toTenantId: stateId, scope: 'deidentified_counts' },
+    });
+    expect(offered.status).toBe(201);
+    const signed = await api(stateAdmin, `/agreements/${offered.body['id'] as string}/sign`, {
+      method: 'POST',
+      version: offered.body['version'] as number,
+      confirm: `Exercise: declaration figures, counts only (${tag})`,
+    });
+    expect(signed.status).toBe(200);
+
+    await onboard(
+      page,
+      context,
+      'state_liaison',
+      `State liaison ${tag}`,
+      `l6l-${testInfo.project.name}`,
+      'state',
+    );
+    await page.goto('/console/shared-declarations');
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Shared declaration figures' }),
+    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Verified damage to homes' })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(
+      page.getByRole('table', { name: 'Public damage by category of work' }),
+    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Joint damage assessment' })).toBeVisible();
+    // Read-only and de-identified: no sites, no forms.
+    await expect(page.getByRole('table', { name: 'Public damage sites' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Log outage' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Record count' })).toHaveCount(0);
+    await expectNoViolations(page);
+    await expectReflow(page);
   });
 });

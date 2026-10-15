@@ -126,6 +126,8 @@ export async function onboard(
   displayName: string,
   tag: string,
   realm = 'county',
+  /** A time-limited role (the FEMA validator) is assigned with an end date. */
+  assignment: { validTo?: string } = {},
 ): Promise<string> {
   const email = `e2e-${tag}-${Date.now().toString(36)}@example.org`;
 
@@ -147,7 +149,7 @@ export async function onboard(
   const roles = await api(admin, '/roles');
   const role = (roles.body as { id: string; key: string }[]).find((r) => r.key === roleKey)!;
   const request = await api(admin, '/permission-changes', {
-    body: { kind: 'assign_role', accountId, roleId: role.id, scope: {} },
+    body: { kind: 'assign_role', accountId, roleId: role.id, scope: {}, ...assignment },
   });
   expect(request.status).toBe(201);
   const approved = await api(security, `/permission-changes/${request.body['id']}/approve`, {

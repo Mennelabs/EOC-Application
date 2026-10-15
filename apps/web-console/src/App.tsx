@@ -28,6 +28,8 @@ import { KeyCounts, NeedsBoardScreen, PartnerScreen } from './screens/needs.tsx'
 import { PartnersScreen } from './screens/partners.tsx';
 import { ResourcesScreen } from './screens/resources.tsx';
 import { DeclarationScreen } from './screens/declaration.tsx';
+import { JointAssessmentScreen } from './screens/joint-assessment.tsx';
+import { SharedDeclarationsScreen } from './screens/shared-declarations.tsx';
 import { OfficialReportScreen, OfficialReportsScreen } from './screens/official-reports.tsx';
 import { RefdataScreen } from './screens/refdata.tsx';
 import { ReportDetailScreen, ReviewQueueScreen } from './screens/review.tsx';
@@ -65,6 +67,8 @@ const routes = [
   { path: '/console/reminders', label: 'Reminders', layer: 4 },
   { path: '/console/devices', label: 'Field devices', layer: 4 },
   { path: '/console/declaration', label: 'Declaration data', layer: 6 },
+  { path: '/console/joint-assessment', label: 'Joint assessment', layer: 6 },
+  { path: '/console/shared-declarations', label: 'Shared declaration figures', layer: 6 },
   { path: '/console/official-reports', label: 'Official reports', layer: 6 },
   { path: '/console/reference-data', label: 'Reference data', layer: 6 },
   { path: '/console/events', label: 'Events', layer: 1 },
@@ -253,6 +257,10 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <RefdataScreen />;
       case '/console/declaration':
         return <DeclarationScreen />;
+      case '/console/joint-assessment':
+        return <JointAssessmentScreen />;
+      case '/console/shared-declarations':
+        return <SharedDeclarationsScreen />;
       case '/console/official-reports':
         return <OfficialReportsScreen navigate={navigate} />;
       case '/console/reports':

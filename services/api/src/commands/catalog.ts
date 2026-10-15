@@ -46,6 +46,30 @@ export interface Verified {
   state: 'found' | 'drafted' | 'saved' | 'queued';
   summary: string;
   records: { kind: string; id: string; label?: string | undefined; version?: number | undefined }[];
+  /** CMD-30: the records of a batch the operation refused, each with its reason. */
+  failures?: { id: string; label: string; code: string; message: string }[];
+}
+
+/** Section 30.2: one confirmation covers this many records; more needs the count typed. */
+export const BATCH_ONE_CONFIRMATION = 50;
+/** Section 30.2: more than this is a scheduled bulk job on its own screen, not a command. */
+export const BATCH_MAX = 500;
+
+/**
+ * CMD-30: a command over the records a filter names. The engine lists them
+ * through the console's own route as the person may see them, shows the count
+ * and some of them in the plan, and runs one operation per record, each with
+ * its own idempotency key; each record's result is reported.
+ */
+export interface BulkSpec<A> {
+  /** The list route without limit or offset; the engine pages through it. */
+  list(args: A, ctx: { tenantId: string }): string;
+  /** The operation for one record. */
+  item(args: A, record: Target): OpRequest;
+  /** The plan's words for the batch, given how many and the first few labels. */
+  describe(args: A, count: number, sample: string[]): string;
+  /** The verified result's words. */
+  done(count: number, of: number): string;
 }
 
 export interface CommandSpec<A = Record<string, unknown>> {
@@ -66,6 +90,8 @@ export interface CommandSpec<A = Record<string, unknown>> {
    * (CMD-08), and puts the chosen id in `personId` before the plan is shown.
    */
   person?: boolean;
+  /** CMD-30: runs over many records (phase 4, `command.bulk`); `target` names their kind. */
+  bulk?: BulkSpec<A>;
   confirmation: Confirmation;
   reversal: Reversal;
   sideEffects: string;
@@ -952,6 +978,81 @@ export const CATALOG = [
         ],
       };
     },
+  }),
+  // ---------------------------------------------------------------- phase 4: batches (CMD-30)
+  define({
+    name: 'needs.claim_many',
+    version: 1,
+    phase: 4,
+    action: 'need.claim',
+    kind: 'change',
+    title: 'Claim the open needs a filter names, for your organization',
+    usage: '/needs open [category:<category>] [postal:<code>] claim [note]',
+    args: z.object({
+      category: z.string().min(2).max(60).optional(),
+      postal: z.string().min(3).max(12).optional(),
+      note: z.string().max(500).optional(),
+    }),
+    target: 'need',
+    confirmation: 'full_review',
+    reversal: 'compensating',
+    freeText: ['note'],
+    sideEffects:
+      'Claims each open need the filter names for your organization, one at a time. A need someone else claims first is left as it is and named in the result. To give them back, release them the same way.',
+    bulk: {
+      list: (a) =>
+        `/needs?status=open${a.category ? `&category=${encodeURIComponent(a.category)}` : ''}${a.postal ? `&postal=${encodeURIComponent(a.postal)}` : ''}`,
+      item: (a, t) => ({
+        method: 'POST',
+        path: `/needs/${t.id}/claim`,
+        body: a.note ? { note: a.note } : {},
+      }),
+      describe: (a, n, sample) =>
+        `Claim ${plural(n, 'open need', 'open needs')}${a.category ? ` in ${a.category.replace(/_/g, ' ')}` : ''}${a.postal ? ` in ${a.postal}` : ''} for your organization: ${sample.join(', ')}${n > sample.length ? ` and ${n - sample.length} more` : ''}.`,
+      done: (n, of) => `Claimed ${n} of ${plural(of, 'need', 'needs')}.`,
+    },
+    request: () => {
+      throw new Error('a batch runs one operation per record');
+    },
+    describe: () => 'Claim needs.',
+    verify: () => ({ state: 'saved', summary: '', records: [] }),
+  }),
+  define({
+    name: 'needs.release_many',
+    version: 1,
+    phase: 4,
+    action: 'need.release',
+    kind: 'change',
+    title: 'Release the needs your organization holds that a filter names',
+    usage: '/needs claimed [category:<category>] [postal:<code>] release [note]',
+    args: z.object({
+      category: z.string().min(2).max(60).optional(),
+      postal: z.string().min(3).max(12).optional(),
+      note: z.string().max(500).optional(),
+    }),
+    target: 'need',
+    confirmation: 'full_review',
+    reversal: 'compensating',
+    freeText: ['note'],
+    sideEffects:
+      'Puts each need your organization holds that the filter names back on the board, one at a time; others can then claim them.',
+    bulk: {
+      list: (a, ctx) =>
+        `/needs?status=claimed&claimedBy=${ctx.tenantId}${a.category ? `&category=${encodeURIComponent(a.category)}` : ''}${a.postal ? `&postal=${encodeURIComponent(a.postal)}` : ''}`,
+      item: (a, t) => ({
+        method: 'POST',
+        path: `/needs/${t.id}/release`,
+        body: a.note ? { note: a.note } : {},
+      }),
+      describe: (a, n, sample) =>
+        `Release ${plural(n, 'need', 'needs')} your organization holds${a.category ? ` in ${a.category.replace(/_/g, ' ')}` : ''}${a.postal ? ` in ${a.postal}` : ''}: ${sample.join(', ')}${n > sample.length ? ` and ${n - sample.length} more` : ''}.`,
+      done: (n, of) => `Released ${n} of ${plural(of, 'need', 'needs')}.`,
+    },
+    request: () => {
+      throw new Error('a batch runs one operation per record');
+    },
+    describe: () => 'Release needs.',
+    verify: () => ({ state: 'saved', summary: '', records: [] }),
   }),
 ] satisfies readonly CommandSpec[];
 

@@ -42,3 +42,10 @@ The executor lives in the API process and adds no service. The language model si
 - Each new console operation becomes a command by adding a catalog entry, not code in the executor.
 - The executor depends on operations returning precise results, so routes that answer vaguely are fixed as they are catalogued.
 - In-process calls must carry the person's identity exactly, including emergency access and the enclave link, and are tested for it.
+
+## Addendum 2026-10-15: batches (CMD-30)
+
+- A batch is a catalog entry with a filter, not a new kind of operation. The executor lists the records through the console's own list route as the person may see them, puts their ids, versions and labels in the plan (so the confirmation is bound to exactly those records), and then calls the single-record operation once per record, each with its own idempotency key derived from the execution and the record.
+- Batches are phase 4, so they are off until a county turns that phase on, and they need the explicit action `command.bulk` as well as each record's own action. The shipped templates grant it to the county EM director, mass care coordinator, NGO incident commander and COAD chair.
+- Limits follow Section 30.2. Up to 50 records take one confirmation. From 51 to 500, the person must also type the count. Over 500 is refused, so the person narrows the filter or uses the screen. The limit of 30 confirmed commands a minute counts a batch as one command.
+- The result names every record that was not changed and why. The execution ends as succeeded, partially succeeded (migration 0075) or failed. It is never "rolled back", because each change that succeeded stands, and the reverse batch (release) is the compensating action.

@@ -277,6 +277,14 @@ export const actions = {
     'command',
     'Use the command window: run catalogued commands you could run by hand',
   ),
+  // CMD-30, Section 30.2: a command over many records at once. The window still checks the
+  // underlying action on each record; this limits who may batch at all.
+  'command.bulk': a(
+    'write',
+    'command',
+    'Run a command over many records at once (up to 50, or 500 after typing the count)',
+    { explicit: true },
+  ),
   // Layer 7 (REC-01): the facility registry the recommendations draw on.
   'facility.read': a('read', 'facility', 'Read the facility registry and its approval queue'),
   'facility.manage': a(

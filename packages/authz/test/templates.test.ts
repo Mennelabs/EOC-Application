@@ -37,9 +37,11 @@ describe('shipped role templates (ADM-04)', () => {
     // validation, a partner's own posting and qualifying discovered places for roles that name
     // them: no wildcard reaches them (DSP-08, SEC-12, DCL:DEC-08, RULE-10, FL:FR-10, partner
     // posting 2026-10-15, REC-13) and the conversation scribe, which only frontline roles use
-    // with a survivor's consent (FL-04).
+    // with a survivor's consent (FL-04). Batches from the command window are for those who
+    // coordinate needs (CMD-30).
     expect(p.deniedActions.sort()).toEqual([
       'casualty.record',
+      'command.bulk',
       'discovery.review',
       'facility.approve',
       'joint_assessment.validate',

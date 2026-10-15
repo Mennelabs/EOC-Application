@@ -1188,6 +1188,14 @@ const FACILITY_GRANTS: Record<string, (string | Grant)[]> = {
   partner_coordinator: ['facility.read'],
 };
 
+/** CMD-30: those who coordinate work across many needs may batch; everyone else acts one by one. */
+const BULK_COMMANDS = new Set([
+  'county_em_director',
+  'mass_care_coordinator',
+  'ngo_incident_commander',
+  'coad_chair',
+]);
+
 export const roleTemplates: readonly RoleTemplate[] = templates.map((t) => ({
   ...t,
   grants: [
@@ -1196,6 +1204,7 @@ export const roleTemplates: readonly RoleTemplate[] = templates.map((t) => ({
     ...(RECOMMENDATION_GRANTS[t.key] ?? []).map((a) => g(a)),
     ...(DISCOVERY_GRANTS[t.key] ?? []).map((a) => g(a)),
     ...(NO_COMMAND_WINDOW.has(t.key) ? [] : [g('command.use')]),
+    ...(BULK_COMMANDS.has(t.key) ? [g('command.bulk')] : []),
   ],
 }));
 

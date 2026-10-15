@@ -2529,7 +2529,14 @@ export interface CommandExecutionTable extends Stamped {
   plan_hash: string;
   confirmation: 'none' | 'one_tap' | 'full_review' | 'second_person';
   reversal: 'undo_15_min' | 'compensating' | 'none';
-  state: 'awaiting_confirmation' | 'executing' | 'succeeded' | 'failed' | 'canceled' | 'stale';
+  state:
+    | 'awaiting_confirmation'
+    | 'executing'
+    | 'succeeded'
+    | 'partially_succeeded'
+    | 'failed'
+    | 'canceled'
+    | 'stale';
   confirmed_by: Uuid | null;
   confirmed_at: TsNullable;
   reason: string | null;

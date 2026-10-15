@@ -175,10 +175,10 @@
     ""
   ],
   "CMD-30": [
-    "partial",
-    "At most 30 confirmed commands a minute per person (routes/commands.ts RATE_PER_MINUTE, 429); each command needs its own action and a phase the county has on (tenant config command.phases, default 1 and 2); every command acts on one record; an alias expands to exactly one command, re-checked at use",
-    "services/api/test/commands.db.test.ts (Section 30.2 phases; CMD-04 alias re-check at use), services/api/test/commands.test.ts (phases)",
-    "No bulk command exists, so the 50/500 batch limits, the resolved count before execution and per-record results are not built; the rate limit has no automated test."
+    "pass",
+    "catalog.ts BATCH_ONE_CONFIRMATION (50), BATCH_MAX (500), BulkSpec; needs.claim_many and needs.release_many (phase 4, full review with a reason); routes/commands.ts: the batch is listed through GET /needs as the person may see it and bound into the plan hash; over 50 the confirmation carries the typed count (422 batch_count_required otherwise); over 500 is refused; one operation per record with its own idempotency key; per-record failures named; state partially_succeeded (migration 0075); action command.bulk (explicit) on the county EM director, mass care, NGO incident commander and COAD chair templates; 30 confirmed commands a minute per person (429); ADR-0044 addendum",
+    "services/api/test/commands.db.test.ts (CMD-30: phase 4 off, a role without command.bulk told to act one by one, 3 planned and 2 claimed with the closed one named, confirming twice runs nothing twice, release the same way, 51 needs the typed count, 501 refused; Section 30.2: the 31st command in a minute is refused), services/api/test/commands.test.ts (CMD-30 parse), packages/authz/test/templates.test.ts, tests/e2e/console-l7.spec.ts (CMD-30: typed count, Partly done, Not changed; desktop and phone with axe)",
+    "Batches exist for need claims and releases only; other batch commands are added as catalog entries. Over 500 has no scheduled bulk job: the person narrows the filter or uses the screen."
   ],
   "CMD-31": [
     "partial",
@@ -265,10 +265,10 @@
     ""
   ],
   "AC-C07": [
-    "deferred",
-    "",
-    "",
-    "No multi-step or external workflow is catalogued: every command is one operation, recorded as succeeded or failed from its own answer and never as rolled back (routes/commands.ts execute). The case needs a multi-step command; none is scheduled in layer 7."
+    "partial",
+    "routes/commands.ts executeBatch: a batch reports each record it changed and each it did not, ends partially succeeded, and never claims a rollback; single commands record succeeded or failed from their own answer",
+    "services/api/test/commands.db.test.ts (CMD-30: 2 of 3 changed, the third named, state partially_succeeded)",
+    "No external multi-step workflow (message then record, for example) is catalogued yet, so the external case itself is not exercised."
   ],
   "AC-C08": [
     "partial",

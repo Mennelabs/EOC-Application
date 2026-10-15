@@ -186,6 +186,14 @@ export const COMMAND_EVAL_CATALOG: { usage: string; title: string }[] = [
     title: 'Close a mission',
   },
   { usage: '/mission <reference> reopen', title: 'Reopen a mission' },
+  {
+    usage: '/needs open [category:<category>] [postal:<code>] claim [note]',
+    title: 'Claim the open needs a filter names, for your organization',
+  },
+  {
+    usage: '/needs claimed [category:<category>] [postal:<code>] release [note]',
+    title: 'Release the needs your organization holds that a filter names',
+  },
 ];
 
 export const commandEvaluationCases: CommandEvalCase[] = [

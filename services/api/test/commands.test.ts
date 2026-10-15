@@ -184,6 +184,22 @@ describe('shorthand', () => {
     expect(parse('/mission 20261009-003')).toMatchObject({ ref: '20261009-003' });
   });
 
+  it('CMD-30: "/needs open … claim" and "/needs claimed … release" are batches over a filter; a status that cannot be claimed or released is refused', () => {
+    expect(
+      parse('/needs open category:food_water postal:63003 claim note:"Exercise: pantry"'),
+    ).toMatchObject({
+      ok: true,
+      command: 'needs.claim_many',
+      args: { category: 'food_water', postal: '63003', note: 'Exercise: pantry' },
+    });
+    expect(parse('/necesidades reclamadas categoria:agua liberar')).toMatchObject({
+      command: 'needs.release_many',
+      args: { category: 'agua' },
+    });
+    expect(parse('/needs claimed claim')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/needs open')).toMatchObject({ command: 'needs.find' });
+  });
+
   it('FL-07: "log two meals" and "I\'m done here" as shorthand, in English and Spanish', () => {
     expect(parse('/log 2 meals')).toEqual({
       ok: true,

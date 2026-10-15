@@ -155,6 +155,9 @@ const KEYS = new Set([
   'department',
   'agency',
   'disposition',
+  'category',
+  'categoria',
+  'postal',
 ]);
 
 /** CMD-14: availability as the roster records it. */
@@ -391,6 +394,33 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
 
     case 'needs': {
       const args: Record<string, unknown> = {};
+      // CMD-30: "/needs open category:food claim" claims every open need the filter names.
+      const at = words.findIndex((w) => ['claim', 'release'].includes(SUBVERBS[norm(w)] ?? ''));
+      if (at >= 0) {
+        const verb = SUBVERBS[norm(words[at]!)] as 'claim' | 'release';
+        const want = verb === 'claim' ? 'open' : 'claimed';
+        const u =
+          verb === 'claim'
+            ? '/needs open [category:<category>] [postal:<code>] claim [note]'
+            : '/needs claimed [category:<category>] [postal:<code>] release [note]';
+        for (const w of words.slice(0, at)) {
+          const f = NEED_FILTERS[norm(w)];
+          if (f !== want)
+            return usage(
+              verb === 'claim'
+                ? `Only open needs can be claimed; "${w}" does not fit before claim.`
+                : `Only needs your organization holds can be released; "${w}" does not fit before release.`,
+              u,
+            );
+        }
+        const category = pairs['category'] ?? pairs['categoria'];
+        const note = (pairs['note'] ?? words.slice(at + 1).join(' ')).trim();
+        return ok(verb === 'claim' ? 'needs.claim_many' : 'needs.release_many', {
+          ...(category ? { category: norm(category) } : {}),
+          ...(pairs['postal'] ? { postal: pairs['postal'] } : {}),
+          ...(note ? { note } : {}),
+        });
+      }
       for (const w of words) {
         const f = NEED_FILTERS[norm(w)];
         if (f) args['status'] = f;

@@ -144,6 +144,10 @@ Resume record for layer 6. Chat history is not the record; this file is.
 - `b47acb4`: metrics gain "Recovery information" (pages still current, broken outside links with unchecked links disclosed; MET-07) and a mission-state filter (BRD:FR-14.02). `metrics.db.test.ts` (8).
 - `9e2e3f4`: the Declaration screen and the liaison's view summarize resources committed by partner organizations (DCL:DEC-09), counting only what the county can read. `declaration.db.test.ts`.
 - `c8b2bf1`: donated equipment with its team's merged hours on duty (FL-17). `declaration.db.test.ts` (9).
+- `03c51b7`: metrics count overdue updates (missed check-ins, assignments not acknowledged in time, median minutes to acknowledge; MET-04). `metrics.db.test.ts` (9).
+- `449290c`: the enclave journey checks reflow against the document width; it passes on desktop and phone.
+- `1d1e4c1`: road closures as their own situation layer (CON-03). `siteoperator.db.test.ts`.
+- Journeys rerun on the rebuilt stack with all follow-ups: declaration data, metrics and situation map pass on desktop and phone.
 
 ## Known issues and open items
 

@@ -14,3 +14,5 @@ export * from './zip.ts';
 export * from './report-export.ts';
 export * from './metrics.ts';
 export * from './equity.ts';
+export * from './recommend.ts';
+export * from './recommend-load.ts';

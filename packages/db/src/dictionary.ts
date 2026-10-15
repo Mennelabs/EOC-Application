@@ -2102,6 +2102,23 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     undone_by: { c: 'internal' },
     undo_until: { c: 'internal' },
   }),
+  recommendation: table({
+    event_id: { c: 'internal' },
+    kind: { c: 'internal', d: 'shelter, feeding, POD, walk-up point or MARC' },
+    engine_version: { c: 'internal', d: 'Rules version that produced it (REC-12)' },
+    result: {
+      c: 'internal',
+      d: 'Top three with reasons, excluded places, what would change the pick, input ages, equity check; counts only',
+    },
+    requested_by: { c: 'internal' },
+    state: { c: 'internal', d: 'open, accepted, edited or rejected (REC-04)' },
+    decided_by: { c: 'internal' },
+    decided_at: { c: 'internal' },
+    decision_reason: { c: 'sensitive' },
+    chosen_facility_id: { c: 'internal' },
+    decision_note: { c: 'sensitive' },
+    execution_id: { c: 'internal' },
+  }),
   facility: table({
     name: { c: 'public', d: 'Facility name (REC-01)' },
     kind: {

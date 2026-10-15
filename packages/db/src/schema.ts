@@ -2268,6 +2268,24 @@ export type PartnerRollup =
   { all: true } | { all: false; partners: Uuid[]; categories: PartnerCategory[] };
 
 /** One command a person asked for (ADR-0044, CMD-37); never the typed words. */
+/** Recommendations and their decisions (layer 7; REC-03, REC-04, REC-12). */
+export interface RecommendationTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  kind: 'shelter' | 'feeding' | 'pod' | 'walkup' | 'marc';
+  engine_version: string;
+  result: JSONColumnType<Record<string, unknown>>;
+  requested_by: Uuid | null;
+  state: Generated<'open' | 'accepted' | 'edited' | 'rejected'>;
+  decided_by: Uuid | null;
+  decided_at: TsNullable;
+  decision_reason: string | null;
+  chosen_facility_id: Uuid | null;
+  decision_note: string | null;
+  execution_id: Uuid | null;
+}
+
 /** Facility registry (layer 7; REC-01). Null attributes are unknown, never guessed (REC-10). */
 export interface FacilityTable extends Stamped {
   id: Generated<Uuid>;
@@ -3053,6 +3071,7 @@ export interface Database {
   'cg.command_alias': CommandAliasTable;
   'cg.facility': FacilityTable;
   'cg.facility_change': FacilityChangeTable;
+  'cg.recommendation': RecommendationTable;
   'cg.ai_health_alert': AiHealthAlertTable;
   'cg.official_report': OfficialReportTable;
   'cg.official_report_section': OfficialReportSectionTable;

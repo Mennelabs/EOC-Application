@@ -14,6 +14,8 @@ The site belongs to the county, with the partner as its operator: the existing `
 
 The county is notified at once through the publication notices (the PIO and the publishers, as confirmed 2026-10-15) and sees "Posted by <organization>" in the publication log.
 
+As built: the partner's approver has no account in the county, so the publication row records the organization and the approver's name with what went public, and the notice says "by <approver> of <organization>" (a withdrawal by the partner says "someone at <organization>").
+
 **The same checks as a county post:**
 
 - the required fields (name, kind, address or area, hours, accessibility, pets, languages, contact);
@@ -21,17 +23,22 @@ The county is notified at once through the publication notices (the PIO and the 
 - a site marked confidential (for example a domestic-violence shelter) is never public, whoever posts it;
 - the status window (PUB-03): a posted site must be confirmed by its operator within the county's window or it hides until confirmed.
 
+As built: the county's own publish route has no wording filter or location requirement, so the partner's publish adds two checks of its own. A post needs an address or a map point, and its name, notes and directions must not read like an emergency alert ("emergency alert", "alerta de emergencia"), because they reach the SHELTER text replies and carriers reject alert wording (docs/06). Name and kind are required by the form; hours, pets, accessibility and languages have defaults the partner sets on the form. A contact is not asked for: the county keeps the lead contact.
+
 **Data and rules (migration 0052):**
 
-- `cg.site` gains `posted_by_tenant_id`, which records who posted it.
-- Row security lets a partner insert a site only into its parent county, only with itself as operator.
+- `cg.site` gains `posted_by_tenant_id`, which records who posted it. A check constraint keeps it equal to the operator: a partner posts only as the site's operator.
 - A partner may update and publish only sites it operates and posted. It may confirm status and census on any site it operates, as now.
 - The dictionary covers the new column.
+- As built: the partner's writes run in the county's context after the API has authorized them, as the partner's mission and need work already does (`request.txAs`), and every write is scoped to `posted_by_tenant_id` = the partner. The county is always the partner's parent tenant, read from the partner's own tenant row; an event must be one of that county's. No new row policy was needed; the operator's read policy (0039) already lets the partner see the sites it runs.
 
 **Actions and roles:**
 
-- `site.post`: explicit and consequential. It is added to the NGO incident commander and partner coordinator templates.
-- Existing partner tenants get it only through a role change approved by a second administrator in the partner organization (ADM-05).
+- As built, two explicit actions so a partner can separate drafting from its named approver (PUB-06):
+  - `site.post`: draft and change the organization's own services. Not consequential: drafting needs no dialog.
+  - `site.post_publish`: publish and withdraw them. Consequential: the confirmation dialog with a reason.
+- Both are in the NGO incident commander template. (The plan also named the "partner coordinator" template; that is a county role that invites partner organizations, so it does not get them.)
+- Existing partner tenants get them only through a role change approved by a second administrator in the partner organization (ADM-05). Tenants seeded after this change have them in the template's role.
 
 **API:**
 

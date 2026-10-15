@@ -1,0 +1,27 @@
+{
+  "_about": "Partner work before layer 7 (docs/plans/partners-before-layer-7.md, decided 2026-10-15): each entry repeats the earlier evidence and adds the partner work; later entries override earlier files.",
+  "PUB-01": [
+    "pass",
+    "services/api/src/public/sites-view.ts (one view for every channel, ADR-0031); partner self-posting (2026-10-15): a partner's published service is in the same public view (migration 0052; routes/sites.ts /partner/sites)",
+    "tests/integration/layer3.int.test.ts (change on the page, the text reply and the feeds inside two minutes, measured), services/api/test/siteoperator.db.test.ts (partner posting: publicSites at once, gone when withdrawn), tests/e2e/console-l3.spec.ts (partner posting: on the public page at once)",
+    ""
+  ],
+  "PUB-05": [
+    "pass",
+    "cg.site.confidential; publish refused; excluded from the view and every renderer; partner posts: a confidential service is posted for the county's eyes and refused on publish",
+    "services/api/test/help.db.test.ts, tests/integration/layer3.int.test.ts (every output), sites.ts, services/api/test/siteoperator.db.test.ts (partner posting: confidential refused)",
+    ""
+  ],
+  "PUB-06": [
+    "pass",
+    "site.publish and resource.publish consequential (named approver, reason), cg.publication rows, human-reviewed text required, worker publication notices; partner posts: site.post drafts, site.post_publish (explicit, consequential) is the partner's named approver; publication in the county's log naming the organization and approver; notices name them (worker reminders.ts)",
+    "services/api/test/help.db.test.ts, reminders.db.test.ts, tests/e2e/console-l3.spec.ts (publish through the dialog), tests/integration/layer3.int.test.ts, services/api/test/siteoperator.db.test.ts (partner posting: 428 without confirmation, publication approver), services/worker/test/reminders.db.test.ts (partner post names organization and approver), tests/e2e/console-l3.spec.ts (partner posting journey with axe)",
+    ""
+  ],
+  "CON-16": [
+    "partial",
+    "shelter_stay with household, cots, access needs (encrypted), pets, check-in and check-out (0033, routes/field-records.ts); a county site run by a partner (0039, routes/sites.ts); screens/masscare.tsx shelters; a partner posts and runs its own service in the county, the county sees Posted by and withdraws it (0052; routes/sites.ts; screens/our-services.tsx, sites.tsx)",
+    "services/api/test/fieldrecords.db.test.ts (CON-16 shelter door), services/api/test/siteoperator.db.test.ts (CON-16 operator), services/api/test/siteoperator.db.test.ts (partner posting), tests/e2e/console-l3.spec.ts (partner posting)",
+    "Import of shelter counts from the Red Cross system is not built."
+  ]
+}

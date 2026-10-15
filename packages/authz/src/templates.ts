@@ -346,6 +346,8 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('message.read', ['contact', 'free_text']),
       g('site.read'),
       g('site.confirm'),
+      g('site.post'),
+      g('site.post_publish'),
       g('me.read'),
       g('tenant.read'),
       g('tenant.config.read'),

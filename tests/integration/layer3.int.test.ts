@@ -11,7 +11,8 @@
  * key counts; PUB-01 a change visible on the web, by text and in the feed
  * within two minutes; PUB-04 next nearest; PUB-03 hidden when unconfirmed;
  * PUB-05 confidential sites absent from every public output; PUB-08
- * `SHELTER 63001`; PUB-10/17 feeds; AC-16A/B/C resources. Requirement IDs
+ * `SHELTER 63001`; PUB-10/17 feeds; a partner's own post the same way
+ * (partner posting, 2026-10-15); AC-16A/B/C resources. Requirement IDs
  * are in the test names.
  */
 import { describe, expect, it } from 'vitest';
@@ -424,6 +425,59 @@ describe('public information (PUB-01/03/04/05/08/10/17, AC-16A/B/C)', () => {
     expect(reply).not.toContain(name);
     expect(reply).not.toContain('Safe Harbor');
   }, 120_000);
+
+  it("partner posting (2026-10-15; PUB-01/06/08/10/17): the canteen's approver posts and publishes its own service; it is on the page, in the SHELTER reply and in both feeds within two minutes; the PIO is told who posted it; the partner withdraws it", async () => {
+    const r = await ruth();
+    const name = `Partner canteen ${RUN}`;
+    const posted = await api(r, '/partner/sites', {
+      body: {
+        kind: 'feeding',
+        name,
+        status: 'open',
+        address: { line1: '3 Stack Way', city: 'Willow Bend', postal: '63001' },
+        position: { lat: 38.7905, lon: -90.9045 },
+        hours: { daily: '11:00-19:00' },
+        services: ['hot meals', 'water'],
+        languages: ['en', 'es'],
+      },
+    });
+    expect(posted.status, JSON.stringify(posted.body)).toBe(201);
+    const id = posted.body['id'] as string;
+    expect((await api(r, `/partner/sites/${id}/publish`, { body: {} })).status).toBe(428);
+    const live = await api(r, `/partner/sites/${id}/publish`, {
+      body: {},
+      confirm: 'canteen opens at Stack Way',
+    });
+    expect(live.status, JSON.stringify(live.body)).toBe(200);
+
+    const t0 = Date.now();
+    await waitFor(
+      async () => ((await listed('63001')).some((s) => s.name === name) ? true : undefined),
+      120_000,
+    );
+    expect(await shelterText('63001')).toContain(name);
+    expect((await pub('/help/county/sites.geojson')).text).toContain(name);
+    expect((await pub('/help/county/hsds.json')).text).toContain(name);
+    expect(Date.now() - t0).toBeLessThan(120_000);
+
+    // The county sees who posted it; its publishers are told, naming the organization.
+    const t = await tomas();
+    expect((await api(t, `/sites/${id}`)).body['postedBy']).toMatchObject({
+      name: 'Hope Canteen Services',
+    });
+    const notice = await mailFor('tomas.pio@example.org', name, 'Hope Canteen Services');
+    expect(notice).toContain('canteen opens at Stack Way');
+
+    const gone = await api(r, `/partner/sites/${id}/unpublish`, {
+      body: {},
+      confirm: 'canteen closed for the day',
+    });
+    expect(gone.status, JSON.stringify(gone.body)).toBe(200);
+    await waitFor(
+      async () => ((await listed()).some((s) => s.name === name) ? undefined : true),
+      60_000,
+    );
+  }, 300_000);
 
   it('AC-16A/B/C: a draft is not public, an expired resource answers 410 with its date, the essential text stays when the outside link is dead, and nothing withdrawn reads as current', async () => {
     const t = await tomas();

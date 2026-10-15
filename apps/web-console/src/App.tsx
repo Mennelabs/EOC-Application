@@ -26,6 +26,7 @@ import {
 import { MissionDetailScreen, MissionsScreen } from './screens/missions.tsx';
 import { KeyCounts, NeedsBoardScreen, PartnerScreen } from './screens/needs.tsx';
 import { PartnersScreen } from './screens/partners.tsx';
+import { OurServicesScreen } from './screens/our-services.tsx';
 import { ResourcesScreen } from './screens/resources.tsx';
 import { DeclarationScreen } from './screens/declaration.tsx';
 import { EquityScreen } from './screens/equity.tsx';
@@ -53,6 +54,7 @@ const routes = [
   { path: '/console/intake', label: 'Intake setup', layer: 2 },
   { path: '/console/needs', label: 'Needs board', layer: 3 },
   { path: '/console/partner', label: 'Partner workspace', layer: 3 },
+  { path: '/console/our-services', label: 'Our services', layer: 3 },
   { path: '/console/sites', label: 'Sites', layer: 3 },
   { path: '/console/resources', label: 'Resources', layer: 3 },
   { path: '/console/publications', label: 'Publication log', layer: 3 },
@@ -291,6 +293,8 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <NeedsBoardScreen me={me} />;
       case '/console/partner':
         return <PartnerScreen me={me} />;
+      case '/console/our-services':
+        return <OurServicesScreen me={me} />;
       case '/console/sites':
         return <SitesScreen />;
       case '/console/resources':

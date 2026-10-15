@@ -5,7 +5,8 @@
  * page, the log records it and the owner hears (BRD:FR-16.03, AC-16B);
  * review dates and broken outside links reach the owner once; the contact
  * digest goes once a week (CNT-01); a publication and its withdrawal are
- * noticed once each (PUB-06). Every reminder is sent exactly once however
+ * noticed once each (PUB-06), and a partner's own post names the partner
+ * and its approver (2026-10-15). Every reminder is sent exactly once however
  * often the job runs (F09, BRD:FR-00.06). Runs only with
  * API_DB_TEST_WORKER_URL set; skipped otherwise.
  */
@@ -464,5 +465,48 @@ describe.skipIf(!workerUrl)('worker reminders (database-backed)', () => {
     expect(withdrawn[0]!.subject).toContain('withdrawn');
     await noticePublications(ctx);
     expect((await drain()).filter((m) => m.subject.includes(tag))).toHaveLength(0);
+  });
+
+  it("partner posting (2026-10-15; PUB-06): a partner's own post names its organization and approver", async () => {
+    // The partner's approver has no account in the county; the publication records who they are.
+    const partnerAccount = randomUUID();
+    const id = await tx(async (trx) => {
+      const row = await trx
+        .insertInto('cg.publication')
+        .values({
+          tenant_id: tenantId,
+          subject_kind: 'site',
+          subject_id: siteId,
+          subject_version: 2,
+          snapshot: JSON.stringify({
+            name: `Partner canteen ${tag}`,
+            postedBy: {
+              tenantId: randomUUID(),
+              organization: 'Exercise Relief Corps',
+              approver: 'Captain Exercise',
+            },
+          }),
+          approved_by: partnerAccount,
+          reason: 'partner posting test',
+        })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      return row.id;
+    });
+    await noticePublications(ctx);
+    const published = (await drain()).filter((m) => m.subject.includes(`Partner canteen ${tag}`));
+    expect(published.length).toBeGreaterThan(0);
+    expect(published[0]!.text).toContain('Captain Exercise of Exercise Relief Corps');
+    await tx((trx) =>
+      trx
+        .updateTable('cg.publication')
+        .set({ unpublished_at: new Date(), unpublished_by: partnerAccount })
+        .where('id', '=', id)
+        .execute(),
+    );
+    await noticePublications(ctx);
+    const withdrawn = (await drain()).filter((m) => m.subject.includes(`Partner canteen ${tag}`));
+    expect(withdrawn.length).toBeGreaterThan(0);
+    expect(withdrawn[0]!.text).toContain('someone at Exercise Relief Corps');
   });
 });

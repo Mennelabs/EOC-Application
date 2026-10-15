@@ -33,9 +33,9 @@ describe('shipped role templates (ADM-04)', () => {
     const admin = roleTemplates.find((t) => t.key === 'tenant_admin')!;
     const p = previewRole(admin.grants, admin.key);
     // Live positions are for dispatch and safety roles only, the CJIS enclave link for the
-    // liaison, official casualty counts, issuing official reports and joint-assessment
-    // validation for roles that name them: no wildcard reaches them (DSP-08, SEC-12,
-    // DCL:DEC-08, RULE-10, FL:FR-10).
+    // liaison, official casualty counts, issuing official reports, joint-assessment
+    // validation and a partner's own posting for roles that name them: no wildcard reaches
+    // them (DSP-08, SEC-12, DCL:DEC-08, RULE-10, FL:FR-10, partner posting 2026-10-15).
     expect(p.deniedActions.sort()).toEqual([
       'casualty.record',
       'joint_assessment.validate',
@@ -43,11 +43,20 @@ describe('shipped role templates (ADM-04)', () => {
       'mission.cji.open',
       'official_report.issue',
       'position.read',
+      'site.post',
+      'site.post_publish',
     ]);
     expect(p.visibleCategories).not.toContain('health');
     expect(p.hiddenCategories.map((h) => h.category)).toEqual(
       expect.arrayContaining(['health', 'counseling', 'legal', 'cji']),
     );
+  });
+
+  it('partner posting (2026-10-15): only the NGO incident commander posts its own services', () => {
+    const holders = (action: string) =>
+      roleTemplates.filter((t) => t.grants.some((g) => g.action === action)).map((t) => t.key);
+    expect(holders('site.post')).toEqual(['ngo_incident_commander']);
+    expect(holders('site.post_publish')).toEqual(['ngo_incident_commander']);
   });
 
   it('RULE-10, A7: only the EM director issues official reports; reporting staff draft them', () => {

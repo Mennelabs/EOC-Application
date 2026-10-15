@@ -682,6 +682,10 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
       c: 'internal',
       d: 'CON-16: the partner organization that runs the site (a county shelter run by an NGO)',
     },
+    posted_by_tenant_id: {
+      c: 'internal',
+      d: 'Partner self-posting (2026-10-15): the partner organization that posted the site; always its operator',
+    },
   }),
   zip_centroid: table(
     {

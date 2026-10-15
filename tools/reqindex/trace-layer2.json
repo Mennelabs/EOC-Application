@@ -344,7 +344,7 @@
   ],
   "AIG-01": [
     "pass",
-    "cg.ai_register (migration 0014), packages/ai/src/registry.ts, routes/ai-register.ts, console AI use register",
+    "cg.ai_register (migration 0016), packages/ai/src/registry.ts, routes/ai-register.ts, console AI use register",
     "packages/ai/test/ai.test.ts (register lists every feature with a human checkpoint), services/api/test/public.db.test.ts (register seeded), tests/e2e/console.spec.ts",
     ""
   ],

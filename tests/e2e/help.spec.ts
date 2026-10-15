@@ -28,6 +28,27 @@ test.describe('find help', () => {
     await expectNoViolations(page);
   });
 
+  test('CMD-19, ACC-31: the ask box beside the list finds a shelter and points to the verified status check, never the report', async ({
+    page,
+  }) => {
+    await page.goto('/county/help');
+    const ask = page.getByLabel('Ask a question');
+    await ask.fill('Where can I sleep tonight? I need a shelter');
+    await page.getByRole('button', { name: 'Ask', exact: true }).click();
+    const answer = page.locator('.ask-answer');
+    await expect(answer).toContainText('Here is what we found');
+    await expect(answer.getByRole('link', { name: /Harmon High School gym/ })).toBeVisible();
+    await expect(answer.getByRole('link', { name: /Safe Harbor/ })).toHaveCount(0);
+    await ask.fill('What is the status of my report?');
+    await page.getByRole('button', { name: 'Ask', exact: true }).click();
+    await expect(
+      answer.getByRole('link', { name: 'Check your report (we confirm it is you first)' }),
+    ).toBeVisible();
+    // The list is still there: the ask box never replaces it (AC-A08).
+    await expect(page.getByRole('heading', { name: 'Open sites' })).toBeVisible();
+    await expectNoViolations(page);
+  });
+
   test('Spanish switches the whole page (EQ-06)', async ({ page }) => {
     await page.goto('/county/help?lang=es');
     await expect(page.locator('html')).toHaveAttribute('lang', 'es');

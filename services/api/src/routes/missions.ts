@@ -795,6 +795,8 @@ export const missionRoutesWith =
             owningTenantId: z.uuid().optional(),
             open: z.coerce.boolean().optional(),
             unassigned: z.coerce.boolean().optional(),
+            /** The mission number, any letter case (the command window resolves it here, CMD-08). */
+            reference: z.string().trim().min(3).max(40).optional(),
           }),
           response: { 200: z.array(missionOut) },
         },
@@ -820,6 +822,8 @@ export const missionRoutesWith =
           if (q.kind) x = x.where('m.kind', '=', q.kind);
           if (q.priority) x = x.where('m.priority', '=', q.priority);
           if (q.owningTenantId) x = x.where('m.owning_tenant_id', '=', q.owningTenantId);
+          if (q.reference)
+            x = x.where(sql<string>`upper(m.reference)`, '=', q.reference.toUpperCase());
           if (q.open) x = x.where('m.state', 'in', ['open', 'en_route', 'on_scene']);
           if (q.unassigned)
             x = x.where(({ not, exists, selectFrom }) =>

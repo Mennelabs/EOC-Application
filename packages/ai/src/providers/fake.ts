@@ -10,6 +10,8 @@ import type { AnswerValue } from '@cg/intake';
 import type {
   AiOutput,
   AiProvider,
+  CommandInterpretation,
+  CommandInterpretRequest,
   ExtractionOutput,
   ExtractionRequest,
   ImageAnalysis,
@@ -215,6 +217,75 @@ export class FakeLanguageModel implements LanguageModel {
     if (injectionSuspected) output.injectionSuspected = true;
     return { output, provider: INFO, latencyMs: performance.now() - started };
   }
+
+  async interpretCommand(
+    request: CommandInterpretRequest,
+  ): Promise<AiOutput<CommandInterpretation>> {
+    const started = performance.now();
+    const output = { ...interpret(request.text), language: detectLanguage(request.text) };
+    return { output, provider: INFO, latencyMs: performance.now() - started };
+  }
+}
+
+/** Requests that try to change the command window's rules (AIG-02, CMD-11), in English and Spanish. */
+const COMMAND_INJECTION =
+  /\b(ignore (all |the )?(previous|above|prior) instructions|ignora (las |todas las )?instrucciones|you are now|ahora eres|grant me|developer mode|system prompt)\b/i;
+
+const MISSION_REF = /\bM-\d{3,6}\b/i;
+/** A need reference code: letters and digits together, not a mission number. */
+const NEED_REF = /\b(?=[A-Z0-9-]*\d)(?=[A-Z0-9-]*[A-Z])[A-Z0-9-]{6,12}\b/;
+
+const STATUS_WORDS: [RegExp, string][] = [
+  [/\b(on scene|on-scene|en (el )?sitio|en el lugar|lleg)/i, 'on_scene'],
+  [/\b(en route|on (the|their) way|en camino)/i, 'en_route'],
+  [/\b(cleared|done there|despejad)/i, 'cleared'],
+];
+
+/**
+ * Keyword rules standing in for the language model in development and tests:
+ * one line of shorthand, a question, or nothing. The server parses the line
+ * like typed shorthand, so these rules decide nothing.
+ */
+function interpret(text: string): CommandInterpretation {
+  if (COMMAND_INJECTION.test(text))
+    return { shorthand: null, question: null, injectionSuspected: true };
+  const t = text.toLowerCase();
+  const mission = MISSION_REF.exec(text)?.[0];
+  const need = mission ? undefined : NEED_REF.exec(text.toUpperCase())?.[0];
+  if (need && /\b(claim|reclam|toma)/i.test(t))
+    return { shorthand: `/need ${need} claim`, question: null };
+  if (need && /\b(release|liber|suelta)/i.test(t))
+    return { shorthand: `/need ${need} release`, question: null };
+  if (mission) {
+    for (const [re, to] of STATUS_WORDS)
+      if (re.test(t)) return { shorthand: `/mission ${mission} status ${to}`, question: null };
+    const note = /\b(?:note|nota)\b[:\s]+(.+)$/i.exec(text)?.[1];
+    if (note) return { shorthand: `/mission ${mission} note ${note}`, question: null };
+    if (/\b(show|open|muestra|abre|ver)\b/i.test(t))
+      return { shorthand: `/mission ${mission}`, question: null };
+    return { shorthand: null, question: `What should happen to mission ${mission}?` };
+  }
+  if (/\b(missions?|misiones)\b/i.test(t)) {
+    if (/\b(unassigned|sin asignar)\b/i.test(t))
+      return { shorthand: '/missions unassigned', question: null };
+    if (/\b(open|abiertas)\b/i.test(t)) return { shorthand: '/missions open', question: null };
+  }
+  const remind =
+    /\b(?:remind me|recu[eé]rdame)\s+(?:in|en)\s+(\d+)\s*(minutes?|mins?|minutos?|hours?|horas?)\s+(?:to\s+|que\s+|de\s+)?(.+)$/i.exec(
+      text,
+    );
+  if (remind) {
+    const unit = /^h/i.test(remind[2]!) ? 'h' : 'm';
+    return {
+      shorthand: `/remind in ${remind[1]}${unit} "${remind[3]!.replace(/"/g, '')}"`,
+      question: null,
+    };
+  }
+  if (/\b(sitrep|situation report|informe de situaci[oó]n)\b/i.test(t)) {
+    const hours = /(\d{1,3})\s*(hours?|horas?)/i.exec(t)?.[1];
+    return { shorthand: `/sitrep${hours ? ` ${hours}` : ''}`, question: null };
+  }
+  return { shorthand: null, question: null };
 }
 
 export class FakeSpeechToText implements SpeechToText {

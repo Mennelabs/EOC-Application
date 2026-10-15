@@ -13,7 +13,7 @@ Resume record for the partner work Adam ordered on 2026-10-15, before layer 7. C
 | Task | What                                                                                                                                                                                                                             | State | Commits          | Notes                                                   |
 | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ---------------- | ------------------------------------------------------- |
 | A    | Partners publish their own services: migration 0052, `site.post` and `site.post_publish`, `/partner/sites` routes, "Our services" screen, "Posted by" on the county's Sites and publication log, notices naming the organization | done  | 7274e7c (PR #18) | As-built notes in the plan §A; one harness fix below    |
-| B    | Partner counts on the declaration view and official reports: roll up all, or choose partners and categories; counts-only function                                                                                                | done  | 3768b70 (PR #19) | DCL:DEC-09, F15, RULE-10; as-built notes in the plan §B |
+| B    | Partner counts on the declaration view and official reports: roll up all, or choose partners and categories; counts-only function                                                                                                | done  | f809d68 (PR #19) | DCL:DEC-09, F15, RULE-10; as-built notes in the plan §B |
 
 ## Task A in detail
 

@@ -2260,6 +2260,107 @@ export type PartnerCategory = 'needs_met' | 'services' | 'sheltered' | 'teams' |
 export type PartnerRollup =
   { all: true } | { all: false; partners: Uuid[]; categories: PartnerCategory[] };
 
+/** One command a person asked for (ADR-0044, CMD-37); never the typed words. */
+/** Facility registry (layer 7; REC-01). Null attributes are unknown, never guessed (REC-10). */
+export interface FacilityTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  name: string;
+  kind:
+    | 'school'
+    | 'place_of_worship'
+    | 'community_center'
+    | 'parking_lot'
+    | 'government'
+    | 'commercial'
+    | 'other';
+  location_id: Uuid | null;
+  status: Generated<'approved' | 'retired'>;
+  sqft: number | null;
+  ada: boolean | null;
+  power_backup: 'none' | 'generator' | 'transfer_switch' | null;
+  kitchen: boolean | null;
+  showers: number | null;
+  pet_policy: 'none' | 'service_animals' | 'pets_inside' | 'pets_outside_area' | null;
+  parking_spaces: number | null;
+  truck_access: boolean | null;
+  floodplain: 'in' | 'out' | null;
+  mou_status: Generated<'none' | 'pending' | 'signed' | 'expired'>;
+  mou_expires_on: ColumnType<Date | null, string | Date | null, string | Date | null>;
+  contacts_enc: Buffer | null;
+  communities: Generated<string[]>;
+  notes: string | null;
+  owner_tenant_id: Uuid | null;
+  source: 'county' | 'owner' | 'coad' | 'self_registration' | 'discovery' | 'import';
+  approved_by: Uuid | null;
+  approved_at: TsNullable;
+  last_confirmed_at: TsGen;
+}
+
+export interface FacilityChangeTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  facility_id: Uuid | null;
+  change: 'create' | 'update' | 'retire';
+  proposed: JsonGen<Record<string, unknown>>;
+  contacts_enc: Buffer | null;
+  source: 'coad' | 'owner' | 'self_registration' | 'discovery' | 'county';
+  proposed_by: Uuid | null;
+  proposed_by_tenant_id: Uuid | null;
+  submitter_enc: Buffer | null;
+  state: Generated<'pending' | 'approved' | 'rejected' | 'withdrawn'>;
+  decided_by: Uuid | null;
+  decided_at: TsNullable;
+  decision_reason: string | null;
+  execution_id: Uuid | null;
+}
+
+/** Command aliases (layer 7; CMD-04, BRD:FR-18.05). */
+export interface CommandAliasTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  scope: 'personal' | 'organization';
+  account_id: Uuid | null;
+  name: string;
+  expansion: string;
+  command: string;
+  retired_at: TsNullable;
+}
+
+/** Personal command history (layer 7; CMD-36): the person's own, encrypted, 30 days. */
+export interface CommandMessageTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  account_id: Uuid;
+  role: 'person' | 'window';
+  body_enc: Buffer;
+  execution_id: Uuid | null;
+  created_at: TsGen;
+}
+
+export interface CommandExecutionTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  account_id: Uuid;
+  execution_id: Uuid;
+  input_kind: 'shorthand' | 'natural' | 'alias';
+  command: string;
+  command_version: number;
+  phase: number;
+  plan: JsonGen<Record<string, unknown>>;
+  plan_hash: string;
+  confirmation: 'none' | 'one_tap' | 'full_review' | 'second_person';
+  reversal: 'undo_15_min' | 'compensating' | 'none';
+  state: 'awaiting_confirmation' | 'executing' | 'succeeded' | 'failed' | 'canceled' | 'stale';
+  confirmed_by: Uuid | null;
+  confirmed_at: TsNullable;
+  reason: string | null;
+  result: ColumnType<unknown, string | null | undefined, string | null>;
+  reversal_of: Uuid | null;
+  undone_by: Uuid | null;
+  undo_until: TsNullable;
+}
+
 /** One AI call (AIG-01, layer-7 task A); never the prompt or the reply. */
 export interface AiOutputTable {
   id: Generated<Uuid>;
@@ -2940,6 +3041,11 @@ export interface Database {
   'cg.casualty_count': CasualtyCountTable;
   'cg.pa_site': PaSiteTable;
   'cg.ai_output': AiOutputTable;
+  'cg.command_execution': CommandExecutionTable;
+  'cg.command_message': CommandMessageTable;
+  'cg.command_alias': CommandAliasTable;
+  'cg.facility': FacilityTable;
+  'cg.facility_change': FacilityChangeTable;
   'cg.ai_health_alert': AiHealthAlertTable;
   'cg.official_report': OfficialReportTable;
   'cg.official_report_section': OfficialReportSectionTable;

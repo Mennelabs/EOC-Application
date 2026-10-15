@@ -19,6 +19,8 @@
 import type {
   AiOutput,
   AiProvider,
+  CommandInterpretation,
+  CommandInterpretRequest,
   Compliance,
   DamageClassifier,
   DamageDegree,
@@ -32,7 +34,7 @@ import type {
   SpeechToText,
   Translator,
 } from '../types.ts';
-import { buildExtractionPrompt } from '../prompt.ts';
+import { buildCommandPrompt, buildExtractionPrompt } from '../prompt.ts';
 
 export type OpenAIFunction = 'text' | 'vision' | 'classifier' | 'transcription' | 'speech';
 
@@ -52,6 +54,7 @@ export const OPENAI_TEMPLATES = {
   imageAnalysis: 'image-analysis-1',
   classifier: 'damage-classifier-1',
   transcription: 'transcription-1',
+  command: 'command-interpret-1',
 } as const;
 
 /**
@@ -119,6 +122,13 @@ const EXTRACTION_SCHEMA = strictObject({
       evidence: { type: 'string' },
     }),
   },
+  language: { type: ['string', 'null'] },
+  injectionSuspected: { type: 'boolean' },
+});
+
+const COMMAND_SCHEMA = strictObject({
+  shorthand: { type: ['string', 'null'] },
+  question: { type: ['string', 'null'] },
   language: { type: ['string', 'null'] },
   injectionSuspected: { type: 'boolean' },
 });
@@ -320,6 +330,35 @@ export class OpenAIProvider implements AiProvider {
       },
       model,
       OPENAI_TEMPLATES.extraction,
+      started,
+    );
+  }
+
+  async interpretCommand(
+    request: CommandInterpretRequest,
+  ): Promise<AiOutput<CommandInterpretation>> {
+    const started = this.now();
+    const { system, user } = buildCommandPrompt(request);
+    const { json, model } = await this.respond(
+      'text',
+      'command',
+      system,
+      [{ type: 'input_text', text: user }],
+      COMMAND_SCHEMA,
+    );
+    // One line, starting with a slash; anything else is not shorthand (the server parses it again).
+    const raw = typeof json['shorthand'] === 'string' ? json['shorthand'].trim() : '';
+    const shorthand = raw.startsWith('/') && !raw.includes('\n') ? raw.slice(0, 2000) : null;
+    const question = typeof json['question'] === 'string' ? json['question'].slice(0, 500) : null;
+    return this.out(
+      {
+        shorthand,
+        question: shorthand ? null : question,
+        ...(typeof json['language'] === 'string' ? { language: json['language'] } : {}),
+        injectionSuspected: json['injectionSuspected'] === true,
+      },
+      model,
+      OPENAI_TEMPLATES.command,
       started,
     );
   }

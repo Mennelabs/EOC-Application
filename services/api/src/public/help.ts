@@ -26,6 +26,7 @@ import {
   T,
   type Lang,
 } from './render.ts';
+import { askIntent, matchHelp } from './ask.ts';
 import { publicResources, publicSites, resolveNear } from './sites-view.ts';
 import { configValue } from './submit.ts';
 
@@ -115,6 +116,90 @@ export const helpRoutes =
           accessibility: { statement: d.statement, supportPhone: d.helpPhone },
           notices: [T[lang].danger],
           helpUrl: pageUrl(d.tenant.slug, lang),
+        };
+      },
+    );
+
+    // ------------------------------------------- ask (the public command coverage)
+    /**
+     * CMD-19, AC-C03, Section 30.2: published help, starting or resuming one's
+     * own report, and one's own status only after proving it is theirs. The
+     * question is read with fixed rules (ask.ts); the answer holds only what
+     * the public pages already show, and links. Nothing is stored.
+     */
+    app.post(
+      '/help/:tenant/ask',
+      {
+        schema: {
+          tags: ['public help'],
+          params: tenantParam,
+          body: z.object({
+            text: z.string().trim().min(1).max(500),
+            lang: z.string().min(2).max(10).default('en'),
+            near: z.string().max(120).optional(),
+          }),
+        },
+      },
+      async (request, reply) => {
+        const lang = langOf(request.body.lang);
+        const intent = askIntent(request.body.text);
+        const d = await gather(request, lang, request.body.near);
+        const event = await request.tx((trx) =>
+          trx
+            .selectFrom('cg.event')
+            .select('intake_slug')
+            .where('status', '=', 'active')
+            .where('intake_slug', 'is not', null)
+            .orderBy('opened_at', 'desc')
+            .executeTakeFirst(),
+        );
+        const slug = encodeURIComponent(d.tenant.slug);
+        const ev = event?.intake_slug ? encodeURIComponent(event.intake_slug) : null;
+        const es = lang === 'es';
+        const links = {
+          report: ev ? `/${slug}/${ev}/report?lang=${lang}` : null,
+          resume: ev ? `/${slug}/${ev}/resume?lang=${lang}` : null,
+          myReport: `/${slug}/my-report?lang=${lang}`,
+        };
+        const found = intent === 'find' ? matchHelp(request.body.text, d.sites, d.resources) : null;
+        const answer =
+          intent === 'status'
+            ? es
+              ? 'Para ver su reporte, primero confirme que es suyo: le enviamos un código al teléfono o correo del reporte.'
+              : 'To see your report, first confirm it is yours: we send a code to the phone or email on the report.'
+            : intent === 'resume'
+              ? es
+                ? 'Puede seguir un reporte guardado con el código que le dimos.'
+                : 'You can pick up a saved report with the code you were given.'
+              : intent === 'report'
+                ? es
+                  ? 'Puede reportar daños o necesidades aquí. Toma unos minutos; puede guardarlo y seguir después.'
+                  : 'You can report damage or needs here. It takes a few minutes; you can save it and finish later.'
+                : found && (found.sites.length > 0 || found.resources.length > 0)
+                  ? es
+                    ? 'Esto es lo que encontramos en la ayuda publicada.'
+                    : 'Here is what we found in the published help.'
+                  : es
+                    ? 'No encontramos eso. Puede ver toda la ayuda publicada, reportar daños o necesidades, o seguir su reporte.'
+                    : 'We did not find that. You can see all the published help, report damage or needs, or follow your report.';
+        reply.header('cache-control', 'no-store');
+        return {
+          intent,
+          answer,
+          links: {
+            ...(intent === 'status' ? { myReport: links.myReport } : {}),
+            ...(intent === 'resume' && links.resume ? { resume: links.resume } : {}),
+            ...(intent === 'report' && links.report ? { report: links.report } : {}),
+            help: pageUrl(d.tenant.slug, lang) ?? `/${slug}/help?lang=${lang}`,
+          },
+          sites: found?.sites ?? [],
+          resources: (found?.resources ?? []).map((r) => ({
+            slug: r.slug,
+            title: r.title,
+            summary: r.summary,
+            url: `/api/public/help/${slug}/resources/${encodeURIComponent(r.slug)}?lang=${lang}`,
+          })),
+          notices: [T[lang].danger],
         };
       },
     );

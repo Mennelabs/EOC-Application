@@ -198,6 +198,64 @@ function siteCard(s: Site, t: Strings): HTMLElement {
   return card;
 }
 
+interface AskAnswer {
+  intent: string;
+  answer: string;
+  links: Record<string, string>;
+  sites: { slug: string; name: string }[];
+  resources: { slug: string; title: string; url: string }[];
+}
+
+/**
+ * The public command coverage (CMD-19, ACC-31, AC-A08): a plain ask box beside
+ * the list and the form, never instead of them. Published help, the form,
+ * the resume page and the verified status page; nothing typed is kept.
+ */
+function askForm(tenant: string, t: Strings): HTMLElement {
+  const form = el('form', { class: 'search ask' });
+  const input = el('input', {
+    type: 'text',
+    name: 'ask',
+    id: 'ask',
+    autocomplete: 'off',
+    'aria-describedby': 'ask-hint',
+    maxlength: '500',
+  });
+  const out = el('div', { class: 'ask-answer', 'aria-live': 'polite' });
+  form.append(
+    el('label', { for: 'ask' }, t.askLabel),
+    input,
+    el('p', { id: 'ask-hint', class: 'hint' }, t.askHint),
+    el('div', { class: 'actions' }, el('button', { type: 'submit' }, t.ask)),
+    out,
+  );
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    out.replaceChildren(el('p', {}, t.asking));
+    void fetch(`/api/public/help/${encodeURIComponent(tenant)}/ask`, {
+      method: 'POST',
+      credentials: 'omit',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text, lang }),
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`ask ${res.status}`);
+        const a = (await res.json()) as AskAnswer;
+        const items = el('ul', {});
+        for (const s of a.sites)
+          items.append(el('li', {}, el('a', { href: `#site-${s.slug}` }, s.name)));
+        for (const r of a.resources) items.append(el('li', {}, el('a', { href: r.url }, r.title)));
+        for (const [k, href] of Object.entries(a.links))
+          items.append(el('li', {}, el('a', { href }, t.askLinks[k] ?? k)));
+        out.replaceChildren(el('p', {}, a.answer), items);
+      })
+      .catch(() => out.replaceChildren(el('p', {}, t.askFailed)));
+  });
+  return form;
+}
+
 function render(): void {
   const t = strings(lang);
   document.documentElement.lang = lang;
@@ -293,6 +351,7 @@ function render(): void {
     );
   });
   main.append(form);
+  if (pathTenant ?? config.tenant) main.append(askForm(pathTenant ?? config.tenant!, t));
 
   if (!data) {
     main.append(el('p', { role: 'status' }, t.loading));

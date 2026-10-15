@@ -38,6 +38,7 @@ describe('shipped role templates (ADM-04)', () => {
     // them (DSP-08, SEC-12, DCL:DEC-08, RULE-10, FL:FR-10, partner posting 2026-10-15).
     expect(p.deniedActions.sort()).toEqual([
       'casualty.record',
+      'facility.approve',
       'joint_assessment.validate',
       'mission.cji.link',
       'mission.cji.open',
@@ -90,6 +91,29 @@ describe('shipped role templates (ADM-04)', () => {
       'me.read',
       'tenant.read',
     ]);
+  });
+
+  it('CON-12, CMD-21: every role but the FEMA validator opens the command window', () => {
+    const without = roleTemplates
+      .filter((t) => !t.grants.some((g) => g.action === 'command.use'))
+      .map((t) => t.key);
+    expect(without).toEqual(['fema_validator']);
+  });
+
+  it('REC-01: county EM alone approves the facility registry; the COAD and partners propose', () => {
+    const holders = (a: string) =>
+      roleTemplates.filter((t) => t.grants.some((g) => g.action === a)).map((t) => t.key);
+    expect(holders('facility.approve')).toEqual(['county_em_director']);
+    expect(holders('facility.manage')).toEqual(
+      expect.arrayContaining(['coad_chair', 'ngo_incident_commander', 'mass_care_coordinator']),
+    );
+  });
+
+  it('CMD-04: only the tenant administrator sets organization command aliases', () => {
+    const holders = roleTemplates
+      .filter((t) => t.grants.some((g) => g.action === 'command_alias.manage'))
+      .map((t) => t.key);
+    expect(holders).toEqual(['tenant_admin']);
   });
 
   it('SEC-12: only the law-enforcement liaison links missions to the CJIS enclave', () => {

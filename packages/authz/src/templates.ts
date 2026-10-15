@@ -72,7 +72,7 @@ function frontline(
   ];
 }
 
-export const roleTemplates: readonly RoleTemplate[] = [
+const templates: readonly RoleTemplate[] = [
   {
     key: 'tenant_admin',
     name: 'Tenant administrator',
@@ -93,6 +93,8 @@ export const roleTemplates: readonly RoleTemplate[] = [
       // SCL-09: explicit actions, never reached by the wildcard below.
       g('api_key.manage'),
       g('webhook.manage'),
+      // CMD-04, BRD:FR-18.05: the organization's command aliases, confirmed and audited.
+      g('command_alias.manage'),
       { action: '*', dataCategories: ['contact'] },
     ],
   },
@@ -1126,6 +1128,38 @@ export const roleTemplates: readonly RoleTemplate[] = [
     ],
   },
 ];
+
+/**
+ * Layer 7 (CON-12, CMD-21): every staff and field role opens the command window; a
+ * command only runs what the role could do by hand. The FEMA validator, who sees one
+ * sample and nothing else, has nothing to run and does not get it.
+ */
+const NO_COMMAND_WINDOW = new Set(['fema_validator']);
+
+/**
+ * Layer 7 (REC-01): the facility registry. County EM approves; planning, mass
+ * care, the COAD and partner incident commanders propose or keep their own
+ * entries current; AFN and partner coordinators read it.
+ */
+const FACILITY_GRANTS: Record<string, (string | Grant)[]> = {
+  // Those who open a site call its contacts; the read of contacts is audited (SEC-18).
+  county_em_director: [g('facility.read', ['contact']), 'facility.manage', 'facility.approve'],
+  planning_gis_lead: [g('facility.read', ['contact']), 'facility.manage'],
+  mass_care_coordinator: [g('facility.read', ['contact']), 'facility.manage'],
+  coad_chair: ['facility.read', 'facility.manage'],
+  ngo_incident_commander: ['facility.read', 'facility.manage'],
+  afn_coordinator: ['facility.read'],
+  partner_coordinator: ['facility.read'],
+};
+
+export const roleTemplates: readonly RoleTemplate[] = templates.map((t) => ({
+  ...t,
+  grants: [
+    ...t.grants,
+    ...(FACILITY_GRANTS[t.key] ?? []).map((a) => (typeof a === 'string' ? g(a) : a)),
+    ...(NO_COMMAND_WINDOW.has(t.key) ? [] : [g('command.use')]),
+  ],
+}));
 
 export const templateByKey: ReadonlyMap<string, RoleTemplate> = new Map(
   roleTemplates.map((t) => [t.key, t]),

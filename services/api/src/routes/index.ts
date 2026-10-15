@@ -2,6 +2,8 @@ import type { FastifyPluginAsync } from 'fastify';
 import { accountRoutes } from './accounts.ts';
 import { aiRegisterRoutes } from './ai-register.ts';
 import { auditRoutes } from './audit.ts';
+import { commandAliasRoutes } from './command-aliases.ts';
+import { commandRoutesWith, type CommandDeps } from './commands.ts';
 import { breakGlassRoutes } from './breakglass.ts';
 import { contactRoutes } from './contacts.ts';
 import { declarationRoutes } from './declaration.ts';
@@ -17,6 +19,7 @@ import { equityRoutes } from './equity.ts';
 import { integrationRoutes } from './integrations.ts';
 import { situationAreaRoutes } from './situation-areas.ts';
 import { packagePhotoRoutes, type PackagePhotoDeps } from './package-photos.ts';
+import { facilityRoutes } from './facilities.ts';
 import { fieldAssessmentRoutes } from './field-assessments.ts';
 import { fieldOpsRoutes } from './field-ops.ts';
 import { fieldRecordRoutes, type FieldRecordDeps } from './field-records.ts';
@@ -51,6 +54,7 @@ export interface RouteDeps {
   missions?: MissionDeps;
   refdata?: RefdataDeps;
   metrics?: { productName?: string };
+  commands?: CommandDeps;
 }
 
 /** Route plugins mounted under /api/v1. Each layer adds its modules here. */
@@ -95,6 +99,9 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   equityRoutes,
   integrationRoutes,
   situationAreaRoutes,
+  commandRoutesWith(deps.commands),
+  commandAliasRoutes,
+  facilityRoutes,
 ];
 
 /** The default set, as the tests mount it. */

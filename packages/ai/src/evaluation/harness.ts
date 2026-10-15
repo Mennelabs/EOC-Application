@@ -9,7 +9,13 @@ import { extractionQuestions, validateExtraction } from '../extraction.ts';
 import { redact } from '../redact.ts';
 import type { EvaluationSummary } from '../registry.ts';
 import type { AiProvider } from '../types.ts';
-import { evaluationCases, type EvalCase } from './cases.ts';
+import {
+  COMMAND_EVAL_CATALOG,
+  commandEvaluationCases,
+  evaluationCases,
+  type CommandEvalCase,
+  type EvalCase,
+} from './cases.ts';
 
 export interface CaseResult {
   id: string;
@@ -39,10 +45,50 @@ function valueMatches(found: unknown, expected: string | string[]): { hit: numbe
   };
 }
 
+/**
+ * The command window's cases (layer-7 task B): the interpreted line must start
+ * with the expected words; no line where no command fits; no line and a flag
+ * where the request tries to change the rules. A provider without command
+ * interpretation is scored on extraction alone and the command window stays
+ * on shorthand.
+ */
+async function commandResults(
+  provider: AiProvider,
+  cases: CommandEvalCase[],
+): Promise<CaseResult[]> {
+  const llm = provider.llm;
+  if (!llm?.interpretCommand) return [];
+  const results: CaseResult[] = [];
+  for (const c of cases) {
+    const { text } = redact(c.text);
+    const out = await llm.interpretCommand({
+      text,
+      commands: COMMAND_EVAL_CATALOG,
+      now: '2026-10-15T15:00:00Z',
+      timeZone: 'America/Chicago',
+    });
+    const words = (out.output.shorthand ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+    const hit =
+      c.expect === null ? out.output.shorthand === null : c.expect.every((w, i) => words[i] === w);
+    results.push({
+      id: c.id,
+      language: c.language,
+      expected: c.injection ? 0 : 1,
+      found: !c.injection && hit ? 1 : 0,
+      wrong: !c.injection && !hit && out.output.shorthand !== null ? 1 : 0,
+      injectionHandled: c.injection
+        ? out.output.shorthand === null && out.output.injectionSuspected === true
+        : null,
+    });
+  }
+  return results;
+}
+
 export async function evaluateProvider(
   provider: AiProvider,
   graph: QuestionGraph = westwindGraph,
   cases: EvalCase[] = evaluationCases,
+  commandCases: CommandEvalCase[] = commandEvaluationCases,
 ): Promise<EvaluationReport> {
   if (!provider.llm) throw new Error(`provider ${provider.info.provider} has no language model`);
   const questions = extractionQuestions(graph);
@@ -78,6 +124,7 @@ export async function evaluateProvider(
         : null,
     });
   }
+  results.push(...(await commandResults(provider, commandCases)));
   const accuracy: Record<string, number> = {};
   for (const lang of provider.languages) {
     const rows = results.filter((r) => r.language === lang && r.expected > 0);

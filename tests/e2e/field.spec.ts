@@ -4,7 +4,8 @@
  * field lead of the Field Exercise Team sets a PIN, checks in by the event
  * code, saves a quick report while offline ("On this phone") that is
  * received once the signal returns, records a damage assessment with the
- * details FEMA asks for, presses the help button, and checks out. Every screen
+ * details FEMA asks for, asks the command window for its reminders, presses
+ * the help button, and checks out. Every screen
  * passes axe WCAG 2.2 AA. The session comes from the development test
  * client (the browser sign-in itself is covered by the console journeys);
  * the app keeps it in sessionStorage exactly as after its own sign-in.
@@ -142,6 +143,15 @@ test.describe('field app (web build)', () => {
           utilities_out: 'yes',
         },
       });
+
+    // FL-07, CMD-34: ask or command from the phone; it needs the connection and keeps nothing.
+    await page.getByRole('link', { name: 'Home' }).click();
+    await page.getByRole('button', { name: 'Ask or command' }).click();
+    await expect(page.getByRole('heading', { name: 'Ask or command' }).first()).toBeVisible();
+    await page.getByLabel('What you need').fill('/reminders');
+    await page.getByRole('button', { name: 'Go', exact: true }).click();
+    await expect(page.getByText(/open reminder|reminders?:/i)).toBeVisible();
+    await expectNoViolations(page);
 
     // FLD-16: the help button asks once, then dispatch has the alert.
     await page.getByRole('link', { name: 'Home' }).click();

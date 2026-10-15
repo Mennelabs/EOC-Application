@@ -110,6 +110,13 @@ export default function Home() {
       <Card label={t('home.tools')}>
         <Heading level={2}>{t('home.tools')}</Heading>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {f.can('command.use') ? (
+            <Button
+              kind="secondary"
+              label={t('command.open')}
+              onPress={() => router.push('/command')}
+            />
+          ) : null}
           {f.can('assessment.record') ? (
             <Button label={t('work.newProperty')} onPress={() => router.push('/locate')} />
           ) : null}

@@ -42,6 +42,7 @@ import { assignLocationGeography } from './jobs/geography.ts';
 import { pruneReferenceSnapshots, scheduleReferencePulls } from './jobs/refdata.ts';
 import { evaluateEquityAlerts } from './jobs/equity.ts';
 import { evaluateAiHealth } from './jobs/ai-health.ts';
+import { staleAbandonedPlans, sweepCommandHistory } from './jobs/commands.ts';
 import { webhookSchedule } from './jobs/webhooks.ts';
 import { consume, consumeIntake, relayOnce } from './jobs/relay.ts';
 import type { JobContext, Schedule } from './jobs/types.ts';
@@ -196,6 +197,17 @@ const schedules: Schedule[] = [
   { name: 'contact-reverify', everyMs: 60 * 60_000, run: remindContactVerification }, // CNT-01
   { name: 'publication-notices', everyMs: 30_000, run: noticePublications }, // PUB-06
   { name: 'ai-health', everyMs: 10 * 60_000, run: evaluateAiHealth }, // AIG-09 (alerts only)
+  // CMD-36, CMD-37: personal command history past its retention; plans nobody confirmed.
+  {
+    name: 'command-history',
+    everyMs: 24 * 3600_000,
+    run: (c) => sweepCommandHistory(c).then(() => undefined),
+  },
+  {
+    name: 'command-plans',
+    everyMs: 5 * 60_000,
+    run: (c) => staleAbandonedPlans(c).then(() => undefined),
+  },
   // DSP-04, DSP-07, FLD-16: check-in timers, acknowledgement windows, escalation; DSP-08 trails.
   { name: 'field-safety', everyMs: 60_000, run: watchFieldSafety },
   { name: 'reminders-f09', everyMs: 60_000, run: watchReminders }, // F09, FR-09.05/09.06

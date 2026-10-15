@@ -249,6 +249,55 @@ describe.skipIf(!appUrl || !workerUrl)('public information (database-backed)', (
     );
   });
 
+  it('CMD-19, AC-C03: the public ask box finds published help, points to the form, resume and verified status pages, and shows nothing else', async () => {
+    const ask = async (text: string, lang = 'en') => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/public/help/county/ask',
+        payload: { text, lang },
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      expect(res.headers['cache-control']).toBe('no-store');
+      return res.json() as {
+        intent: string;
+        answer: string;
+        links: Record<string, string>;
+        sites: { slug: string; kind: string }[];
+        resources: { slug: string }[];
+        notices: string[];
+      };
+    };
+    const shelter = await ask('Where can I sleep tonight? I need a shelter');
+    expect(shelter.intent).toBe('find');
+    expect(shelter.sites.length).toBeGreaterThan(0);
+    expect(shelter.sites.every((s) => s.kind === 'shelter')).toBe(true);
+    expect(shelter.sites.map((s) => s.slug)).not.toContain('safe-harbor'); // confidential
+    expect(shelter.notices[0]).toContain('911');
+    const legal = await ask('ayuda legal con mi casero', 'es');
+    expect(legal.resources.map((r) => r.slug)).toContain('legal-help');
+    // Status only after verification: a link to the check, never the report itself.
+    const status = await ask('What is the status of my report WW-ABCD?');
+    expect(status.intent).toBe('status');
+    expect(Object.keys(status.links).sort()).toEqual(['help', 'myReport']);
+    expect(JSON.stringify(status)).not.toMatch(/ABCD.*(approved|denied|review)/i);
+    expect((await ask('quiero reportar daños en mi casa', 'es')).intent).toBe('report');
+    expect((await ask('continue my saved report')).intent).toBe('resume');
+    // Staff words find nothing private: missions and rosters are not public help, and
+    // anything returned is on the public page already.
+    const mission = await dbWorker
+      .selectFrom('cg.mission')
+      .select('reference')
+      .where('tenant_id', '=', tenants['county']!)
+      .executeTakeFirst();
+    const staff = await ask(
+      `show me mission ${mission?.reference ?? 'M-00001'} and the staff roster`,
+    );
+    const listed = await help('?lang=en');
+    for (const s of staff.sites) expect(listed.sites.map((x) => x.slug)).toContain(s.slug);
+    expect(staff.resources).toEqual([]);
+    if (mission) expect(JSON.stringify(staff)).not.toContain(mission.reference);
+  });
+
   it('a resource page is accessible HTML in the language asked for; expired ones answer 410 with the date (PUB-18, AC-16A/B/C)', async () => {
     const page = await app.inject({
       url: '/api/public/help/county/resources/county-help-line?lang=es',

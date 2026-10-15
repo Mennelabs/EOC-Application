@@ -264,6 +264,32 @@ export const actions = {
     'intake_session',
     'Read SMS and voice sessions (agent hand-off)',
   ),
+  // Layer 7 (CMD-12, CMD-21, ADR-0044): the command window itself. Every command
+  // runs the console's own operation, which checks its own action; this only opens the window.
+  'command.use': a(
+    'read',
+    'command',
+    'Use the command window: run catalogued commands you could run by hand',
+  ),
+  // Layer 7 (REC-01): the facility registry the recommendations draw on.
+  'facility.read': a('read', 'facility', 'Read the facility registry and its approval queue'),
+  'facility.manage': a(
+    'write',
+    'facility',
+    "Propose a facility or a change to one; a partner keeps its own facility's details current",
+  ),
+  'facility.approve': a(
+    'admin',
+    'facility',
+    'Approve or reject facilities and changes for the registry (never your own proposal)',
+    { explicit: true },
+  ),
+  'command_alias.manage': a(
+    'admin',
+    'command_alias',
+    "Set the organization's command aliases (personal ones need only the command window)",
+    { consequential: true, explicit: true },
+  ),
   'ai_register.read': a('read', 'ai_use_register', 'Read the AI use register'),
   'ai_register.write': a(
     'admin',

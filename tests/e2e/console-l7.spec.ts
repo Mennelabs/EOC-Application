@@ -9,7 +9,7 @@
  * opened; "/" opens it when the cursor is not in a text field. Axe runs on
  * each state and, on the phone project, the window reflows at phone width.
  */
-import { expect, test } from '@playwright/test';
+import { devices, expect, test } from '@playwright/test';
 import {
   BASE,
   api,
@@ -132,5 +132,63 @@ test.describe('layer 7 console: the command window', () => {
     await expect(dialog).toBeVisible();
     await expect(box).toHaveValue(/^\//);
     await page.keyboard.press('Escape');
+  });
+
+  test('REC-01: the COAD proposes a facility; county EM approves it in their own browser and re-checks it', async ({
+    page,
+    context,
+    browser,
+  }, testInfo) => {
+    test.setTimeout(300_000);
+    const name = `Exercise Union Hall ${tag}-${testInfo.project.name}`;
+    await onboard(page, context, 'coad_chair', `COAD chair ${tag}`, `l7f-${testInfo.project.name}`);
+    await page.goto('/console/facilities');
+    await expect(page.getByRole('heading', { level: 1, name: 'Facility registry' })).toBeVisible();
+    await expect(page.getByRole('table', { name: 'Facilities' })).toContainText(
+      'Harmon High School gym',
+    );
+    await expectNoViolations(page);
+    await page.getByLabel('Name', { exact: true }).fill(name);
+    await page.getByLabel('Kind of place').selectOption('community_center');
+    await page.getByLabel('Street address').fill('7 Union St');
+    await page.getByLabel('Usable space (square feet)').fill('6000');
+    await page.getByLabel('Kitchen').selectOption('yes');
+    await page.getByRole('button', { name: 'Add the facility' }).click();
+    await expect(page.getByText(`${name}: sent for approval.`)).toBeVisible();
+    if (testInfo.project.name === 'phone') await expectReflow(page);
+
+    const project =
+      testInfo.project.name === 'phone' ? devices['Pixel 7'] : devices['Desktop Chrome'];
+    const second = await browser.newContext({ ...project, baseURL: BASE, ignoreHTTPSErrors: true });
+    try {
+      const em = await second.newPage();
+      await onboard(
+        em,
+        second,
+        'county_em_director',
+        `EM director F ${tag}`,
+        `l7f2-${testInfo.project.name}`,
+      );
+      await em.goto('/console/facility-approvals');
+      await expect(em.getByRole('heading', { level: 1, name: 'Facility approvals' })).toBeVisible();
+      await em.getByRole('button', { name: `Decide ${name}` }).click();
+      await em
+        .getByLabel('Reason for the decision')
+        .fill('Exercise: walked the hall with the COAD');
+      await expectNoViolations(em);
+      await em.getByRole('button', { name: 'Record the decision' }).click();
+      await expect(em.getByText(`${name}: approved.`)).toBeVisible();
+
+      await em.goto('/console/facilities');
+      const table = em.getByRole('table', { name: 'Facilities' });
+      await expect(table).toContainText(name);
+      await table.getByRole('button', { name }).click();
+      await expect(em.getByRole('heading', { level: 2, name })).toBeVisible();
+      await em.getByRole('button', { name: `Confirm ${name} is still right` }).click();
+      await expect(em.getByText(`${name}: confirmed as still right.`)).toBeVisible();
+      await expectNoViolations(em);
+    } finally {
+      await second.close();
+    }
   });
 });

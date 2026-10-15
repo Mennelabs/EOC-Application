@@ -332,10 +332,10 @@
     ""
   ],
   "CON-03": [
-    "partial",
-    "GET /situation layers: reports, danger flags, verified damage, needs, sites, teams, hazards, event area, each on its own read action with a table (routes/situation.ts, screens/situation.tsx); layer 6: GET /situation/areas: tracts shaded by damaged units, reports per 100 homes (equity map), poverty and limited-English shares, each with source and as-of time and a table; outages placed at their facility (routes/situation-areas.ts, screens/situation.tsx)",
-    "services/api/test/siteoperator.db.test.ts (CON-03 layers by role), tests/e2e/console-l4.spec.ts (situation map with axe), services/api/test/equity.db.test.ts (CON-03 area layers), tests/e2e/console-l6.spec.ts (situation map journey)",
-    "Road closures are not a layer yet; an outage without a known facility is listed, not placed."
+    "pass",
+    "GET /situation layers: reports, danger flags, verified damage, needs, sites, teams, hazards, event area, each on its own read action with a table (routes/situation.ts, screens/situation.tsx); layer 6: GET /situation/areas: tracts shaded by damaged units, reports per 100 homes (equity map), poverty and limited-English shares, each with source and as-of time and a table; outages placed at their facility (routes/situation-areas.ts, screens/situation.tsx); a road closures layer (blocked-road hazards not cleared, routes/situation.ts)",
+    "services/api/test/siteoperator.db.test.ts (CON-03 layers by role; road closures apart from other hazards), tests/e2e/console-l4.spec.ts (situation map with axe), services/api/test/equity.db.test.ts (CON-03 area layers), tests/e2e/console-l6.spec.ts (situation map journey)",
+    "An outage whose facility is not in the reference data is listed with \"place not known\" rather than placed."
   ],
   "CON-17": [
     "partial",

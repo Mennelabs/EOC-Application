@@ -338,6 +338,37 @@ describe.skipIf(!appUrl || !workerUrl)('site operator (database-backed)', () => 
       .json<Situation>()
       .layers['reports']!.items.find((i) => i.id === report.id)!;
     expect(rounded).toMatchObject({ approximate: true, position: { lat: 38.8, lon: -90.87 } });
+    // CON-03: blocked roads that are not cleared are their own layer, and stay among the hazards.
+    const [road, line] = await Promise.all(
+      (['blocked_road', 'downed_line'] as const).map((kind) =>
+        dbWorker
+          .insertInto('cg.hazard')
+          .values({
+            tenant_id: county,
+            event_id: eventId,
+            kind,
+            source: 'console',
+            summary: `Exercise ${kind.replace('_', ' ')}`,
+            geom: sql`ST_SetSRID(ST_MakePoint(-90.86, 38.8), 4326)`,
+          })
+          .returning('id')
+          .executeTakeFirstOrThrow(),
+      ),
+    );
+    const withRoads = (
+      await call('admin', 'GET', `/api/v1/situation?eventId=${eventId}`)
+    ).json<Situation>();
+    const closures = withRoads.layers['roadClosures']!.items.map((i) => i.id);
+    expect(closures).toContain(road!.id);
+    expect(closures).not.toContain(line!.id);
+    expect(withRoads.layers['hazards']!.items.map((i) => i.id)).toEqual(
+      expect.arrayContaining([road!.id, line!.id]),
+    );
+    // Like the hazards, the layer follows hazard.read: the GIS lead's role does not include it.
+    const gisRoads = (
+      await call('gis', 'GET', `/api/v1/situation?eventId=${eventId}`)
+    ).json<Situation>();
+    expect(gisRoads.layers['roadClosures']!.available).toBe(gisRoads.layers['hazards']!.available);
     // A role without the layer's action is told the layer is not available, not given an empty map.
     const shelter = await call('ngoShelter', 'GET', `/api/v1/situation?eventId=${eventId}`);
     if (shelter.status === 200)

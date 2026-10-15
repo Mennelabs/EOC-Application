@@ -1,0 +1,75 @@
+{
+  "_about": "Design foundation (docs/plans/design-foundation.md, decided 2026-10-15, ADR-0045): the shared packages/ui, the console frame, the situation home and briefing mode, the resident app and Find help on the tokens. Later entries override earlier files.",
+  "CON-01": [
+    "pass",
+    "apps/web-console/src/ui/nav.ts (workspaces grouped and listed only when the person's actions answer for them, from /me); apps/web-console/src/App.tsx (the frame from @cg/ui); apps/web-console/src/screens/home.tsx (the situation home for dashboard roles, the work home for everyone else)",
+    "apps/web-console/test/nav.test.ts, tests/e2e/console.spec.ts (a denied workspace is not listed and its address shows the denial), tests/e2e/console-l3.spec.ts (key counts on home)",
+    ""
+  ],
+  "CON-04": [
+    "pass",
+    "apps/web-console/src/screens/home.tsx (key counts as tiles with their as-of time and source; /dashboard/counts)",
+    "tests/e2e/console-l3.spec.ts (heading and as-of time on home), tools/preview/console-preview.mjs (axe)",
+    ""
+  ],
+  "CON-11": [
+    "pass",
+    "apps/web-console/src/screens/home.tsx (/console/briefing: the situation home refreshed every minute without the decision list) with packages/ui/src/styles/shell.css (data-mode=briefing: 150% type, navigation and command bar hidden) and packages/ui/src/theme.ts (applyMode)",
+    "packages/ui/test/showcase.spec.ts (briefing mode enlarges the type and hides the navigation; axe), packages/ui/test/theme.test.ts",
+    ""
+  ],
+  "ACC-07": [
+    "pass",
+    "packages/ui/src/styles/shell.css (one column and a navigation drawer under 56 rem; tables scroll inside their regions); the showcase and the console preview checked at 320–412 px",
+    "packages/ui/test/showcase.spec.ts (reflow on the phone project in both themes), tools/preview/console-preview.mjs and public-preview.mjs (overflow check), tests/e2e (phone project)",
+    ""
+  ],
+  "ACC-08": [
+    "pass",
+    "packages/ui/src/styles/tokens.css: body ink 7:1, other text 4.5:1, lines, focus and fills 3:1, in the light and the dark theme; the tenant accent keeps --cg-accent-ink on it",
+    "packages/ui/test/tokens.test.ts (every pair, both themes), packages/ui/test/showcase.spec.ts (axe colour-contrast in both themes)",
+    ""
+  ],
+  "ACC-09": [
+    "pass",
+    "packages/ui/src/components/display.tsx (Pill, Notice, StatTile, DecisionCard carry words, a dot or an icon with their tone); packages/ui/src/styles/surfaces.css",
+    "packages/ui/test/showcase.spec.ts (axe), docs/a11y/screens/console-frame-and-home.md",
+    ""
+  ],
+  "ACC-10": [
+    "pass",
+    "packages/ui/src/styles/base.css (one 3 px focus ring everywhere, offset; amber on the dark top bar); React Aria components keep focus-visible data attributes",
+    "packages/ui/test/showcase.spec.ts (menu, dialog and select opened by keyboard under axe)",
+    ""
+  ],
+  "ACC-12": [
+    "pass",
+    "packages/ui/src/styles/tokens.css (--cg-target 44 px, --cg-target-public 48 px) applied by controls.css, shell.css, the resident app and Find help stylesheets",
+    "packages/ui/test/showcase.spec.ts (axe target-size), tests/e2e (axe WCAG 2.2 AA)",
+    ""
+  ],
+  "ACC-16": [
+    "pass",
+    "packages/ui/src/styles/base.css and tokens.css (prefers-reduced-motion: every transition and animation off); nothing flashes",
+    "packages/ui/test/showcase.spec.ts",
+    ""
+  ],
+  "SCL-08": [
+    "partial",
+    "packages/ui/src/styles/tokens.css: the accent and every status colour are tokens a tenant can override; text on the accent is always --cg-accent-ink and the contrast test is the gate (ADR-0045)",
+    "packages/ui/test/tokens.test.ts",
+    "The per-tenant setting in Administration and custom domains arrive with white-labelling at the cloud move."
+  ],
+  "SCL-11": [
+    "pass",
+    "packages/ui: fonts self-hosted through Fontsource (IBM Plex Sans, IBM Plex Mono, Atkinson Hyperlegible Next), no request leaves the stack for a font or an icon",
+    "apps/web-help check:size (63 KB first load), packages/ui/src/styles/fonts-*.css",
+    ""
+  ],
+  "GATE-03": [
+    "partial",
+    "packages/ui showcase under axe in both themes on desktop and phone (CI checks job); tools/preview/console-preview.mjs and public-preview.mjs; docs/a11y/screens/console-frame-and-home.md",
+    "packages/ui/test/showcase.spec.ts, tests/e2e",
+    "Screen-reader pass by a person pending, as for every layer."
+  ]
+}

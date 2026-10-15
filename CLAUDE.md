@@ -42,6 +42,7 @@ How to read them:
 - **Danger flags:** awareness only. Never dispatch-like. The resident is shown "If this is an emergency, call 911" (CON-10).
 - **SMS/phone:** Twilio, one verified toll-free number per county, use cases CUSTOMER_CARE + PUBLIC_SERVICE_ANNOUNCEMENT, IVR via Twilio Studio. Use the keywords and templates in `docs/06`. Never use "emergency alert" style wording in SMS (carrier rejection). Keyword AYUDA is the Spanish HELP keyword; shelter lookup is REFUGIO.
 - **FEMA outputs:** federal forms only, no state forms (DEC-17, `docs/05`). Low-income figures are reported as Census aggregates, not individual data.
+- **Design (decided 2026-10-15):** one shared design foundation, `packages/ui` (ADR-0045), grounded in `docs/design/users-and-needs.md`. Every new screen starts from its tokens and components; the existing class names are skinned by it. Light theme by default, dark as the person's choice; 44 px targets for staff, 48 px for residents; every icon beside a visible label; a timestamp and a source on every panel. The console shows a person only the workspaces their permissions answer for.
 - **Compliance targets:** GovRAMP Moderate (NIST 800-53 Moderate controls), SOC 2, CJIS Security Policy v6.x for the enclave, WCAG 2.2 AA minimum for every released screen.
 
 ## Non-negotiable development rules

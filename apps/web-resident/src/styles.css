@@ -55,6 +55,8 @@ header.banner {
   display: flex;
   gap: var(--cg-space-2);
   align-items: center;
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
 .lang select {
   min-block-size: var(--cg-target-public);

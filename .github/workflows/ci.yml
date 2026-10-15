@@ -38,6 +38,14 @@ jobs:
         run: pnpm --filter @cg/pdf samples "$RUNNER_TEMP/pdf" && pnpm --filter @cg/reporting samples "$RUNNER_TEMP/pdf" && pnpm --filter @cg/api samples "$RUNNER_TEMP/pdf" && scripts/verapdf.sh "$RUNNER_TEMP/pdf"
       - name: Requirements index is up to date
         run: pnpm reqindex && git diff --exit-code -- docs/requirements-index.md
+      - name: Design showcase under axe in both themes, desktop and phone (ADR-0045, ACC-07, ACC-08, GATE-03)
+        run: npx playwright install --with-deps chromium && pnpm --filter @cg/ui build:showcase && pnpm --filter @cg/ui test:showcase
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: design-showcase
+          path: packages/ui/test-results
+          retention-days: 7
 
   stack:
     name: Compose stack, integration and accessibility tests

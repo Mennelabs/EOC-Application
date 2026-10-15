@@ -19,7 +19,7 @@
  *    language, with any high-need tract left uncovered flagged (REC-11).
  */
 
-export type RecommendationKind = 'shelter';
+export type RecommendationKind = 'shelter' | 'feeding' | 'pod' | 'marc';
 
 /** Planning factors (docs/02, tenant-editable). Sources are cited in the docs table. */
 export interface PlanningFactors {
@@ -33,6 +33,54 @@ export interface PlanningFactors {
   coverageKm: number;
   /** A registry entry not re-checked for this long is stale (REC-01). */
   staleDays: number;
+  // ---------------------------------------------------------------- feeding (REC-05, REC-06)
+  /** Meals per person at one stop. */
+  mealsPerPersonPerStop: number;
+  /** Stops one canteen makes in a day. */
+  stopsPerCanteen: number;
+  /** The first serving window starts at this hour (24-hour clock). */
+  feedingFirstStartHour: number;
+  /** Length of a serving window, hours. */
+  feedingWindowHours: number;
+  /** Time between one window's end and the next one's start (travel, restock), hours. */
+  feedingGapHours: number;
+  /** Requests within this distance are served by one stop. */
+  feedingClusterKm: number;
+  /** A registered site with parking within this distance of a stop's requests is used for it. */
+  feedingSiteKm: number;
+  /** A stop covers a tract within this distance (equity check). */
+  feedingCoverageKm: number;
+  /** A setup note names a language when at least this share of a stop's requests came in it, percent. */
+  languageNotePct: number;
+  /** A chaplain or counselor is suggested where at least this many households asked for someone to talk to. */
+  chaplainMinRequests: number;
+  // ---------------------------------------------------------------- POD and walk-up points (REC-07, REC-08)
+  /** Share of the people without power who come to a POD on a given day, percent. */
+  podDailySharePct: number;
+  /** Supplies per person per day (FEMA POD planning: 1 gallon of water, 6–8 lb of ice, 2 meals). */
+  podWaterGalPerPersonDay: number;
+  podIceLbMinPerPersonDay: number;
+  podIceLbMaxPerPersonDay: number;
+  podMealsPerPersonDay: number;
+  /** Days of supplies estimated (the first 72 hours). */
+  podDays: number;
+  /** A drive-through POD needs at least this many parking spaces unless it is a parking lot. */
+  podMinParkingSpaces: number;
+  /** A tract with at least this share of households without a vehicle gets a walk-up point, percent. */
+  walkUpNoVehiclePct: number;
+  /** A walk-up point is within this distance of the tract's centre. */
+  walkUpKm: number;
+  // ---------------------------------------------------------------- MARC (REC-09)
+  /** Households one partner table serves over the MARC's days. */
+  marcHouseholdsPerTable: number;
+  /** Tables at most for one service. */
+  marcMaxTablesPerService: number;
+  /** Floor space per partner table, square feet. */
+  marcSqftPerTable: number;
+  /** Floor space for the welcome desk, waiting and quiet room, square feet. */
+  marcBaseSqft: number;
+  /** Services in the partner mix, from the top needs. */
+  marcServices: number;
 }
 
 export const PLANNING_DEFAULTS: PlanningFactors = {
@@ -41,6 +89,30 @@ export const PLANNING_DEFAULTS: PlanningFactors = {
   personsPerHousehold: 2.5,
   coverageKm: 10,
   staleDays: 365,
+  mealsPerPersonPerStop: 1,
+  stopsPerCanteen: 2,
+  feedingFirstStartHour: 11,
+  feedingWindowHours: 2.5,
+  feedingGapHours: 3,
+  feedingClusterKm: 2,
+  feedingSiteKm: 1.5,
+  feedingCoverageKm: 3,
+  languageNotePct: 30,
+  chaplainMinRequests: 2,
+  podDailySharePct: 50,
+  podWaterGalPerPersonDay: 1,
+  podIceLbMinPerPersonDay: 6,
+  podIceLbMaxPerPersonDay: 8,
+  podMealsPerPersonDay: 2,
+  podDays: 3,
+  podMinParkingSpaces: 100,
+  walkUpNoVehiclePct: 15,
+  walkUpKm: 1,
+  marcHouseholdsPerTable: 25,
+  marcMaxTablesPerService: 4,
+  marcSqftPerTable: 100,
+  marcBaseSqft: 1000,
+  marcServices: 5,
 };
 
 export interface ShelterWeights {
@@ -80,12 +152,16 @@ export interface Candidate {
   petPolicy: 'none' | 'service_animals' | 'pets_inside' | 'pets_outside_area' | null;
   floodplain: 'in' | 'out' | null;
   mouStatus: 'none' | 'pending' | 'signed' | 'expired';
+  parkingSpaces: number | null;
+  truckAccess: boolean | null;
   lastConfirmedAt: Date;
   /** Live conditions, worked out by the loader from the event's data. */
   inDamageArea: boolean;
   inFloodZone: boolean;
   inOutage: boolean;
   blockedRoad: boolean;
+  /** A debris hazard reported within its radius plus 200 m. */
+  inDebrisArea: boolean;
 }
 
 export interface Demand {
@@ -106,6 +182,10 @@ export interface Tract {
   incomeBand: number | null;
   renterSharePct: number | null;
   limitedEnglishPct: number | null;
+  /** Households without a vehicle, percent (ACS). */
+  noVehiclePct: number | null;
+  /** A report or request in this event lies inside the tract. */
+  affected: boolean;
 }
 
 export interface InputAge {
@@ -171,8 +251,8 @@ export function distanceKm(a: Point, b: Point): number {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
-const round = (n: number, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
-const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
+export const round = (n: number, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
+export const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
 
 /** REC-02: the reasons a place cannot be a shelter right now; empty when it may be ranked. */
 export function shelterFilters(c: Candidate): string[] {

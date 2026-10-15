@@ -31,11 +31,14 @@ const base = (over: Partial<Candidate>): Candidate => ({
   petPolicy: 'service_animals',
   floodplain: 'out',
   mouStatus: 'signed',
+  parkingSpaces: 50,
+  truckAccess: true,
   lastConfirmedAt: new Date('2026-06-01T00:00:00Z'),
   inDamageArea: false,
   inFloodZone: false,
   inOutage: false,
   blockedRoad: false,
+  inDebrisArea: false,
   ...over,
 });
 
@@ -180,6 +183,8 @@ describe('shelter recommendations', () => {
         incomeBand: 2,
         renterSharePct: 30,
         limitedEnglishPct: 5,
+        noVehiclePct: 4,
+        affected: true,
       },
       {
         geoid: '29999000200',
@@ -189,6 +194,8 @@ describe('shelter recommendations', () => {
         incomeBand: 1,
         renterSharePct: 70,
         limitedEnglishPct: 25,
+        noVehiclePct: 20,
+        affected: false,
       },
     ];
     const e = equityCheck([{ lat: 38.812, lon: -90.79 }], tracts, PLANNING_DEFAULTS);

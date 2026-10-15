@@ -1,11 +1,12 @@
 /**
- * Recommendations (layer-7 task E; REC-02, REC-03, REC-04, REC-10, REC-11,
- * REC-12). The engine in `@cg/reporting` answers from rules and the
- * registry, never from a language model; the answer is stored as it was
- * shown, with the weights and planning factors in force (the tenant's, or
- * the documented defaults). A named person accepts the top pick, picks
- * another place (edit), or rejects it, always with a reason; the decision is
- * logged and audited (REC-04). Nothing here changes a site or a facility.
+ * Recommendations (layer-7 task E; REC-02–REC-12): shelters, feeding stops
+ * for the canteens on the roster, a POD with walk-up points, and a MARC. The
+ * engine in `@cg/reporting` answers from rules and the registry, never from a
+ * language model; the answer is stored as it was shown, with the weights and
+ * planning factors in force (the tenant's, or the documented defaults). A
+ * named person accepts it, edits it (another place; for feeding, stops
+ * swapped), or rejects it, always with a reason; the decision is logged and
+ * audited (REC-04). Nothing here changes a site, a facility or a team.
  */
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
@@ -13,17 +14,37 @@ import type { Selectable, Transaction } from 'kysely';
 import { z } from 'zod';
 import type { Database, RecommendationTable } from '@cg/db';
 import {
+  MARC_WEIGHTS,
   PLANNING_DEFAULTS,
+  POD_WEIGHTS,
   SHELTER_WEIGHTS,
+  loadFeedingInputs,
+  loadMarcInputs,
+  loadPodInputs,
   loadShelterInputs,
+  recommendFeeding,
+  recommendMarc,
+  recommendPod,
   recommendShelter,
   type PlanningFactors,
-  type ShelterWeights,
 } from '@cg/reporting';
 import { ApiError, errors } from '../errors.ts';
 import { iso, listQuery, stamped, uuidParam } from './helpers.ts';
 
 type Row = Selectable<RecommendationTable>;
+
+const KINDS = ['shelter', 'feeding', 'pod', 'marc'] as const;
+type Kind = (typeof KINDS)[number];
+const WEIGHTS = { shelter: SHELTER_WEIGHTS, pod: POD_WEIGHTS, marc: MARC_WEIGHTS } as const;
+
+const swapIn = z
+  .object({
+    stop: z.number().int().min(1),
+    /** A place in the registry, or one the partner knows, described. */
+    facilityId: z.uuid().optional(),
+    place: z.string().trim().min(3).max(200).optional(),
+  })
+  .refine((x) => !!x.facilityId !== !!x.place, 'name a registered place or describe one');
 
 const recommendationOut = z.object({
   ...stamped,
@@ -38,6 +59,7 @@ const recommendationOut = z.object({
   decisionReason: z.string().nullable(),
   chosenFacilityId: z.uuid().nullable(),
   decisionNote: z.string().nullable(),
+  decisionChanges: z.array(z.record(z.string(), z.unknown())).nullable(),
 });
 
 const toOut = (r: Row): z.infer<typeof recommendationOut> => ({
@@ -56,6 +78,7 @@ const toOut = (r: Row): z.infer<typeof recommendationOut> => ({
   decisionReason: r.decision_reason,
   chosenFacilityId: r.chosen_facility_id,
   decisionNote: r.decision_note,
+  decisionChanges: r.decision_changes,
 });
 
 /** Tenant values win where they are sensible numbers; anything else falls back to the default. */
@@ -67,22 +90,76 @@ function merged<T extends object>(defaults: T, raw: unknown, min = 0): T {
   return out as T;
 }
 
-async function settingsOf(trx: Transaction<Database>, tenantId: string) {
+async function settingsOf(trx: Transaction<Database>, tenantId: string, kind: Kind) {
+  const keys = ['recommendation.planning_factors', `recommendation.weights.${kind}`];
   const rows = await trx
     .selectFrom('cg.tenant_config')
     .select(['key', 'value'])
     .where('tenant_id', '=', tenantId)
-    .where('key', 'in', ['recommendation.planning_factors', 'recommendation.weights.shelter'])
+    .where('key', 'in', keys)
     .execute();
   const get = (k: string) => rows.find((r) => r.key === k)?.value;
   return {
-    factors: merged<PlanningFactors>(
-      PLANNING_DEFAULTS,
-      get('recommendation.planning_factors'),
-      0.01,
-    ),
-    weights: merged<ShelterWeights>(SHELTER_WEIGHTS, get('recommendation.weights.shelter')),
+    factors: merged<PlanningFactors>(PLANNING_DEFAULTS, get(keys[0]!), 0.01),
+    weights: kind === 'feeding' ? null : merged(WEIGHTS[kind], get(keys[1]!)),
   };
+}
+
+/** Runs the rules for one kind on the event's data, in the caller's transaction. */
+async function compute(
+  trx: Transaction<Database>,
+  tenantId: string,
+  eventId: string,
+  kind: Kind,
+  teamIds: string[] | undefined,
+): Promise<{ result: Record<string, unknown>; summary: string }> {
+  const now = new Date();
+  const { factors, weights } = await settingsOf(trx, tenantId, kind);
+  switch (kind) {
+    case 'shelter': {
+      const i = await loadShelterInputs(trx, tenantId, eventId, now, factors);
+      const r = recommendShelter(i.candidates, i.demand, i.tracts, i.inputs, factors, {
+        ...SHELTER_WEIGHTS,
+        ...weights,
+      });
+      return {
+        result: { ...r },
+        summary: `${r.top.length} ranked, ${r.excluded.length} set aside`,
+      };
+    }
+    case 'feeding': {
+      const i = await loadFeedingInputs(trx, tenantId, eventId, now, factors, teamIds);
+      const r = recommendFeeding(i.candidates, i.cells, i.canteens, i.tracts, i.inputs, factors);
+      return {
+        result: { ...r },
+        summary: `${r.stops.length} stops for ${r.canteens.length} canteens, ${r.unserved} households beyond them`,
+      };
+    }
+    case 'pod': {
+      const i = await loadPodInputs(trx, tenantId, eventId, now, factors);
+      const r = recommendPod(i.candidates, i.demand, i.tracts, i.inputs, factors, {
+        ...POD_WEIGHTS,
+        ...weights,
+      });
+      return {
+        result: { ...r },
+        summary: r.pod
+          ? `Type ${r.pod.type} x${r.pod.count}, ${r.walkUps.length} walk-up points`
+          : 'no POD needed',
+      };
+    }
+    case 'marc': {
+      const i = await loadMarcInputs(trx, tenantId, eventId, now, factors);
+      const r = recommendMarc(i.candidates, i.demand, i.tracts, i.inputs, factors, {
+        ...MARC_WEIGHTS,
+        ...weights,
+      });
+      return {
+        result: { ...r },
+        summary: `${r.services.length} services, ${r.tables} tables, ${r.top.length} sites ranked`,
+      };
+    }
+  }
 }
 
 export const recommendationRoutes: FastifyPluginAsync = async (base) => {
@@ -100,7 +177,12 @@ export const recommendationRoutes: FastifyPluginAsync = async (base) => {
       config: { idempotent: true },
       schema: {
         tags: ['recommendations'],
-        body: z.object({ kind: z.literal('shelter'), eventId: z.uuid() }),
+        body: z.object({
+          kind: z.enum(KINDS),
+          eventId: z.uuid(),
+          /** Feeding: plan for these canteens only; default, every active canteen on the roster. */
+          teamIds: z.array(z.uuid()).min(1).max(20).optional(),
+        }),
         response: { 201: recommendationOut },
       },
     },
@@ -120,24 +202,14 @@ export const recommendationRoutes: FastifyPluginAsync = async (base) => {
           .where('tenant_id', '=', s.tenantId)
           .executeTakeFirst();
         if (!event) throw errors.notFound();
-        const now = new Date();
-        const { factors, weights } = await settingsOf(trx, s.tenantId);
-        const inputs = await loadShelterInputs(trx, s.tenantId, b.eventId, now, factors);
-        const result = recommendShelter(
-          inputs.candidates,
-          inputs.demand,
-          inputs.tracts,
-          inputs.inputs,
-          factors,
-          weights,
-        );
+        const { result, summary } = await compute(trx, s.tenantId, b.eventId, b.kind, b.teamIds);
         const inserted = await trx
           .insertInto('cg.recommendation')
           .values({
             tenant_id: s.tenantId,
             event_id: b.eventId,
             kind: b.kind,
-            engine_version: result.engineVersion,
+            engine_version: String(result['engineVersion']),
             result: JSON.stringify(result),
             requested_by: s.accountId,
             execution_id: request.executionId,
@@ -151,7 +223,7 @@ export const recommendationRoutes: FastifyPluginAsync = async (base) => {
           targetType: 'recommendation',
           targetId: inserted.id,
           targetVersion: inserted.version,
-          reason: `${b.kind}: ${result.top.length} ranked, ${result.excluded.length} set aside`,
+          reason: `${b.kind}: ${summary}`,
         });
         return inserted;
       });
@@ -166,7 +238,7 @@ export const recommendationRoutes: FastifyPluginAsync = async (base) => {
         tags: ['recommendations'],
         querystring: listQuery.extend({
           eventId: z.uuid().optional(),
-          kind: z.enum(['shelter', 'feeding', 'pod', 'walkup', 'marc']).optional(),
+          kind: z.enum(KINDS).optional(),
         }),
         response: { 200: z.array(recommendationOut) },
       },
@@ -227,15 +299,18 @@ export const recommendationRoutes: FastifyPluginAsync = async (base) => {
       schema: {
         tags: ['recommendations'],
         params: uuidParam,
-        body: z
-          .object({
-            decision: z.enum(['accept', 'edit', 'reject']),
-            /** accept: the top pick unless another of the three is named; edit: any approved facility. */
-            facilityId: z.uuid().optional(),
-            note: z.string().trim().max(1000).optional(),
-            reason: z.string().trim().min(3).max(500),
-          })
-          .refine((b) => b.decision !== 'edit' || b.facilityId, 'name the place chosen instead'),
+        body: z.object({
+          decision: z.enum(['accept', 'edit', 'reject']),
+          /**
+           * Shelter, POD, MARC: accept takes the top pick unless another of
+           * those shown is named; edit names any approved facility instead.
+           */
+          facilityId: z.uuid().optional(),
+          /** Feeding: an edit swaps stops for other places (docs/02: a church lot the team knows). */
+          swaps: z.array(swapIn).min(1).max(20).optional(),
+          note: z.string().trim().max(1000).optional(),
+          reason: z.string().trim().min(3).max(500),
+        }),
         response: { 200: recommendationOut },
       },
     },
@@ -258,26 +333,66 @@ export const recommendationRoutes: FastifyPluginAsync = async (base) => {
           if (current.version !== request.expectedVersion()) throw errors.conflict(toOut(current));
           if (current.state !== 'open')
             throw new ApiError(409, 'already_decided', 'This recommendation was already decided.');
-          const top = ((current.result['top'] as { facilityId: string }[] | undefined) ?? []).map(
-            (t) => t.facilityId,
-          );
-          let chosen: string | null = null;
-          if (b.decision === 'accept') {
-            chosen = b.facilityId ?? top[0] ?? null;
-            if (!chosen || !top.includes(chosen))
-              throw errors.validation([
-                { name: 'facilityId', message: 'accept one of the places recommended, or edit' },
-              ]);
-          } else if (b.decision === 'edit') {
-            const f = await trx
+          const approved = async (id: string) =>
+            trx
               .selectFrom('cg.facility')
-              .select('id')
-              .where('id', '=', b.facilityId!)
+              .select(['id', 'name'])
+              .where('id', '=', id)
               .where('status', '=', 'approved')
               .executeTakeFirst();
-            if (!f)
-              throw errors.validation([{ name: 'facilityId', message: 'not in the registry' }]);
-            chosen = f.id;
+          let chosen: string | null = null;
+          let changes: Record<string, unknown>[] | null = null;
+          if (current.kind === 'feeding') {
+            if (b.facilityId)
+              throw errors.validation([
+                { name: 'facilityId', message: 'feeding is edited stop by stop: use swaps' },
+              ]);
+            if (b.decision !== 'edit' && b.swaps)
+              throw errors.validation([{ name: 'swaps', message: 'only an edit swaps stops' }]);
+            if (b.decision === 'edit') {
+              if (!b.swaps)
+                throw errors.validation([{ name: 'swaps', message: 'name the stops swapped' }]);
+              const stops = (current.result['stops'] as { stop: number; place: string }[]) ?? [];
+              changes = [];
+              for (const w of b.swaps) {
+                const was = stops.find((x) => x.stop === w.stop);
+                if (!was)
+                  throw errors.validation([{ name: 'swaps', message: `no stop ${w.stop}` }]);
+                const f = w.facilityId ? await approved(w.facilityId) : null;
+                if (w.facilityId && !f)
+                  throw errors.validation([{ name: 'swaps', message: 'not in the registry' }]);
+                changes.push({
+                  stop: w.stop,
+                  from: was.place,
+                  to: f ? f.name : w.place,
+                  facilityId: f?.id ?? null,
+                });
+              }
+            }
+          } else {
+            if (b.swaps)
+              throw errors.validation([{ name: 'swaps', message: 'only feeding has stops' }]);
+            const top = ((current.result['top'] as { facilityId: string }[] | undefined) ?? []).map(
+              (t) => t.facilityId,
+            );
+            if (b.decision === 'accept') {
+              chosen = b.facilityId ?? top[0] ?? null;
+              if (!chosen || !top.includes(chosen))
+                throw errors.validation([
+                  { name: 'facilityId', message: 'accept one of the places recommended, or edit' },
+                ]);
+            } else if (b.decision === 'edit') {
+              const f = b.facilityId ? await approved(b.facilityId) : null;
+              if (!f)
+                throw errors.validation([
+                  {
+                    name: 'facilityId',
+                    message: 'name the place chosen instead from the registry',
+                  },
+                ]);
+              chosen = f.id;
+              changes = [{ to: f.name, facilityId: f.id }];
+            }
           }
           const decided = await trx
             .updateTable('cg.recommendation')
@@ -293,6 +408,7 @@ export const recommendationRoutes: FastifyPluginAsync = async (base) => {
               decision_reason: b.reason,
               chosen_facility_id: chosen,
               decision_note: b.note ?? null,
+              decision_changes: changes ? JSON.stringify(changes) : null,
               updated_by: s.accountId,
             })
             .where('id', '=', current.id)
@@ -308,6 +424,9 @@ export const recommendationRoutes: FastifyPluginAsync = async (base) => {
               fields: [
                 { name: 'state', from: current.state, to: decided.state },
                 { name: 'chosen_facility_id', to: chosen },
+                ...(changes
+                  ? [{ name: 'decision_changes', to: `${changes.length} change(s)` }]
+                  : []),
               ],
             },
           });

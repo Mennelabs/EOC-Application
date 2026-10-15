@@ -7,7 +7,11 @@
  * with the weights and factors in force (tenant values where sensible), the
  * age of each input is shown, a named person accepts, edits or rejects it
  * with a reason, and every step is audited. A role without the action sees
- * nothing. Runs on a county of its own, only with API_DB_TEST_APP_URL and
+ * nothing. Then, on a second event (REC-05–REC-09): feeding stops for two
+ * canteens with a Spanish note, a chaplain and pet food, edited stop by stop;
+ * a Type II POD for 6,200 customers without power; a MARC whose partner mix
+ * follows the verified damage and whose interpreters follow the reports.
+ * Runs on a county of its own, only with API_DB_TEST_APP_URL and
  * API_DB_TEST_WORKER_URL.
  */
 import { randomUUID } from 'node:crypto';
@@ -16,8 +20,16 @@ import { sql, type Kysely } from 'kysely';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
 import { createDb, withTenant, type Database } from '@cg/db';
-import type { ShelterRecommendation } from '@cg/reporting';
+import {
+  countDamage,
+  loadDamageRecords,
+  type FeedingRecommendation,
+  type MarcRecommendation,
+  type PodRecommendation,
+  type ShelterRecommendation,
+} from '@cg/reporting';
 import { facilities } from '../../../tools/seed/src/county.ts';
+import { loadDamageReports } from '../../../tools/seed/src/damage.ts';
 import { loadSeed } from '../../../tools/seed/src/load.ts';
 import { buildApp, type App } from '../src/app.ts';
 import { AuthError, type SubjectLoader } from '../src/auth/subject.ts';
@@ -33,6 +45,7 @@ interface Recommendation {
   kind: string;
   state: string;
   result: ShelterRecommendation;
+  decisionChanges: Record<string, unknown>[] | null;
   requestedBy: string | null;
   decidedBy: string | null;
   decisionReason: string | null;
@@ -423,5 +436,296 @@ describe.skipIf(!appUrl || !workerUrl)('shelter recommendations (database-backed
     expect(
       (await call('pio', 'POST', '/recommendations', { kind: 'shelter', eventId })).status,
     ).toBe(403);
+  });
+
+  describe('feeding, POD and MARC on a second event (REC-05–REC-09)', () => {
+    let second = '';
+    let canteenA = '';
+    beforeAll(async () => {
+      await withTenant(dbWorker, { tenantId: county }, async (trx) => {
+        second = (
+          await trx
+            .insertInto('cg.event')
+            .values({
+              tenant_id: county,
+              name: `Exercise WESTWIND day two ${run}`,
+              hazard_type: 'tornado',
+              status: 'active',
+              opened_at: new Date(),
+            })
+            .returning('id')
+            .executeTakeFirstOrThrow()
+        ).id;
+        // REC-06: two canteens a partner declared, one with its serving rate.
+        for (const [name, meals] of [
+          ['Exercise Canteen A', 200],
+          ['Exercise Canteen B', null],
+        ] as const) {
+          const t = await trx
+            .insertInto('cg.team')
+            .values({
+              tenant_id: county,
+              event_id: second,
+              key: `${name.toLowerCase().replace(/ /g, '-')}-${run}`,
+              name,
+              kind: 'canteen',
+              agency_tenant_id: county,
+              agency: 'Exercise Canteen Services',
+              callsign: null,
+              lead_personnel_id: null,
+              skills: ['food_safety'],
+              equipment: ['canteen truck'],
+              capacity: 3,
+              meals_per_hour: meals,
+              notes: null,
+              created_by: ACTOR,
+              updated_by: ACTOR,
+            })
+            .returning('id')
+            .executeTakeFirstOrThrow();
+          if (meals) canteenA = t.id;
+        }
+        const place = async (lon: number, lat: number) =>
+          (
+            await trx
+              .insertInto('cg.location')
+              .values({
+                tenant_id: county,
+                line1: null,
+                city: 'Westwind',
+                state: 'MO',
+                postal: '63003',
+                geom: sql`ST_SetSRID(ST_MakePoint(${lon}, ${lat}), 4326)`,
+                precision: 'approximate',
+                source: 'reviewer',
+                created_by: ACTOR,
+                updated_by: ACTOR,
+              })
+              .returning('id')
+              .executeTakeFirstOrThrow()
+          ).id;
+        const party = async (language: string) =>
+          (
+            await trx
+              .insertInto('cg.party')
+              .values({
+                tenant_id: county,
+                kind: 'resident',
+                display_name_enc: null,
+                contact_enc: null,
+                phone_bidx: null,
+                email_bidx: null,
+                language,
+                sms_opt_in_evidence: null,
+                created_by: ACTOR,
+                updated_by: ACTOR,
+              })
+              .returning('id')
+              .executeTakeFirstOrThrow()
+          ).id;
+        const cedar = await place(-90.85, 38.79);
+        const harmon = await place(-90.79, 38.812);
+        const es = await party('es');
+        const en = await party('en');
+        let n = 0;
+        const need = (category: string, locationId: string, partyId: string | null) =>
+          trx
+            .insertInto('cg.need')
+            .values({
+              tenant_id: county,
+              event_id: second,
+              category,
+              detail: null,
+              source: 'staff',
+              reference_code: `RE2${run.slice(0, 4).toUpperCase()}${++n}`,
+              report_id: null,
+              subject_party_id: null,
+              claimed_by_tenant_id: null,
+              claimed_by_account_id: null,
+              claimed_at: null,
+              assigned_by_account_id: null,
+              released_at: null,
+              done_at: null,
+              done_note: null,
+              location_id: locationId,
+              contact_party_id: partyId,
+              execution_id: null,
+            })
+            .execute();
+        // Cedar Ridge: 40 households, 30 asked in Spanish; 4 with pets; 3 want someone to talk to.
+        for (let i = 0; i < 40; i++) await need('food_water', cedar, i < 30 ? es : en);
+        for (let i = 0; i < 4; i++) await need('pets', cedar, es);
+        for (let i = 0; i < 3; i++) await need('someone_to_talk', cedar, es);
+        // Harmon City: 25 households.
+        for (let i = 0; i < 25; i++) await need('food_water', harmon, en);
+        await trx
+          .insertInto('cg.outage')
+          .values({
+            tenant_id: county,
+            event_id: second,
+            client_uuid: randomUUID(),
+            kind: 'power',
+            facility_name: null,
+            area: 'Exercise feeder 9',
+            customers_out: 6200,
+            started_at: new Date(Date.now() - 24 * 3_600_000),
+            created_by: ACTOR,
+            updated_by: ACTOR,
+          })
+          .execute();
+      });
+    });
+
+    const ask = async (kind: string, extra: Record<string, unknown> = {}) => {
+      const r = await call('mc', 'POST', '/recommendations', { kind, eventId: second, ...extra });
+      expect(r.status, JSON.stringify(r.body)).toBe(201);
+      return r.body as Omit<Recommendation, 'result'> & { result: unknown };
+    };
+
+    it('REC-05, REC-06: stops for the declared canteens, with windows, meals and setup notes; edited stop by stop', async () => {
+      const rec = await ask('feeding');
+      const r = rec.result as FeedingRecommendation;
+      expect(r.demand).toMatchObject({ households: 65, petHouseholds: 4, talkHouseholds: 3 });
+      expect(r.canteens.map((c) => [c.name, c.mealsPerHour])).toEqual([
+        ['Exercise Canteen A', 200],
+        ['Exercise Canteen B', null],
+      ]);
+      expect(
+        r.stops.map((x) => [x.stop, x.canteen?.name, x.window.start, x.households, x.meals]),
+      ).toEqual([
+        [1, 'Exercise Canteen A', '11:00', 40, 100],
+        [2, 'Exercise Canteen B', '11:00', 25, 63],
+      ]);
+      expect(r.stops[0]!.notes).toEqual([
+        'Most requests here came in Spanish: bring a Spanish-speaking volunteer',
+        '4 households here asked for help with pets: bring pet food',
+        '3 households here asked for someone to talk to: suggest a chaplain or crisis counselor at this stop',
+      ]);
+      expect(r.stops[1]!.unknown).toContain('meals an hour for Exercise Canteen B');
+      expect(r.inputs.map((i) => i.input)).toContain('Canteens on the roster');
+      // Only one canteen when asked for it.
+      const one = (await ask('feeding', { teamIds: [canteenA] })).result as FeedingRecommendation;
+      expect(one.canteens.map((c) => c.name)).toEqual(['Exercise Canteen A']);
+
+      const decide = (body: unknown) =>
+        call('mc', 'POST', `/recommendations/${rec.id}/decision`, body, {
+          'if-match': `"${rec.version}"`,
+        });
+      expect(
+        (await decide({ decision: 'accept', facilityId: ids['hs-gym'], reason: 'Exercise: gym' }))
+          .status,
+      ).toBe(400);
+      expect(
+        (
+          await decide({
+            decision: 'edit',
+            swaps: [{ stop: 9, place: 'Exercise lot' }],
+            reason: 'Exercise: no such stop',
+          })
+        ).status,
+      ).toBe(400);
+      const edited = await decide({
+        decision: 'edit',
+        swaps: [{ stop: 2, place: 'Exercise Grace church lot our team knows' }],
+        reason: 'Exercise: the team knows the church lot and its pastor',
+      });
+      expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+      expect(edited.body).toMatchObject({
+        state: 'edited',
+        chosenFacilityId: null,
+        decisionChanges: [
+          {
+            stop: 2,
+            from: r.stops[1]!.place,
+            to: 'Exercise Grace church lot our team knows',
+            facilityId: null,
+          },
+        ],
+      });
+      expect(await audits('recommendation.edit')).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            reason: 'Exercise: the team knows the church lot and its pastor',
+            target_id: rec.id,
+          }),
+        ]),
+      );
+    });
+
+    it('REC-07, REC-08: a Type II POD for 6,200 customers without power, its 72-hour supplies, sited on the fairgrounds lot', async () => {
+      const rec = await ask('pod');
+      const r = rec.result as PodRecommendation;
+      expect(r.demand).toMatchObject({
+        powerCustomersOut: 6200,
+        people: 15500,
+        peoplePerDay: 7750,
+      });
+      expect(r.pod).toEqual({ type: 'II', count: 1, peoplePerDay: 7750 });
+      expect(r.supplies).toMatchObject({ waterGallons: 23250, meals: 46500 });
+      expect(r.top[0]!.facilityId).toBe(ids['fair-lot']);
+      const why = new Map(r.excluded.map((x) => [x.facilityId, x.reasons.join(' ')]));
+      expect(why.get(ids['church-hall']!)).toContain('no semi-truck access');
+      // No Census profile in this county: walk-up points cannot be suggested, and it says so.
+      expect(r.checks).toContain(
+        'Census vehicle data is not loaded, so walk-up points cannot be suggested.',
+      );
+      const accepted = await call(
+        'em',
+        'POST',
+        `/recommendations/${rec.id}/decision`,
+        { decision: 'accept', reason: 'Exercise: submit the resource request to the state' },
+        { 'if-match': `"${rec.version}"` },
+      );
+      expect(accepted.body).toMatchObject({ state: 'accepted', chosenFacilityId: ids['fair-lot'] });
+    });
+
+    it('REC-09: the MARC partner mix follows the verified damage; interpreters follow the reports', async () => {
+      const { reportIds } = await loadDamageReports(dbWorker, {
+        tenantId: county,
+        eventId: second,
+        reviewerId: ACTOR,
+        count: 60,
+        tag: `rec${run}`,
+      });
+      const es = await withTenant(dbWorker, { tenantId: county }, async (trx) => {
+        const p = await trx
+          .insertInto('cg.party')
+          .values({
+            tenant_id: county,
+            kind: 'resident',
+            display_name_enc: null,
+            contact_enc: null,
+            phone_bidx: null,
+            email_bidx: null,
+            language: 'es',
+            sms_opt_in_evidence: null,
+            created_by: ACTOR,
+            updated_by: ACTOR,
+          })
+          .returning('id')
+          .executeTakeFirstOrThrow();
+        await trx
+          .updateTable('cg.report')
+          .set({ reporter_party_id: p.id })
+          .where('id', 'in', reportIds.slice(0, 7))
+          .execute();
+        const totals = countDamage(await loadDamageRecords(trx, second));
+        return totals.counted.cells
+          .filter((c) => c.degree === 'major' || c.degree === 'destroyed')
+          .reduce((n, c) => n + c.units, 0);
+      });
+      const r = (await ask('marc')).result as MarcRecommendation;
+      expect(r.demand.majorDestroyed).toBe(es);
+      expect(r.services.length).toBeGreaterThan(0);
+      if (es > 0) expect(r.services[0]!.service).toBe('Housing');
+      expect(r.services.find((x) => x.service === 'Crisis counseling')).toMatchObject({
+        households: 3,
+        tables: 1,
+      });
+      expect(r.interpreters[0]).toMatchObject({ language: 'es', name: 'Spanish', reports: 7 });
+      expect(r.sqftNeeded).toBe(1000 + r.tables * 100);
+      for (const t of r.top) expect(t.reasons).toContain('Accessible to wheelchair users (ADA)');
+      expect(r.checks[0]).toContain('Bus line');
+    });
   });
 });

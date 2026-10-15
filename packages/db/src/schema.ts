@@ -880,6 +880,8 @@ export interface TeamTable extends Stamped {
   skills: Generated<string[]>;
   equipment: Generated<string[]>;
   capacity: number | null;
+  /** A canteen's declared serving rate; null when unknown (REC-06, REC-10). */
+  meals_per_hour: number | null;
   check_in_interval_minutes: Generated<number>;
   status: Generated<'active' | 'stood_down' | 'archived'>;
   notes: string | null;
@@ -2273,7 +2275,7 @@ export interface RecommendationTable extends Stamped {
   id: Generated<Uuid>;
   tenant_id: Uuid;
   event_id: Uuid;
-  kind: 'shelter' | 'feeding' | 'pod' | 'walkup' | 'marc';
+  kind: 'shelter' | 'feeding' | 'pod' | 'marc';
   engine_version: string;
   result: JSONColumnType<Record<string, unknown>>;
   requested_by: Uuid | null;
@@ -2283,6 +2285,8 @@ export interface RecommendationTable extends Stamped {
   decision_reason: string | null;
   chosen_facility_id: Uuid | null;
   decision_note: string | null;
+  /** An edit's changes: for feeding, the stops swapped (REC-04). */
+  decision_changes: JSONColumnType<Record<string, unknown>[] | null, string | null, string | null>;
   execution_id: Uuid | null;
 }
 

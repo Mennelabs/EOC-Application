@@ -792,6 +792,11 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     skills: { c: 'internal', r: 'field_records' },
     equipment: { c: 'internal', r: 'field_records', d: 'DSP-02, FL-17: donated equipment' },
     capacity: { c: 'internal', r: 'field_records' },
+    meals_per_hour: {
+      c: 'internal',
+      r: 'field_records',
+      d: 'Meals an hour a canteen declares; null when unknown (REC-06)',
+    },
     check_in_interval_minutes: { c: 'internal', r: 'field_records', d: 'DSP-07 timer' },
     status: { c: 'internal', r: 'field_records' },
     notes: { c: 'internal', r: 'field_records' },
@@ -2104,7 +2109,7 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
   }),
   recommendation: table({
     event_id: { c: 'internal' },
-    kind: { c: 'internal', d: 'shelter, feeding, POD, walk-up point or MARC' },
+    kind: { c: 'internal', d: 'shelter, feeding, POD (with walk-up points) or MARC' },
     engine_version: { c: 'internal', d: 'Rules version that produced it (REC-12)' },
     result: {
       c: 'internal',
@@ -2117,6 +2122,10 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     decision_reason: { c: 'sensitive' },
     chosen_facility_id: { c: 'internal' },
     decision_note: { c: 'sensitive' },
+    decision_changes: {
+      c: 'sensitive',
+      d: 'What an edit changed: the place chosen instead, or the feeding stops swapped',
+    },
     execution_id: { c: 'internal' },
   }),
   facility: table({

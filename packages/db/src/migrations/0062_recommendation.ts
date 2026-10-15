@@ -6,6 +6,9 @@
  * engine version, weights and planning factors in force, so the answer can
  * be explained later exactly as it was shown. A named person accepts, edits
  * or rejects it with a reason; the decision is logged and audited (REC-04).
+ * An edit names the place chosen instead, or for feeding the stops swapped
+ * (docs/02: Ruth swaps one stop for a church lot her team knows). Walk-up
+ * points are part of a POD recommendation (REC-07, REC-08).
  */
 import { sql, type Kysely } from 'kysely';
 import { loadDictionary } from './0009_data_dictionary_rows.ts';
@@ -16,7 +19,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       id uuid primary key default gen_random_uuid(),
       tenant_id uuid not null references cg.tenant(id),
       event_id uuid not null references cg.event(id),
-      kind text not null check (kind in ('shelter', 'feeding', 'pod', 'walkup', 'marc')),
+      kind text not null check (kind in ('shelter', 'feeding', 'pod', 'marc')),
       engine_version text not null,
       result jsonb not null,
       requested_by uuid,
@@ -26,6 +29,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       decision_reason text,
       chosen_facility_id uuid references cg.facility(id),
       decision_note text,
+      decision_changes jsonb,
       execution_id uuid,
       version integer not null default 1,
       created_at timestamptz not null default now(),

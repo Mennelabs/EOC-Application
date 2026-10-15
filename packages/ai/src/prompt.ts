@@ -60,6 +60,11 @@ export function buildCommandPrompt(request: CommandInterpretRequest): {
     'Use only these commands, with their English verbs, filling the <...> parts from the request:',
     commands,
     'Write a mission number, need reference code or reminder title exactly as the request gives it; put a reminder title in double quotes.',
+    ...(request.onScreen
+      ? [
+          `The person has a ${request.onScreen} open on their screen. When the request means that ${request.onScreen} ("this", "it", "this one") without giving its ${request.onScreen === 'mission' ? 'number' : 'reference code'}, write the word this in its place, for example ${request.onScreen === 'mission' ? '/mission this status on_scene' : '/need this claim'}.`,
+        ]
+      : []),
     `Times: now is ${request.now} in ${request.timeZone}. Write "in 30m" or "in 2h" for a delay, HH:MM (24-hour) for a time today, "tomorrow HH:MM" for tomorrow.`,
     "If the request needs a detail you cannot read from it (which record, what time), set shorthand to null and ask one short question in the request's language.",
     'If no listed command fits, set both shorthand and question to null. Never invent a command or a record.',

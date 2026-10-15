@@ -108,6 +108,8 @@ export const contactRoutes: FastifyPluginAsync = async (instance) => {
           type: z.enum(types).optional(),
           active: z.coerce.boolean().optional(),
           due: z.coerce.boolean().optional(),
+          /** CMD-17: part of the agency's name. */
+          agency: z.string().trim().min(1).max(120).optional(),
         }),
         response: { 200: z.array(contactOut) },
       },
@@ -130,6 +132,8 @@ export const contactRoutes: FastifyPluginAsync = async (instance) => {
           .offset(q.offset);
         if (q.type) x = x.where('type', '=', q.type);
         if (q.active !== undefined) x = x.where('active', '=', q.active);
+        if (q.agency)
+          x = x.where('agency', 'ilike', `%${q.agency.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
         return x.execute();
       });
       const out = [];

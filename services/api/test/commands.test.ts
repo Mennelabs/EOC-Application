@@ -11,6 +11,7 @@ import { actions } from '@cg/authz';
 import { checkAlias } from '../src/commands/aliases.ts';
 import { CATALOG, DEFAULT_PHASES } from '../src/commands/catalog.ts';
 import {
+  ON_SCREEN,
   parseMinutes,
   parseShorthand,
   resolveWhen,
@@ -106,6 +107,98 @@ describe('shorthand', () => {
     expect(parse('/ayuda')).toMatchObject({ ok: false, error: 'help' });
   });
 
+  it('CMD-14, CMD-15, CMD-17: people, reports, resources and contacts, in English and Spanish', () => {
+    expect(parse('/people available skill:chainsaw department:"Public Works" Ana')).toEqual({
+      ok: true,
+      command: 'people.find',
+      args: {
+        availability: 'available',
+        skill: 'chainsaw',
+        department: 'Public Works',
+        name: 'Ana',
+      },
+      ref: null,
+      refKind: null,
+    });
+    expect(parse('/personas disponibles de_turno skill:motosierra')).toMatchObject({
+      command: 'people.find',
+      args: { availability: 'available', onDuty: true, skill: 'motosierra' },
+    });
+    expect(parse('/reports new flagged')).toMatchObject({
+      command: 'reports.find',
+      args: { state: 'submitted', flagged: true },
+    });
+    expect(parse('/reportes peligro WW-7K3Q9')).toMatchObject({
+      command: 'reports.find',
+      args: { danger: true, reference: 'WW-7K3Q9' },
+    });
+    expect(parse('/reports everything')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/recursos vivienda')).toMatchObject({
+      command: 'resources.find',
+      args: { category: 'vivienda' },
+    });
+    expect(parse('/contacts 24h Red Cross')).toMatchObject({
+      command: 'contacts.find',
+      args: { type: 'twenty_four_hour', agency: 'Red Cross' },
+    });
+    expect(parse('/contactos prensa')).toMatchObject({
+      command: 'contacts.find',
+      args: { type: 'media' },
+    });
+  });
+
+  it('CMD-13, AC-C01: priority, assignment, closure and reopening of a mission', () => {
+    expect(parse('/mission M-00012 priority urgent')).toEqual({
+      ok: true,
+      command: 'mission.priority',
+      args: { priority: 'urgent' },
+      ref: 'M-00012',
+      refKind: 'mission',
+    });
+    expect(parse('/misión M-00012 prioridad alta')).toMatchObject({ args: { priority: 'high' } });
+    expect(parse('/mission M-00012 priority whenever')).toMatchObject({ error: 'usage' });
+    expect(parse('/mission M-00012 assign Ana Ruiz')).toMatchObject({
+      command: 'mission.assign',
+      args: { person: 'Ana Ruiz' },
+    });
+    expect(parse('/mision M-00012 asignar')).toMatchObject({ error: 'usage' });
+    expect(parse('/mission M-00012 close disposition:referred')).toMatchObject({
+      command: 'mission.close',
+      args: { disposition: 'referred' },
+    });
+    expect(parse('/mission M-00012 cerrar')).toMatchObject({ command: 'mission.close', args: {} });
+    expect(parse('/mission M-00012 reabrir')).toMatchObject({ command: 'mission.reopen' });
+  });
+
+  it('CMD-06: "this" (or esta, este) stands for the record on the screen; any other word is a reference', () => {
+    expect(parse('/mission this status on_scene')).toMatchObject({
+      ok: true,
+      command: 'mission.status',
+      ref: ON_SCREEN,
+      refKind: 'mission',
+    });
+    expect(parse('/necesidad esta reclamar')).toMatchObject({
+      command: 'need.claim',
+      ref: ON_SCREEN,
+    });
+    expect(parse('/mission 20261009-003')).toMatchObject({ ref: '20261009-003' });
+  });
+
+  it('FL-07: "log two meals" and "I\'m done here" as shorthand, in English and Spanish', () => {
+    expect(parse('/log 2 meals')).toEqual({
+      ok: true,
+      command: 'service.log',
+      args: { count: 2, kind: 'meal' },
+      ref: null,
+      refKind: null,
+    });
+    expect(parse('/registrar tres comidas')).toMatchObject({ args: { count: 3, kind: 'meal' } });
+    expect(parse('/log water 12')).toMatchObject({ args: { count: 12, kind: 'water_case' } });
+    expect(parse('/log some meals')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/checkout')).toMatchObject({ command: 'shift.end', refKind: 'check_in' });
+    expect(parse('/salida')).toMatchObject({ command: 'shift.end' });
+  });
+
   it('free text after a sub-verb keeps its colons; only known keys are pairs', () => {
     expect(parse('/mission M-1 note Crew says: road closed at Elm')).toMatchObject({
       command: 'mission.note',
@@ -115,7 +208,7 @@ describe('shorthand', () => {
 
   it('CMD-12: unknown verbs and actions are unsupported, never guessed', () => {
     expect(parse('/delete everything')).toMatchObject({ ok: false, error: 'unsupported' });
-    expect(parse('/mission M-1 close')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/mission M-1 delete')).toMatchObject({ ok: false, error: 'usage' });
     expect(parse('claim the food need')).toMatchObject({ ok: false, error: 'unsupported' });
   });
 

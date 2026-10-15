@@ -53,6 +53,22 @@ const VERBS: Record<string, string> = {
   recuerdame: 'remind',
   sitrep: 'sitrep',
   informe: 'sitrep',
+  people: 'people',
+  personnel: 'people',
+  personas: 'people',
+  personal: 'people',
+  reports: 'reports',
+  reportes: 'reports',
+  resources: 'resources',
+  recursos: 'resources',
+  contacts: 'contacts',
+  contactos: 'contacts',
+  log: 'log',
+  registrar: 'log',
+  anotar: 'log',
+  checkout: 'checkout',
+  check_out: 'checkout',
+  salida: 'checkout',
   help: 'help',
   ayuda: 'help',
 };
@@ -77,6 +93,24 @@ const SUBVERBS: Record<string, string> = {
   complete: 'done',
   hecho: 'done',
   completar: 'done',
+  priority: 'priority',
+  prioridad: 'priority',
+  assign: 'assign',
+  asignar: 'assign',
+  close: 'close',
+  cerrar: 'close',
+  reopen: 'reopen',
+  reabrir: 'reopen',
+};
+
+const PRIORITIES: Record<string, string> = {
+  low: 'low',
+  baja: 'low',
+  normal: 'normal',
+  high: 'high',
+  alta: 'high',
+  urgent: 'urgent',
+  urgente: 'urgent',
 };
 
 const MISSION_STATES: Record<string, string> = {
@@ -109,7 +143,128 @@ const NEED_FILTERS: Record<string, string> = {
 };
 
 /** The keys a key:value pair may use; anything else with a colon stays part of the text. */
-const KEYS = new Set(['reason', 'text', 'note', 'role', 'to', 'minutes', 'title']);
+const KEYS = new Set([
+  'reason',
+  'text',
+  'note',
+  'role',
+  'to',
+  'minutes',
+  'title',
+  'skill',
+  'department',
+  'agency',
+  'disposition',
+]);
+
+/** CMD-14: availability as the roster records it. */
+const AVAILABILITY: Record<string, string> = {
+  available: 'available',
+  disponible: 'available',
+  disponibles: 'available',
+  assigned: 'assigned',
+  asignado: 'assigned',
+  asignados: 'assigned',
+  unavailable: 'unavailable',
+  no_disponible: 'unavailable',
+};
+
+/** CMD-15: the review queue's states and filters. */
+const REPORT_FILTERS: Record<string, [string, string | boolean]> = {
+  new: ['state', 'submitted'],
+  submitted: ['state', 'submitted'],
+  nuevos: ['state', 'submitted'],
+  under_review: ['state', 'under_review'],
+  en_revision: ['state', 'under_review'],
+  needs_information: ['state', 'needs_information'],
+  needs_info: ['state', 'needs_information'],
+  falta_informacion: ['state', 'needs_information'],
+  approved: ['state', 'approved'],
+  aprobados: ['state', 'approved'],
+  rejected: ['state', 'rejected'],
+  rechazados: ['state', 'rejected'],
+  duplicate: ['state', 'duplicate'],
+  duplicados: ['state', 'duplicate'],
+  flagged: ['flagged', true],
+  marcados: ['flagged', true],
+  danger: ['danger', true],
+  peligro: ['danger', true],
+};
+
+/** FL-07: what a frontline worker counts, in English and Spanish, singular or plural. */
+const SERVICE_KINDS: Record<string, string> = {
+  meal: 'meal',
+  meals: 'meal',
+  comida: 'meal',
+  comidas: 'meal',
+  water: 'water_case',
+  waters: 'water_case',
+  water_case: 'water_case',
+  water_cases: 'water_case',
+  agua: 'water_case',
+  aguas: 'water_case',
+  tarp: 'tarp',
+  tarps: 'tarp',
+  lona: 'tarp',
+  lonas: 'tarp',
+  cot: 'cot',
+  cots: 'cot',
+  catre: 'cot',
+  catres: 'cot',
+  ride: 'ride',
+  rides: 'ride',
+  viaje: 'ride',
+  viajes: 'ride',
+  people: 'person_served',
+  person: 'person_served',
+  persons: 'person_served',
+  personas: 'person_served',
+  voucher: 'voucher',
+  vouchers: 'voucher',
+  vale: 'voucher',
+  vales: 'voucher',
+  pet_food: 'pet_food',
+};
+
+const NUMBER_WORDS: Record<string, number> = {
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  uno: 1,
+  una: 1,
+  dos: 2,
+  tres: 3,
+  cuatro: 4,
+  cinco: 5,
+  seis: 6,
+  siete: 7,
+  ocho: 8,
+  nueve: 9,
+  diez: 10,
+};
+
+/** CMD-17: the kinds of partner contact. */
+const CONTACT_TYPES: Record<string, string> = {
+  operations: 'operations',
+  operaciones: 'operations',
+  '24h': 'twenty_four_hour',
+  twenty_four_hour: 'twenty_four_hour',
+  '24_horas': 'twenty_four_hour',
+  backup: 'backup',
+  respaldo: 'backup',
+  media: 'media',
+  medios: 'media',
+  prensa: 'media',
+  liaison: 'liaison',
+  enlace: 'liaison',
+};
 
 /** Separates key:value pairs from the words around them. */
 function split(tokens: string[]): { words: string[]; pairs: Record<string, string> } {
@@ -122,6 +277,16 @@ function split(tokens: string[]): { words: string[]; pairs: Record<string, strin
   }
   return { words, pairs };
 }
+
+/**
+ * CMD-06: "this" stands for the record open on the person's screen, which the
+ * window shows and sends as context; the server resolves it under the
+ * person's own permissions. Nothing on the screen is used unless named.
+ */
+export const ON_SCREEN = '@screen';
+const THIS_WORDS = new Set(['this', 'esta', 'este', 'esto']);
+const onScreen = (ref: string | undefined) =>
+  ref !== undefined && THIS_WORDS.has(norm(ref)) ? ON_SCREEN : ref;
 
 const usage = (message: string, u: string): Parsed => ({
   ok: false,
@@ -174,7 +339,8 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
     }
 
     case 'mission': {
-      const [ref, sub, ...rest] = words;
+      const [first, sub, ...rest] = words;
+      const ref = onScreen(first);
       if (!ref) return usage('Which mission? Give its number.', '/mission <number>');
       if (!sub) return ok('mission.show', {}, ref, 'mission');
       const s = SUBVERBS[norm(sub)];
@@ -198,9 +364,28 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
         const role = pairs['role'];
         return ok('mission.note', { text: body, ...(role ? { role } : {}) }, ref, 'mission');
       }
+      if (s === 'priority') {
+        const p = PRIORITIES[norm(rest[0] ?? '')];
+        if (!p)
+          return usage(
+            'Which priority? low, normal, high or urgent.',
+            '/mission <number> priority <low|normal|high|urgent>',
+          );
+        return ok('mission.priority', { priority: p }, ref, 'mission');
+      }
+      if (s === 'assign') {
+        const person = rest.join(' ').trim();
+        if (!person) return usage('Assign whom?', '/mission <number> assign <person>');
+        return ok('mission.assign', { person }, ref, 'mission');
+      }
+      if (s === 'close') {
+        const d = pairs['disposition'] ? norm(pairs['disposition']) : undefined;
+        return ok('mission.close', d ? { disposition: d } : {}, ref, 'mission');
+      }
+      if (s === 'reopen') return ok('mission.reopen', {}, ref, 'mission');
       return usage(
         `"${sub}" is not something the command window can do to a mission yet.`,
-        '/mission <number> [status <state> | note <text>]',
+        '/mission <number> [status <state> | note <text> | priority <level> | assign <person> | close | reopen]',
       );
     }
 
@@ -217,7 +402,8 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
     }
 
     case 'need': {
-      const [ref, sub, ...rest] = words;
+      const [first, sub, ...rest] = words;
+      const ref = onScreen(first);
       if (!ref || !sub)
         return usage(
           'Which need, and claim or release?',
@@ -280,6 +466,75 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
       const h = words[0] ? parseHours(words[0]) : 12;
       if (!h) return usage('For how many hours back?', '/sitrep [hours, e.g. 12]');
       return ok('sitrep.draft', { hours: h });
+    }
+
+    case 'people': {
+      const args: Record<string, unknown> = {};
+      const name: string[] = [];
+      for (const w of words) {
+        const n = norm(w);
+        if (AVAILABILITY[n]) args['availability'] = AVAILABILITY[n];
+        else if (n === 'on_duty' || n === 'de_turno' || n === 'en_turno') args['onDuty'] = true;
+        else name.push(w);
+      }
+      if (pairs['skill']) args['skill'] = pairs['skill'];
+      if (pairs['department']) args['department'] = pairs['department'];
+      if (name.length) args['name'] = name.join(' ');
+      return ok('people.find', args);
+    }
+
+    case 'reports': {
+      const args: Record<string, unknown> = {};
+      for (const w of words) {
+        const f = REPORT_FILTERS[norm(w)];
+        if (f) args[f[0]] = f[1];
+        // A reference code has a digit, so a mistyped filter word is not taken for one.
+        else if (/^(?=.*\d)[a-z0-9-]{6,12}$/iu.test(w)) args['reference'] = w;
+        else
+          return usage(
+            `"${w}" is not a reports filter.`,
+            '/reports [submitted|under_review|needs_information|flagged|danger|<reference code>]',
+          );
+      }
+      return ok('reports.find', args);
+    }
+
+    case 'resources': {
+      const category = words.map(norm).join('_');
+      return ok('resources.find', category ? { category } : {});
+    }
+
+    case 'log': {
+      let count: number | null = null;
+      let kind: string | null = null;
+      for (const w of words) {
+        const n = norm(w);
+        if (/^\d{1,4}$/.test(n)) count = Number(n);
+        else if (NUMBER_WORDS[n]) count = NUMBER_WORDS[n]!;
+        else if (SERVICE_KINDS[n]) kind = SERVICE_KINDS[n]!;
+      }
+      if (!count || !kind)
+        return usage(
+          'How many of what? For example "/log 2 meals".',
+          '/log <count> <meals|water|tarps|cots|rides|people|vouchers|pet_food>',
+        );
+      return ok('service.log', { count, kind });
+    }
+
+    case 'checkout':
+      return ok('shift.end', {}, '', 'check_in');
+
+    case 'contacts': {
+      const args: Record<string, unknown> = {};
+      const agency: string[] = [];
+      for (const w of words) {
+        const t = CONTACT_TYPES[norm(w)];
+        if (t) args['type'] = t;
+        else agency.push(w);
+      }
+      const a = (pairs['agency'] ?? agency.join(' ')).trim();
+      if (a) args['agency'] = a;
+      return ok('contacts.find', args);
     }
   }
   return { ok: false, error: 'unsupported', message: 'Not a command here.' };

@@ -70,6 +70,11 @@ export interface CommandInterpretRequest {
   /** The organization's time and zone, for relative times (CMD-10). */
   now: string;
   timeZone: string;
+  /**
+   * CMD-06: the kind of record open on the person's screen, if any; "this"
+   * then stands for it. Never which record.
+   */
+  onScreen?: 'mission' | 'need' | null;
 }
 
 /**

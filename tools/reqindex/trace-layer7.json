@@ -32,9 +32,9 @@
   ],
   "CMD-06": [
     "partial",
-    "Targets come only from identifiers named in the command (routes/commands.ts resolveTarget over the console's own list routes); the plan shows the one record or event it will affect; the event is asked for when more than one is open",
-    "services/api/test/commands.db.test.ts (AC-C06: the plan names the need; CMD-08: the chosen target; Section 30.2: the sitrep draft on the open event)",
-    "The window does not take the selected record or the current task from the screen: the person names the record by reference, code or title. Nothing visible is ever treated as a target."
+    "apps/web-console/src/ui/screen-record.ts: the mission detail screen and the needs board's open panel offer their record; the window names it in a checkbox the person can clear; \"this\" (esta, este) in shorthand, or in plain words read by the model (told only the kind on screen, prompt command-interpret-2), resolves it through GET /missions/:id or /needs/:id with the person's own credentials (routes/commands.ts resolveOnScreen), so a record they cannot see is not found; otherwise targets come from identifiers named in the command (resolveTarget); the plan shows the one record it affects",
+    "services/api/test/commands.db.test.ts (CMD-06: this with and without context, another kind, a record not visible, a planned change, plain words), services/api/test/commands.test.ts (CMD-06 parse), tests/e2e/console-l7.spec.ts (CMD-06, CMD-29, AC-C09 journey), packages/ai evaluation cases cmd-en-this-mission and cmd-es-this-need",
+    "The field app's current job is not yet offered as context; on the phone the person names the mission. Nothing on a screen is used unless the command says \"this\"."
   ],
   "CMD-07": [
     "pass",
@@ -74,33 +74,33 @@
   ],
   "CMD-13": [
     "partial",
-    "catalog.ts: missions.find and mission.show (phase 1), mission.note (phase 2, narrative entry), mission.status (phase 3: open, en route, on scene, cleared through /missions/:id/transitions with If-Match); locks and the transition graph are the console route's own (RULE-05, AC-02C)",
-    "services/api/test/commands.db.test.ts (lookups; CMD-27 mission note; Section 30.2 phase 3 and AC-02C: a locked mission refuses the command as it refuses the screen; Spanish /mision estado en_sitio)",
-    "Mission drafts, field updates, priority, assigning or releasing personnel, and closure or reopening are not catalogued (Section 30.2 phases 3–4); they stay on the dispatch screens."
+    "catalog.ts: missions.find and mission.show (phase 1), mission.note (phase 2, narrative entry), mission.status (phase 3: open, en route, on scene, cleared through /missions/:id/transitions with If-Match); locks and the transition graph are the console route's own (RULE-05, AC-02C); mission.priority (consequential, full review with a reason), mission.assign (the named person resolved among those the caller may see, the dispatch board's conflict checks), mission.close (disposition, releases everyone), mission.reopen, all phase 3",
+    "services/api/test/commands.db.test.ts (lookups; CMD-27 mission note; Section 30.2 phase 3 and AC-02C: a locked mission refuses the command as it refuses the screen; Spanish /mision estado en_sitio); services/api/test/commands.db.test.ts (CMD-13, AC-C01, CMD-08: priority, assignment of a named person, closure and reopening)",
+    "Mission drafts and field updates of other fields stay on the dispatch screens; release of a person is on the board."
   ],
   "CMD-14": [
-    "deferred",
-    "",
-    "",
-    "No personnel command in the catalog: finding people by skill or availability, profile updates and assignment requests stay on the roster and dispatch screens. Adding one is a catalog entry over the existing routes (ADR-0044); not scheduled in layer 7."
+    "partial",
+    "catalog.ts people.find (phase 1, personnel.read): GET /personnel gains q, skill, department, availability and onDuty filters; the answer lists only recorded skills (\"no skills recorded\" otherwise), never contact details; mission.assign requests an assignment through the dispatch board's own rules (conflicts stop it)",
+    "services/api/test/commands.db.test.ts (CMD-14, CMD-15, CMD-17: people by recorded skill and availability …; CMD-13, AC-C01: assignment), services/api/test/commands.test.ts",
+    "Updating profile and status fields from the window is not catalogued; assignment conflicts are shown by the board, and an override stays there."
   ],
   "CMD-15": [
-    "deferred",
-    "",
-    "",
-    "No damage-assessment command in the catalog (drafts, duplicate suggestions, evidence, review requests); these stay on the review and field screens. Not scheduled in layer 7."
+    "partial",
+    "catalog.ts reports.find (phase 1, report.read): the review queue by state, flags, danger and reference, the verification level kept apart from the review state and possible duplicates named",
+    "services/api/test/commands.db.test.ts (CMD-14, CMD-15, CMD-17 …), services/api/test/commands.test.ts",
+    "Creating or updating assessment drafts, recording evidence and requesting review from the window are not catalogued; they stay on the review and field screens."
   ],
   "CMD-16": [
     "partial",
-    "catalog.ts sitrep.draft (a draft through POST /official-reports, never issued, RULE-10), reminders.list, reminder.create, reminder.snooze, reminder.complete (the note of what was done saves before the reminder completes); AI summary drafting from the facts (routes/official-reports.ts, routes/drafting.ts, task G)",
+    "catalog.ts sitrep.draft (a draft through POST /official-reports, never issued, RULE-10), reminders.list, reminder.create, reminder.snooze, reminder.complete (the note of what was done saves before the reminder completes), service.log and shift.end (FL-07); AI summary drafting from the facts (routes/official-reports.ts, routes/drafting.ts, task G)",
     "services/api/test/commands.db.test.ts (Section 30.2: /sitrep drafted, not issued; reminders set, completed, ambiguous titles asked), services/api/test/commands.test.ts (CMD-16: done only with what was done), services/api/test/drafting.db.test.ts (CMD-16, AI-04: drafted from the facts)",
     "Exports and changing a reminder's text are not catalogued; they stay on their screens."
   ],
   "CMD-17": [
-    "deferred",
-    "",
-    "",
-    "No staff resource, contact or badge command in the catalog (Brother badge printing, decided 2026-10-15, runs from its screens). Residents find published resources through the Find help ask box (CMD-19). Not scheduled in layer 7."
+    "partial",
+    "catalog.ts resources.find (published resources) and contacts.find (active partner contacts by type and agency; restricted reads audited), phase 1; GET /contacts gains an agency filter",
+    "services/api/test/commands.db.test.ts (CMD-14, CMD-15, CMD-17 …), services/api/test/commands.test.ts",
+    "Drafting or updating resources and badge requests are not catalogued; badge printing (Brother, decided 2026-10-15) is a later task."
   ],
   "CMD-18": [
     "deferred",
@@ -169,10 +169,10 @@
     "Section 30.2, approved 2026-10-15: one-click undo for 15 minutes on reversible internal changes; everything else by a compensating action."
   ],
   "CMD-29": [
-    "partial",
-    "The window never writes into a screen's form; a change carries the version it was planned against (If-Match) and a changed record makes the plan stale (routes/commands.ts); unsent command text stays in the tab (command-window.tsx)",
-    "services/api/test/commands.db.test.ts (AC-C04, CMD-09: a changed record makes the plan stale)",
-    "The console does not register open drafts, so a command on a record with unsaved form changes neither warns nor offers keep, reconcile or discard (layer-7 plan §3; AC-C09)."
+    "pass",
+    "Screens register forms with unsaved text (screen-record.ts useOpenDraft: the mission narrative, closing note and lock reason; the need note); a change planned for that record shows an \"Unsaved changes\" group naming the form, with keep (cancels, focus back in the form) or discard and confirm, and no plain Confirm; a change carries the version it was planned against and a changed record makes the plan stale; after a change the screen showing the record reads it again; unsent command text stays in the tab",
+    "tests/e2e/console-l7.spec.ts (CMD-06, CMD-29, AC-C09: kept, then discarded, the note), services/api/test/commands.db.test.ts (AC-C04, CMD-09: a changed record makes the plan stale)",
+    ""
   ],
   "CMD-30": [
     "partial",
@@ -229,16 +229,16 @@
     "The targets are not enforced or measured: the OpenAI call times out at 20 s (AI_TIMEOUT_MS) and executions have no timeout; clarifications are not recorded; no completion, clarification or duplicate metric yet."
   ],
   "AC-C01": [
-    "partial",
-    "The command window is in the header of every console workspace (App.tsx, command-window.tsx) and acts on missions by reference from any screen (catalog.ts mission.show, mission.note, mission.status)",
-    "tests/e2e/console-l7.spec.ts (the window over the current screen), services/api/test/commands.db.test.ts (mission status from the window)",
-    "No assignment command is catalogued (Section 30.2 phase 3), so a dispatcher cannot yet request a mission assignment from the window; assignments stay on the dispatch board."
+    "pass",
+    "The command window is in the header of every console workspace (App.tsx, command-window.tsx) and acts on missions by reference from any screen (catalog.ts mission.show, mission.note, mission.status); /mission <reference> assign <person> (mission.assign, phase 3) from any screen, the person resolved by name among those the dispatcher may see",
+    "tests/e2e/console-l7.spec.ts (the window over the current screen), services/api/test/commands.db.test.ts (mission status from the window); services/api/test/commands.db.test.ts (CMD-13, AC-C01, CMD-08: assignment of a named person)",
+    "Phase 3 is on per county (Section 30.2)."
   ],
   "AC-C02": [
-    "partial",
-    "routes/commands.ts resolveTarget answers \"clarify\" with the authorized matches and plans nothing until one is chosen",
-    "services/api/test/commands.db.test.ts (CMD-08, AC-C02: two matching reminders ask which; nothing runs until one is chosen)",
-    "Shown with two reminders of similar title; there is no person-assignment command, so \"Assign Alex\" itself cannot be asked yet."
+    "pass",
+    "routes/commands.ts resolveTarget answers \"clarify\" with the authorized matches and plans nothing until one is chosen; the person a command names is resolved the same way: two people matching \"Cara Diaz\" ask which",
+    "services/api/test/commands.db.test.ts (CMD-08, AC-C02: two matching reminders ask which; nothing runs until one is chosen); services/api/test/commands.db.test.ts (CMD-13, AC-C01, CMD-08: two matching people ask which)",
+    ""
   ],
   "AC-C03": [
     "pass",
@@ -277,10 +277,10 @@
     "No message-sending command is catalogued, so the delivered-communication case itself is not exercised; plain words \"undo that\" map to no command."
   ],
   "AC-C09": [
-    "deferred",
-    "",
-    "",
-    "The console's open-draft registry (layer-7 plan §3) was not built in tasks B–C and is not scheduled, so a command does not ask to keep, reconcile or discard an unsaved form; the plan's version check only stops a write over a newer saved record (CMD-29)."
+    "pass",
+    "apps/web-console/src/ui/command-window.tsx (the unsaved-changes choice before confirming), screen-record.ts (open-draft registry), screens/needs.tsx and screens/missions.tsx register their forms",
+    "tests/e2e/console-l7.spec.ts (CMD-06, CMD-29, AC-C09: a claim over an unsaved note asks first; keep returns to the note with its text; discard empties it and the claim runs)",
+    ""
   ],
   "AC-C10": [
     "pass",
@@ -320,9 +320,9 @@
   ],
   "BRD:FR-C04": [
     "partial",
-    "catalog.ts: missions (find, show, note, status), needs (find, claim, release), reminders (list, create, snooze, complete), situation-report draft, each through the console's validated route; public coverage through /api/public/help/:tenant/ask",
+    "catalog.ts: missions (find, show, note, status), needs (find, claim, release), reminders (list, create, snooze, complete), situation-report draft, each through the console's validated route; public coverage through /api/public/help/:tenant/ask; people, reports, resources and contacts lookups; mission priority, assignment, closure and reopening",
     "services/api/test/commands.db.test.ts, services/api/test/help.db.test.ts (CMD-19)",
-    "Personnel, assessment, resource/contact/badge and administration commands are not catalogued (CMD-14, CMD-15, CMD-17, CMD-18)."
+    "Assessment drafts, resource drafts, badges and administration commands are not catalogued (CMD-15, CMD-17, CMD-18)."
   ],
   "BRD:FR-C05": [
     "pass",
@@ -734,9 +734,9 @@
   ],
   "FL-07": [
     "partial",
-    "apps/field/app/command.tsx \"Ask or command\" (home button for command.use): said with the keyboard's microphone or typed, plain words (read by the model when command.interpret is on) or shorthand; the plan is shown and confirmed on screen before anything saves; needs a connection and keeps nothing; routes/commands.ts over the 12-command catalog",
-    "tests/e2e/field.spec.ts (FL-07: asks for its reminders from the phone), services/api/test/commands.db.test.ts (AC-C06: a change waits for a confirmation bound to its plan; CMD-03: plain words with the feature on), services/api/test/commands.test.ts",
-    "The catalog has no command to log meals or refer to case management; a mission status change is the phase-3 command, on per county. Voice is the phone's own dictation, not server speech-to-text."
+    "apps/field/app/command.tsx \"Ask or command\" (home button for command.use): said with the keyboard's microphone or typed, plain words (read by the model when command.interpret is on) or shorthand; the plan is shown and confirmed on screen before anything saves; needs a connection and keeps nothing; routes/commands.ts over the catalog, which now has service.log (\"log two meals\": one tap, undone by a counter-entry, never an edit) and shift.end (\"I'm done here\": checks out the person's own open shift and puts them off duty); GET /check-ins?mine=true honours open",
+    "tests/e2e/field.spec.ts (FL-07: asks for its reminders from the phone), services/api/test/commands.db.test.ts (FL-07: log two meals and undo, check out, nothing to check out of; AC-C06: a change waits for a confirmation bound to its plan; CMD-03: plain words with the feature on), services/api/test/commands.test.ts (FL-07 shorthand in English and Spanish)",
+    "Referral to case management waits for the case-management work after layer 8 (decision 2026-10-15). A mission status change is the phase-3 command, on per county. Voice is the phone's own dictation, not server speech-to-text."
   ],
   "FL-12": [
     "pass",

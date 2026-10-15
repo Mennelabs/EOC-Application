@@ -231,7 +231,10 @@ export class FakeLanguageModel implements LanguageModel {
     request: CommandInterpretRequest,
   ): Promise<AiOutput<CommandInterpretation>> {
     const started = performance.now();
-    const output = { ...interpret(request.text), language: detectLanguage(request.text) };
+    const output = {
+      ...interpret(request.text, request.onScreen ?? null),
+      language: detectLanguage(request.text),
+    };
     return { output, provider: INFO, latencyMs: performance.now() - started };
   }
 
@@ -367,12 +370,16 @@ const STATUS_WORDS: [RegExp, string][] = [
  * one line of shorthand, a question, or nothing. The server parses the line
  * like typed shorthand, so these rules decide nothing.
  */
-function interpret(text: string): CommandInterpretation {
+function interpret(text: string, onScreen: 'mission' | 'need' | null): CommandInterpretation {
   if (COMMAND_INJECTION.test(text))
     return { shorthand: null, question: null, injectionSuspected: true };
   const t = text.toLowerCase();
-  const mission = MISSION_REF.exec(text)?.[0];
-  const need = mission ? undefined : NEED_REF.exec(text.toUpperCase())?.[0];
+  // CMD-06: "this" or "it" with a record open and no number given means that record.
+  const here = /\b(this|it|esta|este|esto)\b/i.test(t) ? onScreen : null;
+  const mission = MISSION_REF.exec(text)?.[0] ?? (here === 'mission' ? 'this' : undefined);
+  const need = mission
+    ? undefined
+    : (NEED_REF.exec(text.toUpperCase())?.[0] ?? (here === 'need' ? 'this' : undefined));
   if (need && /\b(claim|reclam|toma)/i.test(t))
     return { shorthand: `/need ${need} claim`, question: null };
   if (need && /\b(release|liber|suelta)/i.test(t))
@@ -399,6 +406,43 @@ function interpret(text: string): CommandInterpretation {
     const unit = /^h/i.test(remind[2]!) ? 'h' : 'm';
     return {
       shorthand: `/remind in ${remind[1]}${unit} "${remind[3]!.replace(/"/g, '')}"`,
+      question: null,
+    };
+  }
+  // FL-07: "log two meals", "registra tres comidas", "I'm done here".
+  const NUM: Record<string, string> = {
+    one: '1',
+    two: '2',
+    three: '3',
+    four: '4',
+    five: '5',
+    uno: '1',
+    una: '1',
+    dos: '2',
+    tres: '3',
+    cuatro: '4',
+    cinco: '5',
+  };
+  const logged =
+    /\b(?:log|registra|anota)\s+(\d+|one|two|three|four|five|uno|una|dos|tres|cuatro|cinco)\s+(meals?|comidas?|tarps?|lonas?|cots?|catres?|rides?|viajes?)\b/i.exec(
+      text,
+    );
+  if (logged)
+    return {
+      shorthand: `/log ${NUM[logged[1]!.toLowerCase()] ?? logged[1]} ${logged[2]!.toLowerCase()}`,
+      question: null,
+    };
+  if (
+    /\b(i'?m done here|i am done here|check me out|ya terminé aquí|ya termine aqui|terminé mi turno)\b/i.test(
+      t,
+    )
+  )
+    return { shorthand: '/checkout', question: null };
+  // CMD-14: who is free, by a recorded skill; nothing inferred.
+  if (/\b(who|quién|quien|people|personas)\b/i.test(t) && /\b(available|disponibles?)\b/i.test(t)) {
+    const skill = /\b(?:with|con)\s+(?:a\s+|an\s+)?([a-záéíóúñ]+)\b/i.exec(text)?.[1];
+    return {
+      shorthand: `/people available${skill ? ` skill:${skill.toLowerCase()}` : ''}`,
       question: null,
     };
   }

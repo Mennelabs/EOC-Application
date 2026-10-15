@@ -37,7 +37,7 @@ interface Execution {
     target: { id: string; version: number } | null;
   } | null;
   planHash: string | null;
-  options: { id: string; label: string }[];
+  options: { kind: string; id: string; label: string }[];
   result: { state: string; summary: string | null; records: { kind: string; id: string }[] } | null;
   error: { status: number; code: string } | null;
   undoUntil: string | null;
@@ -185,6 +185,7 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
     subjects['pio'] = as('public_information_officer');
     subjects['admin'] = as('tenant_admin');
     subjects['planner'] = as('reporting_planning');
+    subjects['canteen'] = as('canteen_crew');
     const loader: SubjectLoader = {
       async fromBearer(token) {
         const s = subjects[token];
@@ -265,6 +266,137 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
     expect(draft.status, draft.message).toBe('succeeded');
     expect(draft.result?.state).toBe('drafted');
     expect(draft.message).toContain('not issued');
+  });
+
+  it('CMD-14, CMD-15, CMD-17: people by recorded skill and availability, reports, resources and contacts run at once, as each role may see them', async () => {
+    await withTenant(dbWorker, { tenantId: county }, (trx) =>
+      trx
+        .insertInto('cg.personnel')
+        .values([
+          {
+            tenant_id: county,
+            name: `Exercise Ana Ruiz ${run}`,
+            department: 'Public Works',
+            skills: ['chainsaw', 'first aid'],
+            availability: 'available',
+            duty_status: 'on_duty',
+          },
+          {
+            tenant_id: county,
+            name: `Exercise Ben Lo ${run}`,
+            department: 'Fire',
+            skills: ['cdl'],
+            availability: 'assigned',
+            duty_status: 'on_duty',
+          },
+        ])
+        .execute(),
+    );
+    const people = await command('mc', '/people available skill:chain');
+    expect(people.status, people.message).toBe('succeeded');
+    expect(people.message).toContain(`Exercise Ana Ruiz ${run}`);
+    expect(people.message).toContain('skills: chainsaw, first aid');
+    expect(people.message).not.toContain('Ben Lo');
+    // Nothing is inferred: someone with no recorded skill is said to have none.
+    const fire = await command('mc', `/people department:Fire Ben`);
+    expect(fire.message).toContain(`Exercise Ben Lo ${run}`);
+    expect(fire.message).toContain('assigned');
+
+    const made = await call('admin', 'POST', '/contacts', {
+      agency: `Exercise Red Cross ${run}`,
+      name: 'Exercise duty officer',
+      type: 'twenty_four_hour',
+      methods: { phone: '+13145550111' },
+    });
+    expect(made.status, JSON.stringify(made.body)).toBe(201);
+    const contacts = await command('mc', `/contactos 24h Red Cross ${run}`);
+    expect(contacts.status, contacts.message).toBe('succeeded');
+    expect(contacts.message).toContain(`Exercise Red Cross ${run} twenty four hour`);
+
+    const reports = await command('mc', '/reports flagged');
+    expect(reports.status, reports.message).toBe('succeeded');
+    expect(reports.message).toBe('No report matches.');
+    const resources = await command('mc', '/resources housing');
+    expect(resources.status, resources.message).toBe('succeeded');
+
+    // A role without the read is refused before anything runs.
+    expect((await command('pio', '/people available')).status).toBe('denied');
+    expect((await command('field', '/reports')).status).toBe('denied');
+  });
+
+  it('FL-07: "log two meals" counts with one tap and undoes with a counter-entry; "I\'m done here" checks out the person\'s own shift', async () => {
+    // Without a check-in there is nothing to check out of.
+    const none = await command('canteen', '/checkout');
+    expect(none.status).toBe('not_found');
+    expect(none.message).toContain('not checked in');
+    const personnelId = await withTenant(dbWorker, { tenantId: county }, async (trx) => {
+      await trx
+        .insertInto('cg.account')
+        .values({
+          id: subjects['canteen']!.accountId,
+          tenant_id: county,
+          email: `canteen-${run}@example.org`,
+          display_name: `Exercise canteen crew ${run}`,
+        })
+        .execute();
+      const p = await trx
+        .insertInto('cg.personnel')
+        .values({
+          tenant_id: county,
+          account_id: subjects['canteen']!.accountId,
+          name: `Exercise canteen crew ${run}`,
+          duty_status: 'on_duty',
+        })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      await trx
+        .insertInto('cg.check_in')
+        .values({
+          tenant_id: county,
+          personnel_id: p.id,
+          event_id: eventId,
+          method: 'console',
+          started_at: new Date(Date.now() - 3 * 3_600_000),
+        })
+        .execute();
+      return p.id;
+    });
+    const counted = async () =>
+      (
+        await dbWorker
+          .selectFrom('cg.service_log')
+          .select('count')
+          .where('tenant_id', '=', county)
+          .where('kind', '=', 'meal')
+          .execute()
+      ).reduce((n, r) => n + Number(r.count), 0);
+    const before = await counted();
+    const meals = await command('canteen', '/log 2 meals');
+    expect(meals.status, meals.message).toBe('awaiting_confirmation');
+    expect(meals.plan?.description).toBe('Log 2 meals.');
+    const logged = await confirm('canteen', meals);
+    expect(logged.body['status'], JSON.stringify(logged.body)).toBe('succeeded');
+    expect(logged.body['message']).toBe('Logged 2 meals.');
+    expect(await counted()).toBe(before + 2);
+    // Undo inside the window adds a counter-entry; nothing is edited or deleted.
+    const undo = await call('canteen', 'POST', `/commands/${meals.id}/undo`, {
+      executionId: randomUUID(),
+    });
+    expect(undo.status, JSON.stringify(undo.body)).toBe(200);
+    expect(await counted()).toBe(before);
+
+    const out = await command('canteen', '/salida');
+    expect(out.status, out.message).toBe('awaiting_confirmation');
+    const done = await confirm('canteen', out);
+    expect(done.body['status'], JSON.stringify(done.body)).toBe('succeeded');
+    expect(done.body['message']).toMatch(/Checked out after 3 hours\. You are off duty\./);
+    const person = await dbWorker
+      .selectFrom('cg.personnel')
+      .select('duty_status')
+      .where('id', '=', personnelId)
+      .executeTakeFirstOrThrow();
+    expect(person.duty_status).toBe('off_duty');
+    expect((await command('canteen', '/checkout')).status).toBe('not_found');
   });
 
   it('CMD-21: a role without the action is refused before anything is planned', async () => {
@@ -452,6 +584,81 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
     expect(ok.body['message']).toContain('on scene');
   });
 
+  it('CMD-13, AC-C01, CMD-08: with phase 3 on, priority, assignment of a named person, closure and reopening run through the dispatch rules; two matching people ask which', async () => {
+    const reason = { 'x-confirm': 'true', 'x-reason': 'Exercise: crew reports water rising' };
+    // Priority is consequential: the plan waits for the full review with a reason.
+    const urgent = await command('field', `/mission ${missionRef} priority urgent`);
+    expect(urgent.status, urgent.message).toBe('awaiting_confirmation');
+    expect((await confirm('field', urgent)).status).toBe(428);
+    const raised = await confirm('field', urgent, reason);
+    expect(raised.body['status'], JSON.stringify(raised.body)).toBe('succeeded');
+    expect(raised.body['message']).toContain('urgent priority');
+
+    const [cara, caraLee] = await withTenant(dbWorker, { tenantId: county }, async (trx) => {
+      const ids: string[] = [];
+      for (const name of [`Exercise Cara Diaz ${run}`, `Exercise Cara Diaz-Lee ${run}`])
+        ids.push(
+          (
+            await trx
+              .insertInto('cg.personnel')
+              .values({
+                tenant_id: county,
+                name,
+                skills: ['damage assessment'],
+                availability: 'available',
+                duty_status: 'on_duty',
+              })
+              .returning('id')
+              .executeTakeFirstOrThrow()
+          ).id,
+        );
+      return ids;
+    });
+    // Two people match "Cara Diaz": the window asks which, among those this person may see.
+    const which = await command('field', `/mission ${missionRef} assign Cara Diaz`);
+    expect(which.status).toBe('clarify');
+    expect(which.options.map((o) => [o.kind, o.id]).sort()).toEqual(
+      [
+        ['personnel', cara],
+        ['personnel', caraLee],
+      ].sort(),
+    );
+    const picked = await command('field', `/mission ${missionRef} assign Cara Diaz`, {
+      personId: caraLee,
+    });
+    expect(picked.status, picked.message).toBe('awaiting_confirmation');
+    expect(picked.plan?.description).toContain(`Exercise Cara Diaz-Lee ${run}`);
+    const assigned = await confirm('field', picked);
+    expect(assigned.body['status'], JSON.stringify(assigned.body)).toBe('succeeded');
+    const rows = await dbWorker
+      .selectFrom('cg.assignment')
+      .select(['personnel_id', 'mission_id'])
+      .where('mission_id', '=', missionId)
+      .execute();
+    expect(rows.map((r) => r.personnel_id)).toContain(caraLee);
+    // An exact full name needs no question.
+    const exact = await command('field', `/mission ${missionRef} assign Exercise Cara Diaz ${run}`);
+    expect(exact.status, exact.message).toBe('awaiting_confirmation');
+    expect((await command('field', `/mission ${missionRef} assign Nobody Here`)).status).toBe(
+      'not_found',
+    );
+
+    const closing = await command('field', `/mission ${missionRef} close disposition:completed`);
+    expect(closing.status, closing.message).toBe('awaiting_confirmation');
+    const closed = await confirm('field', closing, reason);
+    expect(closed.body['status'], JSON.stringify(closed.body)).toBe('succeeded');
+    expect(closed.body['message']).toContain('closed');
+    const reopening = await command('field', `/mission ${missionRef} reabrir`);
+    const reopened = await confirm('field', reopening, {
+      ...reason,
+      'x-reason': 'Exercise: second call from the same address',
+    });
+    expect(reopened.body['status'], JSON.stringify(reopened.body)).toBe('succeeded');
+    expect(reopened.body['message']).toContain('again');
+    // A role without the actions is refused before anything is planned.
+    expect((await command('mc', `/mission ${missionRef} priority low`)).status).toBe('denied');
+  });
+
   it('CMD-03, AIG-01, AIG-09: plain words are read into shorthand only with the feature on; the plan shows the reading; injection is refused; cancel and confirm are recorded', async () => {
     const words = `claim need ${ref(2)} for our pantry`;
     expect((await command('mc', words)).status).toBe('unsupported');
@@ -511,6 +718,50 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
     expect(unclear.status).toBe('clarify');
     expect(unclear.message).toContain(missionRef);
     expect((await outputs()).map((o) => o.outcome)).toEqual(['ok', 'ok', 'filtered', 'ok']);
+  });
+
+  it('CMD-06: "this" is the record open on the screen, read again under the person\'s own permissions; without one, or with another kind, nothing is guessed', async () => {
+    const screen = { context: { kind: 'mission', id: missionId } };
+    const shown = await command('field', '/mission this', screen);
+    expect(shown.status, shown.message).toBe('succeeded');
+    expect(shown.result?.records.map((r) => r.id)).toEqual([missionId]);
+    // Without context, or with a need open, "this" mission is not guessed.
+    const bare = await command('field', '/mission this');
+    expect(bare.status).toBe('not_found');
+    expect(bare.message).toContain('open on your screen');
+    const other = await command('field', '/mision esta', {
+      context: { kind: 'need', id: needIds[0] },
+    });
+    expect(other.status).toBe('not_found');
+    // A record the person cannot see reads as not found, the same as an unknown one.
+    const hidden = await command('field', '/mission this', {
+      context: { kind: 'mission', id: randomUUID() },
+    });
+    expect(hidden.status).toBe('not_found');
+    expect(hidden.message).toBe('The mission on your screen is not one you can see now.');
+    // A change on "this" plans against the record's id and version like a named one.
+    const need = await command('mc', '/need this claim', {
+      context: { kind: 'need', id: needIds[1] },
+    });
+    expect(need.status, need.message).toBe('awaiting_confirmation');
+    expect(need.plan?.target?.id).toBe(needIds[1]);
+    expect(need.plan?.description).toContain(ref(2));
+    await call('mc', 'POST', `/commands/${need.id}/cancel`);
+    // Plain words (the feature is on from CMD-03): the model is told only the kind on screen.
+    const words = await command('mc', 'claim this need please', {
+      context: { kind: 'need', id: needIds[1] },
+    });
+    expect(words.status, words.message).toBe('awaiting_confirmation');
+    expect(words.plan?.interpretation).toBe('/need this claim');
+    expect(words.plan?.target?.id).toBe(needIds[1]);
+    await call('mc', 'POST', `/commands/${words.id}/cancel`);
+    // A context of an unknown kind is refused by the schema.
+    const bad = await call('mc', 'POST', '/commands', {
+      executionId: randomUUID(),
+      input: '/mission this',
+      context: { kind: 'personnel', id: randomUUID() },
+    });
+    expect(bad.status).toBe(400);
   });
 
   it('CMD-04, BRD:FR-18.05: personal aliases look things up for their owner only; organization aliases need the explicit, confirmed action; every expansion is shown and checked again when used', async () => {

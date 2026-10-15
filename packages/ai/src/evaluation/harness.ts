@@ -66,6 +66,7 @@ async function commandResults(
       commands: COMMAND_EVAL_CATALOG,
       now: '2026-10-15T15:00:00Z',
       timeZone: 'America/Chicago',
+      onScreen: c.onScreen ?? null,
     });
     const words = (out.output.shorthand ?? '').toLowerCase().split(/\s+/).filter(Boolean);
     const hit =

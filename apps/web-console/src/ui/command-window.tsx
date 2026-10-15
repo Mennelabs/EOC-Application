@@ -7,11 +7,20 @@
  * server, which answers with a plan; nothing changes until the person
  * confirms it. Questions are labelled form controls; progress and results are
  * announced once in a polite live region. Unsent text stays in this tab only;
- * nothing is replayed by itself after a lost connection (CMD-34).
+ * nothing is replayed by itself after a lost connection (CMD-34). The record
+ * open on the screen is shown and is what "this" means, unless the person
+ * sets it aside (CMD-06); a change to a record with unsaved changes in a form
+ * asks before it runs (CMD-29, AC-C09).
  */
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { api, ApiFailure, describeFailure } from '../api/client.ts';
 import { Field } from './primitives.tsx';
+import {
+  announceChanged,
+  useCurrentScreenRecord,
+  useOpenDrafts,
+  type ScreenRecord,
+} from './screen-record.ts';
 
 interface CommandMeta {
   name: string;
@@ -162,6 +171,15 @@ const reversalText = (c: CommandMeta) =>
       ? 'This is not undone here: a mistake is corrected by a new entry, and both stay in the history.'
       : '';
 
+/** What a "which one?" answer sets: the event, the person or the record. */
+type Choice = { targetId?: string; eventId?: string; personId?: string };
+const choiceOf = (o: { kind: string; id: string }): Choice =>
+  o.kind === 'event'
+    ? { eventId: o.id }
+    : o.kind === 'personnel'
+      ? { personId: o.id }
+      : { targetId: o.id };
+
 export function CommandWindow({ navigate }: { navigate: (to: string) => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -179,6 +197,11 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
   const [aliasLine, setAliasLine] = useState('');
   const [aliasScope, setAliasScope] = useState<'personal' | 'organization'>('personal');
   const [aliasProblem, setAliasProblem] = useState<string | null>(null);
+  const onScreen = useCurrentScreenRecord();
+  // CMD-06: the person can set the screen's record aside; a new record is offered afresh.
+  const [setAside, setSetAside] = useState<string | null>(null);
+  const context: ScreenRecord | null = onScreen && setAside !== onScreen.id ? onScreen : null;
+  const drafts = useOpenDrafts();
   const titleId = useId();
   const shortcutLabel = `${navigator.platform.startsWith('Mac') ? 'Command' : 'Ctrl'}+${prefs.letter.toUpperCase()}`;
 
@@ -221,10 +244,17 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
 
   const settle = (e: Execution) => {
     setCurrent(e);
+    // A screen showing the changed record reads it again.
+    if (e.status === 'succeeded' && e.plan?.target && e.command?.kind === 'change')
+      announceChanged(e.plan.target.kind, e.plan.target.id);
     setChoice('');
+    const unsaved =
+      e.status === 'awaiting_confirmation' &&
+      e.command?.kind === 'change' &&
+      drafts.some((d) => d.kind === e.plan?.target?.kind && d.id === e.plan?.target?.id);
     setAnnounce(
       e.status === 'awaiting_confirmation'
-        ? `Plan ready: ${e.plan?.description ?? ''} Check it, then confirm or cancel.`
+        ? `Plan ready: ${e.plan?.description ?? ''} ${unsaved ? 'You have unsaved changes to it on your screen: keep them or discard them first.' : 'Check it, then confirm or cancel.'}`
         : e.message,
     );
   };
@@ -239,9 +269,12 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
     setAnnounce(msg);
   };
 
-  const prepare = async (extra: { targetId?: string; eventId?: string } = {}) => {
+  // Choices made while answering "which one?" for this line: a mission, then a person, add up.
+  const chosen = useRef<Choice>({});
+  const prepare = async (extra: Choice | null = null) => {
     const line = text.trim();
     if (!line) return;
+    chosen.current = extra ? { ...chosen.current, ...extra } : {};
     setBusy(true);
     setProblem(null);
     setAnnounce('Working…');
@@ -251,7 +284,8 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
           executionId: crypto.randomUUID(),
           input: line,
           remember: !prefs.shared,
-          ...extra,
+          ...chosen.current,
+          ...(context ? { context: { kind: context.kind, id: context.id } } : {}),
         },
       });
       settle(e);
@@ -290,6 +324,25 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
       ? act(`/commands/${current.id}/confirm`, { planHash: current.planHash })
       : undefined;
   const cancelPlan = () => (current?.id ? act(`/commands/${current.id}/cancel`) : undefined);
+
+  // CMD-29, AC-C09: forms on the screen with unsaved changes to the record this change touches.
+  const target = current?.status === 'awaiting_confirmation' ? current.plan?.target : null;
+  const clash =
+    target && current?.command?.kind === 'change'
+      ? drafts.filter((d) => d.kind === target.kind && d.id === target.id)
+      : [];
+  const backToDrafts = async () => {
+    const draft = clash[0];
+    await cancelPlan();
+    // Focus goes to the form with the changes, not back to the window's button.
+    opener.current = null;
+    close();
+    draft?.focus();
+  };
+  const discardAndConfirm = async () => {
+    for (const d of clash) d.discard();
+    await confirmPlan();
+  };
   const undo = () =>
     current?.id
       ? act(`/commands/${current.id}/undo`, { executionId: crypto.randomUUID() })
@@ -403,7 +456,7 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
         <form onSubmit={submit}>
           <Field
             label="Command"
-            hint="Shorthand starts with / (try /help), or ask in plain words. Nothing changes until you confirm a plan."
+            hint={`Shorthand starts with / (try /help), or ask in plain words.${context ? ` "This" means ${context.kind} ${context.label}.` : ''} Nothing changes until you confirm a plan.`}
             {...(problem ? { error: problem } : {})}
           >
             {({ id, describedBy, invalid }) => (
@@ -422,6 +475,16 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
               />
             )}
           </Field>
+          {onScreen ? (
+            <label className="choice">
+              <input
+                type="checkbox"
+                checked={context !== null}
+                onChange={(e) => setSetAside(e.target.checked ? null : onScreen.id)}
+              />{' '}
+              Let &ldquo;this&rdquo; mean {onScreen.kind} {onScreen.label}, open on your screen
+            </label>
+          ) : null}
           <div className="actions">
             <button type="submit" className="primary" disabled={busy}>
               {busy ? 'Working…' : 'Go'}
@@ -468,7 +531,7 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
                   e.preventDefault();
                   const o = current.options.find((x) => x.id === choice);
                   if (!o) return;
-                  void prepare(o.kind === 'event' ? { eventId: o.id } : { targetId: o.id });
+                  void prepare(choiceOf(o));
                 }}
               >
                 <fieldset>
@@ -516,19 +579,41 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
                     </>
                   ) : null}
                 </dl>
-                <div className="actions">
-                  <button type="button" onClick={() => void cancelPlan()} disabled={busy}>
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="primary"
-                    onClick={() => void confirmPlan()}
-                    disabled={busy}
-                  >
-                    Confirm
-                  </button>
-                </div>
+                {clash.length ? (
+                  <div className="status info" role="group" aria-label="Unsaved changes">
+                    <p>
+                      You have unsaved changes to this {target!.kind} on your screen (
+                      {clash.map((d) => d.form).join(', ')}). This command changes the same{' '}
+                      {target!.kind}; nothing runs over your changes without your say.
+                    </p>
+                    <div className="actions">
+                      <button type="button" onClick={() => void backToDrafts()} disabled={busy}>
+                        Keep my changes and go back to them
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void discardAndConfirm()}
+                        disabled={busy}
+                      >
+                        Discard my changes and confirm
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="actions">
+                    <button type="button" onClick={() => void cancelPlan()} disabled={busy}>
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="primary"
+                      onClick={() => void confirmPlan()}
+                      disabled={busy}
+                    >
+                      Confirm
+                    </button>
+                  </div>
+                )}
               </>
             ) : null}
 

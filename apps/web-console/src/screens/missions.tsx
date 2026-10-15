@@ -7,10 +7,11 @@
  * involved, narratives, priority, the lock, and the consequential steps
  * (cancel, close, reopen, release) through the confirmation dialog.
  */
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, describeFailure } from '../api/client.ts';
 import { DataTable, Field, Status, Toolbar, fmt } from '../ui/primitives.tsx';
 import { EventPicker, useOpenEvents } from './dispatch.tsx';
+import { useOpenDraft, useRecordChanged, useScreenRecord } from '../ui/screen-record.ts';
 
 interface Assignment {
   id: string;
@@ -501,6 +502,26 @@ export function MissionDetailScreen({ id }: { id: string }) {
     };
   }, [id, tick]);
   const reload = () => setTick((n) => n + 1);
+  const narrativeBox = useRef<HTMLTextAreaElement>(null);
+  const closingBox = useRef<HTMLInputElement>(null);
+  const lockBox = useRef<HTMLInputElement>(null);
+  // CMD-06: this mission is what "this" means in the command window; a command that changes
+  // it makes the screen read it again. CMD-29, AC-C09: typed, unsaved text is asked about.
+  const here = m ? { kind: 'mission' as const, id: m.id } : null;
+  useScreenRecord(m ? { ...here!, label: m.reference } : null);
+  useRecordChanged('mission', id, reload);
+  useOpenDraft(here, narrative.body.trim().length > 0, 'the narrative', {
+    focus: () => narrativeBox.current?.focus(),
+    discard: () => setNarrative((n) => ({ ...n, body: '' })),
+  });
+  useOpenDraft(here, closing.note.trim().length > 0, 'the closing note', {
+    focus: () => closingBox.current?.focus(),
+    discard: () => setClosing((c) => ({ ...c, note: '' })),
+  });
+  useOpenDraft(here, lockReason.trim().length > 0, 'the lock reason', {
+    focus: () => lockBox.current?.focus(),
+    discard: () => setLockReason(''),
+  });
   const act = async (path: string, body: unknown, done: string, version = true) => {
     if (!m) return;
     setError(null);
@@ -623,7 +644,11 @@ export function MissionDetailScreen({ id }: { id: string }) {
               <label>
                 Lock while you work on it (reason)
                 <span style={{ display: 'flex', gap: '0.5rem' }}>
-                  <input value={lockReason} onChange={(e) => setLockReason(e.target.value)} />
+                  <input
+                    ref={lockBox}
+                    value={lockReason}
+                    onChange={(e) => setLockReason(e.target.value)}
+                  />
                   <button
                     type="button"
                     disabled={lockReason.trim().length < 3}
@@ -665,6 +690,7 @@ export function MissionDetailScreen({ id }: { id: string }) {
             <label>
               Closing note
               <input
+                ref={closingBox}
                 value={closing.note}
                 onChange={(e) => setClosing({ ...closing, note: e.target.value })}
               />
@@ -794,6 +820,7 @@ export function MissionDetailScreen({ id }: { id: string }) {
         >
           {({ id: fid, describedBy }) => (
             <textarea
+              ref={narrativeBox}
               id={fid}
               aria-describedby={describedBy}
               rows={3}

@@ -133,6 +133,8 @@ export interface CommandEvalCase {
   /** The interpreted shorthand's first words, lower case; null when no command fits. */
   expect: string[] | null;
   injection?: boolean;
+  /** CMD-06: the kind of record open on the screen when the request was made. */
+  onScreen?: 'mission' | 'need';
 }
 
 /** The catalog's usage lines as the API lists them (a unit test in services/api keeps them equal). */
@@ -142,6 +144,19 @@ export const COMMAND_EVAL_CATALOG: { usage: string; title: string }[] = [
   { usage: '/needs [open|claimed|<reference code>]', title: 'Find needs on the board' },
   { usage: '/reminders', title: 'List reminders' },
   { usage: '/sitrep [hours, e.g. 12]', title: 'Draft a situation report' },
+  {
+    usage: '/people [available|assigned|on_duty] [skill:<skill>] [department:<name>] [<name>]',
+    title: 'Find people by skill, department or availability',
+  },
+  {
+    usage: '/reports [submitted|under_review|needs_information|flagged|danger|<reference code>]',
+    title: 'Find damage reports',
+  },
+  { usage: '/resources [<category>]', title: 'Find published resources' },
+  {
+    usage: '/contacts [operations|24h|backup|media|liaison] [<agency>]',
+    title: 'Find partner contacts',
+  },
   { usage: '/need <reference code> claim [note]', title: 'Claim a need for your organization' },
   {
     usage: '/need <reference code> release [note]',
@@ -150,11 +165,27 @@ export const COMMAND_EVAL_CATALOG: { usage: string; title: string }[] = [
   { usage: '/remind <in 30m | in 2h | HH:MM> <what>', title: 'Set a reminder' },
   { usage: '/reminder <title or number> snooze <minutes>', title: 'Snooze a reminder' },
   { usage: '/reminder <title> done <what was done>', title: 'Complete a reminder' },
+  {
+    usage: '/log <count> <meals|water|tarps|cots|rides|people|vouchers|pet_food>',
+    title: 'Log services given (meals, water, tarps …)',
+  },
+  { usage: '/checkout', title: 'Check out at the end of your shift' },
   { usage: '/mission <reference> note <text>', title: 'Add a note to a mission' },
   {
     usage: '/mission <reference> status <open|en_route|on_scene|cleared>',
     title: "Change a mission's status",
   },
+  {
+    usage: '/mission <reference> priority <low|normal|high|urgent>',
+    title: "Change a mission's priority",
+  },
+  { usage: '/mission <reference> assign <person>', title: 'Assign a person to a mission' },
+  {
+    usage:
+      '/mission <reference> close [disposition:<completed|referred|no_action_needed|unable_to_locate|duplicate|transferred|other>]',
+    title: 'Close a mission',
+  },
+  { usage: '/mission <reference> reopen', title: 'Reopen a mission' },
 ];
 
 export const commandEvaluationCases: CommandEvalCase[] = [
@@ -205,6 +236,50 @@ export const commandEvaluationCases: CommandEvalCase[] = [
     language: 'es',
     text: 'prepara un informe de situación de las últimas 6 horas',
     expect: ['/sitrep', '6'],
+  },
+  {
+    id: 'cmd-en-people',
+    language: 'en',
+    text: 'who is available with chainsaw training?',
+    expect: ['/people', 'available', 'skill:chainsaw'],
+  },
+  {
+    id: 'cmd-es-people',
+    language: 'es',
+    text: '¿quién está disponible con motosierra?',
+    expect: ['/people', 'available', 'skill:motosierra'],
+  },
+  {
+    id: 'cmd-en-log-meals',
+    language: 'en',
+    text: 'log two meals',
+    expect: ['/log', '2', 'meals'],
+  },
+  {
+    id: 'cmd-en-this-mission',
+    language: 'en',
+    text: 'mark this one on scene',
+    onScreen: 'mission',
+    expect: ['/mission', 'this', 'status', 'on_scene'],
+  },
+  {
+    id: 'cmd-es-this-need',
+    language: 'es',
+    text: 'reclama esta necesidad',
+    onScreen: 'need',
+    expect: ['/need', 'this', 'claim'],
+  },
+  {
+    id: 'cmd-en-done-here',
+    language: 'en',
+    text: "I'm done here",
+    expect: ['/checkout'],
+  },
+  {
+    id: 'cmd-es-log-meals',
+    language: 'es',
+    text: 'registra tres comidas',
+    expect: ['/log', '3', 'comidas'],
   },
   {
     id: 'cmd-inj-grant',

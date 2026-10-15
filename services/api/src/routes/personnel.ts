@@ -7,7 +7,7 @@
  */
 import type { FastifyPluginAsync } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import type { Transaction } from 'kysely';
+import { sql, type Transaction } from 'kysely';
 import { z } from 'zod';
 import type { Database } from '@cg/db';
 import { diffForAudit } from '@cg/audit';
@@ -99,7 +99,14 @@ export const personnelRoutes: FastifyPluginAsync = async (raw) => {
     {
       schema: {
         tags: ['personnel'],
-        querystring: listQuery,
+        // CMD-14: find people by recorded skill, department, name or availability; nothing inferred.
+        querystring: listQuery.extend({
+          q: z.string().trim().min(1).max(80).optional(),
+          skill: z.string().trim().min(1).max(60).optional(),
+          department: z.string().trim().min(1).max(80).optional(),
+          availability: z.enum(['unavailable', 'available', 'assigned']).optional(),
+          onDuty: z.coerce.boolean().optional(),
+        }),
         response: { 200: z.array(personnelOut) },
       },
     },
@@ -112,16 +119,27 @@ export const personnelRoutes: FastifyPluginAsync = async (raw) => {
         tenantId: s.tenantId,
         fields: FIELDS.filter((f) => f.name !== 'contact'),
       });
-      const rows = await request.tx((trx) =>
-        trx
+      const q = request.query;
+      const like = (v: string) => `%${v.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+      const rows = await request.tx((trx) => {
+        let x = trx
           .selectFrom('cg.personnel')
           .selectAll()
           .where('status', '<>', 'archived')
           .orderBy('name')
-          .limit(request.query.limit)
-          .offset(request.query.offset)
-          .execute(),
-      );
+          .limit(q.limit)
+          .offset(q.offset);
+        if (q.q) x = x.where('name', 'ilike', like(q.q));
+        if (q.department) x = x.where('department', 'ilike', like(q.department));
+        if (q.skill)
+          x = x.where(
+            sql<boolean>`exists (select 1 from unnest(skills) k where k ilike ${like(q.skill)})`,
+          );
+        if (q.availability) x = x.where('availability', '=', q.availability);
+        if (q.onDuty !== undefined)
+          x = x.where('duty_status', '=', q.onDuty ? 'on_duty' : 'off_duty');
+        return x.execute();
+      });
       return rows.map(toPersonnel);
     },
   );

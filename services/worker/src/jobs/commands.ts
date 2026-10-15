@@ -18,7 +18,7 @@ import { allTenantIds, asSystem, systemAudit } from '../system.ts';
 import type { JobContext } from './types.ts';
 
 /** The catalog's free-text arguments (a unit test in services/api keeps this list complete). */
-export const FREE_TEXT_ARGS = ['note', 'text', 'title', 'reason'] as const;
+export const FREE_TEXT_ARGS = ['note', 'text', 'title', 'reason', 'person'] as const;
 
 /** Section 30.2 and the API's plan lifetime: unconfirmed for this long, a plan is prepared again. */
 export const PLAN_TTL_MS = 15 * 60_000;

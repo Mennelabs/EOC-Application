@@ -1441,17 +1441,17 @@ export const rosterRoutes: FastifyPluginAsync = async (instance) => {
       const q = request.query;
       if (q.mine) {
         await request.authorize('me.read', { type: 'account', tenantId: s.tenantId });
-        const rows = await request.tx((trx) =>
-          trx
+        const rows = await request.tx((trx) => {
+          let x = trx
             .selectFrom('cg.check_in as c')
             .innerJoin('cg.personnel as p', 'p.id', 'c.personnel_id')
             .selectAll('c')
             .select('p.name as personnel_name')
-            .where('p.account_id', '=', s.accountId)
-            .orderBy('c.started_at', 'desc')
-            .limit(q.limit)
-            .execute(),
-        );
+            .where('p.account_id', '=', s.accountId);
+          // FL-07: "I'm done here" looks for the person's own open shift only.
+          if (q.open) x = x.where('c.ended_at', 'is', null);
+          return x.orderBy('c.started_at', 'desc').limit(q.limit).execute();
+        });
         return rows.map(toCheckIn);
       }
       await request.authorize('check_in.read', { type: 'check_in', tenantId: s.tenantId });

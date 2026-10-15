@@ -1,6 +1,6 @@
 /**
  * Pluggable AI interfaces (AIG-12): one each for language models, speech to
- * text, translation and image analysis. Providers are chosen per tenant in
+ * text, text to speech, translation and image analysis. Providers are chosen per tenant in
  * configuration; every output records which provider and model produced it.
  * A provider may be enabled for a tenant only when it meets AIG-06 (US
  * processing, zero data retention, no training on customer data) and passes
@@ -90,6 +90,47 @@ export interface LanguageModel {
   interpretCommand?(request: CommandInterpretRequest): Promise<AiOutput<CommandInterpretation>>;
   /** Web search for public places that could serve residents (layer-7 task F, REC-13). Optional. */
   discoverPlaces?(request: DiscoveryRequest): Promise<AiOutput<DiscoveryOutput>>;
+  /** A draft written from computed facts only, each sentence citing its facts (layer-7 task G). Optional. */
+  draft?(request: DraftRequest): Promise<AiOutput<DraftOutput>>;
+}
+
+/** What a draft is for (CMD-16, CON-06, DCL:DEC-14, PUB-11, PUB-12, PUB-14). */
+export type DraftPurpose =
+  | 'report_summary'
+  | 'declaration_box8'
+  | 'declaration_box9'
+  | 'pio_post'
+  | 'radio_script'
+  | 'wea_alert';
+
+/** One computed fact a draft may state; nothing else may be stated (AI-04, AI-09). */
+export interface DraftFact {
+  id: string;
+  label: string;
+  /** Null is unknown: the draft says so and never gives a number for it. */
+  value: string | number | null;
+}
+
+export interface DraftRequest {
+  purpose: DraftPurpose;
+  language: 'en' | 'es';
+  facts: DraftFact[];
+  /** The rules' own draft, for order and tone. */
+  template?: string;
+  /** The whole draft fits in this many characters (a WEA message, a post). */
+  maxChars?: number;
+}
+
+export interface DraftSentence {
+  text: string;
+  /** The ids of the facts the sentence states. */
+  factIds: string[];
+}
+
+export interface DraftOutput {
+  sentences: DraftSentence[];
+  /** Fact text tried to instruct the model (AIG-02). */
+  injectionSuspected: boolean;
 }
 
 export type DiscoveryPlaceKind =
@@ -160,6 +201,18 @@ export interface SpeechToText {
   ): Promise<AiOutput<{ text: string; language: string }>>;
 }
 
+/** What the AI voice speaks (PUB-14): an approved script, never anything about a person. */
+export interface SpeechRequest {
+  text: string;
+  language: string;
+  /** How it is read: a station loop or a net read-out. Never changes the words. */
+  style: 'radio_loop' | 'net_readout';
+}
+
+export interface TextToSpeech {
+  speak(request: SpeechRequest): Promise<AiOutput<{ audio: Buffer; mimeType: string }>>;
+}
+
 export interface Translator {
   translate(
     text: string,
@@ -216,6 +269,7 @@ export interface AiProvider {
   readonly languages: readonly string[];
   readonly llm?: LanguageModel;
   readonly stt?: SpeechToText;
+  readonly tts?: TextToSpeech;
   readonly translation?: Translator;
   readonly image?: ImageAnalysis;
   readonly classifier?: DamageClassifier;

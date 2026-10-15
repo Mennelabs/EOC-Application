@@ -149,6 +149,21 @@ export async function download(
  * the same bearer token and error envelope as `api`, a PUT with the file's
  * own content type.
  */
+/** A file the API produces, for the page to play or show (PUB-14 audio). */
+export async function fetchBlob(path: string): Promise<Blob> {
+  const token = await accessToken();
+  if (!token)
+    throw new ApiFailure(401, {
+      code: 'signed_out',
+      message: 'Your session ended. Sign in again.',
+      fields: [],
+      retryable: false,
+    });
+  const res = await fetch(`/api/v1${path}`, { headers: { authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new ApiFailure(res.status, (await res.json()) as Envelope);
+  return res.blob();
+}
+
 export async function upload<T>(path: string, file: Blob, contentType: string): Promise<T> {
   const token = await accessToken();
   if (!token)

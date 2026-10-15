@@ -422,6 +422,35 @@ describe('OpenAI provider (ADR-0043)', () => {
     expect(out.output).toEqual({ text: 'Necesitamos agua.', language: 'es' });
   });
 
+  it('PUB-14: speaks an approved script with the speech model as MP3, the words as written', async () => {
+    const mp3 = Buffer.from([0xff, 0xfb, 0x90, 0x44, 0x00]);
+    const { sent, fetchImpl } = recorded(new Response(mp3, { status: 200 }));
+    const text =
+      'Este anuncio lo lee una voz generada por computadora. Le habla Manejo de Emergencias de Westwind County.';
+    const out = await provider(fetchImpl).speak({ text, language: 'es', style: 'net_readout' });
+    expect(sent[0]!.url).toBe('https://api.openai.com/v1/audio/speech');
+    const body = sent[0]!.body as Record<string, string>;
+    expect(body).toMatchObject({
+      model: 'gpt-4o-mini-tts',
+      voice: 'alloy',
+      input: text,
+      response_format: 'mp3',
+    });
+    expect(body['instructions']).toContain('exactly as written');
+    expect(body['instructions']).toContain('Spanish');
+    expect(body['instructions']).toContain('amateur radio net');
+    expect(out.output).toEqual({ audio: mp3, mimeType: 'audio/mpeg' });
+    expect(out.provider).toMatchObject({ provider: 'openai', templateVersion: 'speech-1' });
+    // Nothing to speak, or more than the model takes, is refused before any call.
+    await expect(
+      provider(fetchImpl).speak({ text: ' ', language: 'en', style: 'radio_loop' }),
+    ).rejects.toBeInstanceOf(AiProviderError);
+    await expect(
+      provider(fetchImpl).speak({ text: 'a'.repeat(4097), language: 'en', style: 'radio_loop' }),
+    ).rejects.toBeInstanceOf(AiProviderError);
+    expect(sent).toHaveLength(1);
+  });
+
   it('AI-10, BRD:INT-04, NFR-10: failures, refusals, timeouts and bad replies are typed errors that carry no content', async () => {
     const secret = 'Rosa Delgado at 12 Willow St';
     const cases: [Response | (() => Promise<Response>), string][] = [

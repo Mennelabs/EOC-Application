@@ -6,9 +6,10 @@ import { commandAliasRoutes } from './command-aliases.ts';
 import { commandRoutesWith, type CommandDeps } from './commands.ts';
 import { breakGlassRoutes } from './breakglass.ts';
 import { contactRoutes } from './contacts.ts';
-import { declarationRoutes } from './declaration.ts';
+import { declarationRoutesWith } from './declaration.ts';
 import { femaMappingRoutes } from './fema-mappings.ts';
-import { officialReportRoutes } from './official-reports.ts';
+import { officialReportRoutesWith } from './official-reports.ts';
+import type { DraftingDeps } from './drafting.ts';
 import { definitionRoutes } from './definitions.ts';
 import { dispatchRoutes, type DispatchDeps } from './dispatch.ts';
 import { eventRoutes } from './events.ts';
@@ -39,7 +40,7 @@ import { reportRoutes } from './reports.ts';
 import { resourceRoutes } from './resources.ts';
 import { roleRoutes } from './roles.ts';
 import { rosterRoutes } from './roster.ts';
-import { siteRoutes } from './sites.ts';
+import { siteRoutesWith } from './sites.ts';
 import { sharedRoutes } from './shared.ts';
 import { situationRoutes } from './situation.ts';
 import { tenantRoutes } from './tenants.ts';
@@ -57,6 +58,7 @@ export interface RouteDeps {
   refdata?: RefdataDeps;
   metrics?: { productName?: string };
   commands?: CommandDeps;
+  drafting?: DraftingDeps;
 }
 
 /** Route plugins mounted under /api/v1. Each layer adds its modules here. */
@@ -75,7 +77,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   intakeGraphRoutes,
   sharedRoutes,
   needRoutes,
-  siteRoutes,
+  siteRoutesWith(deps.drafting),
   missionRoutesWith(deps.missions),
   rosterRoutes,
   volunteerRoutes,
@@ -91,8 +93,8 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   messageRoutes,
   referralRoutes,
   refdataRoutes(deps.refdata),
-  declarationRoutes,
-  officialReportRoutes,
+  declarationRoutesWith(deps.drafting),
+  officialReportRoutesWith(deps.drafting),
   femaMappingRoutes,
   exportRoutes(deps.exports),
   packagePhotoRoutes(deps.packagePhotos),

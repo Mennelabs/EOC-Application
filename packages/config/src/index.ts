@@ -91,6 +91,8 @@ export const platformSchema = baseSchema.extend({
   AI_MODEL_CLASSIFIER: optionalString,
   AI_MODEL_TRANSCRIPTION: optionalString,
   AI_MODEL_SPEECH: optionalString,
+  /** PUB-14: the text-to-speech voice for radio scripts. */
+  AI_SPEECH_VOICE: optionalString,
   /** Per call (BRD:INT-04); a timeout falls back to the manual path (AI-10). */
   AI_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
 });
@@ -275,6 +277,7 @@ export function aiEnv(c: z.infer<typeof platformSchema>): Record<string, string 
     AI_MODEL_CLASSIFIER: c.AI_MODEL_CLASSIFIER,
     AI_MODEL_TRANSCRIPTION: c.AI_MODEL_TRANSCRIPTION,
     AI_MODEL_SPEECH: c.AI_MODEL_SPEECH,
+    AI_SPEECH_VOICE: c.AI_SPEECH_VOICE,
     AI_TIMEOUT_MS: String(c.AI_TIMEOUT_MS),
   };
 }

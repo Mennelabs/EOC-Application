@@ -2294,6 +2294,23 @@ export interface RecommendationTable extends Stamped {
 }
 
 /** REC-13: a source the county names for resource discovery (its own feeds, or web search). */
+/** PUB-14: an AI-voiced audio file of an approved radio script (layer-7 task G). */
+export interface PublicAudioTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  site_id: Uuid;
+  form: 'radioLoop' | 'netReadout';
+  language: 'en' | 'es';
+  script: string;
+  object_key: string;
+  mime_type: string;
+  bytes: number;
+  sha256: string;
+  provider: string;
+  model: string;
+  ai_output_id: Uuid | null;
+}
+
 export interface DiscoverySourceTable extends Stamped {
   id: Generated<Uuid>;
   tenant_id: Uuid;
@@ -3145,6 +3162,7 @@ export interface Database {
   'cg.facility': FacilityTable;
   'cg.facility_change': FacilityChangeTable;
   'cg.recommendation': RecommendationTable;
+  'cg.public_audio': PublicAudioTable;
   'cg.discovery_source': DiscoverySourceTable;
   'cg.discovery_run': DiscoveryRunTable;
   'cg.discovery_candidate': DiscoveryCandidateTable;

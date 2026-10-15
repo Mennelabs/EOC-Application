@@ -28,16 +28,25 @@ import type {
   DiscoveredPlace,
   DiscoveryOutput,
   DiscoveryRequest,
+  DraftOutput,
+  DraftRequest,
   ExtractionOutput,
   ExtractionRequest,
   ImageAnalysis,
   LanguageModel,
   ProviderInfo,
   Region,
+  SpeechRequest,
   SpeechToText,
+  TextToSpeech,
   Translator,
 } from '../types.ts';
-import { buildCommandPrompt, buildDiscoveryPrompt, buildExtractionPrompt } from '../prompt.ts';
+import {
+  buildCommandPrompt,
+  buildDiscoveryPrompt,
+  buildDraftPrompt,
+  buildExtractionPrompt,
+} from '../prompt.ts';
 
 export type OpenAIFunction = 'text' | 'vision' | 'classifier' | 'transcription' | 'speech';
 
@@ -59,6 +68,8 @@ export const OPENAI_TEMPLATES = {
   transcription: 'transcription-1',
   command: 'command-interpret-1',
   discovery: 'discovery-search-1',
+  draft: 'draft-from-facts-1',
+  speech: 'speech-1',
 } as const;
 
 /**
@@ -81,6 +92,8 @@ export interface OpenAIConfig {
   models?: Partial<Record<OpenAIFunction, string>>;
   /** Per call; 20 s by default (BRD:INT-04). */
   timeoutMs?: number;
+  /** The text-to-speech voice (PUB-14); `alloy` by default. */
+  voice?: string;
   fetch?: typeof fetch;
   now?: () => number;
 }
@@ -188,6 +201,17 @@ const urlKey = (raw: string): string | null => {
   }
 };
 
+const DRAFT_SCHEMA = strictObject({
+  sentences: {
+    type: 'array',
+    items: strictObject({
+      text: { type: 'string' },
+      factIds: { type: 'array', items: { type: 'string' } },
+    }),
+  },
+  injectionSuspected: { type: 'boolean' },
+});
+
 const TRANSLATION_SCHEMA = strictObject({
   text: { type: 'string' },
   detectedLanguage: { type: ['string', 'null'] },
@@ -233,6 +257,7 @@ export class OpenAIProvider implements AiProvider {
   readonly languages = ['en', 'es'] as const;
   readonly llm: LanguageModel;
   readonly stt: SpeechToText;
+  readonly tts: TextToSpeech;
   readonly translation: Translator;
   readonly image: ImageAnalysis;
   readonly classifier: DamageClassifier;
@@ -257,8 +282,10 @@ export class OpenAIProvider implements AiProvider {
       extract: (r) => this.extract(r),
       interpretCommand: (r) => this.interpretCommand(r),
       discoverPlaces: (r) => this.discover(r),
+      draft: (r) => this.draft(r),
     };
     this.stt = { transcribe: (a, m, l) => this.transcribe(a, m, l) };
+    this.tts = { speak: (r) => this.speak(r) };
     this.translation = { translate: (t, to, from) => this.translate(t, to, from) };
     this.image = { analyse: (i, m) => this.analyse(i, m) };
     this.classifier = { classify: (i, c) => this.classify(i, c) };
@@ -541,6 +568,38 @@ export class OpenAIProvider implements AiProvider {
     );
   }
 
+  /**
+   * Layer-7 task G: a draft from computed facts only, each sentence naming the
+   * facts it states. The server checks every figure against them before anyone
+   * sees it (`checkDraft`); this method only shapes the reply.
+   */
+  async draft(request: DraftRequest): Promise<AiOutput<DraftOutput>> {
+    const started = this.now();
+    const { system, user } = buildDraftPrompt(request);
+    const { json, model } = await this.respond(
+      'text',
+      'draft',
+      system,
+      [{ type: 'input_text', text: user }],
+      DRAFT_SCHEMA,
+    );
+    const raw = Array.isArray(json['sentences']) ? (json['sentences'] as Json[]) : [];
+    return this.out(
+      {
+        sentences: raw.slice(0, 40).map((x) => ({
+          text: String(x['text'] ?? '').slice(0, 1000),
+          factIds: Array.isArray(x['factIds'])
+            ? (x['factIds'] as unknown[]).map(String).slice(0, 20)
+            : [],
+        })),
+        injectionSuspected: json['injectionSuspected'] === true,
+      },
+      model,
+      OPENAI_TEMPLATES.draft,
+      started,
+    );
+  }
+
   async translate(
     text: string,
     to: string,
@@ -595,6 +654,42 @@ export class OpenAIProvider implements AiProvider {
       { text: body.text, language: language ?? 'und' },
       this.models.transcription,
       OPENAI_TEMPLATES.transcription,
+      started,
+    );
+  }
+
+  /**
+   * PUB-14: speaks an approved radio script with the speech model. The words
+   * are read as written; the instructions set only the pace and manner. MP3,
+   * at most 4,096 characters, two minutes.
+   */
+  async speak(request: SpeechRequest): Promise<AiOutput<{ audio: Buffer; mimeType: string }>> {
+    const started = this.now();
+    if (!request.text.trim() || request.text.length > 4096)
+      throw new AiProviderError('invalid_output');
+    const language = request.language === 'es' ? 'Spanish' : 'English';
+    const manner =
+      request.style === 'net_readout'
+        ? 'like a message read over an amateur radio net for relay: slow and distinct, with a pause after each sentence so it can be written down'
+        : 'like a public information announcement on a low-power AM radio station: calm, clear and unhurried';
+    const res = await this.post(
+      '/audio/speech',
+      JSON.stringify({
+        model: this.models.speech,
+        voice: this.config.voice ?? 'alloy',
+        input: request.text,
+        instructions: `Read the text exactly as written, word for word, in ${language}, ${manner}. Read numbers and street addresses plainly.`,
+        response_format: 'mp3',
+      }),
+      'application/json',
+      Math.max(this.timeoutMs, 120_000),
+    );
+    const audio = Buffer.from(await res.arrayBuffer());
+    if (!audio.length) throw new AiProviderError('invalid_output');
+    return this.out(
+      { audio, mimeType: 'audio/mpeg' },
+      this.models.speech,
+      OPENAI_TEMPLATES.speech,
       started,
     );
   }
@@ -705,6 +800,7 @@ export function openAIFromEnv(env: Record<string, string | undefined>): OpenAIPr
   const timeout = Number(env['AI_TIMEOUT_MS']);
   return new OpenAIProvider({
     apiKey,
+    ...(env['AI_SPEECH_VOICE'] ? { voice: env['AI_SPEECH_VOICE'] } : {}),
     ...(env['OPENAI_BASE_URL'] ? { baseUrl: env['OPENAI_BASE_URL'] } : {}),
     ...(env['OPENAI_ORGANIZATION'] ? { organization: env['OPENAI_ORGANIZATION'] } : {}),
     models,

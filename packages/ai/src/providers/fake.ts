@@ -14,12 +14,16 @@ import type {
   CommandInterpretRequest,
   DiscoveryOutput,
   DiscoveryRequest,
+  DraftOutput,
+  DraftRequest,
   ExtractionOutput,
   ExtractionRequest,
   ImageAnalysis,
   LanguageModel,
   ProviderInfo,
+  SpeechRequest,
   SpeechToText,
+  TextToSpeech,
   Translator,
 } from '../types.ts';
 
@@ -229,6 +233,38 @@ export class FakeLanguageModel implements LanguageModel {
   }
 
   /**
+   * Tests only: the rules' own draft, sentence by sentence, each citing the
+   * facts whose figures it holds; without a template, one sentence per fact.
+   */
+  async draft(request: DraftRequest): Promise<AiOutput<DraftOutput>> {
+    const started = performance.now();
+    const figures = (t: string) => new Set(figuresOf(t));
+    const sentences = request.template
+      ? request.template
+          .split(/(?<=[.!?])\s+/)
+          .filter((t) => t.trim())
+          .map((text) => {
+            const want = figures(text);
+            const cites = request.facts
+              .filter((f) => [...figures(`${f.label} ${f.value ?? ''}`)].some((x) => want.has(x)))
+              .map((f) => f.id);
+            return {
+              text,
+              factIds: cites.length ? cites : request.facts.slice(0, 1).map((f) => f.id),
+            };
+          })
+      : request.facts.map((f) => ({
+          text: `${f.label}: ${f.value ?? (request.language === 'es' ? 'aún no se sabe' : 'not known yet')}.`,
+          factIds: [f.id],
+        }));
+    return {
+      output: { sentences, injectionSuspected: false },
+      provider: INFO,
+      latencyMs: performance.now() - started,
+    };
+  }
+
+  /**
    * Tests only: one fictional hall in the area with a fictional page, and a
    * closure for any listed place whose name says it closed. Never a real place.
    */
@@ -342,6 +378,34 @@ export class FakeSpeechToText implements SpeechToText {
   }
 }
 
+/**
+ * Tests only: a silent 8 kHz WAV whose length follows the number of words
+ * (a tenth of a second each, at most ten seconds), so a test can tell a file
+ * was made for the script it sent. Never a voice.
+ */
+export class FakeTextToSpeech implements TextToSpeech {
+  async speak(request: SpeechRequest) {
+    const rate = 8000;
+    const words = request.text.split(/\s+/).filter(Boolean).length;
+    const samples = Math.min(rate * 10, Math.max(rate / 10, words * (rate / 10)));
+    const audio = Buffer.alloc(44 + samples, 128);
+    audio.write('RIFF', 0, 'ascii');
+    audio.writeUInt32LE(36 + samples, 4);
+    audio.write('WAVE', 8, 'ascii');
+    audio.write('fmt ', 12, 'ascii');
+    audio.writeUInt32LE(16, 16);
+    audio.writeUInt16LE(1, 20);
+    audio.writeUInt16LE(1, 22);
+    audio.writeUInt32LE(rate, 24);
+    audio.writeUInt32LE(rate, 28);
+    audio.writeUInt16LE(1, 32);
+    audio.writeUInt16LE(8, 34);
+    audio.write('data', 36, 'ascii');
+    audio.writeUInt32LE(samples, 40);
+    return { output: { audio, mimeType: 'audio/wav' }, provider: INFO, latencyMs: 0 };
+  }
+}
+
 export class FakeTranslator implements Translator {
   /** Returns the text unchanged so reviewers see an honest label, never a wrong translation (EQ-08). */
   async translate(text: string, _to: string, from?: string) {
@@ -376,6 +440,12 @@ export const fakeProvider: AiProvider = {
   languages: ['en', 'es'],
   llm: new FakeLanguageModel(),
   stt: new FakeSpeechToText(),
+  tts: new FakeTextToSpeech(),
   translation: new FakeTranslator(),
   image: new FakeImageAnalysis(),
 };
+
+/** Figures in a text, as the draft check reads them. */
+function figuresOf(text: string): number[] {
+  return [...text.matchAll(/\d[\d,]*(?:\.\d+)?/g)].map((m) => Number(m[0].replace(/,/g, '')));
+}

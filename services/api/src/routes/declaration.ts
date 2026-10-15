@@ -24,6 +24,7 @@ import type { Database } from '@cg/db';
 import {
   CATEGORIES,
   OUTAGE_KINDS,
+  boxFacts,
   declarationData,
   declarationView,
   foreignPartners,
@@ -35,6 +36,7 @@ import {
 } from '@cg/reporting';
 import { errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
+import { aiDraft, type DraftingDeps } from './drafting.ts';
 import { classifierFor, iso, partnerRollupIn, partnerRollupOut, uuidParam } from './helpers.ts';
 
 type Trx = Transaction<Database>;
@@ -110,620 +112,735 @@ const paSiteOut = z.object({
 // Kept here for the tests that import it with the routes.
 export { filingClock } from '@cg/reporting';
 
-export const declarationRoutes: FastifyPluginAsync = async (raw) => {
-  const app = raw.withTypeProvider<ZodTypeProvider>();
-  const account = (request: FastifyRequest) => {
-    const s = request.subject;
-    if (s.kind !== 'account') throw errors.unauthorized();
-    return s;
-  };
-  const eventOf = async (trx: Trx, eventId: string) => {
-    const event = await trx
-      .selectFrom('cg.event')
-      .select(['id', 'tenant_id'])
-      .where('id', '=', eventId)
-      .executeTakeFirst();
-    if (!event) throw errors.notFound();
-    return event;
-  };
-  const readable = (request: FastifyRequest, tenantId: string, eventId: string) =>
-    request.authorize('declaration.read', { type: 'declaration', tenantId, eventId });
+export const declarationRoutesWith =
+  (deps: DraftingDeps = {}): FastifyPluginAsync =>
+  async (raw) => {
+    const app = raw.withTypeProvider<ZodTypeProvider>();
+    const account = (request: FastifyRequest) => {
+      const s = request.subject;
+      if (s.kind !== 'account') throw errors.unauthorized();
+      return s;
+    };
+    const eventOf = async (trx: Trx, eventId: string) => {
+      const event = await trx
+        .selectFrom('cg.event')
+        .select(['id', 'tenant_id'])
+        .where('id', '=', eventId)
+        .executeTakeFirst();
+      if (!event) throw errors.notFound();
+      return event;
+    };
+    const readable = (request: FastifyRequest, tenantId: string, eventId: string) =>
+      request.authorize('declaration.read', { type: 'declaration', tenantId, eventId });
 
-  // ---------------------------------------------------------------- the view
-  app.get(
-    '/events/:id/declaration',
-    { schema: { tags: ['declaration'], params: eventParam } },
-    async (request) => {
-      const s = account(request);
-      const eventId = request.params.id;
-      await readable(request, s.tenantId, eventId);
-      const data = await request.tx((trx) => declarationData(trx, s.tenantId, eventId));
-      if (!data) throw errors.notFound();
-      return data;
-    },
-  );
-
-  app.put(
-    '/events/:id/declaration',
-    {
-      schema: {
-        tags: ['declaration'],
-        params: eventParam,
-        body: z
-          .object({
-            incidentType: z.string().trim().min(1).max(80).nullable().optional(),
-            incidentStart: date.nullable().optional(),
-            incidentEnd: date.nullable().optional(),
-            requestedAreas: z
-              .array(
-                z.object({
-                  name: z.string().trim().min(1).max(120),
-                  tenantId: z.uuid().optional(),
-                  programs: z.array(z.enum(['IA', 'PA', 'HM', 'IH'])).max(4),
-                }),
-              )
-              .max(200)
-              .optional(),
-            box8Draft: z.string().max(3000).nullable().optional(),
-            box9Draft: z.string().max(3000).nullable().optional(),
-            /** Partner counts: roll up all, or the chosen organizations and categories (2026-10-15). */
-            partnerRollup: partnerRollupIn.optional(),
-          })
-          .refine((b) => !b.incidentStart || !b.incidentEnd || b.incidentEnd >= b.incidentStart, {
-            message: 'the incident cannot end before it starts',
-            path: ['incidentEnd'],
-          }),
-        response: { 200: declarationOut, 201: declarationOut },
+    // ---------------------------------------------------------------- the view
+    app.get(
+      '/events/:id/declaration',
+      { schema: { tags: ['declaration'], params: eventParam } },
+      async (request) => {
+        const s = account(request);
+        const eventId = request.params.id;
+        await readable(request, s.tenantId, eventId);
+        const data = await request.tx((trx) => declarationData(trx, s.tenantId, eventId));
+        if (!data) throw errors.notFound();
+        return data;
       },
-    },
-    async (request, reply) => {
-      const s = account(request);
-      const eventId = request.params.id;
-      await request.authorize('declaration.write', {
-        type: 'declaration',
-        tenantId: s.tenantId,
-        eventId,
-      });
-      const b = request.body;
-      const set = {
-        ...(b.incidentType !== undefined ? { incident_type: b.incidentType } : {}),
-        ...(b.incidentStart !== undefined ? { incident_start: b.incidentStart } : {}),
-        ...(b.incidentEnd !== undefined ? { incident_end: b.incidentEnd } : {}),
-        ...(b.requestedAreas !== undefined
-          ? { requested_areas: JSON.stringify(b.requestedAreas) }
-          : {}),
-        ...(b.box8Draft !== undefined ? { box8_draft: b.box8Draft } : {}),
-        ...(b.box9Draft !== undefined ? { box9_draft: b.box9Draft } : {}),
-        ...(b.partnerRollup !== undefined
-          ? { partner_rollup: JSON.stringify(b.partnerRollup) }
-          : {}),
-      };
-      const { row, created } = await request.tx(async (trx) => {
-        const event = await eventOf(trx, eventId);
-        if (
-          b.partnerRollup &&
-          (await foreignPartners(trx, event.tenant_id, b.partnerRollup)).length
-        )
-          throw errors.validation([
-            { name: 'partnerRollup', message: "not one of the county's partner organizations" },
-          ]);
-        const existing = await trx
-          .selectFrom('cg.declaration')
-          .selectAll()
-          .where('event_id', '=', eventId)
-          .executeTakeFirst();
-        if (!existing) {
+    );
+
+    app.put(
+      '/events/:id/declaration',
+      {
+        schema: {
+          tags: ['declaration'],
+          params: eventParam,
+          body: z
+            .object({
+              incidentType: z.string().trim().min(1).max(80).nullable().optional(),
+              incidentStart: date.nullable().optional(),
+              incidentEnd: date.nullable().optional(),
+              requestedAreas: z
+                .array(
+                  z.object({
+                    name: z.string().trim().min(1).max(120),
+                    tenantId: z.uuid().optional(),
+                    programs: z.array(z.enum(['IA', 'PA', 'HM', 'IH'])).max(4),
+                  }),
+                )
+                .max(200)
+                .optional(),
+              box8Draft: z.string().max(3000).nullable().optional(),
+              box9Draft: z.string().max(3000).nullable().optional(),
+              /** Partner counts: roll up all, or the chosen organizations and categories (2026-10-15). */
+              partnerRollup: partnerRollupIn.optional(),
+              /** AIG-01: the AI drafts of Boxes 8 and 9 this save keeps, and whether the person changed them. */
+              ai: z
+                .array(z.object({ outputId: z.uuid(), changed: z.boolean() }))
+                .max(2)
+                .optional(),
+            })
+            .refine((b) => !b.incidentStart || !b.incidentEnd || b.incidentEnd >= b.incidentStart, {
+              message: 'the incident cannot end before it starts',
+              path: ['incidentEnd'],
+            }),
+          response: { 200: declarationOut, 201: declarationOut },
+        },
+      },
+      async (request, reply) => {
+        const s = account(request);
+        const eventId = request.params.id;
+        await request.authorize('declaration.write', {
+          type: 'declaration',
+          tenantId: s.tenantId,
+          eventId,
+        });
+        const b = request.body;
+        const set = {
+          ...(b.incidentType !== undefined ? { incident_type: b.incidentType } : {}),
+          ...(b.incidentStart !== undefined ? { incident_start: b.incidentStart } : {}),
+          ...(b.incidentEnd !== undefined ? { incident_end: b.incidentEnd } : {}),
+          ...(b.requestedAreas !== undefined
+            ? { requested_areas: JSON.stringify(b.requestedAreas) }
+            : {}),
+          ...(b.box8Draft !== undefined ? { box8_draft: b.box8Draft } : {}),
+          ...(b.box9Draft !== undefined ? { box9_draft: b.box9Draft } : {}),
+          ...(b.partnerRollup !== undefined
+            ? { partner_rollup: JSON.stringify(b.partnerRollup) }
+            : {}),
+        };
+        /** AIG-01: what the person did with each AI draft this save keeps. */
+        const keptDrafts = async (trx: Trx) => {
+          for (const a of b.ai ?? [])
+            await trx
+              .updateTable('cg.ai_output')
+              .set({
+                human_action: a.changed ? 'edited' : 'accepted',
+                acted_by: s.accountId,
+                acted_at: new Date(),
+              })
+              .where('id', '=', a.outputId)
+              .where('feature', '=', 'declaration.drafting')
+              .where('human_action', 'is', null)
+              .execute();
+        };
+        const { row, created } = await request.tx(async (trx) => {
+          const event = await eventOf(trx, eventId);
+          if (
+            b.partnerRollup &&
+            (await foreignPartners(trx, event.tenant_id, b.partnerRollup)).length
+          )
+            throw errors.validation([
+              { name: 'partnerRollup', message: "not one of the county's partner organizations" },
+            ]);
+          const existing = await trx
+            .selectFrom('cg.declaration')
+            .selectAll()
+            .where('event_id', '=', eventId)
+            .executeTakeFirst();
+          if (!existing) {
+            const inserted = await trx
+              .insertInto('cg.declaration')
+              .values({
+                tenant_id: event.tenant_id,
+                event_id: eventId,
+                ...set,
+                created_by: s.accountId,
+                updated_by: s.accountId,
+              })
+              .returningAll()
+              .executeTakeFirstOrThrow();
+            await request.audit(trx, {
+              action: 'declaration.write',
+              targetType: 'declaration',
+              targetId: inserted.id,
+              targetVersion: inserted.version,
+              changes: diffForAudit(null, set, classifierFor('declaration')),
+            });
+            await keptDrafts(trx);
+            return { row: inserted, created: true };
+          }
+          const expected = request.expectedVersion();
+          const updated = await trx
+            .updateTable('cg.declaration')
+            .set({ ...set, version: sql`version + 1`, updated_by: s.accountId })
+            .where('id', '=', existing.id)
+            .where('version', '=', expected)
+            .returningAll()
+            .executeTakeFirst();
+          const saved = assertUpdated(updated, declarationView(existing));
+          await keptDrafts(trx);
+          await request.audit(trx, {
+            action: 'declaration.write',
+            targetType: 'declaration',
+            targetId: saved.id,
+            targetVersion: saved.version,
+            changes: diffForAudit(existing, saved, classifierFor('declaration')),
+          });
+          return { row: saved, created: false };
+        });
+        return reply.code(created ? 201 : 200).send(declarationView(row));
+      },
+    );
+
+    // ---------------------------------------------------------------- AI drafts of Boxes 8 and 9 (layer-7 task G)
+    /**
+     * DCL:DEC-14, AI-04: a draft of Box 8 (the damage) or Box 9 (the resources
+     * committed) from the declaration's own figures, each sentence citing them
+     * and every figure checked against them, at most 3,000 characters. It comes
+     * back to the screen, not into the record: staff read it, change it and
+     * save it; the state, not the county, files the request.
+     */
+    app.post(
+      '/events/:id/declaration/ai-draft',
+      {
+        schema: {
+          tags: ['declaration'],
+          params: eventParam,
+          body: z.object({
+            box: z.union([z.literal(8), z.literal(9)]),
+            language: z.enum(['en', 'es']).default('en'),
+          }),
+          response: {
+            200: z.object({
+              box: z.number().int(),
+              text: z.string(),
+              sentences: z.array(z.object({ text: z.string(), factIds: z.array(z.string()) })),
+              facts: z.array(
+                z.object({
+                  id: z.string(),
+                  label: z.string(),
+                  value: z.union([z.string(), z.number()]).nullable(),
+                }),
+              ),
+              provider: z.string(),
+              model: z.string(),
+              outputId: z.uuid(),
+            }),
+          },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        const eventId = request.params.id;
+        await request.authorize('declaration.write', {
+          type: 'declaration',
+          tenantId: s.tenantId,
+          eventId,
+        });
+        const b = request.body;
+        const data = await request.tx((trx) => declarationData(trx, s.tenantId, eventId));
+        if (!data) throw errors.notFound();
+        const facts = boxFacts(b.box, data);
+        const current = b.box === 8 ? data.declaration?.box8Draft : data.declaration?.box9Draft;
+        const draft = await aiDraft(
+          request,
+          deps,
+          'declaration.drafting',
+          {
+            purpose: b.box === 8 ? 'declaration_box8' : 'declaration_box9',
+            language: b.language,
+            facts,
+            ...(current ? { template: current } : {}),
+            maxChars: 3000,
+          },
+          { type: 'declaration', id: data.declaration?.id ?? eventId },
+        );
+        return {
+          box: b.box,
+          text: draft.text,
+          sentences: draft.sentences,
+          facts,
+          provider: draft.provider.provider,
+          model: draft.provider.model,
+          outputId: draft.outputId,
+        };
+      },
+    );
+
+    // ---------------------------------------------------------------- outages (DEC-07)
+    app.get(
+      '/events/:id/outages',
+      {
+        schema: {
+          tags: ['declaration'],
+          params: eventParam,
+          response: { 200: z.array(outageOut) },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await readable(request, s.tenantId, request.params.id);
+        const rows = await request.tx((trx) =>
+          trx
+            .selectFrom('cg.outage')
+            .selectAll()
+            .where('event_id', '=', request.params.id)
+            .orderBy('started_at')
+            .execute(),
+        );
+        return rows.map((r) => outageView(r as OutageRow));
+      },
+    );
+
+    const outageBody = z.object({
+      kind: z.enum(OUTAGE_KINDS),
+      facilitySourceId: z.string().trim().min(1).max(120).nullable().optional(),
+      facilityName: z.string().trim().min(1).max(200).nullable().optional(),
+      description: z.string().trim().max(1000).nullable().optional(),
+      area: z.string().trim().max(300).nullable().optional(),
+      customersOut: z.number().int().min(0).nullable().optional(),
+      startedAt: moment,
+      expectedRestorationAt: moment.nullable().optional(),
+      restoredAt: moment.nullable().optional(),
+    });
+
+    app.post(
+      '/events/:id/outages',
+      {
+        schema: {
+          tags: ['declaration'],
+          params: eventParam,
+          body: outageBody.extend({
+            clientUuid: z.uuid(),
+            source: z.enum(['staff', 'feed_suggestion', 'utility_report']).default('staff'),
+          }),
+          response: { 201: outageOut, 200: outageOut },
+        },
+      },
+      async (request, reply) => {
+        const s = account(request);
+        const eventId = request.params.id;
+        await request.authorize('outage.write', { type: 'outage', tenantId: s.tenantId, eventId });
+        const b = request.body;
+        if (b.restoredAt && b.restoredAt < b.startedAt)
+          throw errors.validation([{ name: 'restoredAt', message: 'restored before it started' }]);
+        const { row, created } = await request.tx(async (trx) => {
+          const event = await eventOf(trx, eventId);
+          const existing = await trx
+            .selectFrom('cg.outage')
+            .selectAll()
+            .where('client_uuid', '=', b.clientUuid)
+            .executeTakeFirst();
+          if (existing) return { row: existing, created: false };
+          const values = {
+            kind: b.kind,
+            facility_source_id: b.facilitySourceId ?? null,
+            facility_name: b.facilityName ?? null,
+            description: b.description ?? null,
+            area: b.area ?? null,
+            customers_out: b.customersOut ?? null,
+            started_at: b.startedAt,
+            expected_restoration_at: b.expectedRestorationAt ?? null,
+            restored_at: b.restoredAt ?? null,
+            source: b.source,
+          };
           const inserted = await trx
-            .insertInto('cg.declaration')
+            .insertInto('cg.outage')
             .values({
               tenant_id: event.tenant_id,
               event_id: eventId,
-              ...set,
+              client_uuid: b.clientUuid,
+              ...values,
               created_by: s.accountId,
               updated_by: s.accountId,
             })
             .returningAll()
             .executeTakeFirstOrThrow();
           await request.audit(trx, {
-            action: 'declaration.write',
-            targetType: 'declaration',
+            action: 'outage.write',
+            targetType: 'outage',
             targetId: inserted.id,
             targetVersion: inserted.version,
-            changes: diffForAudit(null, set, classifierFor('declaration')),
+            changes: diffForAudit(null, values, classifierFor('outage')),
           });
           return { row: inserted, created: true };
-        }
-        const expected = request.expectedVersion();
-        const updated = await trx
-          .updateTable('cg.declaration')
-          .set({ ...set, version: sql`version + 1`, updated_by: s.accountId })
-          .where('id', '=', existing.id)
-          .where('version', '=', expected)
-          .returningAll()
-          .executeTakeFirst();
-        const saved = assertUpdated(updated, declarationView(existing));
-        await request.audit(trx, {
-          action: 'declaration.write',
-          targetType: 'declaration',
-          targetId: saved.id,
-          targetVersion: saved.version,
-          changes: diffForAudit(existing, saved, classifierFor('declaration')),
         });
-        return { row: saved, created: false };
-      });
-      return reply.code(created ? 201 : 200).send(declarationView(row));
-    },
-  );
-
-  // ---------------------------------------------------------------- outages (DEC-07)
-  app.get(
-    '/events/:id/outages',
-    {
-      schema: { tags: ['declaration'], params: eventParam, response: { 200: z.array(outageOut) } },
-    },
-    async (request) => {
-      const s = account(request);
-      await readable(request, s.tenantId, request.params.id);
-      const rows = await request.tx((trx) =>
-        trx
-          .selectFrom('cg.outage')
-          .selectAll()
-          .where('event_id', '=', request.params.id)
-          .orderBy('started_at')
-          .execute(),
-      );
-      return rows.map((r) => outageView(r as OutageRow));
-    },
-  );
-
-  const outageBody = z.object({
-    kind: z.enum(OUTAGE_KINDS),
-    facilitySourceId: z.string().trim().min(1).max(120).nullable().optional(),
-    facilityName: z.string().trim().min(1).max(200).nullable().optional(),
-    description: z.string().trim().max(1000).nullable().optional(),
-    area: z.string().trim().max(300).nullable().optional(),
-    customersOut: z.number().int().min(0).nullable().optional(),
-    startedAt: moment,
-    expectedRestorationAt: moment.nullable().optional(),
-    restoredAt: moment.nullable().optional(),
-  });
-
-  app.post(
-    '/events/:id/outages',
-    {
-      schema: {
-        tags: ['declaration'],
-        params: eventParam,
-        body: outageBody.extend({
-          clientUuid: z.uuid(),
-          source: z.enum(['staff', 'feed_suggestion', 'utility_report']).default('staff'),
-        }),
-        response: { 201: outageOut, 200: outageOut },
+        return reply.code(created ? 201 : 200).send(outageView(row as OutageRow));
       },
-    },
-    async (request, reply) => {
-      const s = account(request);
-      const eventId = request.params.id;
-      await request.authorize('outage.write', { type: 'outage', tenantId: s.tenantId, eventId });
-      const b = request.body;
-      if (b.restoredAt && b.restoredAt < b.startedAt)
-        throw errors.validation([{ name: 'restoredAt', message: 'restored before it started' }]);
-      const { row, created } = await request.tx(async (trx) => {
-        const event = await eventOf(trx, eventId);
-        const existing = await trx
-          .selectFrom('cg.outage')
-          .selectAll()
-          .where('client_uuid', '=', b.clientUuid)
-          .executeTakeFirst();
-        if (existing) return { row: existing, created: false };
-        const values = {
-          kind: b.kind,
-          facility_source_id: b.facilitySourceId ?? null,
-          facility_name: b.facilityName ?? null,
-          description: b.description ?? null,
-          area: b.area ?? null,
-          customers_out: b.customersOut ?? null,
-          started_at: b.startedAt,
-          expected_restoration_at: b.expectedRestorationAt ?? null,
-          restored_at: b.restoredAt ?? null,
-          source: b.source,
+    );
+
+    app.patch(
+      '/outages/:id',
+      {
+        config: { requiresVersion: true },
+        schema: {
+          tags: ['declaration'],
+          params: uuidParam,
+          body: outageBody.partial(),
+          response: { 200: outageOut },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('outage.write', { type: 'outage', tenantId: s.tenantId });
+        const b = request.body;
+        const set = {
+          ...(b.kind !== undefined ? { kind: b.kind } : {}),
+          ...(b.facilitySourceId !== undefined ? { facility_source_id: b.facilitySourceId } : {}),
+          ...(b.facilityName !== undefined ? { facility_name: b.facilityName } : {}),
+          ...(b.description !== undefined ? { description: b.description } : {}),
+          ...(b.area !== undefined ? { area: b.area } : {}),
+          ...(b.customersOut !== undefined ? { customers_out: b.customersOut } : {}),
+          ...(b.startedAt !== undefined ? { started_at: b.startedAt } : {}),
+          ...(b.expectedRestorationAt !== undefined
+            ? { expected_restoration_at: b.expectedRestorationAt }
+            : {}),
+          ...(b.restoredAt !== undefined ? { restored_at: b.restoredAt } : {}),
         };
-        const inserted = await trx
-          .insertInto('cg.outage')
-          .values({
-            tenant_id: event.tenant_id,
-            event_id: eventId,
-            client_uuid: b.clientUuid,
-            ...values,
-            created_by: s.accountId,
-            updated_by: s.accountId,
-          })
-          .returningAll()
-          .executeTakeFirstOrThrow();
-        await request.audit(trx, {
-          action: 'outage.write',
-          targetType: 'outage',
-          targetId: inserted.id,
-          targetVersion: inserted.version,
-          changes: diffForAudit(null, values, classifierFor('outage')),
+        const saved = await request.tx(async (trx) => {
+          const row = await trx
+            .selectFrom('cg.outage')
+            .selectAll()
+            .where('id', '=', request.params.id)
+            .executeTakeFirst();
+          if (!row) throw errors.notFound();
+          const startedAt = new Date(b.startedAt ?? row.started_at).getTime();
+          const restored = b.restoredAt !== undefined ? b.restoredAt : row.restored_at;
+          if (restored && new Date(restored).getTime() < startedAt)
+            throw errors.validation([
+              { name: 'restoredAt', message: 'restored before it started' },
+            ]);
+          const u = await trx
+            .updateTable('cg.outage')
+            .set({ ...set, version: sql`version + 1`, updated_by: s.accountId })
+            .where('id', '=', row.id)
+            .where('version', '=', request.expectedVersion())
+            .returningAll()
+            .executeTakeFirst();
+          const out = assertUpdated(u, outageView(row as OutageRow));
+          await request.audit(trx, {
+            action: 'outage.write',
+            targetType: 'outage',
+            targetId: out.id,
+            targetVersion: out.version,
+            changes: diffForAudit(row, out, classifierFor('outage')),
+          });
+          return out;
         });
-        return { row: inserted, created: true };
-      });
-      return reply.code(created ? 201 : 200).send(outageView(row as OutageRow));
-    },
-  );
-
-  app.patch(
-    '/outages/:id',
-    {
-      config: { requiresVersion: true },
-      schema: {
-        tags: ['declaration'],
-        params: uuidParam,
-        body: outageBody.partial(),
-        response: { 200: outageOut },
+        return outageView(saved as OutageRow);
       },
-    },
-    async (request) => {
-      const s = account(request);
-      await request.authorize('outage.write', { type: 'outage', tenantId: s.tenantId });
-      const b = request.body;
-      const set = {
-        ...(b.kind !== undefined ? { kind: b.kind } : {}),
-        ...(b.facilitySourceId !== undefined ? { facility_source_id: b.facilitySourceId } : {}),
-        ...(b.facilityName !== undefined ? { facility_name: b.facilityName } : {}),
-        ...(b.description !== undefined ? { description: b.description } : {}),
-        ...(b.area !== undefined ? { area: b.area } : {}),
-        ...(b.customersOut !== undefined ? { customers_out: b.customersOut } : {}),
-        ...(b.startedAt !== undefined ? { started_at: b.startedAt } : {}),
-        ...(b.expectedRestorationAt !== undefined
-          ? { expected_restoration_at: b.expectedRestorationAt }
-          : {}),
-        ...(b.restoredAt !== undefined ? { restored_at: b.restoredAt } : {}),
-      };
-      const saved = await request.tx(async (trx) => {
-        const row = await trx
-          .selectFrom('cg.outage')
-          .selectAll()
-          .where('id', '=', request.params.id)
-          .executeTakeFirst();
-        if (!row) throw errors.notFound();
-        const startedAt = new Date(b.startedAt ?? row.started_at).getTime();
-        const restored = b.restoredAt !== undefined ? b.restoredAt : row.restored_at;
-        if (restored && new Date(restored).getTime() < startedAt)
-          throw errors.validation([{ name: 'restoredAt', message: 'restored before it started' }]);
-        const u = await trx
-          .updateTable('cg.outage')
-          .set({ ...set, version: sql`version + 1`, updated_by: s.accountId })
-          .where('id', '=', row.id)
-          .where('version', '=', request.expectedVersion())
-          .returningAll()
-          .executeTakeFirst();
-        const out = assertUpdated(u, outageView(row as OutageRow));
-        await request.audit(trx, {
-          action: 'outage.write',
-          targetType: 'outage',
-          targetId: out.id,
-          targetVersion: out.version,
-          changes: diffForAudit(row, out, classifierFor('outage')),
-        });
-        return out;
-      });
-      return outageView(saved as OutageRow);
-    },
-  );
+    );
 
-  // A suggestion from a feed becomes part of the log only when a person confirms it.
-  app.post(
-    '/outages/:id/confirm',
-    {
-      config: { requiresVersion: true },
-      schema: { tags: ['declaration'], params: uuidParam, response: { 200: outageOut } },
-    },
-    async (request) => {
-      const s = account(request);
-      await request.authorize('outage.write', { type: 'outage', tenantId: s.tenantId });
-      const saved = await request.tx(async (trx) => {
-        const row = await trx
-          .selectFrom('cg.outage')
-          .selectAll()
-          .where('id', '=', request.params.id)
-          .executeTakeFirst();
-        if (!row) throw errors.notFound();
-        if (row.source === 'staff' || row.confirmed_at) return row;
-        const u = await trx
-          .updateTable('cg.outage')
-          .set({
-            confirmed_by: s.accountId,
-            confirmed_at: new Date(),
-            version: sql`version + 1`,
-            updated_by: s.accountId,
-          })
-          .where('id', '=', row.id)
-          .where('version', '=', request.expectedVersion())
-          .returningAll()
-          .executeTakeFirst();
-        const out = assertUpdated(u, outageView(row as OutageRow));
-        await request.audit(trx, {
-          action: 'outage.confirm',
-          targetType: 'outage',
-          targetId: out.id,
-          targetVersion: out.version,
-        });
-        return out;
-      });
-      return outageView(saved as OutageRow);
-    },
-  );
-
-  // ---------------------------------------------------------------- casualties (DEC-08)
-  app.get(
-    '/events/:id/casualties',
-    {
-      schema: {
-        tags: ['declaration'],
-        params: eventParam,
-        response: { 200: z.array(casualtyOut) },
+    // A suggestion from a feed becomes part of the log only when a person confirms it.
+    app.post(
+      '/outages/:id/confirm',
+      {
+        config: { requiresVersion: true },
+        schema: { tags: ['declaration'], params: uuidParam, response: { 200: outageOut } },
       },
-    },
-    async (request) => {
-      const s = account(request);
-      await readable(request, s.tenantId, request.params.id);
-      const rows = await request.tx((trx) =>
-        trx
-          .selectFrom('cg.casualty_count')
-          .selectAll()
-          .where('event_id', '=', request.params.id)
-          .orderBy('as_of', 'desc')
-          .orderBy('created_at', 'desc')
-          .execute(),
-      );
-      return rows.map((r) => ({
-        id: r.id,
-        kind: r.kind,
-        count: r.count,
-        officialSource: r.official_source,
-        asOf: iso(r.as_of)!,
-        note: r.note,
-        enteredAt: iso(r.created_at)!,
-      }));
-    },
-  );
-
-  app.post(
-    '/events/:id/casualties',
-    {
-      config: { idempotent: true },
-      schema: {
-        tags: ['declaration'],
-        params: eventParam,
-        body: z.object({
-          kind: z.enum(['injured', 'missing', 'deceased']),
-          count: z.number().int().min(0).max(1_000_000),
-          officialSource: z.string().trim().min(3).max(300),
-          asOf: moment,
-          note: z.string().trim().max(1000).optional(),
-        }),
-        response: { 201: casualtyOut },
-      },
-    },
-    async (request, reply) => {
-      const s = account(request);
-      const eventId = request.params.id;
-      await request.authorize('casualty.record', {
-        type: 'casualty_count',
-        tenantId: s.tenantId,
-        eventId,
-      });
-      const b = request.body;
-      const row = await request.tx(async (trx) => {
-        const event = await eventOf(trx, eventId);
-        const inserted = await trx
-          .insertInto('cg.casualty_count')
-          .values({
-            tenant_id: event.tenant_id,
-            event_id: eventId,
-            kind: b.kind,
-            count: b.count,
-            official_source: b.officialSource,
-            as_of: b.asOf,
-            note: b.note ?? null,
-            entered_by: s.accountId,
-          })
-          .returningAll()
-          .executeTakeFirstOrThrow();
-        await request.audit(trx, {
-          action: 'casualty.record',
-          targetType: 'casualty_count',
-          targetId: inserted.id,
-          changes: diffForAudit(
-            null,
-            { kind: b.kind, count: b.count, official_source: b.officialSource },
-            classifierFor('casualty_count'),
-          ),
+      async (request) => {
+        const s = account(request);
+        await request.authorize('outage.write', { type: 'outage', tenantId: s.tenantId });
+        const saved = await request.tx(async (trx) => {
+          const row = await trx
+            .selectFrom('cg.outage')
+            .selectAll()
+            .where('id', '=', request.params.id)
+            .executeTakeFirst();
+          if (!row) throw errors.notFound();
+          if (row.source === 'staff' || row.confirmed_at) return row;
+          const u = await trx
+            .updateTable('cg.outage')
+            .set({
+              confirmed_by: s.accountId,
+              confirmed_at: new Date(),
+              version: sql`version + 1`,
+              updated_by: s.accountId,
+            })
+            .where('id', '=', row.id)
+            .where('version', '=', request.expectedVersion())
+            .returningAll()
+            .executeTakeFirst();
+          const out = assertUpdated(u, outageView(row as OutageRow));
+          await request.audit(trx, {
+            action: 'outage.confirm',
+            targetType: 'outage',
+            targetId: out.id,
+            targetVersion: out.version,
+          });
+          return out;
         });
-        return inserted;
-      });
-      return reply.code(201).send({
-        id: row.id,
-        kind: row.kind,
-        count: row.count,
-        officialSource: row.official_source,
-        asOf: iso(row.as_of)!,
-        note: row.note,
-        enteredAt: iso(row.created_at)!,
-      });
-    },
-  );
+        return outageView(saved as OutageRow);
+      },
+    );
 
-  // ---------------------------------------------------------------- public damage (DEC-10)
-  app.get(
-    '/events/:id/pa-sites',
-    {
-      schema: { tags: ['declaration'], params: eventParam, response: { 200: z.array(paSiteOut) } },
-    },
-    async (request) => {
-      const s = account(request);
-      await readable(request, s.tenantId, request.params.id);
-      const rows = await request.tx((trx) =>
-        paSiteSelect(trx)
-          .where('s.event_id', '=', request.params.id)
-          .orderBy('s.category')
-          .orderBy('s.name')
-          .execute(),
-      );
-      return rows.map((r) => paSiteView(r as PaSiteRow));
-    },
-  );
+    // ---------------------------------------------------------------- casualties (DEC-08)
+    app.get(
+      '/events/:id/casualties',
+      {
+        schema: {
+          tags: ['declaration'],
+          params: eventParam,
+          response: { 200: z.array(casualtyOut) },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await readable(request, s.tenantId, request.params.id);
+        const rows = await request.tx((trx) =>
+          trx
+            .selectFrom('cg.casualty_count')
+            .selectAll()
+            .where('event_id', '=', request.params.id)
+            .orderBy('as_of', 'desc')
+            .orderBy('created_at', 'desc')
+            .execute(),
+        );
+        return rows.map((r) => ({
+          id: r.id,
+          kind: r.kind,
+          count: r.count,
+          officialSource: r.official_source,
+          asOf: iso(r.as_of)!,
+          note: r.note,
+          enteredAt: iso(r.created_at)!,
+        }));
+      },
+    );
 
-  const paBody = z.object({
-    applicant: z.string().trim().min(1).max(200),
-    applicantTenantId: z.uuid().nullable().optional(),
-    name: z.string().trim().min(1).max(200),
-    description: z.string().trim().max(2000).nullable().optional(),
-    category: z.enum(CATEGORIES),
-    position: z
-      .object({ lat: z.number().min(-90).max(90), lon: z.number().min(-180).max(180) })
-      .nullable()
-      .optional(),
-    estimatedCost: z.number().min(0).max(1e12).nullable().optional(),
-    costBasis: z.enum(['estimate', 'verified']).optional(),
-    percentComplete: z.number().int().min(0).max(100).nullable().optional(),
-    insured: yesNoUnknown.optional(),
-    otherFederalAgency: yesNoUnknown.optional(),
-    debrisCubicYards: z.number().min(0).max(1e9).nullable().optional(),
-  });
-  /** Any subset of the site's fields, as a create or a change sends them. */
-  type PaInput = { [K in keyof z.infer<typeof paBody>]?: z.infer<typeof paBody>[K] | undefined };
-  const paColumns = (b: PaInput) => ({
-    ...(b.applicant !== undefined ? { applicant: b.applicant } : {}),
-    ...(b.applicantTenantId !== undefined ? { applicant_tenant_id: b.applicantTenantId } : {}),
-    ...(b.name !== undefined ? { name: b.name } : {}),
-    ...(b.description !== undefined ? { description: b.description } : {}),
-    ...(b.category !== undefined ? { category: b.category } : {}),
-    ...(b.position !== undefined
-      ? {
-          geom: b.position
-            ? sql`ST_SetSRID(ST_MakePoint(${b.position.lon}, ${b.position.lat}), 4326)`
-            : null,
-        }
-      : {}),
-    ...(b.estimatedCost !== undefined ? { estimated_cost: b.estimatedCost } : {}),
-    ...(b.costBasis !== undefined ? { cost_basis: b.costBasis } : {}),
-    ...(b.percentComplete !== undefined ? { percent_complete: b.percentComplete } : {}),
-    ...(b.insured !== undefined ? { insured: b.insured } : {}),
-    ...(b.otherFederalAgency !== undefined ? { other_federal_agency: b.otherFederalAgency } : {}),
-    ...(b.debrisCubicYards !== undefined ? { debris_cubic_yards: b.debrisCubicYards } : {}),
-  });
-  /** What the audit records: the plain fields, the position as a flag. */
-  const paAudit = (b: PaInput) => {
-    const { position, ...rest } = b;
-    return position === undefined ? rest : { ...rest, located: position !== null };
+    app.post(
+      '/events/:id/casualties',
+      {
+        config: { idempotent: true },
+        schema: {
+          tags: ['declaration'],
+          params: eventParam,
+          body: z.object({
+            kind: z.enum(['injured', 'missing', 'deceased']),
+            count: z.number().int().min(0).max(1_000_000),
+            officialSource: z.string().trim().min(3).max(300),
+            asOf: moment,
+            note: z.string().trim().max(1000).optional(),
+          }),
+          response: { 201: casualtyOut },
+        },
+      },
+      async (request, reply) => {
+        const s = account(request);
+        const eventId = request.params.id;
+        await request.authorize('casualty.record', {
+          type: 'casualty_count',
+          tenantId: s.tenantId,
+          eventId,
+        });
+        const b = request.body;
+        const row = await request.tx(async (trx) => {
+          const event = await eventOf(trx, eventId);
+          const inserted = await trx
+            .insertInto('cg.casualty_count')
+            .values({
+              tenant_id: event.tenant_id,
+              event_id: eventId,
+              kind: b.kind,
+              count: b.count,
+              official_source: b.officialSource,
+              as_of: b.asOf,
+              note: b.note ?? null,
+              entered_by: s.accountId,
+            })
+            .returningAll()
+            .executeTakeFirstOrThrow();
+          await request.audit(trx, {
+            action: 'casualty.record',
+            targetType: 'casualty_count',
+            targetId: inserted.id,
+            changes: diffForAudit(
+              null,
+              { kind: b.kind, count: b.count, official_source: b.officialSource },
+              classifierFor('casualty_count'),
+            ),
+          });
+          return inserted;
+        });
+        return reply.code(201).send({
+          id: row.id,
+          kind: row.kind,
+          count: row.count,
+          officialSource: row.official_source,
+          asOf: iso(row.as_of)!,
+          note: row.note,
+          enteredAt: iso(row.created_at)!,
+        });
+      },
+    );
+
+    // ---------------------------------------------------------------- public damage (DEC-10)
+    app.get(
+      '/events/:id/pa-sites',
+      {
+        schema: {
+          tags: ['declaration'],
+          params: eventParam,
+          response: { 200: z.array(paSiteOut) },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await readable(request, s.tenantId, request.params.id);
+        const rows = await request.tx((trx) =>
+          paSiteSelect(trx)
+            .where('s.event_id', '=', request.params.id)
+            .orderBy('s.category')
+            .orderBy('s.name')
+            .execute(),
+        );
+        return rows.map((r) => paSiteView(r as PaSiteRow));
+      },
+    );
+
+    const paBody = z.object({
+      applicant: z.string().trim().min(1).max(200),
+      applicantTenantId: z.uuid().nullable().optional(),
+      name: z.string().trim().min(1).max(200),
+      description: z.string().trim().max(2000).nullable().optional(),
+      category: z.enum(CATEGORIES),
+      position: z
+        .object({ lat: z.number().min(-90).max(90), lon: z.number().min(-180).max(180) })
+        .nullable()
+        .optional(),
+      estimatedCost: z.number().min(0).max(1e12).nullable().optional(),
+      costBasis: z.enum(['estimate', 'verified']).optional(),
+      percentComplete: z.number().int().min(0).max(100).nullable().optional(),
+      insured: yesNoUnknown.optional(),
+      otherFederalAgency: yesNoUnknown.optional(),
+      debrisCubicYards: z.number().min(0).max(1e9).nullable().optional(),
+    });
+    /** Any subset of the site's fields, as a create or a change sends them. */
+    type PaInput = { [K in keyof z.infer<typeof paBody>]?: z.infer<typeof paBody>[K] | undefined };
+    const paColumns = (b: PaInput) => ({
+      ...(b.applicant !== undefined ? { applicant: b.applicant } : {}),
+      ...(b.applicantTenantId !== undefined ? { applicant_tenant_id: b.applicantTenantId } : {}),
+      ...(b.name !== undefined ? { name: b.name } : {}),
+      ...(b.description !== undefined ? { description: b.description } : {}),
+      ...(b.category !== undefined ? { category: b.category } : {}),
+      ...(b.position !== undefined
+        ? {
+            geom: b.position
+              ? sql`ST_SetSRID(ST_MakePoint(${b.position.lon}, ${b.position.lat}), 4326)`
+              : null,
+          }
+        : {}),
+      ...(b.estimatedCost !== undefined ? { estimated_cost: b.estimatedCost } : {}),
+      ...(b.costBasis !== undefined ? { cost_basis: b.costBasis } : {}),
+      ...(b.percentComplete !== undefined ? { percent_complete: b.percentComplete } : {}),
+      ...(b.insured !== undefined ? { insured: b.insured } : {}),
+      ...(b.otherFederalAgency !== undefined ? { other_federal_agency: b.otherFederalAgency } : {}),
+      ...(b.debrisCubicYards !== undefined ? { debris_cubic_yards: b.debrisCubicYards } : {}),
+    });
+    /** What the audit records: the plain fields, the position as a flag. */
+    const paAudit = (b: PaInput) => {
+      const { position, ...rest } = b;
+      return position === undefined ? rest : { ...rest, located: position !== null };
+    };
+
+    app.post(
+      '/events/:id/pa-sites',
+      {
+        schema: {
+          tags: ['declaration'],
+          params: eventParam,
+          body: paBody.extend({ clientUuid: z.uuid() }),
+          response: { 201: paSiteOut, 200: paSiteOut },
+        },
+      },
+      async (request, reply) => {
+        const s = account(request);
+        const eventId = request.params.id;
+        await request.authorize('pa_site.write', {
+          type: 'pa_site',
+          tenantId: s.tenantId,
+          eventId,
+        });
+        const b = request.body;
+        const { id, created } = await request.tx(async (trx) => {
+          const event = await eventOf(trx, eventId);
+          const existing = await trx
+            .selectFrom('cg.pa_site')
+            .select('id')
+            .where('client_uuid', '=', b.clientUuid)
+            .executeTakeFirst();
+          if (existing) return { id: existing.id, created: false };
+          const inserted = await trx
+            .insertInto('cg.pa_site')
+            .values({
+              tenant_id: event.tenant_id,
+              event_id: eventId,
+              client_uuid: b.clientUuid,
+              applicant: b.applicant,
+              name: b.name,
+              category: b.category,
+              ...paColumns(b),
+              created_by: s.accountId,
+              updated_by: s.accountId,
+            })
+            .returning(['id', 'version'])
+            .executeTakeFirstOrThrow();
+          await request.audit(trx, {
+            action: 'pa_site.write',
+            targetType: 'pa_site',
+            targetId: inserted.id,
+            targetVersion: inserted.version,
+            changes: diffForAudit(null, paAudit(b), classifierFor('pa_site')),
+          });
+          return { id: inserted.id, created: true };
+        });
+        const row = await request.tx((trx) =>
+          paSiteSelect(trx).where('s.id', '=', id).executeTakeFirstOrThrow(),
+        );
+        return reply.code(created ? 201 : 200).send(paSiteView(row as PaSiteRow));
+      },
+    );
+
+    app.patch(
+      '/pa-sites/:id',
+      {
+        config: { requiresVersion: true },
+        schema: {
+          tags: ['declaration'],
+          params: uuidParam,
+          body: paBody.partial().extend({ status: z.enum(['active', 'withdrawn']).optional() }),
+          response: { 200: paSiteOut },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('pa_site.write', { type: 'pa_site', tenantId: s.tenantId });
+        const { status, ...b } = request.body;
+        await request.tx(async (trx) => {
+          const row = await paSiteSelect(trx)
+            .where('s.id', '=', request.params.id)
+            .executeTakeFirst();
+          if (!row) throw errors.notFound();
+          const u = await trx
+            .updateTable('cg.pa_site')
+            .set({
+              ...paColumns(b),
+              ...(status !== undefined ? { status } : {}),
+              version: sql`version + 1`,
+              updated_by: s.accountId,
+            })
+            .where('id', '=', row.id)
+            .where('version', '=', request.expectedVersion())
+            .returning(['id', 'version'])
+            .executeTakeFirst();
+          const out = assertUpdated(u, paSiteView(row as PaSiteRow));
+          await request.audit(trx, {
+            action: 'pa_site.write',
+            targetType: 'pa_site',
+            targetId: out.id,
+            targetVersion: out.version,
+            changes: diffForAudit(
+              {},
+              { ...paAudit(b), ...(status !== undefined ? { status } : {}) },
+              classifierFor('pa_site'),
+            ),
+          });
+        });
+        const row = await request.tx((trx) =>
+          paSiteSelect(trx).where('s.id', '=', request.params.id).executeTakeFirstOrThrow(),
+        );
+        return paSiteView(row as PaSiteRow);
+      },
+    );
   };
 
-  app.post(
-    '/events/:id/pa-sites',
-    {
-      schema: {
-        tags: ['declaration'],
-        params: eventParam,
-        body: paBody.extend({ clientUuid: z.uuid() }),
-        response: { 201: paSiteOut, 200: paSiteOut },
-      },
-    },
-    async (request, reply) => {
-      const s = account(request);
-      const eventId = request.params.id;
-      await request.authorize('pa_site.write', { type: 'pa_site', tenantId: s.tenantId, eventId });
-      const b = request.body;
-      const { id, created } = await request.tx(async (trx) => {
-        const event = await eventOf(trx, eventId);
-        const existing = await trx
-          .selectFrom('cg.pa_site')
-          .select('id')
-          .where('client_uuid', '=', b.clientUuid)
-          .executeTakeFirst();
-        if (existing) return { id: existing.id, created: false };
-        const inserted = await trx
-          .insertInto('cg.pa_site')
-          .values({
-            tenant_id: event.tenant_id,
-            event_id: eventId,
-            client_uuid: b.clientUuid,
-            applicant: b.applicant,
-            name: b.name,
-            category: b.category,
-            ...paColumns(b),
-            created_by: s.accountId,
-            updated_by: s.accountId,
-          })
-          .returning(['id', 'version'])
-          .executeTakeFirstOrThrow();
-        await request.audit(trx, {
-          action: 'pa_site.write',
-          targetType: 'pa_site',
-          targetId: inserted.id,
-          targetVersion: inserted.version,
-          changes: diffForAudit(null, paAudit(b), classifierFor('pa_site')),
-        });
-        return { id: inserted.id, created: true };
-      });
-      const row = await request.tx((trx) =>
-        paSiteSelect(trx).where('s.id', '=', id).executeTakeFirstOrThrow(),
-      );
-      return reply.code(created ? 201 : 200).send(paSiteView(row as PaSiteRow));
-    },
-  );
-
-  app.patch(
-    '/pa-sites/:id',
-    {
-      config: { requiresVersion: true },
-      schema: {
-        tags: ['declaration'],
-        params: uuidParam,
-        body: paBody.partial().extend({ status: z.enum(['active', 'withdrawn']).optional() }),
-        response: { 200: paSiteOut },
-      },
-    },
-    async (request) => {
-      const s = account(request);
-      await request.authorize('pa_site.write', { type: 'pa_site', tenantId: s.tenantId });
-      const { status, ...b } = request.body;
-      await request.tx(async (trx) => {
-        const row = await paSiteSelect(trx)
-          .where('s.id', '=', request.params.id)
-          .executeTakeFirst();
-        if (!row) throw errors.notFound();
-        const u = await trx
-          .updateTable('cg.pa_site')
-          .set({
-            ...paColumns(b),
-            ...(status !== undefined ? { status } : {}),
-            version: sql`version + 1`,
-            updated_by: s.accountId,
-          })
-          .where('id', '=', row.id)
-          .where('version', '=', request.expectedVersion())
-          .returning(['id', 'version'])
-          .executeTakeFirst();
-        const out = assertUpdated(u, paSiteView(row as PaSiteRow));
-        await request.audit(trx, {
-          action: 'pa_site.write',
-          targetType: 'pa_site',
-          targetId: out.id,
-          targetVersion: out.version,
-          changes: diffForAudit(
-            {},
-            { ...paAudit(b), ...(status !== undefined ? { status } : {}) },
-            classifierFor('pa_site'),
-          ),
-        });
-      });
-      const row = await request.tx((trx) =>
-        paSiteSelect(trx).where('s.id', '=', request.params.id).executeTakeFirstOrThrow(),
-      );
-      return paSiteView(row as PaSiteRow);
-    },
-  );
-};
+export const declarationRoutes = declarationRoutesWith();

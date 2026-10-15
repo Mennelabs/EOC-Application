@@ -3,6 +3,8 @@ export { redact, type Redaction } from './redact.ts';
 export { filterGeneratedText, type FilterResult } from './filter.ts';
 export {
   buildCommandPrompt,
+  buildDiscoveryPrompt,
+  buildDraftPrompt,
   buildExtractionPrompt,
   RESIDENT_TEXT_OPEN,
   RESIDENT_TEXT_CLOSE,
@@ -65,3 +67,4 @@ export {
   type AiOutputRecord,
   type HumanAction,
 } from './records.ts';
+export { checkDraft, figuresIn, type DraftCheck } from './drafting.ts';

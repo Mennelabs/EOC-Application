@@ -15,7 +15,7 @@ import { DataTable, Field, Status, fmt } from '../ui/primitives.tsx';
 
 export interface ExportRow {
   id: string;
-  kind: 'ida_package' | 'official_report';
+  kind: 'ida_package' | 'official_report' | 'public_records';
   format: 'zip' | 'pdf' | 'csv';
   jurisdictionTenantId: string | null;
   status: 'queued' | 'ready' | 'failed';
@@ -29,7 +29,16 @@ export interface ExportRow {
     photos?: number;
     photosLeftOut?: number;
     contentHash?: string;
+    /** SEC-13: a public-records release's rows per kind and columns withheld. */
+    rows?: Record<string, number>;
+    withheldColumns?: number;
   };
+  scope?: {
+    requestReference: string;
+    recordTypes: string[];
+    from: string | null;
+    to: string | null;
+  } | null;
   error: string | null;
   createdAt: string;
   readyAt: string | null;

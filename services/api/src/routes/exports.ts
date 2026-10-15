@@ -6,13 +6,22 @@
  * the FEMA form and mapping versions used and the totals it carries. The
  * request, the result and every download are in the audit chain. A report
  * export is drawn from the frozen snapshot, never from today's records.
+ *
+ * A public-records release (SEC-13) is a ZIP of the kinds of record a
+ * request asks for, for one event and period, with restricted, sensitive and
+ * criminal-justice details withheld column by column (packages/reporting
+ * public-records.ts). It needs the explicit action public_records.export,
+ * confirmed with the request it answers, and the person must be able to read
+ * every kind of record they release.
  */
 import { GetObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import type { Selectable } from 'kysely';
 import { z } from 'zod';
+import { decide, isActionKey } from '@cg/authz';
 import type { ExportFileTable } from '@cg/db';
+import { RECORD_TYPES, RECORD_TYPE_KEYS, type RecordType } from '@cg/reporting';
 import { ApiError, errors } from '../errors.ts';
 import { enqueueOutbox, iso, uuidParam } from './helpers.ts';
 
@@ -25,7 +34,7 @@ type Row = Selectable<ExportFileTable>;
 const exportOut = z.object({
   id: z.uuid(),
   eventId: z.uuid(),
-  kind: z.enum(['ida_package', 'official_report']),
+  kind: z.enum(['ida_package', 'official_report', 'public_records']),
   format: z.enum(['zip', 'pdf', 'csv']),
   reportId: z.uuid().nullable(),
   jurisdictionTenantId: z.uuid().nullable(),
@@ -38,6 +47,15 @@ const exportOut = z.object({
   error: z.string().nullable(),
   createdAt: z.iso.datetime(),
   readyAt: z.iso.datetime().nullable(),
+  /** SEC-13: a public-records release's request reference, period and kinds of record. */
+  scope: z
+    .object({
+      requestReference: z.string(),
+      recordTypes: z.array(z.string()),
+      from: z.string().nullable(),
+      to: z.string().nullable(),
+    })
+    .nullable(),
 });
 
 const view = (r: Row): z.infer<typeof exportOut> => ({
@@ -56,6 +74,7 @@ const view = (r: Row): z.infer<typeof exportOut> => ({
   error: r.error,
   createdAt: iso(r.created_at)!,
   readyAt: iso(r.ready_at),
+  scope: (r.scope as z.infer<typeof exportOut>['scope'] | null) ?? null,
 });
 
 const CONTENT_TYPE: Record<Row['format'], string> = {
@@ -75,11 +94,17 @@ export const exportRoutes =
     };
     /** Who may see an export: the readers of what it holds. */
     const readAction = (r: Row) =>
-      r.kind === 'ida_package' ? ('declaration.read' as const) : ('official_report.read' as const);
+      r.kind === 'public_records'
+        ? ('public_records.export' as const)
+        : r.kind === 'ida_package'
+          ? ('declaration.read' as const)
+          : ('official_report.read' as const);
     const exportAction = (r: Row) =>
-      r.kind === 'ida_package'
-        ? ('declaration.export' as const)
-        : ('official_report.export' as const);
+      r.kind === 'public_records'
+        ? ('public_records.export' as const)
+        : r.kind === 'ida_package'
+          ? ('declaration.export' as const)
+          : ('official_report.export' as const);
 
     const load = async (request: FastifyRequest, id: string) => {
       const row = await request.tx((trx) =>
@@ -246,6 +271,136 @@ export const exportRoutes =
           return { row: inserted, created: true };
         });
         return reply.code(created ? 201 : 200).send(view(row));
+      },
+    );
+
+    // ------------------------------------------------------------ a public-records release
+    app.post(
+      '/events/:id/public-records',
+      {
+        schema: {
+          tags: ['exports'],
+          params: uuidParam,
+          body: z.object({
+            clientUuid: z.uuid(),
+            /** The request this answers, as the records office numbers it. */
+            requestReference: z.string().trim().min(1).max(80),
+            recordTypes: z.array(z.enum(RECORD_TYPE_KEYS as [RecordType, ...RecordType[]])).min(1),
+            from: z.iso.date().optional(),
+            to: z.iso.date().optional(),
+          }),
+          response: { 201: exportOut, 200: exportOut },
+        },
+      },
+      async (request, reply) => {
+        const s = account(request);
+        const eventId = request.params.id;
+        await request.authorize('public_records.export', {
+          type: 'public_records',
+          tenantId: s.tenantId,
+          eventId,
+        });
+        const b = request.body;
+        // Default deny: nobody releases a kind of record they could not read themselves.
+        const unreadable = [...new Set(b.recordTypes)].filter((t) => {
+          const action = RECORD_TYPES[t].read;
+          return (
+            !isActionKey(action) ||
+            decide(s, action, { type: action.split('.')[0]!, tenantId: s.tenantId, eventId })
+              .effect !== 'allow'
+          );
+        });
+        if (unreadable.length)
+          throw new ApiError(
+            403,
+            'forbidden',
+            `You can release only records you may read; not: ${unreadable.join(', ')}.`,
+          );
+        if (b.from && b.to && b.from >= b.to)
+          throw errors.validation([{ name: 'to', message: 'must be after the start' }]);
+        // RULE-14: preparing a release is confirmed with a reason, like any consequential act.
+        const { confirmed, reason } = request.confirmation();
+        if (!confirmed || !reason)
+          throw errors.confirmationRequired(
+            'public_records.export',
+            'Prepare a public-records release with restricted and sensitive details withheld',
+          );
+        const scope = {
+          requestReference: b.requestReference,
+          recordTypes: [...new Set(b.recordTypes)],
+          from: b.from ?? null,
+          to: b.to ?? null,
+        };
+        const { row, created } = await request.tx(async (trx) => {
+          const held = await trx
+            .selectFrom('cg.export_file')
+            .selectAll()
+            .where('client_uuid', '=', b.clientUuid)
+            .executeTakeFirst();
+          if (held) return { row: held, created: false };
+          const event = await trx
+            .selectFrom('cg.event')
+            .select(['id', 'tenant_id'])
+            .where('id', '=', eventId)
+            .executeTakeFirst();
+          if (!event) throw errors.notFound();
+          const inserted = await trx
+            .insertInto('cg.export_file')
+            .values({
+              tenant_id: event.tenant_id,
+              event_id: eventId,
+              client_uuid: b.clientUuid,
+              kind: 'public_records',
+              format: 'zip',
+              scope: JSON.stringify(scope),
+              requested_by: s.accountId,
+              reason: reason?.slice(0, 500) ?? null,
+            })
+            .returningAll()
+            .executeTakeFirstOrThrow();
+          await enqueueOutbox(
+            trx,
+            event.tenant_id,
+            'export.requested',
+            { exportId: inserted.id },
+            request.executionId,
+          );
+          await request.audit(trx, {
+            action: 'public_records.export',
+            targetType: 'export_file',
+            targetId: inserted.id,
+            changes: { kind: 'public_records', eventId, ...scope },
+            reason: reason ?? null,
+          });
+          return { row: inserted, created: true };
+        });
+        return reply.code(created ? 201 : 200).send(view(row));
+      },
+    );
+
+    app.get(
+      '/events/:id/public-records',
+      {
+        schema: { tags: ['exports'], params: uuidParam, response: { 200: z.array(exportOut) } },
+      },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('public_records.export', {
+          type: 'public_records',
+          tenantId: s.tenantId,
+          eventId: request.params.id,
+        });
+        const rows = await request.tx((trx) =>
+          trx
+            .selectFrom('cg.export_file')
+            .selectAll()
+            .where('event_id', '=', request.params.id)
+            .where('kind', '=', 'public_records')
+            .orderBy('created_at', 'desc')
+            .limit(50)
+            .execute(),
+        );
+        return rows.map(view);
       },
     );
 

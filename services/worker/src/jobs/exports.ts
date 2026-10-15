@@ -16,6 +16,8 @@ import { renderPdf } from '@cg/pdf';
 import {
   FORM_KEYS,
   buildPackage,
+  buildPublicRecords,
+  loadPublicRecords,
   loadPackageData,
   mappingInForce,
   reportCsv,
@@ -25,6 +27,7 @@ import {
   type IssuedContent,
   type Mapping,
   type PackagePhoto,
+  type PublicRecordsScope,
 } from '@cg/reporting';
 import { publishWebhookEvent, sendClaimed } from './webhooks.ts';
 import { asSystem, systemAudit } from '../system.ts';
@@ -104,7 +107,28 @@ export const exportRequested: TopicHandler = async (ctx, msg) => {
     let file: { name: string; contentType: string; body: Buffer };
     let mappings: Record<string, unknown> = {};
     let figures: Record<string, unknown> = {};
-    if (row.kind === 'ida_package') {
+    if (row.kind === 'public_records') {
+      // SEC-13: the records asked for, with restricted and sensitive details withheld.
+      const scope = row.scope as PublicRecordsScope | null;
+      if (!scope?.recordTypes?.length) {
+        await fail('The release has no scope.');
+        return;
+      }
+      const data = await asSystem(ctx.db, tenantId, (trx) =>
+        loadPublicRecords(trx, tenantId, row.event_id, scope),
+      );
+      if (!data) {
+        await fail('The event could not be read.');
+        return;
+      }
+      const built = buildPublicRecords(data, scope, { productName, generatedAt: now });
+      file = {
+        name: `public-records-${slug(scope.requestReference)}-${now.toISOString().slice(0, 10)}.zip`,
+        contentType: 'application/zip',
+        body: built.body,
+      };
+      figures = { rows: built.counts, withheldColumns: built.withheldColumns };
+    } else if (row.kind === 'ida_package') {
       const built = await asSystem(ctx.db, tenantId, async (trx) => {
         const data = await loadPackageData(trx, tenantId, row.event_id, {
           jurisdictionTenantId: row.jurisdiction_tenant_id,
@@ -196,6 +220,8 @@ export const exportRequested: TopicHandler = async (ctx, msg) => {
         changes: { file: file.name, bytes: file.body.length, sha256 },
         executionId: msg.executionId,
       });
+      // A public-records release is the records office's to send; no webhook announces it.
+      if (row.kind === 'public_records') return [];
       // SCL-09: "export ready" to the county's webhooks, in the same transaction.
       return publishWebhookEvent(
         ctx,

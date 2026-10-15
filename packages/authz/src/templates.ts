@@ -1188,6 +1188,9 @@ const FACILITY_GRANTS: Record<string, (string | Grant)[]> = {
   partner_coordinator: ['facility.read'],
 };
 
+/** SEC-13: those who answer public-records requests; each release holds only what they may read. */
+const PUBLIC_RECORDS = new Set(['county_em_director', 'public_information_officer']);
+
 /** CMD-30: those who coordinate work across many needs may batch; everyone else acts one by one. */
 const BULK_COMMANDS = new Set([
   'county_em_director',
@@ -1205,6 +1208,7 @@ export const roleTemplates: readonly RoleTemplate[] = templates.map((t) => ({
     ...(DISCOVERY_GRANTS[t.key] ?? []).map((a) => g(a)),
     ...(NO_COMMAND_WINDOW.has(t.key) ? [] : [g('command.use')]),
     ...(BULK_COMMANDS.has(t.key) ? [g('command.bulk')] : []),
+    ...(PUBLIC_RECORDS.has(t.key) ? [g('public_records.export')] : []),
   ],
 }));
 

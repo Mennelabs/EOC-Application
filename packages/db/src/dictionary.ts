@@ -2563,7 +2563,10 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
       tenant_id: { c: 'internal' },
       event_id: { c: 'internal' },
       client_uuid: { c: 'internal', d: 'Client id of the request (FR-00.06)' },
-      kind: { c: 'internal', d: 'IDA package or an issued official report' },
+      kind: {
+        c: 'internal',
+        d: 'IDA package, an issued official report, or a public-records release (SEC-13)',
+      },
       format: { c: 'internal', d: 'ZIP, PDF or CSV' },
       report_id: { c: 'internal' },
       jurisdiction_tenant_id: { c: 'internal', d: 'Jurisdiction a package is limited to (DEC-11)' },
@@ -2579,6 +2582,10 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
       reason: { c: 'internal' },
       created_at: { c: 'internal' },
       ready_at: { c: 'internal' },
+      scope: {
+        c: 'internal',
+        d: 'Public-records release: request reference, period and kinds of record (SEC-13)',
+      },
     },
     { standard: false },
   ),

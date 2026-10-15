@@ -42,6 +42,7 @@ import { OfficialReportScreen, OfficialReportsScreen } from './screens/official-
 import { RefdataScreen } from './screens/refdata.tsx';
 import { ReportDetailScreen, ReviewQueueScreen } from './screens/review.tsx';
 import { PublicationsScreen, SitesScreen } from './screens/sites.tsx';
+import { PublicRecordsScreen } from './screens/public-records.tsx';
 import { CommandWindow } from './ui/command-window.tsx';
 import { ConfirmDialog, Field, Status } from './ui/primitives.tsx';
 
@@ -98,6 +99,7 @@ const routes = [
   { path: '/console/audit', label: 'Audit log', layer: 1 },
   { path: '/console/break-glass', label: 'Emergency access', layer: 1 },
   { path: '/console/retention', label: 'Retention', layer: 1 },
+  { path: '/console/public-records', label: 'Records requests', layer: 7 },
   { path: '/console/ai-register', label: 'AI use register', layer: 2 },
 ] as const;
 
@@ -339,6 +341,8 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <BreakGlassScreen onChanged={loadMe} />;
       case '/console/retention':
         return <RetentionScreen />;
+      case '/console/public-records':
+        return <PublicRecordsScreen />;
       default:
         return (
           <section aria-labelledby="home-h">

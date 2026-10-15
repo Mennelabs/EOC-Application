@@ -2758,7 +2758,7 @@ export interface ExportFileTable {
   tenant_id: Uuid;
   event_id: Uuid;
   client_uuid: Uuid;
-  kind: 'ida_package' | 'official_report';
+  kind: 'ida_package' | 'official_report' | 'public_records';
   format: 'zip' | 'pdf' | 'csv';
   report_id: Uuid | null;
   jurisdiction_tenant_id: Uuid | null;
@@ -2774,6 +2774,8 @@ export interface ExportFileTable {
   reason: string | null;
   created_at: TsGen;
   ready_at: TsNullable;
+  /** SEC-13: a public-records release's request reference, period and kinds of record. */
+  scope: ColumnType<unknown, string | null | undefined, string | null>;
 }
 
 export interface PackagePhotoTable {

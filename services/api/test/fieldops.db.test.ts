@@ -23,7 +23,7 @@ import { SimulatorSms } from '@cg/adapters';
 import { fakeProvider } from '@cg/ai';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
-import { createDb, type Database } from '@cg/db';
+import { createDb, withTenant, type Database } from '@cg/db';
 import { westwindGraph } from '@cg/intake';
 import { sql, type Kysely } from 'kysely';
 import { loadSeed } from '../../../tools/seed/src/load.ts';
@@ -628,6 +628,51 @@ describe.skipIf(!appUrl || !workerUrl)(
         .execute();
       expect(events.filter((e) => e.kind === 'completed')).toHaveLength(2); // the update note, then the completion that rests on it
     });
+
+    it('F09: a reminder acknowledged while the timer marks it overdue keeps the acknowledgement', async () => {
+      const created = await call('priya', 'POST', '/api/v1/reminders', {
+        eventId,
+        kind: 'call_back',
+        title: 'Exercise: acknowledged as the timer runs',
+        dueAt: new Date(Date.now() + 60_000).toISOString(),
+      });
+      expect(created.status, created.body).toBe(201);
+      const id = created.json<Reminder>().id;
+      clock = Date.now() + 5 * 60_000;
+      // Someone acknowledges it: the row is theirs until they commit.
+      let go!: () => void;
+      const released = new Promise<void>((r) => (go = r));
+      let locked!: () => void;
+      const holding = new Promise<void>((r) => (locked = r));
+      const person = withTenant(dbWorker, { tenantId: tenants['county']! }, async (trx) => {
+        await trx
+          .updateTable('cg.reminder')
+          .set({ state: 'acknowledged' })
+          .where('id', '=', id)
+          .execute();
+        locked();
+        await released;
+      });
+      await holding;
+      // The timer read it as due and waits on that row (the check uses the other pool).
+      const timer = watchReminders(worker);
+      try {
+        for (let i = 0; ; i++) {
+          const { rows } = await sql<{
+            n: number;
+          }>`select count(*)::int as n from pg_locks where not granted`.execute(dbApp);
+          if (rows[0]!.n > 0) break;
+          if (i > 1200) throw new Error('the timer never waited on the acknowledged reminder');
+          await new Promise((r) => setTimeout(r, 25));
+        }
+      } finally {
+        go();
+      }
+      await Promise.all([person, timer]);
+      const r = (await call('priya', 'GET', `/api/v1/reminders/${id}`)).json<Reminder>();
+      expect(r.state).toBe('acknowledged');
+      expect(r.history!.filter((e) => e.kind === 'overdue')).toEqual([]);
+    }, 60_000);
 
     it('badges: generated, print requested, confirmed and handed out are separate facts (AC-13A, RULE-11); the code returns once; verification answers with name, agency and label only (AC-13B/C)', async () => {
       const generated = await call('reception', 'POST', '/api/v1/badges', {

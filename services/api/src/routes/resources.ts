@@ -10,6 +10,7 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import type { Selectable, Transaction } from 'kysely';
 import { z } from 'zod';
+import { publicLinkCheck } from '@cg/adapters';
 import { diffForAudit } from '@cg/audit';
 import type { Database } from '@cg/db';
 import { errors } from '../errors.ts';
@@ -74,37 +75,18 @@ const slugify = (name: string) =>
     .slice(0, 60) || 'resource';
 
 export interface ResourceDeps {
-  /** HEAD request for the link check; the default uses fetch with a short timeout. */
+  /**
+   * The link check; the default reaches only public addresses on web ports,
+   * never the stack's own network (OWASP SSRF, ADR-0042).
+   */
   checkLink?: (url: string) => Promise<boolean>;
-}
-
-async function defaultCheckLink(url: string): Promise<boolean> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5000);
-  try {
-    const res = await fetch(url, { method: 'HEAD', redirect: 'follow', signal: controller.signal });
-    if (res.ok) return true;
-    if (res.status === 405 || res.status === 403) {
-      const get = await fetch(url, {
-        method: 'GET',
-        redirect: 'follow',
-        signal: controller.signal,
-      });
-      return get.ok;
-    }
-    return false;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 export const resourceRoutes =
   (deps: ResourceDeps = {}): FastifyPluginAsync =>
   async (instance) => {
     const app = instance.withTypeProvider<ZodTypeProvider>();
-    const checkLink = deps.checkLink ?? defaultCheckLink;
+    const checkLink = deps.checkLink ?? publicLinkCheck();
 
     const account = (request: FastifyRequest) => {
       const s = request.subject;

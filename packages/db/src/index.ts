@@ -30,6 +30,25 @@ export interface TenantContext {
   accountId?: string | null;
 }
 
+/** Work queued to run after a transaction's own work and before it commits. */
+const beforeCommitQueues = new WeakMap<Transaction<Database>, (() => Promise<void>)[]>();
+
+/**
+ * Queues `work` to run once the transaction's own work is done, just before
+ * it commits, in the order queued. A transaction opened by `withTenant` has
+ * the queue; for any other transaction this returns false and the caller
+ * does the work now. The audit writer uses it so that a transaction takes
+ * every row lock before the tenant's audit chain lock (BRD:FR-08.04,
+ * migration 0040): two transactions that lock rows and the chain in
+ * opposite orders deadlock.
+ */
+export function beforeCommit(trx: Transaction<Database>, work: () => Promise<void>): boolean {
+  const queue = beforeCommitQueues.get(trx);
+  if (!queue) return false;
+  queue.push(work);
+  return true;
+}
+
 export async function withTenant<T>(
   db: Kysely<Database>,
   ctx: TenantContext,
@@ -42,6 +61,15 @@ export async function withTenant<T>(
     );
     await sql`select set_config('app.tenant_path', ${ctx.tenantPath ?? ''}, true)`.execute(trx);
     await sql`select set_config('app.account_id', ${ctx.accountId ?? ''}, true)`.execute(trx);
-    return fn(trx);
+    const queue: (() => Promise<void>)[] = [];
+    beforeCommitQueues.set(trx, queue);
+    try {
+      const result = await fn(trx);
+      // Queued work may queue more; it all runs before the commit.
+      for (let i = 0; i < queue.length; i++) await queue[i]!();
+      return result;
+    } finally {
+      beforeCommitQueues.delete(trx);
+    }
   });
 }

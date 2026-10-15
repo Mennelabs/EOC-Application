@@ -28,3 +28,8 @@
 - A webhook to a test receiver on a laptop needs a public HTTPS name (a secured development tunnel, CLAUDE.md rule 3); private addresses are refused by design.
 - The feature service caches a computed layer for 30 seconds per event; a layer is at most that stale.
 - Webhook payloads and keys appear in no log; the audit chain records who asked, who approved, each key's use and each final delivery outcome.
+
+## Amendment 2026-10-15
+
+- **The connection really goes to the checked address.** Node asks a custom lookup for every address when it connects; the first sender answered with one and every delivery failed to connect. `pinnedLookup` answers both forms, and a test now delivers through the real sender over TLS to a local receiver.
+- **Outside-link checks follow the same rule.** The daily check of a public resource's outside link (PUB-18, MET-07) and the console's "check link" button fetched whatever staff typed, redirects included; the button answered the caller at once. It now uses `publicLinkCheck`: http or https on ports 80, 443, 8080 or 8443, public addresses only, connected to the checked address, at most three redirects each checked the same way, five seconds a request, and only "answers" or "does not" is kept. The checks run with no transaction open.

@@ -41,6 +41,25 @@ export async function personBySubject(
   });
 }
 
+/** Work queued to run after a transaction's own work and before it commits. */
+const beforeCommitQueues = new WeakMap<Transaction<CjisDatabase>, (() => Promise<void>)[]>();
+
+/**
+ * Queues `work` to run once the transaction's own work is done, just before
+ * it commits, in the order queued. A transaction opened by `withAgency` has
+ * the queue; for any other this returns false and the caller does the work
+ * now. The audit writer uses it so a transaction locks its rows before the
+ * agency's audit chain (migration 0004): two transactions that take a row
+ * and the chain in opposite orders deadlock (as the platform found, ADR-0012
+ * amendment of 2026-10-15).
+ */
+export function beforeCommit(trx: Transaction<CjisDatabase>, work: () => Promise<void>): boolean {
+  const queue = beforeCommitQueues.get(trx);
+  if (!queue) return false;
+  queue.push(work);
+  return true;
+}
+
 export async function withAgency<T>(
   db: Kysely<CjisDatabase>,
   ctx: AgencyContext,
@@ -49,6 +68,15 @@ export async function withAgency<T>(
   return db.transaction().execute(async (trx) => {
     await sql`select set_config('app.agency_id', ${ctx.agencyId}, true)`.execute(trx);
     await sql`select set_config('app.person_id', ${ctx.personId ?? ''}, true)`.execute(trx);
-    return fn(trx);
+    const queue: (() => Promise<void>)[] = [];
+    beforeCommitQueues.set(trx, queue);
+    try {
+      const result = await fn(trx);
+      // Queued work may queue more; it all runs before the commit.
+      for (let i = 0; i < queue.length; i++) await queue[i]!();
+      return result;
+    } finally {
+      beforeCommitQueues.delete(trx);
+    }
   });
 }

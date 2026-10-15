@@ -23,3 +23,7 @@ Pure Postgres plus the S3 API; S3 Object Lock is available in GovCloud.
 ## Consequences
 
 Audit writes share the business transaction, so a failed business write never leaves an orphan audit row, and a successful one always has its audit row.
+
+## Amendment 2026-10-15: audit rows are written last
+
+Each tenant's chain is extended under a transaction-scoped advisory lock (migration 0040), held until commit. A transaction that wrote its audit row and then locked another row could deadlock with one that had locked that row and was waiting to audit; CI run 38698603482 lost a role approval that way, against the worker's `account.invited` job. Inside `withTenant` (every API request and every worker job), `recordAudit` now queues the row and writes it after the transaction's own work, just before commit (`beforeCommit` in `@cg/db`), in the order recorded. Every transaction therefore takes its row locks before the chain lock, and the chain lock is held only for the commit. A transaction opened any other way writes the row at once. The audit rows are still in the business transaction: a failed write leaves none. Tests: `services/api/test/auditchain.db.test.ts`, `permission-changes.db.test.ts`.

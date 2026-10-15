@@ -13,6 +13,8 @@
  * with API_DB_TEST_APP_URL and API_DB_TEST_WORKER_URL; skipped otherwise.
  */
 import { randomUUID } from 'node:crypto';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { fakeProvider } from '@cg/ai';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
@@ -650,6 +652,32 @@ describe.skipIf(!appUrl || !workerUrl)('public information (database-backed)', (
     });
     expect(link.statusCode, link.body).toBe(200);
     expect((link.json() as Resource).linkStatus).toBe('broken');
+    // OWASP SSRF (ADR-0042): a link into the stack's own network is never fetched, so
+    // "check link" cannot tell staff whether something answers there.
+    const inside: string[] = [];
+    const listener = createServer((req, res) => {
+      inside.push(req.url ?? '');
+      res.writeHead(200).end();
+    });
+    await new Promise<void>((done) => listener.listen(0, '127.0.0.1', done));
+    try {
+      const port = (listener.address() as AddressInfo).port;
+      await dbWorker
+        .updateTable('cg.resource')
+        .set({ reference_url: `http://127.0.0.1:${port}/v1/sys/health` })
+        .where('id', '=', r.id)
+        .execute();
+      const probed = await app.inject({
+        method: 'POST',
+        url: `/api/v1/resources/${r.id}/check-link`,
+        headers: headers('tomas'),
+      });
+      expect(probed.statusCode, probed.body).toBe(200);
+      expect((probed.json() as Resource).linkStatus).toBe('broken');
+      expect(inside).toEqual([]);
+    } finally {
+      await new Promise<void>((done) => listener.close(() => done()));
+    }
 
     const removed = await app.inject({
       method: 'POST',

@@ -36,3 +36,7 @@ The enclave database becomes a managed PostgreSQL in the authorized account; Ope
 ## Consequences
 
 Searching encrypted fields needs decryption in the API; the enclave lists records by reference, classification, state and dates only. `packages/cjis-db/test/enclave.db.test.ts` (row security, the role checks, the chain under tampering, floors and holds) and `services/cjis-api/test/api.db.test.ts` run in CI on a throwaway enclave database, followed by the enclave migration drill.
+
+## Amendment 2026-10-15
+
+Audit rows are written last, as on the platform (ADR-0012 amendment): under `withAgency`, `recordEnclaveAudit` queues the row and it is written just before commit (`beforeCommit` in `@cg/cjis-db`, a copy of the platform's so the enclave shares no code path with it), so a transaction takes its row locks before the agency's chain lock. Test: `packages/cjis-db/test/enclave.db.test.ts`.

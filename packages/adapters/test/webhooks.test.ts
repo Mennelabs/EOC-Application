@@ -3,7 +3,13 @@
  * (HTTPS host names resolving to public addresses only, OWASP SSRF), the
  * Standard Webhooks signature, and the retry schedule.
  */
-import { describe, expect, it } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createServer, type Server } from 'node:https';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   httpsWebhookSender,
   isPublicAddress,
@@ -79,6 +85,108 @@ describe('webhook addresses (SCL-09, SSRF)', () => {
     expect(
       (await plain({ url: 'http://hooks.example.org/in', headers: {}, body: '{}' })).error,
     ).toBe('The address must start with https://.');
+  });
+});
+
+function hasOpenssl(): boolean {
+  try {
+    execFileSync('openssl', ['version'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// A receiver on this machine with a throwaway certificate for its public name:
+// the delivery goes through the real sender (pinned address, TLS, headers).
+describe.skipIf(!hasOpenssl())('webhook delivery to a receiver (SCL-09)', () => {
+  let server: Server;
+  let port = '';
+  let ca = '';
+  let dir = '';
+  const received: {
+    method: string | undefined;
+    host: string | undefined;
+    headers: Record<string, unknown>;
+    body: string;
+  }[] = [];
+
+  beforeAll(async () => {
+    dir = mkdtempSync(join(tmpdir(), 'cg-webhook-'));
+    execFileSync(
+      'openssl',
+      [
+        'req',
+        '-x509',
+        '-newkey',
+        'rsa:2048',
+        '-nodes',
+        '-days',
+        '1',
+        '-keyout',
+        join(dir, 'key.pem'),
+        '-out',
+        join(dir, 'cert.pem'),
+        '-subj',
+        '/CN=hooks.example.org',
+        '-addext',
+        'subjectAltName=DNS:hooks.example.org',
+      ],
+      { stdio: 'ignore' },
+    );
+    ca = readFileSync(join(dir, 'cert.pem'), 'utf8');
+    server = createServer({ key: readFileSync(join(dir, 'key.pem')), cert: ca }, (req, res) => {
+      let body = '';
+      req.on('data', (c: Buffer) => (body += c.toString()));
+      req.on('end', () => {
+        received.push({ method: req.method, host: req.headers.host, headers: req.headers, body });
+        if (req.url === '/moved') res.writeHead(302, { location: 'https://elsewhere.example/' });
+        else res.writeHead(204);
+        res.end();
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    port = String((server.address() as AddressInfo).port);
+  });
+  afterAll(async () => {
+    await new Promise<void>((r) => server?.close(() => r()));
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const sender = () =>
+    httpsWebhookSender({
+      resolve: async () => ['127.0.0.1'],
+      allow: (address) => address === '127.0.0.1',
+      ports: new Set(['', '443', '8443', port]),
+      ca,
+      timeoutMs: 3_000,
+    });
+
+  it('delivers to the checked address with the host name kept for TLS, signed', async () => {
+    const body = JSON.stringify({ type: 'export.ready', data: { id: 'x' } });
+    const headers = signWebhook(newWebhookSecret(), 'msg_exercise', 1_700_000_000, body);
+    const r = await sender()({ url: `https://hooks.example.org:${port}/in`, headers, body });
+    expect(r).toEqual({ status: 204, error: null });
+    const got = received.at(-1)!;
+    expect(got.method).toBe('POST');
+    expect(got.host).toBe(`hooks.example.org:${port}`);
+    expect(got.body).toBe(body);
+    expect(got.headers['webhook-id']).toBe('msg_exercise');
+    expect(String(got.headers['webhook-signature'])).toMatch(/^v1,/);
+  });
+
+  it('a redirect is a failure and is not followed', async () => {
+    const before = received.length;
+    const r = await sender()({
+      url: `https://hooks.example.org:${port}/moved`,
+      headers: {},
+      body: '{}',
+    });
+    expect(r).toEqual({
+      status: 302,
+      error: 'The receiver answered with a redirect; redirects are not followed.',
+    });
+    expect(received.length).toBe(before + 1);
   });
 });
 

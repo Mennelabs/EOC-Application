@@ -6,7 +6,7 @@
  * successful one always has its record.
  */
 import { sql, type Kysely, type Transaction } from 'kysely';
-import type { ActorKind, Database } from '@cg/db';
+import { beforeCommit, type ActorKind, type Database } from '@cg/db';
 
 export * from './changes.ts';
 
@@ -28,35 +28,37 @@ export interface AuditInput {
   occurredAt?: Date;
 }
 
-export interface AuditReceipt {
-  seq: number;
-  hash: Buffer;
-}
-
-export async function recordAudit(
-  trx: Transaction<Database>,
-  input: AuditInput,
-): Promise<AuditReceipt> {
-  const row = await trx
-    .insertInto('cg.audit_event')
-    .values({
-      tenant_id: input.tenantId,
-      actor_kind: input.actorKind,
-      actor_account_id: input.actorAccountId ?? null,
-      action: input.action,
-      target_type: input.targetType,
-      target_id: input.targetId,
-      target_version: input.targetVersion ?? null,
-      changes: input.changes === undefined ? null : JSON.stringify(input.changes),
-      execution_id: input.executionId ?? null,
-      request_id: input.requestId ?? null,
-      classification_read: input.classificationRead ?? [],
-      reason: input.reason ?? null,
-      ...(input.occurredAt ? { occurred_at: input.occurredAt } : {}),
-    })
-    .returning(['seq', 'hash'])
-    .executeTakeFirstOrThrow();
-  return { seq: Number(row.seq), hash: row.hash };
+/**
+ * Records an audit row in the business transaction. Under `withTenant` the
+ * row is written after the transaction's own work, just before it commits
+ * (`beforeCommit`): the insert takes the tenant's chain lock until commit
+ * (migration 0040), so writing it last means every transaction locks its
+ * rows before the chain, and a transaction that locked a row first and then
+ * audits never waits on one that audited first and then wants that row
+ * (the deadlock in CI run 38698603482). Rows keep the order they were
+ * recorded in; if the transaction fails, none is written.
+ */
+export async function recordAudit(trx: Transaction<Database>, input: AuditInput): Promise<void> {
+  // Taken now, so a later change to `input` cannot change the record.
+  const values = {
+    tenant_id: input.tenantId,
+    actor_kind: input.actorKind,
+    actor_account_id: input.actorAccountId ?? null,
+    action: input.action,
+    target_type: input.targetType,
+    target_id: input.targetId,
+    target_version: input.targetVersion ?? null,
+    changes: input.changes === undefined ? null : JSON.stringify(input.changes),
+    execution_id: input.executionId ?? null,
+    request_id: input.requestId ?? null,
+    classification_read: input.classificationRead ?? [],
+    reason: input.reason ?? null,
+    ...(input.occurredAt ? { occurred_at: input.occurredAt } : {}),
+  };
+  const write = async () => {
+    await trx.insertInto('cg.audit_event').values(values).execute();
+  };
+  if (!beforeCommit(trx, write)) await write();
 }
 
 export interface ChainVerification {

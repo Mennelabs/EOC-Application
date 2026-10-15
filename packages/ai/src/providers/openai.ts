@@ -25,6 +25,9 @@ import type {
   DamageClassifier,
   DamageDegree,
   DamageSuggestion,
+  DiscoveredPlace,
+  DiscoveryOutput,
+  DiscoveryRequest,
   ExtractionOutput,
   ExtractionRequest,
   ImageAnalysis,
@@ -34,7 +37,7 @@ import type {
   SpeechToText,
   Translator,
 } from '../types.ts';
-import { buildCommandPrompt, buildExtractionPrompt } from '../prompt.ts';
+import { buildCommandPrompt, buildDiscoveryPrompt, buildExtractionPrompt } from '../prompt.ts';
 
 export type OpenAIFunction = 'text' | 'vision' | 'classifier' | 'transcription' | 'speech';
 
@@ -55,6 +58,7 @@ export const OPENAI_TEMPLATES = {
   classifier: 'damage-classifier-1',
   transcription: 'transcription-1',
   command: 'command-interpret-1',
+  discovery: 'discovery-search-1',
 } as const;
 
 /**
@@ -133,6 +137,57 @@ const COMMAND_SCHEMA = strictObject({
   injectionSuspected: { type: 'boolean' },
 });
 
+const nullable = (type: string) => ({ type: [type, 'null'] });
+const PLACE_KINDS = [
+  'school',
+  'place_of_worship',
+  'community_center',
+  'parking_lot',
+  'government',
+  'commercial',
+  'other',
+] as const;
+
+const DISCOVERY_SCHEMA = strictObject({
+  places: {
+    type: 'array',
+    items: strictObject({
+      name: { type: 'string' },
+      kind: { type: 'string', enum: [...PLACE_KINDS] },
+      line1: nullable('string'),
+      city: nullable('string'),
+      state: nullable('string'),
+      postal: nullable('string'),
+      lat: nullable('number'),
+      lon: nullable('number'),
+      sqft: nullable('number'),
+      ada: nullable('boolean'),
+      kitchen: nullable('boolean'),
+      generator: nullable('boolean'),
+      parkingSpaces: nullable('number'),
+      hours: nullable('string'),
+      website: nullable('string'),
+      sourceUrls: { type: 'array', items: { type: 'string' } },
+      change: { type: 'string', enum: ['new', 'update', 'closed'] },
+      registeredId: nullable('string'),
+      note: nullable('string'),
+    }),
+  },
+  injectionSuspected: { type: 'boolean' },
+});
+
+/** A URL as a comparable key: scheme and host lower-case, no fragment, no trailing slash. */
+const urlKey = (raw: string): string | null => {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+    u.hash = '';
+    return u.href.replace(/\/$/, '');
+  } catch {
+    return null;
+  }
+};
+
 const TRANSLATION_SCHEMA = strictObject({
   text: { type: 'string' },
   detectedLanguage: { type: ['string', 'null'] },
@@ -198,7 +253,11 @@ export class OpenAIProvider implements AiProvider {
     this.fetchImpl = config.fetch ?? fetch;
     this.now = config.now ?? Date.now;
     this.info = { provider: 'openai', model: this.models.text };
-    this.llm = { extract: (r) => this.extract(r) };
+    this.llm = {
+      extract: (r) => this.extract(r),
+      interpretCommand: (r) => this.interpretCommand(r),
+      discoverPlaces: (r) => this.discover(r),
+    };
     this.stt = { transcribe: (a, m, l) => this.transcribe(a, m, l) };
     this.translation = { translate: (t, to, from) => this.translate(t, to, from) };
     this.image = { analyse: (i, m) => this.analyse(i, m) };
@@ -218,9 +277,14 @@ export class OpenAIProvider implements AiProvider {
     };
   }
 
-  private async post(path: string, body: string | FormData, contentType?: string) {
+  private async post(
+    path: string,
+    body: string | FormData,
+    contentType?: string,
+    timeoutMs = this.timeoutMs,
+  ) {
     const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), this.timeoutMs);
+    const timer = setTimeout(() => ctl.abort(), timeoutMs);
     try {
       const res = await this.fetchImpl(`${this.baseUrl}${path}`, {
         method: 'POST',
@@ -242,14 +306,19 @@ export class OpenAIProvider implements AiProvider {
     }
   }
 
-  /** One Responses API call with a strict JSON schema; returns the parsed object and the model that answered. */
+  /**
+   * One Responses API call with a strict JSON schema; returns the parsed
+   * object, the model that answered and, when a tool searched the web, every
+   * URL it cited or consulted.
+   */
   private async respond(
     fn: OpenAIFunction,
     name: string,
     instructions: string,
     content: Part[],
     schema: Json,
-  ): Promise<{ json: Json; model: string }> {
+    opts: { tools?: Json[]; include?: string[]; timeoutMs?: number } = {},
+  ): Promise<{ json: Json; model: string; cited: Set<string> }> {
     const res = await this.post(
       '/responses',
       JSON.stringify({
@@ -257,27 +326,49 @@ export class OpenAIProvider implements AiProvider {
         instructions,
         input: [{ role: 'user', content }],
         text: { format: { type: 'json_schema', name, schema, strict: true } },
+        ...(opts.tools ? { tools: opts.tools } : {}),
+        ...(opts.include ? { include: opts.include } : {}),
         store: false,
       }),
       'application/json',
+      opts.timeoutMs,
     );
     const body = (await res.json()) as {
       status?: string;
       model?: string;
-      output?: { type?: string; content?: { type?: string; text?: string }[] }[];
+      output?: {
+        type?: string;
+        action?: { sources?: { url?: string }[] };
+        content?: {
+          type?: string;
+          text?: string;
+          annotations?: { type?: string; url?: string }[];
+        }[];
+      }[];
     };
     if (body.status && body.status !== 'completed') throw new AiProviderError('incomplete');
-    const parts = (body.output ?? [])
-      .filter((o) => o.type === 'message')
-      .flatMap((o) => o.content ?? []);
+    const output = body.output ?? [];
+    const parts = output.filter((o) => o.type === 'message').flatMap((o) => o.content ?? []);
     if (parts.some((p) => p.type === 'refusal')) throw new AiProviderError('refused');
     const text = parts.find((p) => p.type === 'output_text')?.text;
     if (typeof text !== 'string') throw new AiProviderError('invalid_output');
+    const cited = new Set<string>();
+    for (const o of output)
+      if (o.type === 'web_search_call')
+        for (const src of o.action?.sources ?? []) {
+          const k = typeof src.url === 'string' ? urlKey(src.url) : null;
+          if (k) cited.add(k);
+        }
+    for (const p of parts)
+      for (const a of p.annotations ?? []) {
+        const k = a.type === 'url_citation' && typeof a.url === 'string' ? urlKey(a.url) : null;
+        if (k) cited.add(k);
+      }
     try {
       const json = JSON.parse(text) as unknown;
       if (!json || typeof json !== 'object' || Array.isArray(json))
         throw new AiProviderError('invalid_output');
-      return { json: json as Json, model: body.model ?? this.models[fn] };
+      return { json: json as Json, model: body.model ?? this.models[fn], cited };
     } catch {
       throw new AiProviderError('invalid_output');
     }
@@ -359,6 +450,93 @@ export class OpenAIProvider implements AiProvider {
       },
       model,
       OPENAI_TEMPLATES.command,
+      started,
+    );
+  }
+
+  /**
+   * REC-13: web search for public places in the county's area. The scope
+   * carries no personal data (AIG-05); pages are untrusted (AIG-02). A place
+   * is kept only with a page the search itself cited or consulted, so a
+   * place the model made up has nowhere to point to; a change must name a
+   * listed place. Two minutes at most: a search reads several pages.
+   */
+  async discover(request: DiscoveryRequest): Promise<AiOutput<DiscoveryOutput>> {
+    const started = this.now();
+    const { system, user } = buildDiscoveryPrompt(request);
+    const { json, model, cited } = await this.respond(
+      'text',
+      'discovery',
+      system,
+      [{ type: 'input_text', text: user }],
+      DISCOVERY_SCHEMA,
+      {
+        tools: [{ type: 'web_search' }],
+        include: ['web_search_call.action.sources'],
+        timeoutMs: Math.max(this.timeoutMs, 120_000),
+      },
+    );
+    const listed = new Set(request.registered.map((r) => r.id));
+    const raw = Array.isArray(json['places']) ? (json['places'] as Json[]) : [];
+    const text = (v: unknown, max = 200) =>
+      typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null;
+    const number = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    let dropped = 0;
+    const places: DiscoveredPlace[] = [];
+    for (const p of raw.slice(0, request.max)) {
+      const name = text(p['name']);
+      const sources = (Array.isArray(p['sourceUrls']) ? (p['sourceUrls'] as unknown[]) : [])
+        .map((u) => (typeof u === 'string' ? urlKey(u) : null))
+        .filter((u): u is string => !!u && cited.has(u));
+      if (!name || !sources.length) {
+        dropped++;
+        continue;
+      }
+      const registeredId = text(p['registeredId'], 64);
+      const change =
+        p['change'] === 'closed' || p['change'] === 'update'
+          ? (p['change'] as 'closed' | 'update')
+          : 'new';
+      // A change must be about a listed place; otherwise it is a new place.
+      const about = registeredId && listed.has(registeredId) ? registeredId : null;
+      const lat = number(p['lat']);
+      const lon = number(p['lon']);
+      const facts: DiscoveredPlace['facts'] = {};
+      const sqft = number(p['sqft']);
+      if (sqft !== null && sqft > 0) facts.sqft = Math.round(sqft);
+      for (const k of ['ada', 'kitchen', 'generator'] as const)
+        if (typeof p[k] === 'boolean') facts[k] = p[k] as boolean;
+      const parking = number(p['parkingSpaces']);
+      if (parking !== null && parking >= 0) facts.parkingSpaces = Math.round(parking);
+      const hours = text(p['hours'], 300);
+      if (hours) facts.hours = hours;
+      const website = typeof p['website'] === 'string' ? urlKey(p['website']) : null;
+      if (website) facts.website = website;
+      const line1 = text(p['line1']);
+      const city = text(p['city'], 120);
+      const state = text(p['state'], 40);
+      const postal = text(p['postal'], 20);
+      places.push({
+        name,
+        kind: (PLACE_KINDS as readonly string[]).includes(String(p['kind']))
+          ? (p['kind'] as DiscoveredPlace['kind'])
+          : 'other',
+        address: line1 || city || postal ? { line1, city, state, postal } : null,
+        position:
+          lat !== null && lon !== null && Math.abs(lat) <= 90 && Math.abs(lon) <= 180
+            ? { lat, lon }
+            : null,
+        facts,
+        sourceUrls: [...new Set(sources)].slice(0, 5),
+        change: about ? change : 'new',
+        registeredId: about,
+        note: text(p['note'], 500),
+      });
+    }
+    return this.out(
+      { places, injectionSuspected: json['injectionSuspected'] === true, dropped },
+      model,
+      OPENAI_TEMPLATES.discovery,
       started,
     );
   }

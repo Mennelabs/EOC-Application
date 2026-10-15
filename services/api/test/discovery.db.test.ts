@@ -8,7 +8,10 @@
  * near unmet need in the active event. Planning may reject but not qualify a
  * place in; county EM qualifies one in, which enters the registry. A rejected
  * place stays rejected on the next run, and comes back only once something
- * about it changes. A role without the actions sees nothing. Runs on a
+ * about it changes. Web search runs only once the county lists it and the AI
+ * use register has it on; its call is recorded, and a closure it reports for a
+ * registered place retires the place only when county EM agrees. A role
+ * without the actions sees nothing. Runs on a
  * county of its own, only with API_DB_TEST_APP_URL and API_DB_TEST_WORKER_URL.
  */
 import { randomUUID } from 'node:crypto';
@@ -16,6 +19,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql, type Kysely } from 'kysely';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
+import { fakeProvider } from '@cg/ai';
 import { createDb, withTenant, type Database } from '@cg/db';
 import { loadSeed } from '../../../tools/seed/src/load.ts';
 import { buildApp, type App } from '../src/app.ts';
@@ -39,6 +43,7 @@ interface Candidate {
   name: string;
   kind: string;
   facilityId: string | null;
+  facilityName: string | null;
   attributes: Record<string, unknown>;
   unknown: string[];
   sourceLinks: string[];
@@ -80,6 +85,8 @@ describe.skipIf(!appUrl || !workerUrl)('resource discovery (database-backed)', (
       {
         db: dbWorker,
         log: { info() {}, warn() {}, error() {}, debug() {} },
+        // The deterministic fake stands in for OpenAI here (tests only, ADR-0043).
+        ai: { providerFor: async () => fakeProvider },
       } as unknown as JobContext,
       {
         tenantIds: [county],
@@ -467,6 +474,120 @@ describe.skipIf(!appUrl || !workerUrl)('resource discovery (database-backed)', (
     const back = await pending();
     expect(back).toHaveLength(1);
     expect(back[0]!.note).toMatch(/^Set aside on \d{4}-\d{2}-\d{2}; found again with changes\./);
+  });
+
+  it('REC-13, AIG-01, AIG-06: web search runs only once listed and switched on; a reported closure is a change for a person to decide', async () => {
+    const lodge = await withTenant(dbWorker, { tenantId: county }, async (trx) => {
+      await trx
+        .insertInto('cg.tenant_config')
+        .values({
+          tenant_id: county,
+          key: 'discovery.area',
+          value: JSON.stringify('Westwind County, Missouri'),
+          created_by: ACTOR,
+          updated_by: ACTOR,
+        })
+        .execute();
+      return (
+        await trx
+          .insertInto('cg.facility')
+          .values({
+            tenant_id: county,
+            name: 'Exercise Closed Lodge',
+            kind: 'other',
+            source: 'county',
+            approved_by: ACTOR,
+            approved_at: new Date(),
+            created_by: ACTOR,
+            updated_by: ACTOR,
+          } as never)
+          .returning('id')
+          .executeTakeFirstOrThrow()
+      ).id;
+    });
+    const listed = await call('admin', 'POST', '/discovery/sources', {
+      kind: 'web_search',
+      name: 'Web search',
+    });
+    expect(listed.status, JSON.stringify(listed.body)).toBe(201);
+    expect(
+      (await call('admin', 'POST', '/discovery/sources', { kind: 'web_search', name: 'Again' }))
+        .status,
+    ).toBe(409);
+    // Listed, but off in the AI use register: it says so and finds nothing.
+    await call('em', 'POST', '/discovery/runs');
+    expect(await discover()).toBe(0);
+    const off = (
+      (await call('em', 'GET', '/discovery/runs')).body as {
+        summary: { sources: { name: string; outcome: string }[] };
+      }[]
+    )[0]!.summary.sources;
+    expect(off).toContainEqual(
+      expect.objectContaining({
+        name: 'Web search',
+        outcome: 'Web search is switched off in the AI use register.',
+      }),
+    );
+    // The administrator switches it on once the provider passed the evaluation (AIG-08).
+    await withTenant(dbWorker, { tenantId: county }, (trx) =>
+      trx
+        .insertInto('cg.ai_use_register')
+        .values({
+          tenant_id: county,
+          feature: 'discovery.web_search',
+          provider: 'fake',
+          model: 'keyword-rules',
+          model_version: null,
+          data_sent: 'The area, the kinds of place and registered public places',
+          decision_informed: 'Candidates for the review queue',
+          human_checkpoint: 'County EM decides',
+          owner: 'Planning',
+          evaluation: JSON.stringify({}),
+          enabled: true,
+          created_by: ACTOR,
+          updated_by: ACTOR,
+        })
+        .execute(),
+    );
+    await call('em', 'POST', '/discovery/runs');
+    expect(await discover()).toBe(2);
+    const found = (await pending()).filter((c) => c.sourceKind === 'web_search');
+    const hall = found.find((c) => c.change === 'new')!;
+    expect(hall).toMatchObject({
+      name: 'Exercise Westwind County Community Hall',
+      kind: 'community_center',
+      sourceName: 'Web search',
+      sourceLinks: ['https://example.org/exercise-community-hall'],
+      attributes: { kitchen: true },
+    });
+    const closure = found.find((c) => c.change === 'closed')!;
+    expect(closure).toMatchObject({ facilityId: lodge, facilityName: 'Exercise Closed Lodge' });
+    // AIG-01: the search's record, with the provider and model that answered.
+    const records = await dbWorker
+      .selectFrom('cg.ai_output')
+      .select(['outcome', 'provider', 'model', 'target_type'])
+      .where('tenant_id', '=', county)
+      .where('feature', '=', 'discovery.web_search')
+      .execute();
+    expect(records).toEqual([
+      { outcome: 'ok', provider: 'fake', model: 'keyword-rules', target_type: 'discovery_run' },
+    ]);
+    // The closure retires the place only on county EM's decision.
+    const decided = await call(
+      'em',
+      'POST',
+      `/discovery/candidates/${closure.id}/decision`,
+      { decision: 'accept', reason: 'Exercise: confirmed with the lodge secretary' },
+      { 'if-match': `"${closure.version}"` },
+    );
+    expect(decided.status, JSON.stringify(decided.body)).toBe(200);
+    const after = await dbWorker
+      .selectFrom('cg.facility')
+      .select('status')
+      .where('id', '=', lodge)
+      .executeTakeFirstOrThrow();
+    expect(after.status).toBe('retired');
+    expect(await audits('facility.retire')).toHaveLength(1);
   });
 
   it('a role without the actions sees nothing', async () => {

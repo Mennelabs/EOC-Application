@@ -12,6 +12,8 @@ import type {
   AiProvider,
   CommandInterpretation,
   CommandInterpretRequest,
+  DiscoveryOutput,
+  DiscoveryRequest,
   ExtractionOutput,
   ExtractionRequest,
   ImageAnalysis,
@@ -224,6 +226,46 @@ export class FakeLanguageModel implements LanguageModel {
     const started = performance.now();
     const output = { ...interpret(request.text), language: detectLanguage(request.text) };
     return { output, provider: INFO, latencyMs: performance.now() - started };
+  }
+
+  /**
+   * Tests only: one fictional hall in the area with a fictional page, and a
+   * closure for any listed place whose name says it closed. Never a real place.
+   */
+  async discoverPlaces(request: DiscoveryRequest): Promise<AiOutput<DiscoveryOutput>> {
+    const started = performance.now();
+    const town = request.area.split(',')[0]!.trim();
+    const places: DiscoveryOutput['places'] = [
+      {
+        name: `Exercise ${town} Community Hall`,
+        kind: 'community_center' as const,
+        address: { line1: '1 Exercise Way', city: town, state: null, postal: null },
+        position: null,
+        facts: { kitchen: true },
+        sourceUrls: ['https://example.org/exercise-community-hall'],
+        change: 'new' as const,
+        registeredId: null,
+        note: null,
+      },
+      ...request.registered
+        .filter((r) => /\bclosed\b/i.test(r.name))
+        .map((r) => ({
+          name: r.name,
+          kind: 'other' as const,
+          address: null,
+          position: null,
+          facts: {},
+          sourceUrls: ['https://example.org/exercise-closure-notice'],
+          change: 'closed' as const,
+          registeredId: r.id,
+          note: 'The page says the building closed.',
+        })),
+    ].slice(0, request.max);
+    return {
+      output: { places, injectionSuspected: false, dropped: 0 },
+      provider: INFO,
+      latencyMs: performance.now() - started,
+    };
   }
 }
 

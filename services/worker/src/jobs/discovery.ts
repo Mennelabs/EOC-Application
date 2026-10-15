@@ -20,6 +20,7 @@
  */
 import { sql } from 'kysely';
 import { publicGet, type PublicGet } from '@cg/adapters';
+import { callAi, recordAiOutput, type AiProvider, type DiscoveredPlace } from '@cg/ai';
 import { distanceKm } from '@cg/reporting';
 import { allTenantIds, asSystem, systemAudit } from '../system.ts';
 import {
@@ -44,6 +45,136 @@ const STUCK_MS = 60 * 60_000;
 export const NEAR_NEED_KM = 3;
 
 const nowOf = (ctx: JobContext): Date => ctx.now?.() ?? new Date();
+
+/** REC-13's kinds of place, unless the tenant sets `discovery.place_types`. */
+export const PLACE_TYPES = [
+  'community centers',
+  'places of worship',
+  'schools',
+  'cooling and warming centers',
+  'food pantries',
+  'clinics',
+  'large parking lots',
+];
+/** Places one search may return, and registered places it checks for changes. */
+const SEARCH_MAX = 20;
+const SEARCH_REGISTERED = 25;
+
+/** A place the search found, as discovery keeps it (only what a page states). */
+export function fromSearch(d: DiscoveredPlace): FoundPlace {
+  const a: KnownAttributes = {};
+  if (d.facts.sqft !== undefined) a.sqft = d.facts.sqft;
+  if (d.facts.ada !== undefined) a.ada = d.facts.ada;
+  if (d.facts.kitchen !== undefined) a.kitchen = d.facts.kitchen;
+  if (d.facts.generator !== undefined) a.powerBackup = d.facts.generator ? 'generator' : 'none';
+  if (d.facts.parkingSpaces !== undefined) a.parkingSpaces = d.facts.parkingSpaces;
+  if (d.facts.hours !== undefined) a.hours = d.facts.hours;
+  if (d.facts.website !== undefined) a.website = d.facts.website;
+  return {
+    name: d.name,
+    kind: d.kind === 'other' ? kindFromText(d.name) : d.kind,
+    address: d.address,
+    position: d.position,
+    attributes: a,
+    sourceLinks: d.sourceUrls,
+    ...(d.note ? { note: d.note } : {}),
+    change: d.change,
+    ...(d.registeredId ? { facilityId: d.registeredId } : {}),
+  };
+}
+
+/**
+ * REC-13's third source: OpenAI web search, only where the county lists it
+ * and the AI use register has it switched on for the provider in force
+ * (AIG-06, AIG-08). The search carries the area, the kinds of place and the
+ * registered public places, never a person (AIG-05). It is called outside any
+ * transaction and recorded whatever its outcome (AIG-01); when a page tried to
+ * instruct it, nothing from that search is kept (AIG-02).
+ */
+async function webSearch(
+  ctx: JobContext,
+  tenantId: string,
+  runId: string,
+): Promise<{ outcome: string; places: FoundPlace[]; aiOutputId: string | null }> {
+  const prep = await asSystem(ctx.db, tenantId, async (trx) => {
+    const feature = await trx
+      .selectFrom('cg.ai_use_register')
+      .select(['enabled', 'provider'])
+      .where('tenant_id', '=', tenantId)
+      .where('feature', '=', 'discovery.web_search')
+      .executeTakeFirst();
+    if (!feature?.enabled) return { off: 'Web search is switched off in the AI use register.' };
+    const provider: AiProvider | null = await ctx.ai.providerFor(tenantId, trx);
+    if (!provider?.llm?.discoverPlaces || provider.info.provider !== feature.provider)
+      return { off: 'No provider for web search is configured here.' };
+    const config = await trx
+      .selectFrom('cg.tenant_config')
+      .select(['key', 'value'])
+      .where('tenant_id', '=', tenantId)
+      .where('key', 'in', ['discovery.area', 'discovery.place_types'])
+      .execute();
+    const tenant = await trx
+      .selectFrom('cg.tenant')
+      .select('name')
+      .where('id', '=', tenantId)
+      .executeTakeFirstOrThrow();
+    const area = config.find((c) => c.key === 'discovery.area')?.value;
+    const types = config.find((c) => c.key === 'discovery.place_types')?.value;
+    const registered = await trx
+      .selectFrom('cg.facility as f')
+      .leftJoin('cg.location as l', 'l.id', 'f.location_id')
+      .select(['f.id', 'f.name', 'l.line1', 'l.city'])
+      .where('f.tenant_id', '=', tenantId)
+      .where('f.status', '=', 'approved')
+      .orderBy('f.last_confirmed_at')
+      .limit(SEARCH_REGISTERED)
+      .execute();
+    return {
+      provider,
+      request: {
+        area: typeof area === 'string' && area.trim() ? area.trim().slice(0, 200) : tenant.name,
+        placeTypes:
+          Array.isArray(types) && types.every((t) => typeof t === 'string') && types.length
+            ? (types as string[]).slice(0, 20)
+            : PLACE_TYPES,
+        registered: registered.map((r) => ({
+          id: r.id,
+          name: r.name,
+          address: [r.line1, r.city].filter(Boolean).join(', ') || null,
+        })),
+        max: SEARCH_MAX,
+      },
+    };
+  });
+  if ('off' in prep) return { outcome: prep.off!, places: [], aiOutputId: null };
+  const call = await callAi(() => prep.provider.llm!.discoverPlaces!(prep.request));
+  const injected = call.ok && call.out.output.injectionSuspected;
+  const aiOutputId = await asSystem(ctx.db, tenantId, (trx) =>
+    recordAiOutput(trx, {
+      tenantId,
+      feature: 'discovery.web_search',
+      provider: call.ok ? call.out.provider : prep.provider.info,
+      outcome: call.ok ? (injected ? 'filtered' : 'ok') : call.outcome,
+      latencyMs: call.ok ? call.out.latencyMs : call.latencyMs,
+      targetType: 'discovery_run',
+      targetId: runId,
+    }),
+  );
+  if (!call.ok)
+    return { outcome: `The search did not answer (${call.outcome}).`, places: [], aiOutputId };
+  if (injected)
+    return {
+      outcome: 'A page tried to instruct the search; nothing from this search was kept.',
+      places: [],
+      aiOutputId,
+    };
+  const out = call.out.output;
+  return {
+    outcome: `Found ${out.places.length} place${out.places.length === 1 ? '' : 's'}${out.dropped ? `; ${out.dropped} without a page the search cited were left out` : ''}.`,
+    places: out.places.map(fromSearch),
+    aiOutputId,
+  };
+}
 
 export interface DiscoveryDeps {
   /** Reads a county feed; public https only by default (ADR-0042). */
@@ -363,7 +494,12 @@ export async function runDiscovery(ctx: JobContext, deps: DiscoveryDeps = {}): P
       rememberedRejected: 0,
       nearUnmetNeed: 0,
     };
-    const found: { place: FoundPlace; sourceKind: string; sourceId: string | null }[] = [];
+    const found: {
+      place: FoundPlace;
+      sourceKind: string;
+      sourceId: string | null;
+      aiOutputId?: string;
+    }[] = [];
     try {
       const posts = await partnerPosts(ctx, tenantId);
       summary.partnerPosts = posts.length;
@@ -378,7 +514,24 @@ export async function runDiscovery(ctx: JobContext, deps: DiscoveryDeps = {}): P
           .execute(),
       )) as SourceRow[];
       for (const s of sources) {
-        if (s.kind === 'web_search' || !s.url) continue;
+        if (s.kind === 'web_search') {
+          const r = await webSearch(ctx, tenantId, runId);
+          summary.sources.push({
+            id: s.id,
+            name: s.name,
+            outcome: r.outcome,
+            places: r.places.length,
+          });
+          for (const p of r.places)
+            found.push({
+              place: p,
+              sourceKind: 'web_search',
+              sourceId: s.id,
+              ...(r.aiOutputId ? { aiOutputId: r.aiOutputId } : {}),
+            });
+          continue;
+        }
+        if (!s.url) continue;
         const r = await get(s.url);
         if (!r.ok) {
           summary.sources.push({ id: s.id, name: s.name, outcome: r.error, places: 0 });

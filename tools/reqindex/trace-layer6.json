@@ -49,10 +49,10 @@
     ""
   ],
   "MET-07": [
-    "partial",
-    "resource link checks and expiry (layer 3, worker jobs/reminders.ts); resources carry reviewed_at and link_status",
-    "services/worker/test/reminders.db.test.ts",
-    "Freshness and broken-link rate are checked and shown per resource but not yet reported as a metric."
+    "pass",
+    "metrics resources.current (published pages whose review date has not passed) and resources.broken_links (broken at the last daily check, unchecked links disclosed) over the layer-3 link checks and review dates (packages/reporting metrics.ts, worker jobs/reminders.ts)",
+    "services/api/test/metrics.db.test.ts (MET-07), services/worker/test/reminders.db.test.ts",
+    ""
   ],
   "MET-08": [
     "deferred",
@@ -74,10 +74,10 @@
     ""
   ],
   "BRD:FR-14.02": [
-    "partial",
-    "period bounded to 92 days in the tenant's time zone; filters mission kind, priority, department, degree (routes/metrics.ts)",
-    "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts, tests/e2e/console-l6.spec.ts (metrics journey)",
-    "No status or severity filter: missions by state is a breakdown instead."
+    "pass",
+    "period bounded to 92 days in the tenant's time zone; filters mission kind, priority, mission state (status), department and degree of damage (severity) (routes/metrics.ts)",
+    "services/api/test/metrics.db.test.ts (period bounds, degree and mission-state filters), tests/e2e/console-l6.spec.ts (metrics journey)",
+    "Severity is read as the FEMA degree of damage, the only severity the records carry."
   ],
   "BRD:FR-14.03": [
     "pass",

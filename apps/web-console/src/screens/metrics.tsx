@@ -40,6 +40,7 @@ const GROUPS: [string, string][] = [
   ['personnel', 'Personnel'],
   ['badges', 'Badges'],
   ['needs', 'Help for residents'],
+  ['information', 'Recovery information'],
   ['accountability', 'Privacy and accountability'],
 ];
 const KINDS = [
@@ -71,6 +72,7 @@ export function MetricsScreen() {
     to: '',
     missionKind: '',
     priority: '',
+    missionState: '',
     degree: '',
   });
   const [query, setQuery] = useState('');
@@ -107,7 +109,8 @@ export function MetricsScreen() {
     const p = new URLSearchParams();
     if (form.from) p.set('from', instant(form.from));
     if (form.to) p.set('to', instant(form.to));
-    for (const k of ['missionKind', 'priority', 'degree'] as const) if (form[k]) p.set(k, form[k]);
+    for (const k of ['missionKind', 'priority', 'missionState', 'degree'] as const)
+      if (form[k]) p.set(k, form[k]);
     const q = p.toString();
     setQuery(q ? `?${q}` : '');
   };
@@ -181,6 +184,22 @@ export function MetricsScreen() {
             >
               <option value="">All priorities</option>
               {['low', 'normal', 'high', 'urgent'].map((k) => (
+                <option key={k} value={k}>
+                  {label(k)}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
+        <Field label="Mission state">
+          {({ id }) => (
+            <select
+              id={id}
+              value={form.missionState}
+              onChange={(e) => setForm({ ...form, missionState: e.target.value })}
+            >
+              <option value="">All states</option>
+              {['open', 'en_route', 'on_scene', 'cleared', 'closed', 'canceled'].map((k) => (
                 <option key={k} value={k}>
                   {label(k)}
                 </option>

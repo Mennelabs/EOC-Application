@@ -23,7 +23,14 @@ import { loadDamageRecords } from './load.ts';
 type Trx = Transaction<Database>;
 
 export type MetricGroup =
-  'damage' | 'reports' | 'missions' | 'personnel' | 'badges' | 'needs' | 'accountability';
+  | 'damage'
+  | 'reports'
+  | 'missions'
+  | 'personnel'
+  | 'badges'
+  | 'needs'
+  | 'information'
+  | 'accountability';
 
 export interface MetricDefinition {
   key: string;
@@ -43,6 +50,7 @@ export const GROUP_TITLE: Record<MetricGroup, string> = {
   personnel: 'Personnel',
   badges: 'Badges',
   needs: 'Help for residents',
+  information: 'Recovery information',
   accountability: 'Privacy and accountability',
 };
 
@@ -176,6 +184,24 @@ export const METRICS = {
     params: {},
     requirements: ['BRD:FR-14.07', 'EQ-12'],
   }),
+  'resources.current': d({
+    key: 'resources.current',
+    group: 'information',
+    title: 'Recovery information still current',
+    unit: 'percent',
+    text: 'Published help and program pages whose review date has not passed, as a share of all published pages. Pages as they stand now: their history is not kept.',
+    params: {},
+    requirements: ['MET-07', 'BRD:FR-16.03'],
+  }),
+  'resources.broken_links': d({
+    key: 'resources.broken_links',
+    group: 'information',
+    title: 'Broken outside links',
+    unit: 'percent',
+    text: 'Published pages with an outside link whose last daily check found it broken, as a share of published pages with an outside link. Links not checked yet are disclosed.',
+    params: {},
+    requirements: ['MET-07', 'BRD:FR-16.03'],
+  }),
   'accountability.denied': d({
     key: 'accountability.denied',
     group: 'accountability',
@@ -219,6 +245,8 @@ export interface MetricValue {
 export interface MetricFilters {
   missionKind?: string;
   priority?: string;
+  /** A mission state (BRD:FR-14.02 "status"). */
+  missionState?: string;
   /** A department or organization: the mission's owner or the check-in's agency. */
   department?: string;
   degree?: Degree;
@@ -505,6 +533,7 @@ export async function computeMetrics(
   const missionWhere = sql`m.event_id = ${eventId}::uuid
     ${filters.missionKind ? sql`and m.kind = ${filters.missionKind}` : sql``}
     ${filters.priority ? sql`and m.priority = ${filters.priority}` : sql``}
+    ${filters.missionState ? sql`and m.state = ${filters.missionState}` : sql``}
     ${filters.department ? sql`and coalesce(m.owning_tenant_id, m.tenant_id) = ${filters.department}::uuid` : sql``}`;
   const byState = await sql<{ k: string; n: string }>`
     select m.state as k, count(*) as n from cg.mission m
@@ -646,6 +675,50 @@ export async function computeMetrics(
     ),
   );
 
+  // ---------------------------------------------------------------- recovery information (MET-07)
+  const pages = (
+    await sql<{
+      published: string;
+      stale: string;
+      undated: string;
+      linked: string;
+      broken: string;
+      unchecked: string;
+    }>`
+      select count(*) as published,
+        count(*) filter (where review_at is not null and review_at < ${end}) as stale,
+        count(*) filter (where review_at is null) as undated,
+        count(*) filter (where reference_url is not null) as linked,
+        count(*) filter (where reference_url is not null and link_status = 'broken') as broken,
+        count(*) filter (where reference_url is not null and link_status = 'unchecked') as unchecked
+      from cg.resource
+      where tenant_id = ${tenantId}::uuid and status = 'published'
+        and (expires_at is null or expires_at > ${end})`.execute(trx)
+  ).rows[0]!;
+  const share = (n: number, of: number) => (of ? Math.round((n / of) * 1000) / 10 : null);
+  const published = Number(pages.published);
+  const stale = Number(pages.stale);
+  out.push(
+    value('resources.current', share(published - stale, published), [
+      { key: 'published', label: 'Published pages', value: published },
+      { key: 'review_passed', label: 'Review date passed', value: stale },
+      { key: 'no_review_date', label: 'No review date', value: Number(pages.undated) },
+    ]),
+  );
+  const linked = Number(pages.linked);
+  const unchecked = Number(pages.unchecked);
+  out.push(
+    value(
+      'resources.broken_links',
+      share(Number(pages.broken), linked - unchecked),
+      [
+        { key: 'with_link', label: 'Pages with an outside link', value: linked },
+        { key: 'broken', label: 'Broken at the last check', value: Number(pages.broken) },
+      ],
+      unchecked ? { count: unchecked, note: 'links not checked yet' } : null,
+    ),
+  );
+
   // ---------------------------------------------------------------- accountability
   const denied = await sql<{ k: string; n: string }>`
     select a.target_type as k, count(*) as n from cg.audit_event a
@@ -731,7 +804,7 @@ export async function computeMetrics(
       'Damage counts only approved, verified damage to primary residences, one home once; everything else is shown apart.',
       'No metric carries a name, contact detail or address.',
       'Response times leave out records missing a milestone and say how many.',
-      ...(filters.missionKind || filters.priority || filters.department
+      ...(filters.missionKind || filters.priority || filters.missionState || filters.department
         ? ['Mission and personnel figures are limited to the filters shown.']
         : []),
       ...(filters.degree ? ['Damage is limited to the degree shown.'] : []),
@@ -820,6 +893,9 @@ export function metricsPdf(
           [
             r.scope.filters.missionKind ? `mission kind ${label(r.scope.filters.missionKind)}` : '',
             r.scope.filters.priority ? `priority ${r.scope.filters.priority}` : '',
+            r.scope.filters.missionState
+              ? `mission state ${label(r.scope.filters.missionState)}`
+              : '',
             r.scope.filters.department ? 'one department' : '',
             r.scope.filters.degree ? `degree ${r.scope.filters.degree}` : '',
           ]

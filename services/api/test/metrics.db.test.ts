@@ -268,6 +268,51 @@ describe.skipIf(!appUrl || !workerUrl)('metrics (database-backed)', () => {
     ).toBe(1);
   });
 
+  it('BRD:FR-14.02: a mission state narrows the mission figures', async () => {
+    const r = (await get('director', `/events/${eventId}/metrics?${q}&missionState=open`)).json();
+    expect(metric(r, 'missions.by_state').parts.map((p) => p.key)).toEqual(['open']);
+    expect(metric(r, 'missions.closed').value).toBe(0);
+    expect(r.exclusions).toContain(
+      'Mission and personnel figures are limited to the filters shown.',
+    );
+    expect(
+      (await get('director', `/events/${eventId}/metrics?${q}&missionState=nope`)).status,
+    ).toBe(400);
+  });
+
+  it('MET-07: recovery information still current and broken outside links', async () => {
+    await tx(async (trx) => {
+      for (const [slug, review, url, link] of [
+        ['current-ok', 30, 'https://example.org/a', 'ok'],
+        ['stale-broken', -2, 'https://example.org/b', 'broken'],
+        ['current-unchecked', 10, 'https://example.org/c', 'unchecked'],
+        ['current-nolink', 5, null, 'unchecked'],
+      ] as const)
+        await trx
+          .insertInto('cg.resource')
+          .values({
+            tenant_id: county,
+            slug: `met07-${slug}`,
+            type: 'program',
+            status: 'published',
+            review_at: new Date(Date.now() + review * 86_400_000).toISOString().slice(0, 10),
+            reference_url: url,
+            link_status: link,
+          })
+          .execute();
+    });
+    const r = (await get('director', `/events/${eventId}/metrics?${q}`)).json();
+    const current = metric(r, 'resources.current');
+    const parts = Object.fromEntries(current.parts.map((p) => [p.key, p.value]));
+    expect(parts['published']).toBeGreaterThanOrEqual(4);
+    expect(parts['review_passed']).toBeGreaterThanOrEqual(1);
+    expect(current.value).toBeLessThan(100);
+    const broken = metric(r, 'resources.broken_links');
+    // Of the two checked links one is broken; the unchecked one is disclosed, not guessed.
+    expect(broken.value).toBe(50);
+    expect(broken.incomplete).toEqual({ count: 1, note: 'links not checked yet' });
+  });
+
   it('a county version of a definition changes the figure and names itself', async () => {
     const put = await app.inject({
       method: 'PUT',

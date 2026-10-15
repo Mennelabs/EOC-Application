@@ -6,8 +6,8 @@
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { sql, type Kysely } from 'kysely';
-import { createCjisDb, withAgency, type CjisDatabase } from '../src/index.ts';
+import { sql, type Kysely, type Transaction } from 'kysely';
+import { beforeCommit, createCjisDb, withAgency, type CjisDatabase } from '../src/index.ts';
 
 const appUrl = process.env['CJIS_DB_TEST_APP_URL'];
 const jobUrl = process.env['CJIS_DB_TEST_JOB_URL'];
@@ -254,6 +254,62 @@ describe.skipIf(!appUrl || !jobUrl || !migratorUrl)('enclave database (database-
         select ok, checked from cjis.audit_verify(${agencyB}::uuid)`.execute(job);
       expect(rows[0]).toMatchObject({ ok: true });
       expect(Number(rows[0]?.checked)).toBe(40);
+    });
+
+    it('a writer that audits and then locks a row does not deadlock with one that locked it first', async () => {
+      // The audit row goes through the before-commit queue, as recordEnclaveAudit does.
+      const audit = (trx: Transaction<CjisDatabase>, action: string) =>
+        beforeCommit(trx, () =>
+          trx
+            .insertInto('cjis.audit_event')
+            .values({
+              agency_id: agencyA,
+              actor_kind: 'system',
+              action,
+              target_type: 'person',
+              target_id: personA,
+              outcome: 'success',
+            })
+            .execute()
+            .then(() => undefined),
+        );
+      let go!: () => void;
+      const audited = new Promise<void>((r) => (go = r));
+      let locked!: () => void;
+      const holding = new Promise<void>((r) => (locked = r));
+      const rowFirst = withAgency(job, { agencyId: agencyA }, async (trx) => {
+        await trx
+          .updateTable('cjis.person')
+          .set({ display_name: 'Test Person (row first)' })
+          .where('id', '=', personA)
+          .execute();
+        locked();
+        await audited;
+        expect(audit(trx, 'test.row_first')).toBe(true);
+      });
+      await holding;
+      const auditFirst = withAgency(job, { agencyId: agencyA }, async (trx) => {
+        expect(audit(trx, 'test.audit_first')).toBe(true);
+        go();
+        await trx
+          .updateTable('cjis.person')
+          .set({ display_name: 'Test Person (audit first)' })
+          .where('id', '=', personA)
+          .execute();
+      });
+      await Promise.all([rowFirst, auditFirst]);
+      const rows = await job
+        .selectFrom('cjis.audit_event')
+        .select('action')
+        .where('agency_id', '=', agencyA)
+        .where('action', 'in', ['test.row_first', 'test.audit_first'])
+        .orderBy('seq')
+        .execute();
+      expect(rows.map((r) => r.action)).toEqual(['test.row_first', 'test.audit_first']);
+      // Outside withAgency there is no queue: the caller writes at once.
+      await job.transaction().execute(async (trx) => {
+        expect(beforeCommit(trx, async () => undefined)).toBe(false);
+      });
     });
 
     it('nobody updates or deletes an audit row, not even the system role', async () => {

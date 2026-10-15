@@ -6,7 +6,12 @@
  * Only field names are recorded, never a value (no CJI in the audit).
  */
 import type { Transaction } from 'kysely';
-import type { AuditActorKind, AuditOutcome, CjisDatabase } from '@cg/cjis-db';
+import {
+  beforeCommit,
+  type AuditActorKind,
+  type AuditOutcome,
+  type CjisDatabase,
+} from '@cg/cjis-db';
 
 export interface EnclaveAuditInput {
   agencyId: string | null;
@@ -24,26 +29,34 @@ export interface EnclaveAuditInput {
   occurredAt?: Date;
 }
 
+/**
+ * Under `withAgency` the row is written after the transaction's own work,
+ * just before it commits (`beforeCommit`), so the agency's chain lock is
+ * taken after every row lock and held only for the commit; rows keep the
+ * order recorded, and a failed transaction writes none.
+ */
 export async function recordEnclaveAudit(
   trx: Transaction<CjisDatabase>,
   input: EnclaveAuditInput,
 ): Promise<void> {
-  await trx
-    .insertInto('cjis.audit_event')
-    .values({
-      agency_id: input.agencyId,
-      actor_kind: input.actorKind,
-      actor_person_id: input.actorPersonId ?? null,
-      action: input.action,
-      target_type: input.targetType,
-      target_id: input.targetId,
-      target_version: input.targetVersion ?? null,
-      outcome: input.outcome,
-      reason: input.reason ? input.reason.slice(0, 500) : null,
-      fields: input.fields ?? [],
-      request_id: input.requestId ?? null,
-      source_ip: input.sourceIp ?? null,
-      ...(input.occurredAt ? { occurred_at: input.occurredAt } : {}),
-    })
-    .execute();
+  // Taken now, so a later change to `input` cannot change the record.
+  const values = {
+    agency_id: input.agencyId,
+    actor_kind: input.actorKind,
+    actor_person_id: input.actorPersonId ?? null,
+    action: input.action,
+    target_type: input.targetType,
+    target_id: input.targetId,
+    target_version: input.targetVersion ?? null,
+    outcome: input.outcome,
+    reason: input.reason ? input.reason.slice(0, 500) : null,
+    fields: input.fields ?? [],
+    request_id: input.requestId ?? null,
+    source_ip: input.sourceIp ?? null,
+    ...(input.occurredAt ? { occurred_at: input.occurredAt } : {}),
+  };
+  const write = async () => {
+    await trx.insertInto('cjis.audit_event').values(values).execute();
+  };
+  if (!beforeCommit(trx, write)) await write();
 }

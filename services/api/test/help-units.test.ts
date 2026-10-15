@@ -49,6 +49,30 @@ describe('alert drafts (PUB-11)', () => {
     const long = { ...site, name: 'A'.repeat(120) };
     const [en] = draftAlerts({ county: 'Westwind County', change: 'opened', site: long });
     expect(en!.wea90.length).toBeLessThanOrEqual(90);
+    expect(en!.social.length).toBeLessThanOrEqual(280);
+  });
+  it('social post, radio loop and net read-out from the same facts (PUB-12, PUB-14)', () => {
+    const [en, es] = draftAlerts({
+      county: 'Westwind County',
+      change: 'opened',
+      site,
+      helpPhone: '(314) 555-0142',
+    });
+    for (const d of [en!, es!]) {
+      expect(d.social.length).toBeLessThanOrEqual(280);
+      expect(d.social).toContain('Harmon High School gym');
+      for (const spoken of [d.radioLoop, d.netReadout]) {
+        expect(spoken).toContain('Harmon High School gym');
+        expect(spoken).toContain('400 Schoolhouse Rd');
+        expect(spoken).toContain('911');
+        expect(spoken.toLowerCase()).not.toContain('emergency alert');
+      }
+    }
+    expect(en!.radioLoop).toMatch(/^This is Westwind County Emergency Management\. /);
+    expect(en!.radioLoop).toMatch(/This message repeats\.$/);
+    expect(en!.netReadout).toMatch(/End of traffic\.$/);
+    expect(es!.radioLoop).toMatch(/Este mensaje se repite\.$/);
+    expect(es!.netReadout).toMatch(/Fin del mensaje\.$/);
   });
 });
 

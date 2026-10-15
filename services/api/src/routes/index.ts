@@ -40,7 +40,7 @@ import { reportRoutes } from './reports.ts';
 import { resourceRoutes } from './resources.ts';
 import { roleRoutes } from './roles.ts';
 import { rosterRoutes } from './roster.ts';
-import { siteRoutes } from './sites.ts';
+import { siteRoutesWith } from './sites.ts';
 import { sharedRoutes } from './shared.ts';
 import { situationRoutes } from './situation.ts';
 import { tenantRoutes } from './tenants.ts';
@@ -77,7 +77,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   intakeGraphRoutes,
   sharedRoutes,
   needRoutes,
-  siteRoutes,
+  siteRoutesWith(deps.drafting),
   missionRoutesWith(deps.missions),
   rosterRoutes,
   volunteerRoutes,

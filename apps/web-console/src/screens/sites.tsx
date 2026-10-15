@@ -4,9 +4,13 @@
  * approval dialog, close and unpublish a site; the confidential flag; the
  * next-nearest preview from the public view; alert drafts from a site
  * change; the log of what went public, by whom and when. Sites a partner
- * posted itself (2026-10-15) show the posting organization.
+ * posted itself (2026-10-15) show the posting organization. Layer-7 task G
+ * (PUB-11, PUB-12, PUB-14, AI-04): the social post, radio loop and net
+ * read-out sit with the alert texts, and the AI assistant can redraft any of
+ * them from the same facts, labelled and checked; the person copies what
+ * they keep, and its record says whether they changed it (AIG-01).
  */
-import { useState, type FormEvent } from 'react';
+import { Fragment, useState, type FormEvent } from 'react';
 import { api, describeFailure } from '../api/client.ts';
 import { DataTable, Field, Status, Toolbar, fmt } from '../ui/primitives.tsx';
 import { useList } from './admin.tsx';
@@ -54,6 +58,33 @@ interface AlertDraft {
   wea90: string;
   wea360: string;
   massNotification: string;
+  social: string;
+  radioLoop: string;
+  netReadout: string;
+}
+type DraftForm = Exclude<keyof AlertDraft, 'lang'>;
+const FORMS: { key: DraftForm; en: string; es: string; max: number }[] = [
+  { key: 'wea90', en: 'English, 90', es: 'Español, 90', max: 90 },
+  { key: 'wea360', en: 'English, 360', es: 'Español, 360', max: 360 },
+  { key: 'massNotification', en: 'Mass notification', es: 'Notificación masiva', max: 1000 },
+  { key: 'social', en: 'Social media post', es: 'Publicación en redes sociales', max: 280 },
+  { key: 'radioLoop', en: 'Radio loop (TIS)', es: 'Mensaje de radio (TIS)', max: 1500 },
+  {
+    key: 'netReadout',
+    en: 'Amateur radio net read-out',
+    es: 'Lectura para la red de radioaficionados',
+    max: 1500,
+  },
+];
+interface AiPublic {
+  form: DraftForm;
+  language: string;
+  text: string;
+  sentences: { text: string; factIds: string[] }[];
+  facts: { id: string; label: string; value: string | number | null }[];
+  provider: string;
+  model: string;
+  outputId: string;
 }
 
 const KINDS = [
@@ -90,7 +121,12 @@ export function SitesScreen() {
   const { rows, error, reload } = useList<Site>('/sites?limit=200');
   const [form, setForm] = useState(blank);
   const [msg, setMsg] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<{ site: string; drafts: AlertDraft[] } | null>(null);
+  const [drafts, setDrafts] = useState<{
+    siteId: string;
+    site: string;
+    change: string;
+    drafts: AlertDraft[];
+  } | null>(null);
   const [note, setNote] = useState('');
 
   const create = async (e: FormEvent) => {
@@ -144,7 +180,7 @@ export function SitesScreen() {
       const r = await api<{ drafts: AlertDraft[] }>('/alerts/draft', {
         body: { siteId: site.id, change },
       });
-      setDrafts({ site: site.name, drafts: r.drafts });
+      setDrafts({ siteId: site.id, site: site.name, change, drafts: r.drafts });
     } catch (err) {
       setMsg(describeFailure(err));
     }
@@ -291,19 +327,21 @@ export function SitesScreen() {
         <div className="panel" role="region" aria-label={`Alert drafts for ${drafts.site}`}>
           <h2>Alert drafts: {drafts.site}</h2>
           <p>
-            Sized for Wireless Emergency Alerts and the county's mass-notification tool. The county
-            sends them through its own authorized tool; nothing is sent from here.
+            Sized for Wireless Emergency Alerts, the county's mass-notification tool, social media
+            and spoken radio. The county sends them through its own authorized tools; nothing is
+            sent from here.
           </p>
           {drafts.drafts.map((d) => (
             <dl className="meta" key={d.lang} lang={d.lang}>
-              <dt>{d.lang === 'es' ? 'Español, 90' : 'English, 90'}</dt>
-              <dd>{d.wea90}</dd>
-              <dt>{d.lang === 'es' ? 'Español, 360' : 'English, 360'}</dt>
-              <dd>{d.wea360}</dd>
-              <dt>{d.lang === 'es' ? 'Notificación masiva' : 'Mass notification'}</dt>
-              <dd>{d.massNotification}</dd>
+              {FORMS.map((f) => (
+                <Fragment key={f.key}>
+                  <dt>{d.lang === 'es' ? f.es : f.en}</dt>
+                  <dd>{d[f.key]}</dd>
+                </Fragment>
+              ))}
             </dl>
           ))}
+          <AiPublicDraft key={`${drafts.siteId}:${drafts.change}`} {...drafts} />
         </div>
       ) : null}
       <h2>Add a site</h2>
@@ -515,6 +553,143 @@ export function PublicationsScreen() {
           { key: 'down', header: 'Taken down', render: (p) => fmt(p.unpublishedAt) },
         ]}
       />
+    </section>
+  );
+}
+
+/**
+ * The AI assistant's redraft of one public text (PUB-11, PUB-12, PUB-14,
+ * AI-04): labelled with its provider and model, checked against the site's
+ * facts, editable, and recorded as kept or changed when copied (AIG-01).
+ * With the assistant off, the server says so and the rules' texts stay.
+ */
+function AiPublicDraft({ siteId, site, change }: { siteId: string; site: string; change: string }) {
+  const [form, setForm] = useState<DraftForm>('social');
+  const [language, setLanguage] = useState('en');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [ai, setAi] = useState<AiPublic | null>(null);
+  const [text, setText] = useState('');
+  const [copied, setCopied] = useState(false);
+  const formOf = (k: DraftForm) => FORMS.find((f) => f.key === k)!;
+
+  const ask = async () => {
+    setBusy(true);
+    setMsg(null);
+    setCopied(false);
+    try {
+      const r = await api<AiPublic>('/alerts/ai-draft', {
+        body: { siteId, change, form, language },
+      });
+      setAi(r);
+      setText(r.text);
+    } catch (err) {
+      setAi(null);
+      setMsg(describeFailure(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const copy = async () => {
+    if (!ai) return;
+    setMsg(null);
+    try {
+      await navigator.clipboard?.writeText(text).catch(() => undefined);
+      if (!copied)
+        await api(`/alerts/ai-draft/${ai.outputId}/kept`, { body: { changed: text !== ai.text } });
+      setCopied(true);
+    } catch (err) {
+      setMsg(describeFailure(err));
+    }
+  };
+  const max = ai ? formOf(ai.form).max : 0;
+  const factLabel = new Map(ai?.facts.map((f) => [f.id, f.label]) ?? []);
+
+  return (
+    <section aria-labelledby="ai-public-h">
+      <h3 id="ai-public-h">Draft with the AI assistant</h3>
+      <p>
+        The assistant rewrites one text from the same facts about {site}. Every sentence names the
+        facts it uses and every figure is checked against them; a draft that strays is not shown.
+      </p>
+      <div className="form-grid">
+        <Field label="Text">
+          {({ id }) => (
+            <select id={id} value={form} onChange={(e) => setForm(e.target.value as DraftForm)}>
+              {FORMS.map((f) => (
+                <option key={f.key} value={f.key}>
+                  {f.en} (at most {f.max} characters)
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
+        <Field label="Language">
+          {({ id }) => (
+            <select id={id} value={language} onChange={(e) => setLanguage(e.target.value)}>
+              <option value="en">English</option>
+              <option value="es">Spanish</option>
+            </select>
+          )}
+        </Field>
+      </div>
+      <Toolbar>
+        <button type="button" onClick={ask} disabled={busy} aria-busy={busy}>
+          {busy ? 'Drafting…' : 'Draft with the AI assistant'}
+        </button>
+      </Toolbar>
+      {msg ? <Status kind="error">{msg}</Status> : null}
+      {ai ? (
+        <div>
+          <Status kind="info">
+            {`${formOf(ai.form).en} drafted by the AI assistant (${ai.provider}, ${ai.model}); every figure was checked against the site's facts. Read it and change what needs changing before you use it.`}
+          </Status>
+          <Field
+            label={`AI draft: ${formOf(ai.form).en}, ${ai.language === 'es' ? 'Spanish' : 'English'}`}
+          >
+            {({ id }) => (
+              <textarea
+                id={id}
+                lang={ai.language}
+                rows={ai.form === 'wea90' ? 2 : 6}
+                value={text}
+                aria-describedby="ai-public-count"
+                onChange={(e) => {
+                  setText(e.target.value);
+                  setCopied(false);
+                }}
+              />
+            )}
+          </Field>
+          <p id="ai-public-count" aria-live="polite">
+            {text.length} of {max} characters
+            {text.length > max ? ': too long for this channel' : ''}
+          </p>
+          <Toolbar>
+            <button type="button" className="primary" onClick={copy} disabled={text.length > max}>
+              Copy for sending
+            </button>
+          </Toolbar>
+          {copied ? (
+            <Status kind="success">
+              Copied. Send it through the county's authorized tool; nothing is sent from here.
+            </Status>
+          ) : null}
+          <details>
+            <summary>The facts each sentence uses</summary>
+            <ol>
+              {ai.sentences.map((x, i) => (
+                <li key={i} lang={ai.language}>
+                  {x.text}{' '}
+                  <span lang="en">
+                    ({x.factIds.map((id) => factLabel.get(id) ?? id).join('; ')})
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </details>
+        </div>
+      ) : null}
     </section>
   );
 }

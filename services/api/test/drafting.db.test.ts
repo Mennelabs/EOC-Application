@@ -154,6 +154,22 @@ describe.skipIf(!appUrl || !workerUrl)('AI drafting from facts (database-backed)
           enabled: true,
         })
         .execute();
+      await trx
+        .insertInto('cg.ai_use_register')
+        .values({
+          tenant_id: county,
+          feature: 'public.drafting',
+          provider: 'fake',
+          model: 'keyword-rules',
+          model_version: null,
+          data_sent: 'Public site facts',
+          decision_informed: 'Public text drafts',
+          human_checkpoint: 'The PIO copies or changes them',
+          owner: 'Public information',
+          evaluation: JSON.stringify({}),
+          enabled: true,
+        })
+        .execute();
       return (
         await trx
           .insertInto('cg.event')
@@ -199,6 +215,7 @@ describe.skipIf(!appUrl || !workerUrl)('AI drafting from facts (database-backed)
     };
     subjects['author'] = as('reporting_planning');
     subjects['director'] = as('county_em_director');
+    subjects['pio'] = as('public_information_officer');
     const loader: SubjectLoader = {
       async fromBearer(token) {
         const s = subjects[token];
@@ -407,5 +424,101 @@ describe.skipIf(!appUrl || !workerUrl)('AI drafting from facts (database-backed)
       payload: { box: 8 },
     });
     expect(author.statusCode).toBe(403);
+  });
+
+  it('PUB-11, PUB-12, PUB-14, AI-04: the social post, radio loop and alert text are drafted from the site facts, within each channel’s length, in both languages', async () => {
+    const pio = (url: string, payload?: unknown) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/v1${url}`,
+        headers: { authorization: 'Bearer pio', 'idempotency-key': randomUUID() },
+        ...(payload !== undefined ? { payload: payload as Record<string, unknown> } : {}),
+      });
+    const site = await pio('/sites', {
+      kind: 'shelter',
+      name: `Harmon High School gym ${run}`,
+      slug: `drf-harmon-${run}`,
+      status: 'open',
+      address: { line1: '400 Schoolhouse Rd', city: 'Harmon City', postal: '63005' },
+      hours: { daily: 'Open 24 hours' },
+      pets: 'service_animals',
+      accessibility: { ada: true, wheelchair: true },
+    });
+    expect(site.statusCode, site.body).toBe(201);
+    const siteId = (site.json() as { id: string }).id;
+    type Drafted = {
+      form: string;
+      text: string;
+      rules: string;
+      sentences: { factIds: string[] }[];
+      facts: { id: string }[];
+      provider: string;
+      outputId: string;
+    };
+    const drafted: Drafted[] = [];
+    for (const [form, max, language] of [
+      ['social', 280, 'en'],
+      ['wea90', 90, 'en'],
+      ['radioLoop', 1500, 'en'],
+      ['netReadout', 1500, 'es'],
+    ] as const) {
+      const res = await pio('/alerts/ai-draft', { siteId, change: 'opened', form, language });
+      expect(res.statusCode, `${form}: ${res.body}`).toBe(200);
+      const d = res.json() as Drafted;
+      expect(d.provider).toBe('fake');
+      expect(d.text.length).toBeLessThanOrEqual(max);
+      expect(d.text).toContain(`Harmon High School gym ${run}`);
+      expect(d.sentences.every((x) => x.factIds.length > 0)).toBe(true);
+      expect(d.facts.map((f) => f.id)).toEqual(
+        expect.arrayContaining(['county', 'site.name', 'site.address', 'safety']),
+      );
+      drafted.push(d);
+    }
+    expect(drafted[2]!.text).toMatch(/This message repeats\.$/);
+    expect(drafted[3]!.text).toMatch(/Fin del mensaje\.$/);
+    // AIG-01: copying records whether the person kept it as written, once.
+    const kept = await pio(`/alerts/ai-draft/${drafted[0]!.outputId}/kept`, { changed: false });
+    expect(kept.statusCode, kept.body).toBe(204);
+    const edited = await pio(`/alerts/ai-draft/${drafted[2]!.outputId}/kept`, { changed: true });
+    expect(edited.statusCode).toBe(204);
+    const again = await pio(`/alerts/ai-draft/${drafted[0]!.outputId}/kept`, { changed: true });
+    expect(again.statusCode).toBe(204);
+    const rows = await dbWorker
+      .selectFrom('cg.ai_output')
+      .select(['id', 'outcome', 'target_type', 'target_id', 'human_action', 'language'])
+      .where('tenant_id', '=', county)
+      .where('feature', '=', 'public.drafting')
+      .execute();
+    expect(rows).toHaveLength(4);
+    expect(rows.every((r) => r.target_type === 'site' && r.target_id === siteId)).toBe(true);
+    expect(rows.find((r) => r.id === drafted[0]!.outputId)?.human_action).toBe('accepted');
+    expect(rows.find((r) => r.id === drafted[2]!.outputId)?.human_action).toBe('edited');
+    expect(rows.find((r) => r.id === drafted[3]!.outputId)?.language).toBe('es');
+    // Another feature's record is not this route's to mark.
+    const other = await pio(`/alerts/ai-draft/${randomUUID()}/kept`, { changed: false });
+    expect(other.statusCode).toBe(404);
+    // PUB-05: a confidential site is never named in public text, by the rules or the assistant.
+    const quiet = await pio('/sites', {
+      kind: 'shelter',
+      name: `Quiet house ${run}`,
+      slug: `drf-quiet-${run}`,
+      status: 'open',
+      confidential: true,
+    });
+    expect(quiet.statusCode).toBe(201);
+    const secret = await pio('/alerts/ai-draft', {
+      siteId: (quiet.json() as { id: string }).id,
+      change: 'opened',
+      form: 'social',
+    });
+    expect(secret.statusCode).toBe(400);
+    // Who may not draft public text may not ask the assistant for it.
+    const author = await app.inject({
+      method: 'POST',
+      url: '/api/v1/alerts/ai-draft',
+      headers: { authorization: 'Bearer author', 'idempotency-key': randomUUID() },
+      payload: { siteId, change: 'opened', form: 'social' },
+    });
+    expect([403, 404]).toContain(author.statusCode);
   });
 });

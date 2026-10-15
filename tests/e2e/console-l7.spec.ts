@@ -18,6 +18,12 @@
  * a run, finds the place in the queue with where it came from and the
  * pre-check, and qualifies it into the registry (desktop) or sets it aside
  * (phone), with a reason.
+ *
+ * Public text (PUB-11, PUB-12, PUB-14, AI-10): the PIO adds a site and asks
+ * for its alert drafts; the social post, the radio loop and the amateur-net
+ * read-out sit with the WEA and mass-notification texts in both languages;
+ * with no AI provider configured, the assistant says it is off and the rules'
+ * texts stay.
  */
 import { devices, expect, test } from '@playwright/test';
 import {
@@ -339,5 +345,49 @@ test.describe('layer 7 console: the command window', () => {
     } finally {
       await second.close();
     }
+  });
+
+  test('PUB-11, PUB-12, PUB-14: the PIO reads the social, radio and net texts; the AI assistant says it is off', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(180_000);
+    await onboard(
+      page,
+      context,
+      'public_information_officer',
+      `PIO ${tag}`,
+      `l7p-${testInfo.project.name}`,
+    );
+    await page.goto('/console/sites');
+    await expect(page.getByRole('heading', { name: 'Sites', exact: true })).toBeVisible();
+    const siteName = `Exercise cooling center ${tag} ${testInfo.project.name}`;
+    await page.getByLabel('Kind', { exact: true }).selectOption('cooling');
+    await page.getByLabel('Name', { exact: true }).fill(siteName);
+    await page.getByLabel('Street address', { exact: true }).fill('9 Civic Plaza');
+    await page.getByLabel('City', { exact: true }).fill('Westwind');
+    await page.getByLabel('ZIP', { exact: true }).fill('63003');
+    await page.getByRole('button', { name: 'Add site' }).click();
+    await expect(page.getByRole('status').first()).toContainText('added');
+    const row = page.getByRole('row').filter({ hasText: siteName });
+    await row.getByRole('button', { name: 'Alert draft' }).click();
+    const drafts = page.getByRole('region', { name: `Alert drafts for ${siteName}` });
+    await expect(drafts).toBeVisible();
+    for (const label of [
+      'English, 90',
+      'Social media post',
+      'Radio loop (TIS)',
+      'Amateur radio net read-out',
+      'Publicación en redes sociales',
+    ])
+      await expect(drafts.getByText(label, { exact: true })).toBeVisible();
+    await expect(drafts).toContainText('This message repeats.');
+    await expect(drafts).toContainText('End of traffic.');
+    await expectNoViolations(page);
+    await drafts.getByLabel('Text', { exact: true }).selectOption('radioLoop');
+    await drafts.getByRole('button', { name: 'Draft with the AI assistant' }).click();
+    await expect(drafts.getByText('The AI drafting assistant is off here.')).toBeVisible();
+    await expectNoViolations(page);
+    if (testInfo.project.name === 'phone') await expectReflow(page);
   });
 });

@@ -251,7 +251,8 @@ th {
 }
 .meta {
   display: grid;
-  grid-template-columns: max-content 1fr;
+  /* WCAG 1.4.10: a long term wraps instead of widening the page. */
+  grid-template-columns: fit-content(45%) minmax(0, 1fr);
   gap: 0.25rem 1rem;
 }
 .meta dt {
@@ -259,6 +260,7 @@ th {
 }
 .meta dd {
   margin: 0;
+  overflow-wrap: anywhere;
 }
 dialog.confirm {
   border: 1px solid var(--line);

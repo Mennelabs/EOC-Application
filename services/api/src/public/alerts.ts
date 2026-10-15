@@ -32,6 +32,12 @@ export interface AlertDraft {
   wea90: string;
   wea360: string;
   massNotification: string;
+  /** PUB-12: a post for the county's social media, at most 280 characters. */
+  social: string;
+  /** PUB-14: a loop for a low-power AM Travelers' Information Station. */
+  radioLoop: string;
+  /** PUB-14: a read-out for ARES/RACES nets serving areas without cell service. */
+  netReadout: string;
 }
 
 const KIND = {
@@ -128,6 +134,28 @@ export function draftAlerts(input: AlertInput): AlertDraft[] {
           ? `${input.county} Emergency Management: the ${kind} at ${input.site.name}${where} ${state}.${nextText} This message does not send help; if anyone is in danger, call 911.${more}`
           : `Manejo de Emergencias de ${input.county}: el ${kind} en ${input.site.name}${where} ${state}.${nextText} Este mensaje no envía ayuda; si alguien está en peligro, llame al 911.${more}`;
     }
-    return { lang, wea90: cut(short, 90), wea360: cut(long, 360), massNotification: mass };
+    // PUB-12, PUB-14: the same facts for social media and spoken channels.
+    const prefix =
+      lang === 'en'
+        ? `${input.county} Emergency Management: `
+        : `Manejo de Emergencias de ${input.county}: `;
+    const core = mass.startsWith(prefix) ? mass.slice(prefix.length) : mass;
+    const radioLoop =
+      lang === 'en'
+        ? `This is ${input.county} Emergency Management. ${core} Again: ${short} This message repeats.`
+        : `Le habla Manejo de Emergencias de ${input.county}. ${core} Repetimos: ${short} Este mensaje se repite.`;
+    const netReadout =
+      lang === 'en'
+        ? `${input.county} Emergency Management traffic, for relay to areas without cell service. ${core} End of traffic.`
+        : `Mensaje de Manejo de Emergencias de ${input.county}, para retransmitir a zonas sin servicio celular. ${core} Fin del mensaje.`;
+    return {
+      lang,
+      wea90: cut(short, 90),
+      wea360: cut(long, 360),
+      massNotification: mass,
+      social: cut(long, 280),
+      radioLoop,
+      netReadout,
+    };
   });
 }

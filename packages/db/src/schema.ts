@@ -2544,6 +2544,9 @@ export interface CommandExecutionTable extends Stamped {
   reversal_of: Uuid | null;
   undone_by: Uuid | null;
   undo_until: TsNullable;
+  /** CMD-38: how long the plan took to prepare, and the confirmed operation to run. */
+  prepare_ms: ColumnType<number | null, number | null | undefined, number | null>;
+  execute_ms: ColumnType<number | null, number | null | undefined, number | null>;
 }
 
 /** One AI call (AIG-01, layer-7 task A); never the prompt or the reply. */

@@ -648,6 +648,19 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
               </>
             ) : null}
 
+            {current.status === 'executing' && current.id ? (
+              <div className="actions">
+                {/* CMD-38: a command past the deadline is still running; ask again for its result. */}
+                <button
+                  type="button"
+                  onClick={() => void api<Execution>(`/commands/${current.id}`).then(settle, fail)}
+                  disabled={busy}
+                >
+                  Check again
+                </button>
+              </div>
+            ) : null}
+
             {current.status === 'stale' ? (
               <div className="actions">
                 <button type="button" className="primary" onClick={() => void prepare()}>

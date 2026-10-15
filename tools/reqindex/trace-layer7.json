@@ -223,10 +223,10 @@
     ""
   ],
   "CMD-38": [
-    "partial",
-    "Section 30.2 targets (shorthand 1 s, interpretation 2.5 s, execution 2 s at p95; 15 s timeout); each interpretation records its latency and outcome in cg.ai_output, counted by the AI health job; executions record their state; the window announces \"Working…\" and the outcome",
-    "services/api/test/commands.db.test.ts (CMD-03: interpretation outcomes recorded: ok, filtered, accepted, rejected)",
-    "The targets are not enforced or measured: the OpenAI call times out at 20 s (AI_TIMEOUT_MS) and executions have no timeout; clarifications are not recorded; no completion, clarification or duplicate metric yet."
+    "pass",
+    "services/api/src/commands/timing.ts (TARGETS: shorthand 1 s, interpretation 2.5 s, execution 2 s at p95; DEADLINE_MS 15 s; within, p95); routes/commands.ts: the model's reading is given up at the deadline and recorded as timed out; an execution past it answers \"still running\" and finishes in the background, recording its own result (GET /commands/:id; the window's \"Check again\"); prepare_ms and execute_ms per execution (migration 0076); GET /commands/performance (ai_register.read) gives count, p95 and whether each target is met, separately, with timeouts and executions still running; the AI register screen shows it",
+    "services/api/test/command-timing.test.ts, services/api/test/commands.db.test.ts (CMD-38: timed-out reading recorded, \"still running\" then succeeded with its timings, the report against the targets, refused to a field coordinator), tests/e2e/console.spec.ts (the section on the AI register screen)",
+    "Completion, clarification and duplicate rates are not reported yet (clarifications keep no execution record). The report table itself is shown in the browser only to the register's readers; the journey's reviewer sees the permission message."
   ],
   "AC-C01": [
     "pass",

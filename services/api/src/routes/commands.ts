@@ -21,7 +21,14 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { sql, type Selectable, type Transaction } from 'kysely';
 import { z } from 'zod';
-import { callAi, recordAiOutput, recordHumanAction, redact, type AiProvider } from '@cg/ai';
+import {
+  AiProviderError,
+  callAi,
+  recordAiOutput,
+  recordHumanAction,
+  redact,
+  type AiProvider,
+} from '@cg/ai';
 import { actions, decide, isActionKey } from '@cg/authz';
 import type { CommandExecutionTable, Database } from '@cg/db';
 import {
@@ -38,6 +45,7 @@ import {
 } from '../commands/catalog.ts';
 import { aliasMayRun, type AliasScope } from '../commands/aliases.ts';
 import { ON_SCREEN, parseShorthand } from '../commands/parse.ts';
+import { DEADLINE_MS, TARGETS, p95, within } from '../commands/timing.ts';
 import { ApiError, errors } from '../errors.ts';
 import { iso, uuidParam } from './helpers.ts';
 
@@ -463,7 +471,12 @@ async function resolveOnScreen(
 
 export interface CommandDeps {
   ai?: { providerFor(tenantId: string, trx: Transaction<Database>): Promise<AiProvider | null> };
+  /** CMD-38: how long the window waits before answering honestly (tests shorten it). */
+  deadlineMs?: number;
 }
+
+const STILL_RUNNING =
+  'Still running after 15 seconds. Nothing is lost: the result shows here when it finishes. Check the record before trying again.';
 
 const AI_OFF =
   'Plain-language commands need the AI assistant, which is off here. Type /help for the shorthand, which always works.';
@@ -476,11 +489,30 @@ export const commandRoutesWith =
   (deps: CommandDeps = {}): FastifyPluginAsync =>
   async (base) => {
     const app = base.withTypeProvider<ZodTypeProvider>();
+    const deadlineMs = deps.deadlineMs ?? DEADLINE_MS;
 
     const account = (request: FastifyRequest) => {
       const s = request.subject;
       if (s.kind !== 'account') throw errors.unauthorized();
       return s;
+    };
+
+    /**
+     * CMD-38: an operation that has not answered by the deadline is reported as
+     * still running, never as done or failed; it finishes in the background and
+     * records its own result, which GET /commands/:id then shows.
+     */
+    const answerWithin = async (
+      request: FastifyRequest,
+      row: Row,
+      work: Promise<ExecutionOut>,
+    ): Promise<ExecutionOut> => {
+      const r = await within(work, deadlineMs);
+      if (r.done) return r.value;
+      r.later.catch((err: unknown) =>
+        request.log.error({ err, command: row.command }, 'command finished after its answer'),
+      );
+      return { ...view(row, new Date()), message: STILL_RUNNING };
     };
 
     /** Section 30.2: phases 1 and 2 on by default; a county turns on 3 and 4 in its configuration. */
@@ -537,6 +569,7 @@ export const commandRoutesWith =
       extraHeaders: Record<string, string>,
     ): Promise<ExecutionOut> {
       const s = account(request);
+      const started = performance.now();
       // CMD-24: an operation that did not answer is reported as such, never as done or undone.
       const res = await op(request, req, {
         'idempotency-key': row.execution_id,
@@ -552,6 +585,7 @@ export const commandRoutesWith =
         };
       });
       const ok = res.status >= 200 && res.status < 300;
+      const executeMs = Math.round(performance.now() - started);
       const now = new Date();
       const verified = ok
         ? row.reversal_of
@@ -584,6 +618,7 @@ export const commandRoutesWith =
               ok && spec.reversal === 'undo_15_min' && spec.undo && !row.reversal_of
                 ? new Date(now.getTime() + UNDO_MS)
                 : null,
+            execute_ms: executeMs,
             updated_by: s.accountId,
           })
           .where('id', '=', row.id)
@@ -624,6 +659,7 @@ export const commandRoutesWith =
     ): Promise<ExecutionOut> {
       const s = account(request);
       const bulk = spec.bulk!;
+      const started = performance.now();
       const done: Verified['records'] = [];
       const failures: NonNullable<Verified['failures']> = [];
       for (const t of plan.batch!) {
@@ -677,6 +713,7 @@ export const commandRoutesWith =
             result: JSON.stringify(stored),
             plan: JSON.stringify(withoutFreeText(plan, spec)),
             undo_until: null,
+            execute_ms: Math.round(performance.now() - started),
             updated_by: s.accountId,
           })
           .where('id', '=', row.id)
@@ -753,16 +790,25 @@ export const commandRoutesWith =
         (c) => ({ usage: c.usage, title: c.title }),
       );
       const { text: redacted, tokens } = redact(text);
-      const call = await callAi(() =>
+      const call = await callAi(async () => {
         // CMD-06: the model learns only which kind of record is open, never which one.
-        llm.interpretCommand!({
-          text: redacted,
-          commands,
-          now: now.toISOString(),
-          timeZone,
-          onScreen,
-        }),
-      );
+        const r = await within(
+          llm.interpretCommand!({
+            text: redacted,
+            commands,
+            now: now.toISOString(),
+            timeZone,
+            onScreen,
+          }),
+          deadlineMs,
+        );
+        // CMD-38: past the deadline the reading is given up and recorded as timed out.
+        if (!r.done) {
+          r.later.catch(() => undefined);
+          throw new AiProviderError('timeout');
+        }
+        return r.value;
+      });
       const out = call.ok ? call.out.output : null;
       const aiOutputId = await request.tx((trx) =>
         recordAiOutput(trx, {
@@ -832,6 +878,91 @@ export const commandRoutesWith =
         );
         const now = new Date();
         return rows.map((r) => view(r, now));
+      },
+    );
+
+    // ---------------------------------------------------------------- response times (CMD-38)
+    const measured = z.object({
+      count: z.number().int(),
+      p95Ms: z.number().nullable(),
+      targetMs: z.number().int(),
+      met: z.boolean().nullable(),
+    });
+    app.get(
+      '/commands/performance',
+      {
+        schema: {
+          tags: ['commands'],
+          querystring: z.object({ days: z.coerce.number().int().min(1).max(90).default(7) }),
+          response: {
+            200: z.object({
+              days: z.number().int(),
+              deadlineMs: z.number().int(),
+              shorthand: measured,
+              interpretation: measured.extend({ timedOut: z.number().int() }),
+              execution: measured.extend({ stillRunning: z.number().int() }),
+            }),
+          },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('ai_register.read', {
+          type: 'ai_use_register',
+          tenantId: s.tenantId,
+        });
+        const since = new Date(Date.now() - request.query.days * 86_400_000);
+        const { runs, reads } = await request.tx(async (trx) => ({
+          runs: await trx
+            .selectFrom('cg.command_execution')
+            .select(['input_kind', 'state', 'prepare_ms', 'execute_ms', 'updated_at'])
+            .where('created_at', '>=', since)
+            .where('reversal_of', 'is', null)
+            .execute(),
+          reads: await trx
+            .selectFrom('cg.ai_output')
+            .select(['latency_ms', 'outcome'])
+            .where('feature', '=', 'command.interpret')
+            .where('created_at', '>=', since)
+            .execute(),
+        }));
+        const score = (values: number[], targetMs: number) => {
+          const p = p95(values);
+          return {
+            count: values.length,
+            p95Ms: p,
+            targetMs,
+            met: p === null ? null : p <= targetMs,
+          };
+        };
+        const now = Date.now();
+        return {
+          days: request.query.days,
+          deadlineMs,
+          // Shorthand and aliases are read without a model; their preparation is the target.
+          shorthand: score(
+            runs
+              .filter((r) => r.input_kind !== 'natural' && r.prepare_ms !== null)
+              .map((r) => r.prepare_ms!),
+            TARGETS.shorthandMs,
+          ),
+          interpretation: {
+            ...score(
+              reads.filter((r) => r.latency_ms !== null).map((r) => Number(r.latency_ms)),
+              TARGETS.interpretMs,
+            ),
+            timedOut: reads.filter((r) => r.outcome === 'timeout').length,
+          },
+          execution: {
+            ...score(
+              runs.filter((r) => r.execute_ms !== null).map((r) => r.execute_ms!),
+              TARGETS.executeMs,
+            ),
+            stillRunning: runs.filter(
+              (r) => r.state === 'executing' && r.updated_at.getTime() < now - deadlineMs,
+            ).length,
+          },
+        };
       },
     );
 
@@ -1079,6 +1210,7 @@ export const commandRoutesWith =
         const s = account(request);
         await request.authorize('command.use', { type: 'command', tenantId: s.tenantId });
         const b = request.body;
+        const started = performance.now();
         const now = new Date();
 
         const prior = await request.tx((trx) =>
@@ -1323,6 +1455,7 @@ export const commandRoutesWith =
               confirmation: spec.confirmation,
               reversal: spec.reversal,
               state: immediate ? 'executing' : 'awaiting_confirmation',
+              prepare_ms: Math.round(performance.now() - started),
               created_by: s.accountId,
               updated_by: s.accountId,
             })
@@ -1338,12 +1471,16 @@ export const commandRoutesWith =
           return inserted;
         });
         if (!immediate) return view(row, now);
-        return execute(
+        return answerWithin(
           request,
           row,
-          spec,
-          spec.request(plan.args, plan.target, { now, eventId, executionId: b.executionId }),
-          {},
+          execute(
+            request,
+            row,
+            spec,
+            spec.request(plan.args, plan.target, { now, eventId, executionId: b.executionId }),
+            {},
+          ),
         );
       },
     );
@@ -1492,17 +1629,22 @@ export const commandRoutesWith =
           const cur = await request.tx((trx) => loadOwn(trx, row.id, s.accountId));
           return view(cur!, now);
         }
-        if (plan.batch && spec.bulk) return executeBatch(request, claimed, spec, plan, extra);
-        return execute(
+        return answerWithin(
           request,
           claimed,
-          spec,
-          spec.request(plan.args, plan.target, {
-            now,
-            eventId: plan.eventId,
-            executionId: row.execution_id,
-          }),
-          extra,
+          plan.batch && spec.bulk
+            ? executeBatch(request, claimed, spec, plan, extra)
+            : execute(
+                request,
+                claimed,
+                spec,
+                spec.request(plan.args, plan.target, {
+                  now,
+                  eventId: plan.eventId,
+                  executionId: row.execution_id,
+                }),
+                extra,
+              ),
         );
       },
     );

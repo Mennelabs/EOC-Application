@@ -13,7 +13,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Kysely } from 'kysely';
-import { fakeProvider } from '@cg/ai';
+import { fakeProvider, type AiProvider } from '@cg/ai';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
 import { createDb, withTenant, type Database } from '@cg/db';
@@ -920,6 +920,89 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
     const limited = await confirm('mc2', plan);
     expect(limited.status).toBe(429);
     expect(limited.body['code']).toBe('rate_limited');
+  });
+
+  it('CMD-38: past the deadline an interpretation is given up as timed out and an execution answers "still running", then finishes and records its result; response times are reported against the targets', async () => {
+    // A provider that answers late, and an app that waits 1 ms instead of 15 s.
+    const llm = fakeProvider.llm!;
+    const slowLlm = Object.create(llm) as NonNullable<AiProvider['llm']>;
+    slowLlm.interpretCommand = async (r) => {
+      await new Promise((ok) => setTimeout(ok, 100));
+      return llm.interpretCommand!(r);
+    };
+    const slow: AiProvider = { ...fakeProvider, llm: slowLlm };
+    const late = await buildApp({
+      productName: 'Test Product',
+      version: '0.0.0',
+      dataMode: 'synthetic',
+      logLevel: 'silent',
+      probes: [],
+      db: dbApp,
+      fieldCrypto: new FieldCrypto(new InMemoryKeyService(), new MemoryKeyStore()),
+      subjects: {
+        async fromBearer(token) {
+          const s = subjects[token];
+          if (!s) throw new AuthError('invalid_token');
+          return s;
+        },
+      },
+      routes: routesWith({ commands: { ai: { providerFor: async () => slow }, deadlineMs: 1 } }),
+    });
+    try {
+      const ask = async (input: string) =>
+        (
+          await late.inject({
+            method: 'POST',
+            url: '/api/v1/commands',
+            headers: { authorization: 'Bearer mc', 'idempotency-key': randomUUID() },
+            payload: { executionId: randomUUID(), input },
+          })
+        ).json() as Execution;
+      // The command.interpret feature is on from CMD-03.
+      const words = await ask(`claim need ${ref(2)} for our pantry`);
+      expect(words.status).toBe('unsupported');
+      expect(words.message).toContain('did not answer');
+      const timedOut = await dbWorker
+        .selectFrom('cg.ai_output')
+        .select('outcome')
+        .where('tenant_id', '=', county)
+        .where('feature', '=', 'command.interpret')
+        .where('execution_id', '=', words.executionId)
+        .executeTakeFirstOrThrow();
+      expect(timedOut.outcome).toBe('timeout');
+
+      const running = await ask('/reminders');
+      expect(running.status).toBe('executing');
+      expect(running.message).toMatch(/^Still running after 15 seconds/);
+      await expect
+        .poll(async () => (await stored(running.id!)).state, { timeout: 10_000 })
+        .toBe('succeeded');
+      const row = await stored(running.id!);
+      expect(row.execute_ms).not.toBeNull();
+      expect(row.prepare_ms).not.toBeNull();
+    } finally {
+      await late.close();
+    }
+
+    const report = await call('admin', 'GET', '/commands/performance?days=1');
+    expect(report.status, JSON.stringify(report.body)).toBe(200);
+    const r = report.body as {
+      deadlineMs: number;
+      shorthand: { count: number; p95Ms: number | null; targetMs: number; met: boolean | null };
+      interpretation: { count: number; timedOut: number; targetMs: number };
+      execution: { count: number; p95Ms: number | null; targetMs: number };
+    };
+    expect(r.deadlineMs).toBe(15_000);
+    expect(r.shorthand.targetMs).toBe(1000);
+    expect(r.shorthand.count).toBeGreaterThan(0);
+    expect(typeof r.shorthand.p95Ms).toBe('number');
+    expect(typeof r.shorthand.met).toBe('boolean');
+    expect(r.interpretation.targetMs).toBe(2500);
+    expect(r.interpretation.timedOut).toBeGreaterThanOrEqual(1);
+    expect(r.execution.targetMs).toBe(2000);
+    expect(r.execution.count).toBeGreaterThan(0);
+    // The report is for those who oversee the AI and the window, not every user.
+    expect((await call('field', 'GET', '/commands/performance')).status).toBe(403);
   });
 
   it('CMD-04, BRD:FR-18.05: personal aliases look things up for their owner only; organization aliases need the explicit, confirmed action; every expansion is shown and checked again when used', async () => {

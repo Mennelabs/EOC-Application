@@ -2107,6 +2107,8 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     reversal_of: { c: 'internal' },
     undone_by: { c: 'internal' },
     undo_until: { c: 'internal' },
+    prepare_ms: { c: 'internal', d: 'Milliseconds to prepare the plan (CMD-38)' },
+    execute_ms: { c: 'internal', d: 'Milliseconds the confirmed operation took (CMD-38)' },
   }),
   recommendation: table({
     event_id: { c: 'internal' },

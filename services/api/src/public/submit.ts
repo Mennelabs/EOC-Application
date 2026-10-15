@@ -7,7 +7,7 @@
  * intake all end here, so one report record exists whatever the channel.
  */
 import { createHash } from 'node:crypto';
-import type { Transaction } from 'kysely';
+import { sql, type Transaction } from 'kysely';
 import { z } from 'zod';
 import type { QueueConnection } from '@cg/adapters';
 import type { AuditInput } from '@cg/audit';
@@ -101,9 +101,11 @@ export async function configValue<T>(
   trx: Transaction<Database>,
   key: string,
 ): Promise<T | undefined> {
+  // The tenant in context only: a system or multi-tenant context must never read another's setting.
   const row = await trx
     .selectFrom('cg.tenant_config')
     .select('value')
+    .where('tenant_id', '=', sql<string>`cg.current_tenant_id()`)
     .where('key', '=', key)
     .executeTakeFirst();
   return row ? (row.value as T) : undefined;

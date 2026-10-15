@@ -154,6 +154,7 @@ export const photoProcess: TopicHandler = async (ctx, msg) => {
     const feature = await trx
       .selectFrom('cg.ai_use_register')
       .select(['enabled', 'provider'])
+      .where('tenant_id', '=', row.tenant_id)
       .where('feature', '=', 'photo.sensitive_regions')
       .executeTakeFirst();
     if (!feature?.enabled) return null;

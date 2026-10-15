@@ -153,10 +153,11 @@ const ctx: JobContext = {
   ai: {
     // ADR-0043, AIG-12: the tenant's provider (`ai.provider`, OpenAI by default) if this
     // process registered it; otherwise AI is off. Never the fake provider.
-    async providerFor(_tenantId, trx) {
+    async providerFor(tenantId, trx) {
       const row = await trx
         .selectFrom('cg.tenant_config')
         .select('value')
+        .where('tenant_id', '=', tenantId)
         .where('key', '=', 'ai.provider')
         .executeTakeFirst();
       const name = typeof row?.value === 'string' ? row.value : DEFAULT_PROVIDER;

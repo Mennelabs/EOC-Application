@@ -19,7 +19,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import type { Selectable, Transaction } from 'kysely';
+import { sql, type Selectable, type Transaction } from 'kysely';
 import { z } from 'zod';
 import { callAi, recordAiOutput, recordHumanAction, redact, type AiProvider } from '@cg/ai';
 import { actions, decide, isActionKey } from '@cg/authz';
@@ -572,6 +572,7 @@ export const commandRoutesWith =
       const provider = await request.tx(async (trx) => {
         const feature = await trx
           .selectFrom('cg.ai_use_register')
+          .where('tenant_id', '=', sql<string>`cg.current_tenant_id()`)
           .select(['enabled', 'provider'])
           .where('feature', '=', 'command.interpret')
           .executeTakeFirst();

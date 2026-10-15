@@ -24,7 +24,7 @@ import { randomUUID } from 'node:crypto';
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import type { Selectable, Transaction } from 'kysely';
+import { sql, type Selectable, type Transaction } from 'kysely';
 import { z } from 'zod';
 import {
   callAi,
@@ -201,6 +201,7 @@ export const scribeRoutesWith =
     const configFlag = async (trx: Trx, key: string, fallback: boolean) => {
       const row = await trx
         .selectFrom('cg.tenant_config')
+        .where('tenant_id', '=', sql<string>`cg.current_tenant_id()`)
         .select('value')
         .where('key', '=', key)
         .executeTakeFirst();

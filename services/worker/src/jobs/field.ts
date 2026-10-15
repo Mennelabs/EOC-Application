@@ -25,9 +25,11 @@ const MINUTE = 60_000;
 const nowOf = (ctx: JobContext): Date => (ctx.now ?? (() => new Date()))();
 
 async function configNumber(trx: Trx, key: string, fallback: number): Promise<number> {
+  // The worker sees every tenant: the setting is the one of the tenant in context.
   const row = await trx
     .selectFrom('cg.tenant_config')
     .select('value')
+    .where('tenant_id', '=', sql<string>`cg.current_tenant_id()`)
     .where('key', '=', key)
     .executeTakeFirst();
   const n = Number(row?.value);

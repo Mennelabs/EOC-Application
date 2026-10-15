@@ -496,6 +496,7 @@ export const publicRoutes =
         const setup = await request.tx(async (trx) => {
           const feature = await trx
             .selectFrom('cg.ai_use_register')
+            .where('tenant_id', '=', sql<string>`cg.current_tenant_id()`)
             .select(['enabled', 'provider'])
             .where('feature', '=', 'intake.extraction')
             .executeTakeFirst();

@@ -98,12 +98,13 @@ const openai = openAIFromEnv(aiEnv(config));
 if (openai) registerProvider(openai);
 const ai = {
   async providerFor(
-    _tenantId: string,
+    tenantId: string,
     trx: import('kysely').Transaction<import('@cg/db').Database>,
   ) {
     const row = await trx
       .selectFrom('cg.tenant_config')
       .select('value')
+      .where('tenant_id', '=', tenantId)
       .where('key', '=', 'ai.provider')
       .executeTakeFirst();
     const name = typeof row?.value === 'string' ? row.value : DEFAULT_PROVIDER;

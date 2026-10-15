@@ -326,6 +326,58 @@ describe.skipIf(!workerUrl)('worker filing (database-backed)', () => {
     });
   });
 
+  it("AIG-09: filing a report records what the resident did with the computer's suggestions, never the answers", async () => {
+    const executionId = randomUUID();
+    const extractionId = await withTenant(db, { tenantId }, async (trx) => {
+      const ex = await trx
+        .insertInto('cg.extraction')
+        .values({
+          tenant_id: tenantId,
+          execution_id: executionId,
+          input_hash: Buffer.from('hash'),
+          provider: 'openai',
+          model: 'gpt-5-mini',
+          output: JSON.stringify({
+            candidates: [
+              { questionId: 'cause', value: { kind: 'value', value: 'wind_tornado' } },
+              { questionId: 'home_type', value: { kind: 'value', value: 'apartment_condo' } },
+            ],
+          }),
+        })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      await trx
+        .insertInto('cg.ai_output')
+        .values({
+          tenant_id: tenantId,
+          feature: 'intake.extraction',
+          provider: 'openai',
+          model: 'gpt-5-mini',
+          outcome: 'ok',
+          latency_ms: 800,
+          execution_id: executionId,
+          target_type: 'extraction',
+          target_id: ex.id,
+        })
+        .execute();
+      return ex.id;
+    });
+    // The resident kept the cause and changed the home type to a house.
+    await store_(executionId, {
+      answers: answers({ ...address, line1: `9${address.line1}` }),
+      extractionId,
+      aiAssisted: true,
+    });
+    await sweepStoredSubmissions(ctx);
+    const record = await db
+      .selectFrom('cg.ai_output')
+      .selectAll()
+      .where('target_id', '=', extractionId)
+      .executeTakeFirstOrThrow();
+    expect(record.human_action).toBe('edited');
+    expect(JSON.stringify(record)).not.toContain('house');
+  });
+
   it('files a helper report with a separate affected-person party and a no-fixed-address location (HLP, EQ-03)', async () => {
     const executionId = randomUUID();
     await store_(executionId, {

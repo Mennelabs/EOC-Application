@@ -35,9 +35,10 @@ const stamp = (d: Date): string => d.toISOString().slice(0, 16).replace('T', ' '
 const dateOnly = (d: Date | string): string =>
   (d instanceof Date ? d.toISOString() : String(d)).slice(0, 10);
 
-interface ReminderSpec {
+export interface ReminderSpec {
   kind: NoticeKind;
-  subjectKind: 'site' | 'resource' | 'partner_contact' | 'publication' | 'tenant';
+  subjectKind:
+    'site' | 'resource' | 'partner_contact' | 'publication' | 'tenant' | 'ai_health_alert';
   subjectId: string;
   cycleKey: string;
   dueAt: Date;
@@ -45,7 +46,11 @@ interface ReminderSpec {
 }
 
 /** Inserts the reminder for this subject and cycle; null when it exists already (sent or pending). */
-async function claimReminder(trx: Trx, tenantId: string, r: ReminderSpec): Promise<string | null> {
+export async function claimReminder(
+  trx: Trx,
+  tenantId: string,
+  r: ReminderSpec,
+): Promise<string | null> {
   const row = await trx
     .insertInto('cg.notice_log')
     .values({
@@ -64,7 +69,7 @@ async function claimReminder(trx: Trx, tenantId: string, r: ReminderSpec): Promi
 }
 
 /** Queues one email per distinct recipient and marks the reminder sent. */
-async function sendReminder(
+export async function sendReminder(
   ctx: JobContext,
   trx: Trx,
   tenantId: string,

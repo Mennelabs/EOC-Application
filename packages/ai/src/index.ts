@@ -43,3 +43,12 @@ export {
   type CaseResult,
 } from './evaluation/harness.ts';
 export { evaluationCases, type EvalCase } from './evaluation/cases.ts';
+export {
+  callAi,
+  recordAiOutput,
+  recordHumanAction,
+  type AiCall,
+  type AiOutcome,
+  type AiOutputRecord,
+  type HumanAction,
+} from './records.ts';

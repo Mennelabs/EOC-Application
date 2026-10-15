@@ -22,7 +22,14 @@ import type { FastifyPluginAsync } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import type { Transaction } from 'kysely';
 import { z } from 'zod';
-import { extractionQuestions, redact, validateExtraction, type AiProvider } from '@cg/ai';
+import {
+  callAi,
+  extractionQuestions,
+  recordAiOutput,
+  redact,
+  validateExtraction,
+  type AiProvider,
+} from '@cg/ai';
 import type { Database } from '@cg/db';
 import type { QuestionGraph } from '@cg/intake';
 import { ApiError, errors } from '../errors.ts';
@@ -99,7 +106,8 @@ export const fieldVoiceRoutes =
         if (!deps.ai || !deps.defaultGraph) throw off();
         const ai = deps.ai;
         const fallback = deps.defaultGraph;
-        return request.tx(async (trx) => {
+        // The provider is called outside any transaction: a slow reply holds no connection.
+        const setup = await request.tx(async (trx) => {
           const feature = await trx
             .selectFrom('cg.ai_use_register')
             .select(['enabled', 'provider'])
@@ -109,15 +117,40 @@ export const fieldVoiceRoutes =
           const provider = await ai.providerFor(s.tenantId, trx);
           if (!provider?.llm || provider.info.provider !== feature.provider) throw off();
           const graph = await loadGraph(trx, fallback.key, undefined, fallback);
-          const { text } = redact(request.body.text); // AIG-05
-          const started = Date.now();
-          const out = await provider.llm.extract({
+          return { provider, llm: provider.llm, graph };
+        });
+        const graph = setup.graph;
+        const { text } = redact(request.body.text); // AIG-05
+        const call = await callAi(() =>
+          setup.llm.extract({
             text,
             ...(request.body.language ? { language: request.body.language } : {}),
             questions: extractionQuestions(graph).filter((q) =>
               ['home_type', 'damage_types'].includes(q.id),
             ),
-          });
+          }),
+        );
+        if (!call.ok) {
+          // AI-10: recorded; the volunteer fills the fields and the words stay in the note.
+          await request.tx((trx) =>
+            recordAiOutput(trx, {
+              tenantId: s.tenantId,
+              feature: 'field.voice_draft',
+              provider: setup.provider.info,
+              outcome: call.outcome,
+              latencyMs: call.latencyMs,
+              language: request.body.language ?? null,
+              executionId: request.body.clientUuid,
+            }),
+          );
+          throw new ApiError(
+            409,
+            'ai_unavailable',
+            'Help from a computer is not available right now. Fill in the fields yourself; your words stay in the note.',
+          );
+        }
+        return request.tx(async (trx) => {
+          const out = call.out;
           const valid = validateExtraction(graph, out.output); // AIG-03
           const drafts: z.infer<typeof draftOut>[] = [];
           if (!valid.injectionSuspected)
@@ -169,6 +202,17 @@ export const fieldVoiceRoutes =
             })
             .returning('id')
             .executeTakeFirstOrThrow();
+          await recordAiOutput(trx, {
+            tenantId: s.tenantId,
+            feature: 'field.voice_draft',
+            provider: out.provider,
+            outcome: valid.dropped.length > 0 ? 'filtered' : 'ok',
+            latencyMs: out.latencyMs,
+            language: valid.language ?? request.body.language ?? null,
+            executionId: request.body.clientUuid,
+            targetType: 'extraction',
+            targetId: row.id,
+          });
           await request.audit(trx, {
             action: 'assessment.draft',
             targetType: 'extraction',
@@ -178,7 +222,7 @@ export const fieldVoiceRoutes =
                 { name: 'provider', to: `${out.provider.provider}/${out.provider.model}` },
                 { name: 'drafts', to: drafts.length },
                 { name: 'injection_suspected', to: valid.injectionSuspected },
-                { name: 'latency_ms', to: Date.now() - started },
+                { name: 'latency_ms', to: out.latencyMs },
               ],
             },
           });

@@ -1223,14 +1223,21 @@ export const siteRoutesWith =
           service_animals: 'Service animals only',
           unknown: '',
         } as const;
+        // A site not yet published is read from the staff row, so its drafts carry the same details.
+        const staff = site ? null : (x as Joined);
+        const address = site
+          ? addressText(site)
+          : [staff!.line1, staff!.unit, staff!.city, staff!.state, staff!.postal]
+              .filter(Boolean)
+              .join(', ');
+        const access = site ? site.accessibility : staff!.accessibility;
         return {
           name: x.name,
           kind: x.kind,
-          address: site ? addressText(site) || null : null,
-          hours: site ? hoursText(site.hours, 'en') || null : null,
+          address: address || null,
+          hours: hoursText(site ? site.hours : staff!.hours, 'en') || null,
           pets: petsText[x.pets] || null,
-          accessibility:
-            site && site.accessibility['wheelchair'] === true ? 'Wheelchair accessible' : null,
+          accessibility: access['wheelchair'] === true ? 'Wheelchair accessible' : null,
         };
       };
       return {
@@ -1268,6 +1275,14 @@ export const siteRoutesWith =
                   social: z.string().max(280),
                   radioLoop: z.string(),
                   netReadout: z.string(),
+                  card: z.object({
+                    heading: z.string(),
+                    status: z.string(),
+                    name: z.string(),
+                    details: z.array(z.string()),
+                    footer: z.string(),
+                    alt: z.string(),
+                  }),
                 }),
               ),
               publicationId: z.uuid(),
@@ -1338,7 +1353,7 @@ export const siteRoutesWith =
       radioLoop: { max: 1500, purpose: 'radio_script' },
       netReadout: { max: 1500, purpose: 'radio_script' },
     } as const satisfies Record<
-      keyof Omit<AlertDraft, 'lang'>,
+      keyof Omit<AlertDraft, 'lang' | 'card'>,
       { max: number; purpose: DraftPurpose }
     >;
     app.post(

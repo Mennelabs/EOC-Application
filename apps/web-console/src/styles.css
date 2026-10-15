@@ -262,6 +262,14 @@ th {
   margin: 0;
   overflow-wrap: anywhere;
 }
+/* PUB-12: the social post graphic scales to the column; its alt text sits under it. */
+.social-card {
+  margin: 1rem 0;
+}
+.social-card svg {
+  display: block;
+  border: 1px solid var(--line);
+}
 dialog.confirm {
   border: 1px solid var(--line);
   border-radius: 8px;

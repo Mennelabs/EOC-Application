@@ -38,6 +38,18 @@ export interface AlertDraft {
   radioLoop: string;
   /** PUB-14: a read-out for ARES/RACES nets serving areas without cell service. */
   netReadout: string;
+  /** PUB-12: what the simple graphic for a social post shows, and its alt text. */
+  card: AlertCard;
+}
+
+export interface AlertCard {
+  heading: string;
+  status: string;
+  name: string;
+  details: string[];
+  footer: string;
+  /** Everything the graphic says, in reading order, for the post's alt text. */
+  alt: string;
 }
 
 const KIND = {
@@ -71,6 +83,26 @@ function cut(text: string, max: number): string {
   const stop = Math.max(slice.lastIndexOf('. '), slice.lastIndexOf(', '), slice.lastIndexOf(' '));
   return (stop > max * 0.6 ? slice.slice(0, stop) : slice).trimEnd() + '…';
 }
+
+/** For full and closed: the nearest other open site of the kind, or that there is none (PUB-04). */
+function nextText(input: AlertInput, kind: string, lang: 'en' | 'es'): string {
+  if (input.next)
+    return lang === 'en'
+      ? ` Nearest open ${kind}: ${input.next.name}${input.next.address ? `, ${input.next.address}` : ''}.`
+      : ` El ${kind} abierto más cercano: ${input.next.name}${input.next.address ? `, ${input.next.address}` : ''}.`;
+  return lang === 'en'
+    ? ` No other ${kind} is open right now.`
+    : ` Ningún otro ${kind} está abierto ahora.`;
+}
+
+const CARD_STATE: Record<SiteChange, { en: string; es: string }> = {
+  opened: { en: 'open', es: 'abierto' },
+  reopened: { en: 'open again', es: 'abierto de nuevo' },
+  limited: { en: 'open, limited space', es: 'abierto, espacio limitado' },
+  full: { en: 'full', es: 'lleno' },
+  closed: { en: 'closed', es: 'cerrado' },
+};
+const cardState = (change: SiteChange, lang: 'en' | 'es') => CARD_STATE[change][lang];
 
 export function draftAlerts(input: AlertInput): AlertDraft[] {
   return (['en', 'es'] as const).map((lang) => {
@@ -132,22 +164,16 @@ export function draftAlerts(input: AlertInput): AlertDraft[] {
           : lang === 'en'
             ? 'is closed'
             : 'está cerrado';
-      const nextText = input.next
-        ? lang === 'en'
-          ? ` Nearest open ${kind}: ${input.next.name}${input.next.address ? `, ${input.next.address}` : ''}.`
-          : ` El ${kind} abierto más cercano: ${input.next.name}${input.next.address ? `, ${input.next.address}` : ''}.`
-        : lang === 'en'
-          ? ` No other ${kind} is open right now.`
-          : ` Ningún otro ${kind} está abierto ahora.`;
+      const next = nextText(input, kind, lang);
       short =
         lang === 'en'
-          ? `${input.county}: ${input.site.name} (${kind}) ${state}.${nextText}`
-          : `${input.county}: ${input.site.name} (${kind}) ${state}.${nextText}`;
+          ? `${input.county}: ${input.site.name} (${kind}) ${state}.${next}`
+          : `${input.county}: ${input.site.name} (${kind}) ${state}.${next}`;
       long = `${short}${more}`;
       mass =
         lang === 'en'
-          ? `${input.county} Emergency Management: the ${kind} at ${input.site.name}${where} ${state}.${nextText} This message does not send help; if anyone is in danger, call 911.${more}`
-          : `Manejo de Emergencias de ${input.county}: el ${kind} en ${input.site.name}${where} ${state}.${nextText} Este mensaje no envía ayuda; si alguien está en peligro, llame al 911.${more}`;
+          ? `${input.county} Emergency Management: the ${kind} at ${input.site.name}${where} ${state}.${next} This message does not send help; if anyone is in danger, call 911.${more}`
+          : `Manejo de Emergencias de ${input.county}: el ${kind} en ${input.site.name}${where} ${state}.${next} Este mensaje no envía ayuda; si alguien está en peligro, llame al 911.${more}`;
     }
     // PUB-12, PUB-14: the same facts for social media and spoken channels.
     const prefix =
@@ -163,8 +189,38 @@ export function draftAlerts(input: AlertInput): AlertDraft[] {
       lang === 'en'
         ? `${input.county} Emergency Management traffic, for relay to areas without cell service. ${core} End of traffic.`
         : `Mensaje de Manejo de Emergencias de ${input.county}, para retransmitir a zonas sin servicio celular. ${core} Fin del mensaje.`;
+    // PUB-12: the graphic says the same, line by line; never a dispatch (CON-10).
+    const status = `${kind.charAt(0).toUpperCase()}${kind.slice(1)} ${cardState(input.change, lang)}`;
+    const details =
+      input.change === 'full' || input.change === 'closed'
+        ? [nextText(input, kind, lang).trim()]
+        : [input.site.address, input.site.hours, input.site.pets, input.site.accessibility].filter(
+            (x): x is string => Boolean(x),
+          );
+    const footer = [
+      lang === 'en'
+        ? 'This post does not send help. If anyone is in danger, call 911.'
+        : 'Esta publicación no envía ayuda. Si alguien está en peligro, llame al 911.',
+      input.helpUrl ? `${lang === 'en' ? 'More' : 'Más'}: ${input.helpUrl}` : null,
+      input.helpPhone ? `${lang === 'en' ? 'Questions' : 'Preguntas'}: ${input.helpPhone}` : null,
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const heading = prefix.replace(/: $/, '');
+    const card: AlertCard = {
+      heading,
+      status,
+      name: input.site.name,
+      details,
+      footer,
+      alt: [heading, `${status}: ${input.site.name}`, ...details, footer]
+        .map((x) => x.replace(/[.\s]+$/, ''))
+        .join('. ')
+        .concat('.'),
+    };
     return {
       lang,
+      card,
       wea90: cut(short, 90),
       wea360: cut(long, 360),
       massNotification: mass,

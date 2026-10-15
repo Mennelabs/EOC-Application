@@ -515,6 +515,8 @@ describe.skipIf(!appUrl || !workerUrl)('AI drafting from facts (database-backed)
       expect(d.provider).toBe('fake');
       expect(d.text.length).toBeLessThanOrEqual(max);
       expect(d.text).toContain(`Harmon High School gym ${run}`);
+      // Not yet published: the drafts still carry its address (read from the staff record).
+      if (form !== 'wea90') expect(d.text).toContain('400 Schoolhouse Rd');
       expect(d.sentences.every((x) => x.factIds.length > 0)).toBe(true);
       expect(d.facts.map((f) => f.id)).toEqual(
         expect.arrayContaining(['county', 'site.name', 'site.address', 'safety']),

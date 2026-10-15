@@ -69,6 +69,30 @@ describe('alert drafts (PUB-11)', () => {
     expect(en!.wea90.length).toBeLessThanOrEqual(90);
     expect(en!.social.length).toBeLessThanOrEqual(280);
   });
+  it('the social graphic says the same facts line by line, and its alt text says all of it (PUB-12)', () => {
+    const [en, es] = draftAlerts({
+      county: 'Westwind County',
+      change: 'opened',
+      site,
+      helpPhone: '(314) 555-0142',
+    });
+    expect(en!.card).toMatchObject({
+      heading: 'Westwind County Emergency Management',
+      status: 'Shelter open',
+      name: 'Harmon High School gym',
+      details: [site.address, site.hours, site.pets, site.accessibility],
+    });
+    expect(en!.card.footer).toContain('call 911');
+    for (const part of [en!.card.status, en!.card.name, ...en!.card.details])
+      expect(en!.card.alt).toContain(part);
+    expect(en!.card.alt).toContain('Questions: (314) 555-0142');
+    expect(en!.card.alt).not.toMatch(/\.\./);
+    expect(es!.card.status).toBe('Albergue abierto');
+    expect(es!.card.heading).toBe('Manejo de Emergencias de Westwind County');
+    const [closed] = draftAlerts({ county: 'Westwind County', change: 'closed', site, next: null });
+    expect(closed!.card.status).toBe('Shelter closed');
+    expect(closed!.card.details).toEqual(['No other shelter is open right now.']);
+  });
   it('social post, radio loop and net read-out from the same facts (PUB-12, PUB-14)', () => {
     const [en, es] = draftAlerts({
       county: 'Westwind County',

@@ -8,11 +8,12 @@
  * (PUB-11, PUB-12, PUB-14, AI-04): the social post, radio loop and net
  * read-out sit with the alert texts, and the AI assistant can redraft any of
  * them from the same facts, labelled and checked; the person copies what
- * they keep, and its record says whether they changed it (AIG-01). The AI
+ * they keep, and its record says whether they changed it (AIG-01). A simple
+ * graphic per language says the same facts, with its alt text (PUB-12). The AI
  * voice speaks an approved radio script into an audio file that opens by
  * saying the voice is computer-generated, with its transcript (PUB-14).
  */
-import { Fragment, useState, type FormEvent } from 'react';
+import { Fragment, useId, useRef, useState, type FormEvent } from 'react';
 import { api, describeFailure, download, fetchBlob } from '../api/client.ts';
 import { DataTable, Field, Status, Toolbar, fmt } from '../ui/primitives.tsx';
 import { useList } from './admin.tsx';
@@ -63,8 +64,17 @@ interface AlertDraft {
   social: string;
   radioLoop: string;
   netReadout: string;
+  card: AlertCard;
 }
-type DraftForm = Exclude<keyof AlertDraft, 'lang'>;
+interface AlertCard {
+  heading: string;
+  status: string;
+  name: string;
+  details: string[];
+  footer: string;
+  alt: string;
+}
+type DraftForm = Exclude<keyof AlertDraft, 'lang' | 'card'>;
 const FORMS: { key: DraftForm; en: string; es: string; max: number }[] = [
   { key: 'wea90', en: 'English, 90', es: 'Español, 90', max: 90 },
   { key: 'wea360', en: 'English, 360', es: 'Español, 360', max: 360 },
@@ -343,6 +353,15 @@ export function SitesScreen() {
               ))}
             </dl>
           ))}
+          <section aria-labelledby="social-cards-h">
+            <h3 id="social-cards-h">Graphics for the social post</h3>
+            <p>
+              The same facts as a picture. Post it with its alt text so everyone gets the message.
+            </p>
+            {drafts.drafts.map((d) => (
+              <SocialCard key={d.lang} card={d.card} lang={d.lang as 'en' | 'es'} />
+            ))}
+          </section>
           <AiPublicDraft key={`${drafts.siteId}:${drafts.change}`} {...drafts} />
           <RadioAudio key={`audio:${drafts.siteId}:${drafts.change}`} {...drafts} />
         </div>
@@ -867,5 +886,141 @@ function RadioAudio({
         </ul>
       ) : null}
     </section>
+  );
+}
+
+const CARD_W = 1200;
+const CARD_H = 630;
+const CARD_PAD = 60;
+
+/** Words into lines that fit the width at a font size (an even estimate of glyph width). */
+function wrapText(text: string, size: number, width = CARD_W - 2 * CARD_PAD): string[] {
+  const max = Math.max(8, Math.floor(width / (size * 0.53)));
+  const lines: string[] = [];
+  let line = '';
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    if (!line) line = word;
+    else if (`${line} ${word}`.length <= max) line = `${line} ${word}`;
+    else {
+      lines.push(line);
+      line = word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+/**
+ * PUB-12: a simple graphic for the social post, 1200 by 630, dark text on
+ * white with the heading on a dark band (contrast well over 4.5:1). Nothing
+ * on it is only in the picture: its alt text says all of it, and the PIO
+ * posts the two together.
+ */
+function SocialCard({ card, lang }: { card: AlertCard; lang: 'en' | 'es' }) {
+  const titleId = useId();
+  const ref = useRef<SVGSVGElement>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const font = 'system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
+  const footerLines = wrapText(card.footer, 26).slice(0, 3);
+  const footerTop = CARD_H - 40 - footerLines.length * 34;
+  const blocks: { text: string; size: number; weight: number; color: string; y: number }[] = [];
+  let y = 120 + 80;
+  const add = (text: string, size: number, weight: number, color: string, maxLines: number) => {
+    for (const line of wrapText(text, size).slice(0, maxLines)) {
+      if (y > footerTop - 24) return;
+      blocks.push({ text: line, size, weight, color, y });
+      y += size * 1.25;
+    }
+  };
+  add(card.status, 64, 700, '#0b3d5c', 1);
+  add(card.name, 52, 700, '#111111', 2);
+  y += 8;
+  for (const d of card.details) add(d, 32, 400, '#222222', 2);
+  const save = async () => {
+    setMsg(null);
+    const svg = ref.current;
+    if (!svg) return;
+    try {
+      const xml = new XMLSerializer().serializeToString(svg);
+      const url = URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml' }));
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('The image could not be drawn.'));
+        img.src = url;
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = CARD_W;
+      canvas.height = CARD_H;
+      canvas.getContext('2d')!.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+      const png = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+      if (!png) throw new Error('The image could not be saved.');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(png);
+      a.download = `site-post-${lang}.png`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+    } catch (err) {
+      setMsg(describeFailure(err));
+    }
+  };
+  const language = lang === 'es' ? 'Spanish' : 'English';
+  return (
+    <figure className="social-card">
+      <svg
+        ref={ref}
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox={`0 0 ${CARD_W} ${CARD_H}`}
+        width={CARD_W}
+        height={CARD_H}
+        role="img"
+        aria-labelledby={titleId}
+        lang={lang}
+        style={{ width: '100%', maxWidth: 600, height: 'auto' }}
+      >
+        <title id={titleId}>{card.alt}</title>
+        <rect width={CARD_W} height={CARD_H} fill="#ffffff" />
+        <rect width={CARD_W} height={120} fill="#0b3d5c" />
+        <text x={CARD_PAD} y={78} fill="#ffffff" fontSize={40} fontWeight={600} fontFamily={font}>
+          {card.heading}
+        </text>
+        {blocks.map((b, i) => (
+          <text
+            key={i}
+            x={CARD_PAD}
+            y={b.y}
+            fill={b.color}
+            fontSize={b.size}
+            fontWeight={b.weight}
+            fontFamily={font}
+          >
+            {b.text}
+          </text>
+        ))}
+        <rect y={footerTop - 40} width={CARD_W} height={CARD_H - footerTop + 40} fill="#eef1f5" />
+        {footerLines.map((line, i) => (
+          <text
+            key={i}
+            x={CARD_PAD}
+            y={footerTop + i * 34}
+            fill="#111111"
+            fontSize={26}
+            fontFamily={font}
+          >
+            {line}
+          </text>
+        ))}
+      </svg>
+      <figcaption>
+        <strong>{language}.</strong> Alt text to post with it: <span lang={lang}>{card.alt}</span>
+      </figcaption>
+      <Toolbar>
+        <button type="button" onClick={save}>
+          Download the {language} image (PNG)
+        </button>
+      </Toolbar>
+      {msg ? <Status kind="error">{msg}</Status> : null}
+    </figure>
   );
 }

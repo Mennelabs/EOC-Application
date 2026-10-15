@@ -22,6 +22,7 @@
  * Public text (PUB-11, PUB-12, PUB-14, AI-10): the PIO adds a site and asks
  * for its alert drafts; the social post, the radio loop and the amateur-net
  * read-out sit with the WEA and mass-notification texts in both languages;
+ * a graphic per language is named by its alt text and downloads as PNG;
  * with no AI provider configured, the assistant says it is off and the rules'
  * texts stay; the net read-out is ready to speak, and the AI voice says it is
  * off too.
@@ -384,6 +385,16 @@ test.describe('layer 7 console: the command window', () => {
       await expect(drafts.getByRole('term').filter({ hasText: label }).first()).toBeVisible();
     await expect(drafts).toContainText('This message repeats.');
     await expect(drafts).toContainText('End of traffic.');
+    // PUB-12: a graphic per language, named by its alt text, which is shown with it.
+    await expect(
+      drafts.getByRole('img', { name: new RegExp(`Cooling center open: ${siteName}`) }),
+    ).toBeVisible();
+    await expect(
+      drafts.getByRole('img', { name: new RegExp(`Centro de enfriamiento abierto: ${siteName}`) }),
+    ).toBeVisible();
+    const png = page.waitForEvent('download');
+    await drafts.getByRole('button', { name: 'Download the English image (PNG)' }).click();
+    expect((await png).suggestedFilename()).toBe('site-post-en.png');
     await expectNoViolations(page);
     await drafts.getByLabel('Text', { exact: true }).selectOption('radioLoop');
     await drafts.getByRole('button', { name: 'Draft with the AI assistant' }).click();

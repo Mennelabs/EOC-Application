@@ -18,3 +18,4 @@ export * from './recommend.ts';
 export * from './recommend-load.ts';
 export * from './recommend-sites.ts';
 export * from './declaration-facts.ts';
+export * from './agreement.ts';

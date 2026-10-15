@@ -122,6 +122,7 @@ Situation reports and briefings (CMD-16, CON-06, FR-15.02, AC-15C): the existing
 14. **A legal aid note is only ever its author's** (FL:FR-23); other notes are read by caseworkers once confirmed, each read audited. Shelter nurses and counselors have no scribe (FL:FR-16; health details belong in the restricted health note).
 15. **AIG-09 for the scribe follows Adam's decision of alerts only**: the per-language correction rate comes from the confirmed notes the worker changed, through the existing AI health alerts; FL-18's automatic switch-off is not built.
 16. **Machine translation keeps nothing and never decides** (FL-14, EQ-08): the words go to the provider for one turn and come back labelled; the record keeps the languages, outcome and model only. Consent, legal and medical conversations are refused by the server, not only hidden on the phone, and every role that may translate may also call an interpreter.
+17. **Agreement by group (PHO-13 as decided):** "income band" is the poverty quintile of the report's census tract among the county's tracts (band 1 the highest poverty share), as the equity view ranks them; home type is conventional or manufactured, as the FEMA matrix splits them. A group is behind when it has at least 20 decisions and its agreement is more than 10 points under the model's overall agreement (tenant `ai.fairness`); unknown groups are shown but never alerted. A group behind raises an AI health alert (`fairness`), not a switch-off (AIG-09 as decided).
 
 ## 13. Tests and gates
 

@@ -307,11 +307,21 @@ export const reportRoutes: FastifyPluginAsync = async (raw) => {
           .leftJoin('cg.location as l', 'l.id', 'r.location_id')
           .selectAll('r')
           .select(['l.city as city', 'l.postal as postal'])
-          // PHO-14: people first (unsafe, no shelter, medical, displaced), then the oldest waiting.
+          // PHO-14: people first (unsafe, no shelter, medical, displaced); the AI severity
+          // suggestion second, only among reports with the same signals, so it never pushes a
+          // vulnerable household down; then the oldest waiting.
           .orderBy(sql`coalesce((r.need_signals->>'unsafe')::boolean, false)`, 'desc')
           .orderBy(sql`coalesce((r.need_signals->>'no_shelter')::boolean, false)`, 'desc')
           .orderBy(sql`coalesce((r.need_signals->>'medical')::boolean, false)`, 'desc')
           .orderBy(sql`coalesce((r.need_signals->>'displaced')::boolean, false)`, 'desc')
+          .orderBy(
+            sql`coalesce((
+              select case s.degree when 'destroyed' then 4 when 'major' then 3
+                when 'minor' then 2 when 'affected' then 1 else 0 end
+              from cg.damage_suggestion s where s.report_id = r.id
+              order by s.created_at desc limit 1), 0)`,
+            'desc',
+          )
           .orderBy('r.submitted_at', 'asc')
           .limit(q.limit)
           .offset(q.offset);

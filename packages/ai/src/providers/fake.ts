@@ -402,6 +402,14 @@ function interpret(text: string): CommandInterpretation {
       question: null,
     };
   }
+  // CMD-14: who is free, by a recorded skill; nothing inferred.
+  if (/\b(who|quién|quien|people|personas)\b/i.test(t) && /\b(available|disponibles?)\b/i.test(t)) {
+    const skill = /\b(?:with|con)\s+(?:a\s+|an\s+)?([a-záéíóúñ]+)\b/i.exec(text)?.[1];
+    return {
+      shorthand: `/people available${skill ? ` skill:${skill.toLowerCase()}` : ''}`,
+      question: null,
+    };
+  }
   if (/\b(sitrep|situation report|informe de situaci[oó]n)\b/i.test(t)) {
     const hours = /(\d{1,3})\s*(hours?|horas?)/i.exec(t)?.[1];
     return { shorthand: `/sitrep${hours ? ` ${hours}` : ''}`, question: null };

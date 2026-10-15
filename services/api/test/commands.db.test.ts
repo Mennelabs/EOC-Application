@@ -267,6 +267,62 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
     expect(draft.message).toContain('not issued');
   });
 
+  it('CMD-14, CMD-15, CMD-17: people by recorded skill and availability, reports, resources and contacts run at once, as each role may see them', async () => {
+    await withTenant(dbWorker, { tenantId: county }, (trx) =>
+      trx
+        .insertInto('cg.personnel')
+        .values([
+          {
+            tenant_id: county,
+            name: `Exercise Ana Ruiz ${run}`,
+            department: 'Public Works',
+            skills: ['chainsaw', 'first aid'],
+            availability: 'available',
+            duty_status: 'on_duty',
+          },
+          {
+            tenant_id: county,
+            name: `Exercise Ben Lo ${run}`,
+            department: 'Fire',
+            skills: ['cdl'],
+            availability: 'assigned',
+            duty_status: 'on_duty',
+          },
+        ])
+        .execute(),
+    );
+    const people = await command('mc', '/people available skill:chain');
+    expect(people.status, people.message).toBe('succeeded');
+    expect(people.message).toContain(`Exercise Ana Ruiz ${run}`);
+    expect(people.message).toContain('skills: chainsaw, first aid');
+    expect(people.message).not.toContain('Ben Lo');
+    // Nothing is inferred: someone with no recorded skill is said to have none.
+    const fire = await command('mc', `/people department:Fire Ben`);
+    expect(fire.message).toContain(`Exercise Ben Lo ${run}`);
+    expect(fire.message).toContain('assigned');
+
+    const made = await call('admin', 'POST', '/contacts', {
+      agency: `Exercise Red Cross ${run}`,
+      name: 'Exercise duty officer',
+      type: 'twenty_four_hour',
+      methods: { phone: '+13145550111' },
+    });
+    expect(made.status, JSON.stringify(made.body)).toBe(201);
+    const contacts = await command('mc', `/contactos 24h Red Cross ${run}`);
+    expect(contacts.status, contacts.message).toBe('succeeded');
+    expect(contacts.message).toContain(`Exercise Red Cross ${run} twenty four hour`);
+
+    const reports = await command('mc', '/reports flagged');
+    expect(reports.status, reports.message).toBe('succeeded');
+    expect(reports.message).toBe('No report matches.');
+    const resources = await command('mc', '/resources housing');
+    expect(resources.status, resources.message).toBe('succeeded');
+
+    // A role without the read is refused before anything runs.
+    expect((await command('pio', '/people available')).status).toBe('denied');
+    expect((await command('field', '/reports')).status).toBe('denied');
+  });
+
   it('CMD-21: a role without the action is refused before anything is planned', async () => {
     const r = await command('pio', `/need ${ref(1)} claim`);
     expect(r.status).toBe('denied');

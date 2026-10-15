@@ -106,6 +106,46 @@ describe('shorthand', () => {
     expect(parse('/ayuda')).toMatchObject({ ok: false, error: 'help' });
   });
 
+  it('CMD-14, CMD-15, CMD-17: people, reports, resources and contacts, in English and Spanish', () => {
+    expect(parse('/people available skill:chainsaw department:"Public Works" Ana')).toEqual({
+      ok: true,
+      command: 'people.find',
+      args: {
+        availability: 'available',
+        skill: 'chainsaw',
+        department: 'Public Works',
+        name: 'Ana',
+      },
+      ref: null,
+      refKind: null,
+    });
+    expect(parse('/personas disponibles de_turno skill:motosierra')).toMatchObject({
+      command: 'people.find',
+      args: { availability: 'available', onDuty: true, skill: 'motosierra' },
+    });
+    expect(parse('/reports new flagged')).toMatchObject({
+      command: 'reports.find',
+      args: { state: 'submitted', flagged: true },
+    });
+    expect(parse('/reportes peligro WW-7K3Q9')).toMatchObject({
+      command: 'reports.find',
+      args: { danger: true, reference: 'WW-7K3Q9' },
+    });
+    expect(parse('/reports everything')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/recursos vivienda')).toMatchObject({
+      command: 'resources.find',
+      args: { category: 'vivienda' },
+    });
+    expect(parse('/contacts 24h Red Cross')).toMatchObject({
+      command: 'contacts.find',
+      args: { type: 'twenty_four_hour', agency: 'Red Cross' },
+    });
+    expect(parse('/contactos prensa')).toMatchObject({
+      command: 'contacts.find',
+      args: { type: 'media' },
+    });
+  });
+
   it('free text after a sub-verb keeps its colons; only known keys are pairs', () => {
     expect(parse('/mission M-1 note Crew says: road closed at Elm')).toMatchObject({
       command: 'mission.note',

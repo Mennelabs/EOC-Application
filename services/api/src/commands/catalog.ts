@@ -275,6 +275,189 @@ export const CATALOG = [
     },
   }),
 
+  define({
+    name: 'people.find',
+    version: 1,
+    phase: 1,
+    action: 'personnel.read',
+    kind: 'lookup',
+    title: 'Find people by skill, department or availability',
+    usage: '/people [available|assigned|on_duty] [skill:<skill>] [department:<name>] [<name>]',
+    args: z.object({
+      availability: z.enum(['available', 'assigned', 'unavailable']).optional(),
+      onDuty: z.boolean().optional(),
+      skill: z.string().min(1).max(60).optional(),
+      department: z.string().min(1).max(80).optional(),
+      name: z.string().min(1).max(80).optional(),
+    }),
+    confirmation: 'none',
+    reversal: 'none',
+    sideEffects: 'None: reads the roster as you may see it, without contact details.',
+    request: (a) => {
+      const q = new URLSearchParams({ limit: '20' });
+      if (a.availability) q.set('availability', a.availability);
+      if (a.onDuty) q.set('onDuty', 'true');
+      if (a.skill) q.set('skill', a.skill);
+      if (a.department) q.set('department', a.department);
+      if (a.name) q.set('q', a.name);
+      return { method: 'GET', path: `/personnel?${q.toString()}` };
+    },
+    describe: (a) =>
+      `Find ${a.availability ? `${a.availability} ` : ''}${a.onDuty ? 'on-duty ' : ''}people${a.skill ? ` with the recorded skill "${a.skill}"` : ''}${a.department ? ` in ${a.department}` : ''}${a.name ? ` named like "${a.name}"` : ''}.`,
+    // CMD-14: only what is recorded; nothing about qualifications is inferred.
+    verify: (r) => {
+      const list = rows(r);
+      return {
+        state: 'found',
+        summary: list.length
+          ? `${plural(list.length, 'person', 'people')}: ${list
+              .slice(0, 6)
+              .map((p) => {
+                const skills = Array.isArray(p['skills']) ? (p['skills'] as string[]) : [];
+                return `${str(p['name'])} (${[str(p['operationalRole']) || str(p['department']), str(p['availability']), skills.length ? `skills: ${skills.join(', ')}` : 'no skills recorded'].filter(Boolean).join('; ')})`;
+              })
+              .join(', ')}${list.length > 6 ? ', …' : ''}.`
+          : 'Nobody on the roster matches.',
+        records: list.map((p) => ({ kind: 'personnel', id: str(p['id']), label: str(p['name']) })),
+      };
+    },
+  }),
+  define({
+    name: 'reports.find',
+    version: 1,
+    phase: 1,
+    action: 'report.read',
+    kind: 'lookup',
+    title: 'Find damage reports',
+    usage: '/reports [submitted|under_review|needs_information|flagged|danger|<reference code>]',
+    args: z.object({
+      state: z
+        .enum([
+          'submitted',
+          'under_review',
+          'needs_information',
+          'approved',
+          'rejected',
+          'duplicate',
+        ])
+        .optional(),
+      flagged: z.boolean().optional(),
+      danger: z.boolean().optional(),
+      reference: z.string().min(6).max(12).optional(),
+    }),
+    confirmation: 'none',
+    reversal: 'none',
+    sideEffects: 'None: reads the review queue as you may see it.',
+    request: (a) => {
+      const q = new URLSearchParams({ limit: '20' });
+      if (a.state) q.set('state', a.state);
+      if (a.flagged) q.set('flagged', 'true');
+      if (a.danger) q.set('danger', 'true');
+      if (a.reference) q.set('reference', a.reference);
+      return { method: 'GET', path: `/reports?${q.toString()}` };
+    },
+    describe: (a) =>
+      `Find ${a.state ? `${a.state.replace('_', ' ')} ` : ''}${a.flagged ? 'flagged ' : ''}${a.danger ? 'danger-flagged ' : ''}reports${a.reference ? ` for ${a.reference}` : ''}.`,
+    // CMD-15: public observations stay apart from verified assessments, and possible
+    // duplicates are named for a person to judge.
+    verify: (r) => {
+      const list = rows(r);
+      return {
+        state: 'found',
+        summary: list.length
+          ? `${plural(list.length, 'report', 'reports')}: ${list
+              .slice(0, 5)
+              .map((x) => {
+                const flags = Array.isArray(x['flags']) ? (x['flags'] as Row[]) : [];
+                const dup = flags.some((f) => /duplicate/.test(str(f['kind'])));
+                return `${str(x['referenceCode'])} (${str(x['reviewState']).replace('_', ' ')}, ${str(x['verificationLevel']).replace(/_/g, ' ')}${x['femaDegree'] ? `, ${str(x['femaDegree'])}` : ''}${dup ? ', possible duplicate' : ''})`;
+              })
+              .join(', ')}${list.length > 5 ? ', …' : ''}.`
+          : 'No report matches.',
+        records: list.map((x) => ({
+          kind: 'report',
+          id: str(x['id']),
+          label: str(x['referenceCode']),
+        })),
+      };
+    },
+  }),
+  define({
+    name: 'resources.find',
+    version: 1,
+    phase: 1,
+    action: 'resource.read',
+    kind: 'lookup',
+    title: 'Find published resources',
+    usage: '/resources [<category>]',
+    args: z.object({ category: z.string().min(1).max(60).optional() }),
+    confirmation: 'none',
+    reversal: 'none',
+    sideEffects: 'None: reads the published resources.',
+    request: (a) => ({
+      method: 'GET',
+      path: `/resources?limit=20&status=published${a.category ? `&category=${encodeURIComponent(a.category)}` : ''}`,
+    }),
+    describe: (a) => `Find published resources${a.category ? ` in ${a.category}` : ''}.`,
+    verify: (r) => {
+      const list = rows(r);
+      const title = (x: Row) => {
+        const texts = Array.isArray(x['texts']) ? (x['texts'] as Row[]) : [];
+        const en = texts.find((t) => t['locale'] === 'en') ?? texts[0];
+        return str(en?.['title']) || str(x['slug']);
+      };
+      return {
+        state: 'found',
+        summary: list.length
+          ? `${plural(list.length, 'resource', 'resources')}: ${list
+              .slice(0, 6)
+              .map((x) => `${title(x)} (${str(x['category'])})`)
+              .join(', ')}${list.length > 6 ? ', …' : ''}.`
+          : 'No published resource matches.',
+        records: list.map((x) => ({ kind: 'resource', id: str(x['id']), label: title(x) })),
+      };
+    },
+  }),
+  define({
+    name: 'contacts.find',
+    version: 1,
+    phase: 1,
+    action: 'contact.read',
+    kind: 'lookup',
+    title: 'Find partner contacts',
+    usage: '/contacts [operations|24h|backup|media|liaison] [<agency>]',
+    args: z.object({
+      type: z.enum(['operations', 'twenty_four_hour', 'backup', 'media', 'liaison']).optional(),
+      agency: z.string().min(1).max(120).optional(),
+    }),
+    confirmation: 'none',
+    reversal: 'none',
+    sideEffects:
+      'None: reads the active contacts you may see; reading contact details is recorded (SEC-18).',
+    request: (a) => ({
+      method: 'GET',
+      path: `/contacts?limit=50&active=true${a.type ? `&type=${a.type}` : ''}${a.agency ? `&agency=${encodeURIComponent(a.agency)}` : ''}`,
+    }),
+    describe: (a) =>
+      `Find active ${a.type ? `${a.type.replace(/_/g, ' ')} ` : ''}contacts${a.agency ? ` for ${a.agency}` : ''}.`,
+    verify: (r) => {
+      const list = rows(r);
+      return {
+        state: 'found',
+        summary: list.length
+          ? `${plural(list.length, 'contact', 'contacts')}: ${list
+              .slice(0, 6)
+              .map(
+                (c) =>
+                  `${str(c['agency'])} ${str(c['type']).replace(/_/g, ' ')}${c['name'] ? `: ${str(c['name'])}` : ''}${c['due'] ? ' (re-check due)' : ''}`,
+              )
+              .join(', ')}${list.length > 6 ? ', …' : ''}.`
+          : 'No active contact matches.',
+        records: list.map((c) => ({ kind: 'contact', id: str(c['id']), label: str(c['agency']) })),
+      };
+    },
+  }),
+
   // ---------------------------------------------------------------- phase 2: reversible updates
   define({
     name: 'need.claim',

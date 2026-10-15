@@ -142,6 +142,19 @@ export const COMMAND_EVAL_CATALOG: { usage: string; title: string }[] = [
   { usage: '/needs [open|claimed|<reference code>]', title: 'Find needs on the board' },
   { usage: '/reminders', title: 'List reminders' },
   { usage: '/sitrep [hours, e.g. 12]', title: 'Draft a situation report' },
+  {
+    usage: '/people [available|assigned|on_duty] [skill:<skill>] [department:<name>] [<name>]',
+    title: 'Find people by skill, department or availability',
+  },
+  {
+    usage: '/reports [submitted|under_review|needs_information|flagged|danger|<reference code>]',
+    title: 'Find damage reports',
+  },
+  { usage: '/resources [<category>]', title: 'Find published resources' },
+  {
+    usage: '/contacts [operations|24h|backup|media|liaison] [<agency>]',
+    title: 'Find partner contacts',
+  },
   { usage: '/need <reference code> claim [note]', title: 'Claim a need for your organization' },
   {
     usage: '/need <reference code> release [note]',
@@ -205,6 +218,18 @@ export const commandEvaluationCases: CommandEvalCase[] = [
     language: 'es',
     text: 'prepara un informe de situación de las últimas 6 horas',
     expect: ['/sitrep', '6'],
+  },
+  {
+    id: 'cmd-en-people',
+    language: 'en',
+    text: 'who is available with chainsaw training?',
+    expect: ['/people', 'available', 'skill:chainsaw'],
+  },
+  {
+    id: 'cmd-es-people',
+    language: 'es',
+    text: '¿quién está disponible con motosierra?',
+    expect: ['/people', 'available', 'skill:motosierra'],
   },
   {
     id: 'cmd-inj-grant',

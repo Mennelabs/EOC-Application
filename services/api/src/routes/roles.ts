@@ -11,6 +11,7 @@
  */
 import type { FastifyPluginAsync } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import type { Transaction } from 'kysely';
 import { z } from 'zod';
 import { diffForAudit } from '@cg/audit';
 import {
@@ -21,9 +22,14 @@ import {
   validateGrants,
   type Grant,
 } from '@cg/authz';
+import type { Database } from '@cg/db';
 import { errors } from '../errors.ts';
+import type { AuditCall } from '../plugins/context.ts';
 import { assertUpdated } from '../plugins/versions.ts';
 import { classifierFor, iso, listQuery, stamped, uuidParam } from './helpers.ts';
+
+/** The audit entry for an approved change, written after its rows (see the decision route). */
+type AppliedAudit = Omit<AuditCall, 'reason'>;
 
 const grantSchema = z.object({
   action: z.string(),
@@ -632,41 +638,9 @@ export const roleRoutes: FastifyPluginAsync = async (raw) => {
         if (cr.expires_at.getTime() < Date.now())
           throw errors.conflict({ ...toChangeRequest(cr), status: 'expired' });
         const now = new Date();
-        const updated = await request.tx(async (trx) => {
-          const nextStatus =
-            decision === 'approve' ? 'applied' : decision === 'reject' ? 'rejected' : 'withdrawn';
-          const row = assertUpdated(
-            await trx
-              .updateTable('cg.permission_change_request')
-              .set({
-                status: nextStatus,
-                decided_by: s.accountId,
-                decided_at: now,
-                decision_reason: reason,
-                ...(decision === 'approve' ? { applied_at: now } : {}),
-                updated_by: s.accountId,
-              })
-              .where('id', '=', cr.id)
-              .where('version', '=', expected)
-              .returningAll()
-              .executeTakeFirst(),
-            toChangeRequest(cr),
-          );
-          await request.audit(trx, {
-            action,
-            targetType: 'permission_change_request',
-            targetId: row.id,
-            targetVersion: row.version,
-            changes: diffForAudit(
-              { status: cr.status },
-              { status: row.status },
-              classifierFor('permission_change_request'),
-            ),
-            reason,
-          });
-          if (decision !== 'approve') return row;
-
-          // Apply: the approver is the second administrator (G6 checked both calls).
+        // Apply: the approver is the second administrator (G6 checked both
+        // calls). Returns the audit entry, written after every row (below).
+        const apply = async (trx: Transaction<Database>): Promise<AppliedAudit | null> => {
           const payload = cr.payload as Record<string, unknown>;
           if (cr.kind === 'assign_role') {
             if (
@@ -699,7 +673,7 @@ export const roleRoutes: FastifyPluginAsync = async (raw) => {
               })
               .returningAll()
               .executeTakeFirstOrThrow();
-            await request.audit(trx, {
+            return {
               action: 'role_assignment.create',
               targetType: 'role_assignment',
               targetId: inserted.id,
@@ -713,9 +687,9 @@ export const roleRoutes: FastifyPluginAsync = async (raw) => {
                 },
                 classifierFor('role_assignment'),
               ),
-              reason,
-            });
-          } else if (cr.kind === 'publish_role_version') {
+            };
+          }
+          if (cr.kind === 'publish_role_version') {
             await request.authorize('role.publish', {
               type: 'role',
               id: String(payload['roleId']),
@@ -728,15 +702,56 @@ export const roleRoutes: FastifyPluginAsync = async (raw) => {
               .where('id', '=', String(payload['roleId']))
               .returningAll()
               .executeTakeFirstOrThrow();
-            await request.audit(trx, {
+            return {
               action: 'role.publish',
               targetType: 'role',
               targetId: role.id,
               targetVersion: role.version,
               changes: { fields: [{ name: 'current_version', to: role.current_version }] },
-              reason,
-            });
+            };
           }
+          return null;
+        };
+        const updated = await request.tx(async (trx) => {
+          const nextStatus =
+            decision === 'approve' ? 'applied' : decision === 'reject' ? 'rejected' : 'withdrawn';
+          const row = assertUpdated(
+            await trx
+              .updateTable('cg.permission_change_request')
+              .set({
+                status: nextStatus,
+                decided_by: s.accountId,
+                decided_at: now,
+                decision_reason: reason,
+                ...(decision === 'approve' ? { applied_at: now } : {}),
+                updated_by: s.accountId,
+              })
+              .where('id', '=', cr.id)
+              .where('version', '=', expected)
+              .returningAll()
+              .executeTakeFirst(),
+            toChangeRequest(cr),
+          );
+          // Rows first, audit last (BRD:FR-08.04): an audit row takes the
+          // tenant's chain lock until commit (migration 0040). Locking a row
+          // after it can deadlock with a transaction that locked the row
+          // first and is waiting to audit: the worker's account.invited job
+          // locks the account (idp_subject is a unique key), and inserting
+          // the role assignment checks that same row.
+          const applied = decision === 'approve' ? await apply(trx) : null;
+          await request.audit(trx, {
+            action,
+            targetType: 'permission_change_request',
+            targetId: row.id,
+            targetVersion: row.version,
+            changes: diffForAudit(
+              { status: cr.status },
+              { status: row.status },
+              classifierFor('permission_change_request'),
+            ),
+            reason,
+          });
+          if (applied) await request.audit(trx, { ...applied, reason });
           return row;
         });
         return toChangeRequest(updated);

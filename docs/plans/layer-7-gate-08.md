@@ -1,6 +1,6 @@
 # GATE-08 evidence per AI feature (appendix to `layer-7-gates.md`)
 
-Captured at commit `8cd43cd` (before task J2); every quoted test title was checked against its file by script. Task J2 then closed the gaps marked "code only" for these paths:
+Captured at commit `8cd43cd` (before task J2); every quoted test title was checked against its file by script. Since then, `photo.quality` was retired from the register (migration 0074; its row below is kept for the record), resident dictation was moved to the county's provider, and task J2 closed the gaps marked "code only" for these paths:
 
 - `review.translation` off and failing;
 - `intake.extraction` off;

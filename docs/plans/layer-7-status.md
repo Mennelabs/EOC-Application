@@ -34,7 +34,7 @@ Resume record for layer 7. Chat history is not the record; this file is.
 ## Open items
 
 - (Closed) Resident dictation used the browser's speech recognition, which in Chrome sends audio to Google, outside AIG-06. It now goes through the county's provider (`POST /api/public/intake/:tenant/dictation`, `intake.transcription`), nothing kept, the call recorded (plan reading 19).
-- (J) `photo.quality` is a register row with no provider call; the worker drops the provider's quality notes. Task: wire it for reviewers or retire the row (AIG-01).
+- (Closed) `photo.quality` was a register row with no provider call. It is retired by migration 0074: PHO-03 asks for the retake suggestion on the device, before upload, and the resident app's check does that without AI (plan reading 20).
 - (Closed) A legal-aid referral's outcome note reached the referring organization and the county's audit log, against FL:FR-23. Now a response from the legal aid attorney role, or from an organization with `referrals.confidential_outcomes`, shares the status only; the note is not stored, shown or audited (`updates.db.test.ts`).
 - (J) No labelled photo set for AIG-08 fairness slices before release; a photo evaluation harness (operator-supplied set, never committed) is a task.
 

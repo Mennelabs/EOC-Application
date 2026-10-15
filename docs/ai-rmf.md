@@ -8,12 +8,12 @@ This document maps the platform's AI governance to the NIST AI Risk Management F
 
 ## The AI features (AIG-01)
 
-The register lists 17 features (`packages/ai/src/registry.ts`, `AI_FEATURES`). Each has the data sent, the decision it informs, the human checkpoint, the owner, the provider, the model and the evaluation. Each tenant can see and change its own copy at **Console → AI use register** (`/ai-register`):
+The register lists 16 features (`packages/ai/src/registry.ts`, `AI_FEATURES`). Each has the data sent, the decision it informs, the human checkpoint, the owner, the provider, the model and the evaluation. Each tenant can see and change its own copy at **Console → AI use register** (`/ai-register`):
 
 | Area                | Features                                                                                          | Human checkpoint                                                                                |
 | ------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | Resident intake     | `intake.extraction`, `intake.transcription`                                                       | The resident keeps, changes or drops each suggested answer; staff review                        |
-| Review              | `review.translation`, `photo.quality`, `photo.sensitive_regions`, `photo.severity`                | A credentialed reviewer sets the degree; blur fails closed                                      |
+| Review              | `review.translation`, `photo.sensitive_regions`, `photo.severity`                                 | A credentialed reviewer sets the degree; blur fails closed                                      |
 | Field               | `field.voice_draft`, `scribe.transcription`, `scribe.note`, `field.handover`, `field.translation` | The worker confirms the note or hand-over; consent, legal and medical go to a human interpreter |
 | Command window      | `command.interpret`                                                                               | Every change is a plan the person confirms; undo inside its window                              |
 | Drafting and public | `report.drafting`, `declaration.drafting`, `public.drafting`, `public.speech`                     | A person edits and saves; public text is published by a person                                  |

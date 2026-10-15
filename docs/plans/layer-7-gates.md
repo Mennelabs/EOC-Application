@@ -78,7 +78,6 @@ Every AI feature in the register (`packages/ai/src/registry.ts`), against the fi
 | `declaration.drafting`    | tested                                             | tested (off: J2)                         | shared draft check only                                                             | tested (refused figure: J2)             | tested (off: J2; by hand in the journey)       |
 | `public.drafting`         | tested                                             | tested                                   | tested (output filter)                                                              | tested                                  | tested (off: J2; journey)                      |
 | `public.speech`           | tested (listening before air is procedural)        | tested                                   | n/a (a script a person wrote)                                                       | tested                                  | tested                                         |
-| `photo.quality`           | **not wired** (task: photo quality)                | —                                        | —                                                                                   | —                                       | the on-device check never blocks               |
 | `photo.sensitive_regions` | tested (a person clears photos for the package)    | tested (register gate: J2)               | n/a; fails closed, tested                                                           | tested (record and blur status: J2)     | tested (no detector; failure: J2)              |
 | `photo.severity`          | tested                                             | tested                                   | fixed list of degrees; only cleared photos sent (J2); no image-borne injection test | tested                                  | tested (off; failure: J2)                      |
 
@@ -97,7 +96,7 @@ Tests added by task J2:
 
 Remaining gaps, each with an owner:
 
-1. `photo.quality` is a register row with no provider call; it has its own task. (`intake.transcription` was in the same state; resident dictation now goes through the county's provider, see below.)
+1. Two register rows had no provider call. `intake.transcription` now carries resident dictation through the county's provider (see below). `photo.quality` was retired from the register by migration 0074: PHO-03's retake suggestion runs on the device without AI, as PHO-03 asks.
 2. The evaluation suite (AIG-08) has injection cases for extraction and the command window only. Scribe notes, drafting, translation and discovery rely on per-output checks and their own tests, not on labelled evaluation cases. There is no labelled photo set for fairness slices.
 3. These are code only:
    - `field.voice_draft`'s provider-failure answer;

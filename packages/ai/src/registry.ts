@@ -253,14 +253,6 @@ export const AI_FEATURES: readonly RegisterEntry[] = [
     owner: 'Public information officer',
   },
   {
-    feature: 'photo.quality',
-    needs: 'image',
-    dataSent: 'A resident photo',
-    decisionInformed: 'One plain retake suggestion (PHO-03)',
-    humanCheckpoint: 'Resident decides whether to retake',
-    owner: 'Product owner (intake)',
-  },
-  {
     feature: 'photo.sensitive_regions',
     needs: 'image',
     dataSent: 'A resident photo',

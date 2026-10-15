@@ -42,7 +42,7 @@ export { TopBar } from './components/shell/TopBar.tsx';
 export { EventChip } from './components/shell/EventChip.tsx';
 export { PersonMenu } from './components/shell/PersonMenu.tsx';
 export { SideNav, type NavGroup, type NavItem } from './components/shell/SideNav.tsx';
-export { Shell } from './components/shell/Shell.tsx';
+export { Shell, NavToggle } from './components/shell/Shell.tsx';
 export * from './theme.ts';
 export * from './format.ts';
 export * as icons from './icons.ts';

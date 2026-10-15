@@ -99,7 +99,11 @@ function usePath() {
   const navigate = useCallback((to: string) => {
     history.pushState(null, '', to);
     setPath(to.replace(/\/$/, '') || '/console');
-    document.getElementById('main')?.focus();
+    // A move lands at the top of the new screen with focus on its main region,
+    // so a screen reader hears the heading next and a phone shows the screen
+    // from its start rather than wherever the drawer's link was (ACC-07).
+    window.scrollTo(0, 0);
+    document.getElementById('main')?.focus({ preventScroll: true });
   }, []);
   return { path, navigate };
 }

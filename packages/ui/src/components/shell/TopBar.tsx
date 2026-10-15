@@ -1,10 +1,12 @@
 /**
  * The top bar (mockups/console/Main.dc.html; CON-01): the product and the
  * county, the event chip, the command bar, the person. Dark in both themes so
- * the frame reads the same on a wall display and a laptop.
+ * the frame reads the same on a wall display and a laptop. On a narrow screen
+ * it also holds the "Workspaces" button that opens the navigation drawer.
  */
 import type { ReactNode } from 'react';
 import { Home } from 'lucide-react';
+import { NavToggle } from './Shell.tsx';
 
 export function TopBar({
   product,
@@ -40,6 +42,7 @@ export function TopBar({
         <span className="cg-topbar__product">{product}</span>
         {county ? <span className="cg-topbar__county">{county}</span> : null}
       </a>
+      <NavToggle />
       {children}
       <div className="cg-topbar__end">{end}</div>
     </header>

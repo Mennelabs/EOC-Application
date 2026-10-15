@@ -11,14 +11,16 @@ Resume record for the design foundation decided 2026-10-15. Chat history is not 
 
 ## Tasks
 
-| Task | What                                                                                                                                     | State | Commits | Notes |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------- | ----- |
-| R    | Decision recorded; user-needs research; ADR-0045; this plan                                                                              | done  |         |       |
-| A    | `packages/ui`: tokens, fonts, base, skin for existing classes, shell, React Aria components, icons, showcase with axe and screenshots    | done  |         |       |
-| B    | Console frame: top bar, event chip, command bar, person and display menu, grouped navigation by permission with counts, drawer on phones |       |         |       |
-| C    | Situation home, work home, briefing mode (CON-11)                                                                                        |       |         |       |
-| D    | Resident app and Find help on the tokens and the public font, inside the budget                                                          |       |         |       |
-| E    | Traceability, a11y records, README, layer-7 status pointer                                                                               |       |         |       |
+| Task | What                                                                                                                                     | State | Commits          | Notes                                                                                                 |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----- | ---------------- | ----------------------------------------------------------------------------------------------------- |
+| R    | Decision recorded; user-needs research; ADR-0045; this plan                                                                              | done  | 69a0a3b          | `docs/decisions.md` (2026-10-15), `docs/design/users-and-needs.md`                                    |
+| A    | `packages/ui`: tokens, fonts, base, skin for existing classes, shell, React Aria components, icons, showcase with axe and screenshots    | done  | 69a0a3b          | showcase suite in CI (checks job)                                                                     |
+| B    | Console frame: top bar, event chip, command bar, person and display menu, grouped navigation by permission with counts, drawer on phones | done  | 1342067, 2c737a2 | the drawer's button sits in the top bar; a move lands at the top of the new screen with focus on main |
+| C    | Situation home, work home, briefing mode (CON-11)                                                                                        | done  | 1342067, d147ef3 |                                                                                                       |
+| D    | Resident app and Find help on the tokens and the public font, inside the budget                                                          | done  | 79da91d          | help budget 63 KB                                                                                     |
+| E    | Traceability, a11y records, README, layer-7 status pointer                                                                               | done  | 79da91d, eaf87a6 | `tools/reqindex/trace-design.json`; `docs/a11y/screens/console-frame-and-home.md`                     |
+
+Journey and showcase fixes while driving the pull request green: 2c737a2 (drawer before a move, no duplicate link names, no generated text in names), d3975b6 and 5a673a6 (showcase names failing nodes; waits for animations), dcdf6b2 (sticky action column on phones, 24 px checkboxes, journeys name the failing node).
 
 ## Pull request
 
@@ -27,3 +29,6 @@ Resume record for the design foundation decided 2026-10-15. Chat history is not 
 ## Open items
 
 - Field app restyle deferred (see the plan).
+- The phone top bar is three rows (brand and the Workspaces button; event chip and person; command bar) and stays pinned while scrolling. A compact one-row bar for phones is worth a design pass once a person has used the console on one.
+- Screen-reader pass (check 2 of each a11y record) waits for a person.
+- Per-tenant accent colour and moving the older screens' markup onto the components: deferred (see the plan).

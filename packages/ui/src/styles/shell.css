@@ -295,6 +295,15 @@
 @media (max-width: 56rem) {
   .cg-nav-toggle {
     display: inline-flex;
+    margin-inline-start: auto;
+  }
+  .cg-topbar__brand {
+    min-inline-size: 0;
+  }
+  .cg-topbar__product {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .cg-body {
     flex-direction: column;

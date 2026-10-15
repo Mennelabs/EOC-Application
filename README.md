@@ -213,6 +213,7 @@ tests/load/run.sh submissions smoke   # k6 load profiles (SCL-03) through the pi
 pnpm --filter @cg/web-help build && pnpm --filter @cg/web-help check:size   # PUB-07: the public page's first load against its 300 KB budget
 pnpm --filter @cg/ui build:showcase && pnpm --filter @cg/ui test:showcase   # ADR-0045: the design showcase under axe in both themes, desktop and phone; screenshots in packages/ui/test-results
 pnpm --filter @cg/web-console build && node tools/preview/console-preview.mjs   # the console around a mock API: screenshots in both themes, axe on each screen (ROLE=nurse for a role without the dashboard)
+ROLE=partner node tools/preview/console-preview.mjs /console/ "@Needs board" "@Partner workspace"   # an argument starting with @ moves through the side navigation like the journeys do
 pnpm --filter @cg/web-resident build && pnpm --filter @cg/web-help build && node tools/preview/public-preview.mjs   # the resident app and Find help the same way
 pnpm --filter @cg/pdf samples out/pdf && pnpm --filter @cg/reporting samples out/pdf && pnpm --filter @cg/api samples out/pdf && scripts/verapdf.sh out/pdf   # ADR-0040: one PDF of every kind, each checked against PDF/UA-1 by veraPDF (Docker)
 API_DB_TEST_APP_URL=... API_DB_TEST_WORKER_URL=... pnpm --filter @cg/worker load:generation smoke   # SCL-03: counting rule, IDA package and metrics timed for 1,000 reports (`full`: 50,000)

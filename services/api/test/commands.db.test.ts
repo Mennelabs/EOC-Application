@@ -512,4 +512,83 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
     expect(unclear.message).toContain(missionRef);
     expect((await outputs()).map((o) => o.outcome)).toEqual(['ok', 'ok', 'filtered', 'ok']);
   });
+
+  it('CMD-04, BRD:FR-18.05: personal aliases look things up for their owner only; organization aliases need the explicit, confirmed action; every expansion is shown and checked again when used', async () => {
+    const made = await call('mc', 'POST', '/command-aliases', {
+      name: 'food',
+      expansion: `/needs ${ref(1)}`,
+    });
+    expect(made.status, JSON.stringify(made.body)).toBe(201);
+    const used = await command('mc', '/food');
+    expect(used.status, used.message).toBe('succeeded');
+    expect(used.plan?.interpretation).toBe(`/needs ${ref(1)}`);
+    expect((await stored(used.id!)).input_kind).toBe('alias');
+    // Someone else's personal alias is not there for them.
+    expect((await command('field', '/food')).status).toBe('unsupported');
+    // A personal alias never changes anything, set directly or by words typed after it.
+    expect(
+      (
+        await call('mc', 'POST', '/command-aliases', {
+          name: 'grab',
+          expansion: `/need ${ref(1)} claim`,
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (await call('mc', 'POST', '/command-aliases', { name: 'needs', expansion: '/needs open' }))
+        .status,
+    ).toBe(400);
+    expect(
+      (
+        await call('field', 'POST', '/command-aliases', {
+          name: 'm',
+          expansion: `/mission ${missionRef}`,
+        })
+      ).status,
+    ).toBe(400); // one letter is too short
+    await call('field', 'POST', '/command-aliases', {
+      name: 'mine',
+      expansion: `/mission ${missionRef}`,
+    });
+    const sneaky = await command('field', '/mine note Exercise: through an alias');
+    expect(sneaky.status).toBe('unsupported');
+    expect(sneaky.message).toContain('only look things up');
+
+    // Organization aliases: not for a coordinator; for the administrator, confirmed with a reason.
+    const org = { scope: 'organization', name: 'open', expansion: '/missions open' };
+    expect((await call('mc', 'POST', '/command-aliases', org)).status).toBe(403);
+    expect((await call('admin', 'POST', '/command-aliases', org)).status).toBe(428);
+    const set = await call('admin', 'POST', '/command-aliases', org, {
+      'x-confirm': 'true',
+      'x-reason': 'Exercise: shared shortcut for the EOC',
+    });
+    expect(set.status, JSON.stringify(set.body)).toBe(201);
+    const shared = await command('field', '/open');
+    expect(shared.status, shared.message).toBe('succeeded');
+    expect(shared.plan?.interpretation).toBe('/missions open');
+    const help = await command('field', '/help');
+    expect((help as unknown as { aliases: { name: string }[] }).aliases.map((a) => a.name)).toEqual(
+      ['mine', 'open'],
+    );
+
+    // Retired, it is gone; the changes are audited.
+    const mine = made.body as { id: string; version: number };
+    const retired = await call('mc', 'DELETE', `/command-aliases/${mine.id}`, undefined, {
+      'if-match': `"${mine.version}"`,
+    });
+    expect(retired.status, JSON.stringify(retired.body)).toBe(200);
+    expect((await command('mc', '/food')).status).toBe('unsupported');
+    const audited = await dbWorker
+      .selectFrom('cg.audit_event')
+      .select('action')
+      .where('tenant_id', '=', county)
+      .where('action', 'like', 'command_alias.%')
+      .execute();
+    expect(audited.map((a) => a.action).sort()).toEqual([
+      'command_alias.create',
+      'command_alias.create',
+      'command_alias.create',
+      'command_alias.retire',
+    ]);
+  });
 });

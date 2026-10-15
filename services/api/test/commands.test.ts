@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import { COMMAND_EVAL_CATALOG } from '@cg/ai';
 import { actions } from '@cg/authz';
+import { checkAlias } from '../src/commands/aliases.ts';
 import { CATALOG, DEFAULT_PHASES } from '../src/commands/catalog.ts';
 import {
   parseMinutes,
@@ -168,6 +169,35 @@ describe('CMD-10: times on the organization clock', () => {
     expect(parse('/remind tomorrow morning check the shelter')).toMatchObject({
       ok: false,
       error: 'usage',
+    });
+  });
+});
+
+describe('CMD-04: alias rules', () => {
+  it('a personal alias may look things up or draft, never change anything', () => {
+    expect(checkAlias('personal', 'food', '/needs open', ctx)).toMatchObject({ ok: true });
+    expect(checkAlias('personal', 'brief', '/sitrep 6', ctx)).toMatchObject({ ok: true });
+    expect(checkAlias('personal', 'grab', '/need ABC123 claim', ctx)).toMatchObject({
+      ok: false,
+      code: 'scope',
+    });
+  });
+
+  it('an organization alias may name a change; neither scope may shadow a command, in either language', () => {
+    expect(checkAlias('organization', 'grab', '/need ABC123 claim', ctx)).toMatchObject({
+      ok: true,
+    });
+    expect(checkAlias('personal', 'needs', '/needs open', ctx)).toMatchObject({ code: 'reserved' });
+    expect(checkAlias('organization', 'ayuda', '/needs open', ctx)).toMatchObject({
+      code: 'reserved',
+    });
+  });
+
+  it('names are short lower-case words; expansions must be commands', () => {
+    expect(checkAlias('personal', 'Food!', '/needs open', ctx)).toMatchObject({ code: 'name' });
+    expect(checkAlias('personal', 'x', '/needs open', ctx)).toMatchObject({ code: 'name' });
+    expect(checkAlias('personal', 'oops', '/delete everything', ctx)).toMatchObject({
+      code: 'expansion',
     });
   });
 });

@@ -4,7 +4,8 @@
  * care coordinator opens it with the keyboard shortcut, reads the help, looks
  * up a need filed through the public API by its reference code, prepares a claim, checks the plan
  * and confirms it; the need is claimed on the board; then undoes it within
- * the window; reads its own command history and clears it. Escape closes the window and returns focus to where it was
+ * the window; keeps a personal alias for the lookup and removes it; reads its
+ * own command history and clears it. Escape closes the window and returns focus to where it was
  * opened; "/" opens it when the cursor is not in a text field. Axe runs on
  * each state and, on the phone project, the window reflows at phone width.
  */
@@ -97,6 +98,20 @@ test.describe('layer 7 console: the command window', () => {
     await expect(dialog.getByRole('heading', { name: 'Undone' })).toBeVisible();
     expect(await statusOf()).toBe('open');
     await expectNoViolations(page);
+
+    // CMD-04: a personal alias for a lookup, shown in the help, used, then removed.
+    await dialog.getByText('Aliases', { exact: true }).click();
+    await dialog.getByLabel('Alias name').fill('mine');
+    await dialog.getByLabel('Stands for').fill(`/needs ${code}`);
+    await dialog.getByRole('button', { name: 'Save alias' }).click();
+    await expect(dialog.getByRole('button', { name: 'Remove /mine' })).toBeVisible();
+    await box.fill('/mine');
+    await box.press('Enter');
+    await expect(dialog.getByRole('heading', { name: 'Found' })).toBeVisible();
+    await expect(dialog).toContainText(code);
+    await expectNoViolations(page);
+    await dialog.getByRole('button', { name: 'Remove /mine' }).click();
+    await expect(dialog.getByText('No aliases yet.')).toBeVisible();
 
     // CMD-36: the person's own history, kept 30 days, cleared on request.
     await dialog.getByText('Your recent commands').click();

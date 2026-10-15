@@ -61,6 +61,16 @@ export interface Execution {
   reversalOf: string | null;
   createdAt: string | null;
   commands: (CommandMeta & { enabled: boolean; allowed: boolean })[];
+  aliases: { name: string; expansion: string; scope: 'personal' | 'organization' }[];
+}
+
+interface Alias {
+  id: string;
+  version: number;
+  scope: 'personal' | 'organization';
+  name: string;
+  expansion: string;
+  mine: boolean;
 }
 
 const DRAFT_KEY = 'cg.command.draft';
@@ -164,6 +174,11 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
   const [choice, setChoice] = useState<string>('');
   const [announce, setAnnounce] = useState('');
   const [history, setHistory] = useState<HistoryItem[] | null>(null);
+  const [aliases, setAliases] = useState<Alias[] | null>(null);
+  const [aliasName, setAliasName] = useState('');
+  const [aliasLine, setAliasLine] = useState('');
+  const [aliasScope, setAliasScope] = useState<'personal' | 'organization'>('personal');
+  const [aliasProblem, setAliasProblem] = useState<string | null>(null);
   const titleId = useId();
   const shortcutLabel = `${navigator.platform.startsWith('Mac') ? 'Command' : 'Ctrl'}+${prefs.letter.toUpperCase()}`;
 
@@ -305,6 +320,47 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
     }
   };
 
+  const loadAliases = async () => {
+    try {
+      setAliases(await api<Alias[]>('/command-aliases'));
+    } catch (err) {
+      fail(err);
+    }
+  };
+
+  /** CMD-04: the server checks the name and the expansion; an organization alias asks for a reason. */
+  const addAlias = async (ev: FormEvent) => {
+    ev.preventDefault();
+    setAliasProblem(null);
+    try {
+      await api('/command-aliases', {
+        body: {
+          scope: aliasScope,
+          name: aliasName.trim().toLowerCase(),
+          expansion: aliasLine.trim(),
+        },
+      });
+      setAliasName('');
+      setAliasLine('');
+      setAnnounce(`Alias /${aliasName.trim().toLowerCase()} saved.`);
+      await loadAliases();
+    } catch (err) {
+      const msg = describeFailure(err);
+      setAliasProblem(msg);
+      setAnnounce(msg);
+    }
+  };
+
+  const removeAlias = async (a: Alias) => {
+    try {
+      await api(`/command-aliases/${a.id}`, { method: 'DELETE', version: a.version });
+      setAnnounce(`Alias /${a.name} removed.`);
+      await loadAliases();
+    } catch (err) {
+      fail(err);
+    }
+  };
+
   const resultHeading = current
     ? {
         help: 'What you can do here',
@@ -397,6 +453,12 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
                       {c.confirmation === 'none' ? '' : ' (you confirm a plan first)'}
                     </li>
                   ))}
+                {current.aliases.map((a) => (
+                  <li key={`${a.scope}-${a.name}`}>
+                    <code>/{a.name}</code> — alias for <code>{a.expansion}</code>
+                    {a.scope === 'organization' ? ' (set for everyone here)' : ' (yours)'}
+                  </li>
+                ))}
               </ul>
             ) : null}
 
@@ -510,6 +572,88 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
             ) : null}
           </section>
         ) : null}
+
+        <details
+          className="command-settings"
+          onToggle={(e) => {
+            if ((e.currentTarget as HTMLDetailsElement).open) void loadAliases();
+          }}
+        >
+          <summary>Aliases</summary>
+          <p>
+            A short name for a line you type often, such as /brief for /sitrep 6. Your own aliases
+            can only look things up or draft; the command they stand for is shown before anything
+            runs.
+          </p>
+          {aliases && aliases.length > 0 ? (
+            <ul className="command-history">
+              {aliases.map((a) => (
+                <li key={a.id}>
+                  <code>/{a.name}</code> → <code>{a.expansion}</code>
+                  {a.scope === 'organization' ? ' (everyone here)' : ''}{' '}
+                  {a.mine || a.scope === 'organization' ? (
+                    <button type="button" className="link" onClick={() => void removeAlias(a)}>
+                      Remove /{a.name}
+                    </button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : aliases ? (
+            <p>No aliases yet.</p>
+          ) : null}
+          <form onSubmit={(e) => void addAlias(e)}>
+            <Field label="Alias name" hint="Letters, digits, - or _; for example brief.">
+              {({ id, describedBy }) => (
+                <input
+                  id={id}
+                  aria-describedby={describedBy}
+                  value={aliasName}
+                  autoComplete="off"
+                  onChange={(e) => setAliasName(e.target.value)}
+                />
+              )}
+            </Field>
+            <Field
+              label="Stands for"
+              hint="One line of shorthand, for example /sitrep 6."
+              {...(aliasProblem ? { error: aliasProblem } : {})}
+            >
+              {({ id, describedBy, invalid }) => (
+                <input
+                  id={id}
+                  aria-describedby={describedBy}
+                  aria-invalid={invalid || undefined}
+                  value={aliasLine}
+                  autoComplete="off"
+                  spellCheck={false}
+                  onChange={(e) => setAliasLine(e.target.value)}
+                />
+              )}
+            </Field>
+            <Field
+              label="For"
+              hint="Organization aliases are for administrators and need a reason."
+            >
+              {({ id, describedBy }) => (
+                <select
+                  id={id}
+                  aria-describedby={describedBy}
+                  value={aliasScope}
+                  onChange={(e) => setAliasScope(e.target.value as 'personal' | 'organization')}
+                >
+                  <option value="personal">Just me</option>
+                  <option value="organization">Everyone in the organization</option>
+                </select>
+              )}
+            </Field>
+            <div className="actions">
+              <button type="submit" disabled={!aliasName.trim() || !aliasLine.trim()}>
+                Save alias
+              </button>
+            </div>
+          </form>
+        </details>
 
         <details
           className="command-settings"

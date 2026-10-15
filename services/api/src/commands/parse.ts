@@ -57,6 +57,9 @@ const VERBS: Record<string, string> = {
   ayuda: 'help',
 };
 
+/** CMD-04: names an alias may never take, in either language (accents removed). */
+export const RESERVED_NAMES: ReadonlySet<string> = new Set(Object.keys(VERBS));
+
 const SUBVERBS: Record<string, string> = {
   status: 'status',
   estado: 'status',

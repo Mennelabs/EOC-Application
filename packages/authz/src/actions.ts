@@ -271,6 +271,12 @@ export const actions = {
     'command',
     'Use the command window: run catalogued commands you could run by hand',
   ),
+  'command_alias.manage': a(
+    'admin',
+    'command_alias',
+    "Set the organization's command aliases (personal ones need only the command window)",
+    { consequential: true, explicit: true },
+  ),
   'ai_register.read': a('read', 'ai_use_register', 'Read the AI use register'),
   'ai_register.write': a(
     'admin',

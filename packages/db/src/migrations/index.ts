@@ -57,6 +57,7 @@ import * as m0055 from './0055_ai_output.ts';
 import * as m0056 from './0056_command_execution.ts';
 import * as m0057 from './0057_ai_register_command.ts';
 import * as m0058 from './0058_command_history.ts';
+import * as m0059 from './0059_command_alias.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -118,4 +119,5 @@ export const migrations: Record<string, Migration> = {
   '0056_command_execution': m0056,
   '0057_ai_register_command': m0057,
   '0058_command_history': m0058,
+  '0059_command_alias': m0059,
 };

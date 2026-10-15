@@ -2102,6 +2102,14 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     undone_by: { c: 'internal' },
     undo_until: { c: 'internal' },
   }),
+  command_alias: table({
+    scope: { c: 'internal', d: 'personal or organization (CMD-04)' },
+    account_id: { c: 'internal', d: 'Owner of a personal alias' },
+    name: { c: 'internal', d: 'The short name typed after the slash' },
+    expansion: { c: 'internal', d: 'The shorthand line the alias stands for' },
+    command: { c: 'internal', d: 'Catalogued command the expansion runs (CMD-12)' },
+    retired_at: { c: 'internal' },
+  }),
   command_message: table(
     {
       id: { c: 'internal' },

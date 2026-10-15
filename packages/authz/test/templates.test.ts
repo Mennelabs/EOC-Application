@@ -99,6 +99,13 @@ describe('shipped role templates (ADM-04)', () => {
     expect(without).toEqual(['fema_validator']);
   });
 
+  it('CMD-04: only the tenant administrator sets organization command aliases', () => {
+    const holders = roleTemplates
+      .filter((t) => t.grants.some((g) => g.action === 'command_alias.manage'))
+      .map((t) => t.key);
+    expect(holders).toEqual(['tenant_admin']);
+  });
+
   it('SEC-12: only the law-enforcement liaison links missions to the CJIS enclave', () => {
     const holders = roleTemplates
       .filter((t) => t.grants.some((g) => g.action === 'mission.cji.link'))

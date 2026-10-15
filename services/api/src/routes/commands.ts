@@ -34,6 +34,7 @@ import {
   type TargetKind,
   type Verified,
 } from '../commands/catalog.ts';
+import { aliasMayRun, type AliasScope } from '../commands/aliases.ts';
 import { parseShorthand } from '../commands/parse.ts';
 import { ApiError, errors } from '../errors.ts';
 import { iso, uuidParam } from './helpers.ts';
@@ -120,6 +121,14 @@ const executionOut = z.object({
   createdAt: z.iso.datetime().nullable(),
   /** For /help: the commands this person can use here. */
   commands: z.array(commandMeta.extend({ enabled: z.boolean(), allowed: z.boolean() })),
+  /** For /help: the aliases this person can use (CMD-04). */
+  aliases: z.array(
+    z.object({
+      name: z.string(),
+      expansion: z.string(),
+      scope: z.enum(['personal', 'organization']),
+    }),
+  ),
 });
 type ExecutionOut = z.infer<typeof executionOut>;
 
@@ -168,6 +177,7 @@ function blank(executionId: string, status: Status, message: string): ExecutionO
     undoneBy: null,
     createdAt: null,
     commands: [],
+    aliases: [],
   };
 }
 
@@ -662,6 +672,37 @@ export const commandRoutesWith =
       },
     );
 
+    // ---------------------------------------------------------------- aliases
+    /** The live aliases this person may use: their own and the organization's. */
+    const visibleAliases = async (request: FastifyRequest) => {
+      const s = account(request);
+      const rows = await request.tx((trx) =>
+        trx
+          .selectFrom('cg.command_alias')
+          .select(['name', 'expansion', 'scope'])
+          .where('retired_at', 'is', null)
+          .where((eb) =>
+            eb.or([eb('scope', '=', 'organization'), eb('account_id', '=', s.accountId)]),
+          )
+          .orderBy('name')
+          .execute(),
+      );
+      return rows;
+    };
+
+    /** A personal alias wins over the organization's of the same name; words after it are kept. */
+    async function findAlias(
+      request: FastifyRequest,
+      line: string,
+    ): Promise<{ name: string; scope: AliasScope; line: string } | null> {
+      const m = /^\/(\S+)(.*)$/su.exec(line.trim());
+      if (!m) return null;
+      const name = m[1]!.toLowerCase();
+      const found = (await visibleAliases(request)).filter((a) => a.name === name);
+      const a = found.find((x) => x.scope === 'personal') ?? found[0];
+      return a ? { name: a.name, scope: a.scope, line: `${a.expansion}${m[2] ?? ''}` } : null;
+    }
+
     // ---------------------------------------------------------------- personal history
     /** What the window said, in one line, for the person's own history. */
     const answerText = (e: ExecutionOut) =>
@@ -882,7 +923,17 @@ export const commandRoutesWith =
           natural = r;
           line = r.shorthand;
         }
-        const parsed = parseShorthand(line, { now, timeZone });
+        let parsed = parseShorthand(line, { now, timeZone });
+        // CMD-04: a slash word that is no command may be the person's or the organization's alias.
+        let alias: { name: string; scope: AliasScope } | null = null;
+        if (!parsed.ok && parsed.error === 'unsupported' && !natural) {
+          const found = await findAlias(request, line);
+          if (found) {
+            alias = found;
+            line = found.line;
+            parsed = parseShorthand(line, { now, timeZone });
+          }
+        }
         if (!parsed.ok) {
           if (parsed.error === 'help')
             return {
@@ -892,6 +943,7 @@ export const commandRoutesWith =
                 enabled: phases.includes(c.phase),
                 allowed: holds(request, c),
               })),
+              aliases: await visibleAliases(request),
             };
           return {
             ...blank(
@@ -914,6 +966,11 @@ export const commandRoutesWith =
             ...head,
             message: `"${spec.title}" is not switched on for the command window here. Use the screen for it.`,
           };
+        if (alias) {
+          const may = aliasMayRun(alias.scope, spec);
+          if (!may.ok)
+            return { ...head, message: `/${alias.name} reads as ${line}. ${may.message}` };
+        }
         if (!holds(request, spec))
           return { ...head, status: 'denied', message: 'Your role cannot do that.' };
         const args = spec.args.safeParse(parsed.args);
@@ -972,7 +1029,11 @@ export const commandRoutesWith =
           args: args.data,
           target,
           eventId,
-          ...(natural ? { interpretation: natural.shorthand } : {}),
+          ...(natural
+            ? { interpretation: natural.shorthand }
+            : alias
+              ? { interpretation: line }
+              : {}),
         };
         const hash = planHash(plan, s.tenantId, s.accountId);
         const immediate = spec.confirmation === 'none';
@@ -983,7 +1044,7 @@ export const commandRoutesWith =
               tenant_id: s.tenantId,
               account_id: s.accountId,
               execution_id: b.executionId,
-              input_kind: natural ? 'natural' : 'shorthand',
+              input_kind: natural ? 'natural' : alias ? 'alias' : 'shorthand',
               command: spec.name,
               command_version: spec.version,
               phase: spec.phase,

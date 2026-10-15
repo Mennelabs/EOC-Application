@@ -93,6 +93,8 @@ const templates: readonly RoleTemplate[] = [
       // SCL-09: explicit actions, never reached by the wildcard below.
       g('api_key.manage'),
       g('webhook.manage'),
+      // CMD-04, BRD:FR-18.05: the organization's command aliases, confirmed and audited.
+      g('command_alias.manage'),
       { action: '*', dataCategories: ['contact'] },
     ],
   },

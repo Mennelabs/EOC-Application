@@ -9,7 +9,7 @@ import fp from 'fastify-plugin';
 import type { FastifyRequest } from 'fastify';
 import { sql, type Kysely, type Transaction } from 'kysely';
 import { withTenant, type Database } from '@cg/db';
-import { recordAudit, type AuditInput, type AuditReceipt } from '@cg/audit';
+import { recordAudit, type AuditInput } from '@cg/audit';
 import type { AccountSubject, PublicSubject } from '@cg/authz';
 import { AuthError, type SubjectLoader } from '../auth/subject.ts';
 import { errors } from '../errors.ts';
@@ -33,7 +33,7 @@ declare module 'fastify' {
      * the one record it acts on. Never for reads of the other tenant's tables.
      */
     txAs<T>(tenantId: string, fn: (trx: Transaction<Database>) => Promise<T>): Promise<T>;
-    audit(trx: Transaction<Database>, input: AuditCall): Promise<AuditReceipt>;
+    audit(trx: Transaction<Database>, input: AuditCall): Promise<void>;
     executionId: string | null;
   }
 }
@@ -132,11 +132,7 @@ export const contextPlugin = fp<ContextOptions>(
 
     app.decorateRequest(
       'audit',
-      function (
-        this: FastifyRequest,
-        trx: Transaction<Database>,
-        input: AuditCall,
-      ): Promise<AuditReceipt> {
+      function (this: FastifyRequest, trx: Transaction<Database>, input: AuditCall): Promise<void> {
         const s = this.subject;
         const tenantId = input.tenantId ?? s.tenantId;
         if (!tenantId) throw new Error('audit without tenant');

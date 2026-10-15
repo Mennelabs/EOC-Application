@@ -20,6 +20,10 @@ Resume record for the design foundation decided 2026-10-15. Chat history is not 
 | D    | Resident app and Find help on the tokens and the public font, inside the budget                                                          |       |         |       |
 | E    | Traceability, a11y records, README, layer-7 status pointer                                                                               |       |         |       |
 
+## Pull request
+
+[Mennelabs/EOC-Application#24](https://github.com/Mennelabs/EOC-Application/pull/24), opened 2026-10-15 from `claude/zen-gauss-58puhw`; CI runs the showcase suite in the checks job and the journeys in the stack job.
+
 ## Open items
 
 - Field app restyle deferred (see the plan).

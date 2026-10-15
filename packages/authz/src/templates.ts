@@ -13,6 +13,8 @@ export interface RoleTemplate {
   description: string;
   source: 'cast' | 'field' | 'frontline' | 'original_a7' | 'platform';
   grants: Grant[];
+  /** An assignment must end within this many days of being requested (time-limited roles). */
+  maxAssignmentDays?: number;
 }
 
 /** Which templates may see each protected category (RULE-16, FL:FR-15/16/23/25). */
@@ -149,6 +151,8 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('official_report.issue'),
       g('official_report.export'),
       g('fema_mapping.*'),
+      g('joint_assessment.read'),
+      g('joint_assessment.plan'),
       g('break_glass.start'),
       g('break_glass.end'),
       g('break_glass.read'),
@@ -176,6 +180,7 @@ export const roleTemplates: readonly RoleTemplate[] = [
       // The PDA GIS layer and package for mapping work (DEC-12).
       g('declaration.export'),
       g('outage.write'),
+      g('joint_assessment.read'),
     ],
   },
   {
@@ -208,6 +213,10 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('parcel.read'),
       g('declaration.read'),
       g('pa_site.write'),
+      // FL:FR-10: plans the joint assessment and walks it with the federal and state teams.
+      g('joint_assessment.read'),
+      g('joint_assessment.plan'),
+      g('joint_assessment.validate'),
     ],
   },
   {
@@ -354,7 +363,28 @@ export const roleTemplates: readonly RoleTemplate[] = [
     description:
       'SEMA liaison and later FEMA validators: verified, de-identified data only, via agreements.',
     source: 'cast',
-    grants: [g('me.read'), g('tenant.read'), { action: 'event.read', tenants: 'subtree' }],
+    grants: [
+      g('me.read'),
+      g('tenant.read'),
+      { action: 'event.read', tenants: 'subtree' },
+      // DEC-13: de-identified figures of a county below, only under its signed agreement.
+      { action: 'shared_declaration.read', tenants: 'subtree' },
+    ],
+  },
+  {
+    key: 'fema_validator',
+    name: 'FEMA validator (joint assessment, time-limited)',
+    description:
+      'Federal member of the joint damage assessment team: the sample route of verified homes without personal details, and validation marks. Assigned with an end date.',
+    source: 'frontline',
+    maxAssignmentDays: 30,
+    grants: [
+      g('me.read'),
+      g('tenant.read'),
+      g('event.read'),
+      g('joint_assessment.read'),
+      g('joint_assessment.validate'),
+    ],
   },
   {
     key: 'dispatcher_call_taker',
@@ -445,6 +475,7 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('declaration.export'),
       g('fema_mapping.read'),
       g('fema_mapping.write'),
+      g('joint_assessment.read'),
     ],
   },
   {

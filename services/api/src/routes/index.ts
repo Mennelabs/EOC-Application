@@ -11,6 +11,7 @@ import { definitionRoutes } from './definitions.ts';
 import { dispatchRoutes, type DispatchDeps } from './dispatch.ts';
 import { eventRoutes } from './events.ts';
 import { exportRoutes, type ExportDeps } from './exports.ts';
+import { jointPdaRoutes } from './joint-pda.ts';
 import { packagePhotoRoutes, type PackagePhotoDeps } from './package-photos.ts';
 import { fieldAssessmentRoutes } from './field-assessments.ts';
 import { fieldOpsRoutes } from './field-ops.ts';
@@ -84,6 +85,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   femaMappingRoutes,
   exportRoutes(deps.exports),
   packagePhotoRoutes(deps.packagePhotos),
+  jointPdaRoutes,
 ];
 
 /** The default set, as the tests mount it. */

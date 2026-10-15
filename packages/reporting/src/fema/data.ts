@@ -28,6 +28,7 @@ import {
 } from '../declaration.ts';
 import { shelterFigures } from '../facts.ts';
 import { loadDamageRecords } from '../load.ts';
+import { jointPdaBox10 } from './joint.ts';
 import { packagePhotos, type PackagePhoto } from './photos.ts';
 import type { ElementKey } from './vocabulary.ts';
 
@@ -106,6 +107,8 @@ const UTILITY_LABEL: Record<string, string> = {
 };
 
 export interface HomeRow {
+  /** The record that stands for the home (internal; never written to a file). */
+  recordId: string;
   status: HomeStatus;
   homeType: DamageRecord['homeType'];
   values: Partial<Record<ElementKey, Value>>;
@@ -256,6 +259,7 @@ export function toHomeRow(
   const fromField = r.kind === 'assessment';
   const types = list(d?.insurance);
   return {
+    recordId: r.id,
     status,
     homeType: r.homeType,
     point,
@@ -432,8 +436,15 @@ export async function loadPackageData(
     homes: await homeRows(trx, tenantId, classifyHomes(records).homes, event.timezone),
     sites: siteViews.map(siteRow),
     shelters: await shelterFigures(trx, eventId),
-    // Box 10 is filled from the joint assessment schedule (task F4).
-    jointPda: { dates: null, areas: null },
+    // Box 10: the joint assessment schedule (FL:FR-10).
+    jointPda: jointPdaBox10(
+      (
+        await sql<{ startsOn: string | null; endsOn: string | null; areas: string[] }>`
+          select to_char(starts_on, 'YYYY-MM-DD') as "startsOn",
+            to_char(ends_on, 'YYYY-MM-DD') as "endsOn", areas
+          from cg.joint_pda where event_id = ${eventId}::uuid`.execute(trx)
+      ).rows[0] ?? null,
+    ),
     photos: photos.photos,
     photosLeftOut: photos.leftOut,
   };

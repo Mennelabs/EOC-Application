@@ -2450,6 +2450,52 @@ export interface PackagePhotoTable {
   removed_by: Uuid | null;
 }
 
+export type JointPdaDegree = 'affected' | 'minor' | 'major' | 'destroyed';
+
+export interface JointPdaTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  starts_on: ColumnType<Date | null, Date | string | null, Date | string | null>;
+  ends_on: ColumnType<Date | null, Date | string | null, Date | string | null>;
+  areas: Generated<string[]>;
+  teams: JsonGen<{ name: string; members: string }[]>;
+  status: Generated<'planned' | 'in_progress' | 'done'>;
+  sample_version: Generated<number>;
+  sample_size: number | null;
+  sample_seed: number | null;
+  sampled_at: TsNullable;
+  sampled_by: Uuid | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface JointPdaStopTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  joint_pda_id: Uuid;
+  sample_version: number;
+  seq: number;
+  record_kind: 'report' | 'assessment';
+  record_id: Uuid;
+  stratum: JointPdaDegree;
+  created_at: TsGen;
+}
+
+export interface JointPdaMarkTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  stop_id: Uuid;
+  result: 'validated' | 'different' | 'not_seen';
+  degree_seen: JointPdaDegree | 'no_damage' | null;
+  note: string | null;
+  marked_by: Uuid;
+  marked_at: TsGen;
+}
+
 export interface LocationGeoTable {
   location_id: Uuid;
   tenant_id: Uuid;
@@ -2766,6 +2812,9 @@ export interface Database {
   'cg.fema_form_mapping': FemaFormMappingTable;
   'cg.export_file': ExportFileTable;
   'cg.package_photo': PackagePhotoTable;
+  'cg.joint_pda': JointPdaTable;
+  'cg.joint_pda_stop': JointPdaStopTable;
+  'cg.joint_pda_mark': JointPdaMarkTable;
   'cg.refdata_import': RefdataImportTable;
   'cg.refdata_snapshot': RefdataSnapshotTable;
   'cg.refdata_current': RefdataCurrentTable;

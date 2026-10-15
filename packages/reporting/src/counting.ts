@@ -179,7 +179,7 @@ export interface Classification {
   excluded: { withdrawn: number; rejected: number };
 }
 
-function statusOf(r: DamageRecord): HomeStatus {
+export function statusOf(r: DamageRecord): HomeStatus {
   if (r.relationship === 'witness') return 'witness';
   if (r.verification === 'cannot_verify') return 'inaccessible';
   if (!isVerified(r)) return 'selfReported';

@@ -210,6 +210,8 @@ export const roleRoutes: FastifyPluginAsync = async (raw) => {
               description: z.string(),
               source: z.string(),
               grants: z.array(grantSchema),
+              /** Assignments end within this many days (time-limited roles). */
+              maxAssignmentDays: z.number().int().optional(),
             }),
           ),
         },
@@ -528,12 +530,24 @@ export const roleRoutes: FastifyPluginAsync = async (raw) => {
         // Validate targets exist in this tenant before recording the request.
         const role = await trx
           .selectFrom('cg.role')
-          .select(['id', 'status'])
+          .select(['id', 'status', 'template_key'])
           .where('id', '=', body.roleId)
           .executeTakeFirst();
         if (!role || role.status !== 'active')
           throw errors.validation([{ name: 'roleId', message: 'unknown or retired role' }]);
         if (body.kind === 'assign_role') {
+          // A time-limited role (the FEMA validator) is assigned with an end date within its limit.
+          const maxDays = roleTemplates.find((t) => t.key === role.template_key)?.maxAssignmentDays;
+          if (maxDays !== undefined) {
+            const end = body.validTo ? new Date(body.validTo).getTime() : NaN;
+            if (!(end > Date.now() && end <= Date.now() + maxDays * 86_400_000))
+              throw errors.validation([
+                {
+                  name: 'validTo',
+                  message: `this role ends within ${maxDays} days: give an end date`,
+                },
+              ]);
+          }
           const account = await trx
             .selectFrom('cg.account')
             .select(['id', 'status'])
@@ -655,6 +669,13 @@ export const roleRoutes: FastifyPluginAsync = async (raw) => {
           // Apply: the approver is the second administrator (G6 checked both calls).
           const payload = cr.payload as Record<string, unknown>;
           if (cr.kind === 'assign_role') {
+            if (
+              payload['validTo'] &&
+              new Date(String(payload['validTo'])).getTime() <= now.getTime()
+            )
+              throw errors.validation([
+                { name: 'validTo', message: 'the end date has passed; ask again' },
+              ]);
             await request.authorize('role_assignment.create', {
               type: 'role_assignment',
               tenantId: s.tenantId,

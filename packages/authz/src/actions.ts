@@ -504,6 +504,29 @@ export const actions = {
     'Export the IDA package (PDF, CSV, GeoJSON): counts and generalized places, no personal details',
   ),
 
+  // Layer 6 joint damage assessment (FL:FR-10) and the state liaison's view (DCL:DEC-13).
+  'joint_assessment.read': a(
+    'read',
+    'joint_assessment',
+    'See the joint assessment schedule and sample route: verified homes without personal details',
+  ),
+  'joint_assessment.plan': a(
+    'write',
+    'joint_assessment',
+    'Schedule the joint assessment and draw its sample route',
+  ),
+  'joint_assessment.validate': a(
+    'write',
+    'joint_assessment',
+    'Mark a sampled home validated, seen at a different degree, or not seen',
+    { explicit: true },
+  ),
+  'shared_declaration.read': a(
+    'read',
+    'declaration',
+    "See a county's declaration figures, de-identified, under its signed agreement with your tenant",
+  ),
+
   // Layer 6 official reports (F15, RULE-10, A7): drafted, reviewed and issued by different people.
   'official_report.read': a(
     'read',
@@ -577,4 +600,6 @@ export const SELF_REVIEW_ACTIONS: readonly string[] = [
   // Official reports: the author neither reviews nor issues (A7); the database refuses it too.
   'official_report.review',
   'official_report.issue',
+  // Joint assessment: nobody validates a home whose degree they set or assessed.
+  'joint_assessment.validate',
 ];

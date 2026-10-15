@@ -720,6 +720,50 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
     expect((await outputs()).map((o) => o.outcome)).toEqual(['ok', 'ok', 'filtered', 'ok']);
   });
 
+  it('CMD-06: "this" is the record open on the screen, read again under the person\'s own permissions; without one, or with another kind, nothing is guessed', async () => {
+    const screen = { context: { kind: 'mission', id: missionId } };
+    const shown = await command('field', '/mission this', screen);
+    expect(shown.status, shown.message).toBe('succeeded');
+    expect(shown.result?.records.map((r) => r.id)).toEqual([missionId]);
+    // Without context, or with a need open, "this" mission is not guessed.
+    const bare = await command('field', '/mission this');
+    expect(bare.status).toBe('not_found');
+    expect(bare.message).toContain('open on your screen');
+    const other = await command('field', '/mision esta', {
+      context: { kind: 'need', id: needIds[0] },
+    });
+    expect(other.status).toBe('not_found');
+    // A record the person cannot see reads as not found, the same as an unknown one.
+    const hidden = await command('field', '/mission this', {
+      context: { kind: 'mission', id: randomUUID() },
+    });
+    expect(hidden.status).toBe('not_found');
+    expect(hidden.message).toBe('The mission on your screen is not one you can see now.');
+    // A change on "this" plans against the record's id and version like a named one.
+    const need = await command('mc', '/need this claim', {
+      context: { kind: 'need', id: needIds[1] },
+    });
+    expect(need.status, need.message).toBe('awaiting_confirmation');
+    expect(need.plan?.target?.id).toBe(needIds[1]);
+    expect(need.plan?.description).toContain(ref(2));
+    await call('mc', 'POST', `/commands/${need.id}/cancel`);
+    // Plain words (the feature is on from CMD-03): the model is told only the kind on screen.
+    const words = await command('mc', 'claim this need please', {
+      context: { kind: 'need', id: needIds[1] },
+    });
+    expect(words.status, words.message).toBe('awaiting_confirmation');
+    expect(words.plan?.interpretation).toBe('/need this claim');
+    expect(words.plan?.target?.id).toBe(needIds[1]);
+    await call('mc', 'POST', `/commands/${words.id}/cancel`);
+    // A context of an unknown kind is refused by the schema.
+    const bad = await call('mc', 'POST', '/commands', {
+      executionId: randomUUID(),
+      input: '/mission this',
+      context: { kind: 'personnel', id: randomUUID() },
+    });
+    expect(bad.status).toBe(400);
+  });
+
   it('CMD-04, BRD:FR-18.05: personal aliases look things up for their owner only; organization aliases need the explicit, confirmed action; every expansion is shown and checked again when used', async () => {
     const made = await call('mc', 'POST', '/command-aliases', {
       name: 'food',

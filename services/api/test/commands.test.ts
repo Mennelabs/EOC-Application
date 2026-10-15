@@ -11,6 +11,7 @@ import { actions } from '@cg/authz';
 import { checkAlias } from '../src/commands/aliases.ts';
 import { CATALOG, DEFAULT_PHASES } from '../src/commands/catalog.ts';
 import {
+  ON_SCREEN,
   parseMinutes,
   parseShorthand,
   resolveWhen,
@@ -167,6 +168,20 @@ describe('shorthand', () => {
     });
     expect(parse('/mission M-00012 cerrar')).toMatchObject({ command: 'mission.close', args: {} });
     expect(parse('/mission M-00012 reabrir')).toMatchObject({ command: 'mission.reopen' });
+  });
+
+  it('CMD-06: "this" (or esta, este) stands for the record on the screen; any other word is a reference', () => {
+    expect(parse('/mission this status on_scene')).toMatchObject({
+      ok: true,
+      command: 'mission.status',
+      ref: ON_SCREEN,
+      refKind: 'mission',
+    });
+    expect(parse('/necesidad esta reclamar')).toMatchObject({
+      command: 'need.claim',
+      ref: ON_SCREEN,
+    });
+    expect(parse('/mission 20261009-003')).toMatchObject({ ref: '20261009-003' });
   });
 
   it('FL-07: "log two meals" and "I\'m done here" as shorthand, in English and Spanish', () => {

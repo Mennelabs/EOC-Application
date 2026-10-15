@@ -193,7 +193,7 @@ describe('OpenAI provider (ADR-0043)', () => {
     expect(user.startsWith('<staff_request>')).toBe(true);
     expect(user.match(/<\/staff_request>/g)).toHaveLength(1);
     expect(out.output).toMatchObject({ shorthand: '/need FOOD12 claim', question: null });
-    expect(out.provider.templateVersion).toBe('command-interpret-1');
+    expect(out.provider.templateVersion).toBe('command-interpret-2');
     // Anything but one slash line is not shorthand; the question stands instead.
     const second = await p.interpretCommand(req);
     expect(second.output).toMatchObject({ shorthand: null, question: 'Which need?' });

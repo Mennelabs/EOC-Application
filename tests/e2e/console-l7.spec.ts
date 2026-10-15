@@ -8,6 +8,9 @@
  * own command history and clears it. Escape closes the window and returns focus to where it was
  * opened; "/" opens it when the cursor is not in a text field. Axe runs on
  * each state and, on the phone project, the window reflows at phone width.
+ * With a need open on the board (CMD-06), "/need this claim" plans for it;
+ * a note typed but not saved is asked about before the claim runs, kept or
+ * discarded (CMD-29, AC-C09); set aside, "this" finds nothing.
  *
  * Recommendations (REC-02–REC-12): mass care asks for a shelter; the top
  * three come with reasons, the fairgrounds lot is set aside as no shelter,
@@ -150,6 +153,89 @@ test.describe('layer 7 console: the command window', () => {
     await expect(dialog).toBeVisible();
     await expect(box).toHaveValue(/^\//);
     await page.keyboard.press('Escape');
+  });
+
+  test('CMD-06, CMD-29, AC-C09: "this" is the need open on the board; a claim over an unsaved note asks first', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'mass_care_coordinator',
+      `Mass care this ${tag}`,
+      `l7c-${testInfo.project.name}`,
+    );
+    const executionId = crypto.randomUUID();
+    const filed = await fetch(`${BASE}/api/public/needs/county/westwind`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'idempotency-key': executionId },
+      body: JSON.stringify({
+        executionId,
+        language: 'en',
+        needs: ['food_water'],
+        address: { line1: `${tag} Context St`, city: 'Westwind', postal: '63003' },
+        contactName: 'Context Tester',
+        contact: { phone: '+13145550188', email: `context-${tag}@example.org`, preferred: 'email' },
+        consent: { relief_agencies: true },
+      }),
+    });
+    expect(filed.status).toBe(202);
+    const code = ((await filed.json()) as { referenceCode: string }).referenceCode;
+    const admin = await token('county', administrators('county').admin);
+    const statusOf = async () =>
+      ((await api(admin, `/needs?reference=${code}`)).body as unknown as { status: string }[])[0]
+        ?.status;
+    await expect.poll(statusOf, { timeout: 90_000 }).toBe('open');
+
+    await page.goto('/console/needs');
+    await page.getByLabel('Reference').fill(code);
+    const row = page.getByRole('row').filter({ hasText: code });
+    await row.getByRole('button', { name: 'Act' }).click();
+    const note = page.getByLabel('Note');
+    await note.fill('Exercise: half typed');
+
+    await page.getByRole('button', { name: /command window/i }).click();
+    const dialog = page.getByRole('dialog', { name: 'Command window' });
+    const offer = dialog.getByRole('checkbox', {
+      name: new RegExp(`need ${code}, open on your screen`),
+    });
+    await expect(offer).toBeChecked();
+    const box = dialog.getByRole('textbox', { name: 'Command' });
+    await box.fill('/need this claim');
+    await box.press('Enter');
+    await expect(dialog.getByRole('heading', { name: 'Check the plan' })).toBeVisible();
+    await expect(dialog.getByRole('definition').first()).toContainText(code);
+    // AC-C09: the unsaved note is asked about; there is no plain Confirm.
+    const unsaved = dialog.getByRole('group', { name: 'Unsaved changes' });
+    await expect(unsaved).toContainText('the note');
+    await expect(dialog.getByRole('button', { name: 'Confirm', exact: true })).toHaveCount(0);
+    await expectNoViolations(page);
+    await unsaved.getByRole('button', { name: 'Keep my changes and go back to them' }).click();
+    await expect(dialog).toBeHidden();
+    await expect(note).toBeFocused();
+    await expect(note).toHaveValue('Exercise: half typed');
+    expect(await statusOf()).toBe('open');
+
+    await page.getByRole('button', { name: /command window/i }).click();
+    await box.fill('/need this claim');
+    await box.press('Enter');
+    await unsaved.getByRole('button', { name: 'Discard my changes and confirm' }).click();
+    await expect(dialog.getByRole('heading', { name: 'Saved' })).toBeVisible();
+    expect(await statusOf()).toBe('claimed');
+    await page.keyboard.press('Escape');
+    // The board read the need again.
+    await expect(row).toContainText('claimed');
+
+    // Set aside, "this" means nothing and nothing is guessed.
+    await page.getByRole('button', { name: /command window/i }).click();
+    if (await offer.isVisible()) await offer.uncheck();
+    await box.fill('/need this release');
+    await box.press('Enter');
+    await expect(dialog.getByRole('heading', { name: 'Nothing found' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    expect(await statusOf()).toBe('claimed');
   });
 
   test('REC-01: the COAD proposes a facility; county EM approves it in their own browser and re-checks it', async ({

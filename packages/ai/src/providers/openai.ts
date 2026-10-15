@@ -69,7 +69,7 @@ export const OPENAI_TEMPLATES = {
   imageAnalysis: 'image-analysis-1',
   classifier: 'damage-classifier-1',
   transcription: 'transcription-1',
-  command: 'command-interpret-1',
+  command: 'command-interpret-2',
   discovery: 'discovery-search-1',
   draft: 'draft-from-facts-1',
   scribe: 'scribe-note-1',

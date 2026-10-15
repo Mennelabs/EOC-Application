@@ -278,6 +278,16 @@ function split(tokens: string[]): { words: string[]; pairs: Record<string, strin
   return { words, pairs };
 }
 
+/**
+ * CMD-06: "this" stands for the record open on the person's screen, which the
+ * window shows and sends as context; the server resolves it under the
+ * person's own permissions. Nothing on the screen is used unless named.
+ */
+export const ON_SCREEN = '@screen';
+const THIS_WORDS = new Set(['this', 'esta', 'este', 'esto']);
+const onScreen = (ref: string | undefined) =>
+  ref !== undefined && THIS_WORDS.has(norm(ref)) ? ON_SCREEN : ref;
+
 const usage = (message: string, u: string): Parsed => ({
   ok: false,
   error: 'usage',
@@ -329,7 +339,8 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
     }
 
     case 'mission': {
-      const [ref, sub, ...rest] = words;
+      const [first, sub, ...rest] = words;
+      const ref = onScreen(first);
       if (!ref) return usage('Which mission? Give its number.', '/mission <number>');
       if (!sub) return ok('mission.show', {}, ref, 'mission');
       const s = SUBVERBS[norm(sub)];
@@ -391,7 +402,8 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
     }
 
     case 'need': {
-      const [ref, sub, ...rest] = words;
+      const [first, sub, ...rest] = words;
+      const ref = onScreen(first);
       if (!ref || !sub)
         return usage(
           'Which need, and claim or release?',

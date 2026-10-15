@@ -231,7 +231,10 @@ export class FakeLanguageModel implements LanguageModel {
     request: CommandInterpretRequest,
   ): Promise<AiOutput<CommandInterpretation>> {
     const started = performance.now();
-    const output = { ...interpret(request.text), language: detectLanguage(request.text) };
+    const output = {
+      ...interpret(request.text, request.onScreen ?? null),
+      language: detectLanguage(request.text),
+    };
     return { output, provider: INFO, latencyMs: performance.now() - started };
   }
 
@@ -367,12 +370,16 @@ const STATUS_WORDS: [RegExp, string][] = [
  * one line of shorthand, a question, or nothing. The server parses the line
  * like typed shorthand, so these rules decide nothing.
  */
-function interpret(text: string): CommandInterpretation {
+function interpret(text: string, onScreen: 'mission' | 'need' | null): CommandInterpretation {
   if (COMMAND_INJECTION.test(text))
     return { shorthand: null, question: null, injectionSuspected: true };
   const t = text.toLowerCase();
-  const mission = MISSION_REF.exec(text)?.[0];
-  const need = mission ? undefined : NEED_REF.exec(text.toUpperCase())?.[0];
+  // CMD-06: "this" or "it" with a record open and no number given means that record.
+  const here = /\b(this|it|esta|este|esto)\b/i.test(t) ? onScreen : null;
+  const mission = MISSION_REF.exec(text)?.[0] ?? (here === 'mission' ? 'this' : undefined);
+  const need = mission
+    ? undefined
+    : (NEED_REF.exec(text.toUpperCase())?.[0] ?? (here === 'need' ? 'this' : undefined));
   if (need && /\b(claim|reclam|toma)/i.test(t))
     return { shorthand: `/need ${need} claim`, question: null };
   if (need && /\b(release|liber|suelta)/i.test(t))

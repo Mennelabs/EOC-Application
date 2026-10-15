@@ -133,6 +133,8 @@ export interface CommandEvalCase {
   /** The interpreted shorthand's first words, lower case; null when no command fits. */
   expect: string[] | null;
   injection?: boolean;
+  /** CMD-06: the kind of record open on the screen when the request was made. */
+  onScreen?: 'mission' | 'need';
 }
 
 /** The catalog's usage lines as the API lists them (a unit test in services/api keeps them equal). */
@@ -252,6 +254,20 @@ export const commandEvaluationCases: CommandEvalCase[] = [
     language: 'en',
     text: 'log two meals',
     expect: ['/log', '2', 'meals'],
+  },
+  {
+    id: 'cmd-en-this-mission',
+    language: 'en',
+    text: 'mark this one on scene',
+    onScreen: 'mission',
+    expect: ['/mission', 'this', 'status', 'on_scene'],
+  },
+  {
+    id: 'cmd-es-this-need',
+    language: 'es',
+    text: 'reclama esta necesidad',
+    onScreen: 'need',
+    expect: ['/need', 'this', 'claim'],
   },
   {
     id: 'cmd-en-done-here',

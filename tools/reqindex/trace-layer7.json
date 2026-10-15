@@ -32,9 +32,9 @@
   ],
   "CMD-06": [
     "partial",
-    "Targets come only from identifiers named in the command (routes/commands.ts resolveTarget over the console's own list routes); the plan shows the one record or event it will affect; the event is asked for when more than one is open",
-    "services/api/test/commands.db.test.ts (AC-C06: the plan names the need; CMD-08: the chosen target; Section 30.2: the sitrep draft on the open event)",
-    "The window does not take the selected record or the current task from the screen: the person names the record by reference, code or title. Nothing visible is ever treated as a target."
+    "apps/web-console/src/ui/screen-record.ts: the mission detail screen and the needs board's open panel offer their record; the window names it in a checkbox the person can clear; \"this\" (esta, este) in shorthand, or in plain words read by the model (told only the kind on screen, prompt command-interpret-2), resolves it through GET /missions/:id or /needs/:id with the person's own credentials (routes/commands.ts resolveOnScreen), so a record they cannot see is not found; otherwise targets come from identifiers named in the command (resolveTarget); the plan shows the one record it affects",
+    "services/api/test/commands.db.test.ts (CMD-06: this with and without context, another kind, a record not visible, a planned change, plain words), services/api/test/commands.test.ts (CMD-06 parse), tests/e2e/console-l7.spec.ts (CMD-06, CMD-29, AC-C09 journey), packages/ai evaluation cases cmd-en-this-mission and cmd-es-this-need",
+    "The field app's current job is not yet offered as context; on the phone the person names the mission. Nothing on a screen is used unless the command says \"this\"."
   ],
   "CMD-07": [
     "pass",
@@ -169,10 +169,10 @@
     "Section 30.2, approved 2026-10-15: one-click undo for 15 minutes on reversible internal changes; everything else by a compensating action."
   ],
   "CMD-29": [
-    "partial",
-    "The window never writes into a screen's form; a change carries the version it was planned against (If-Match) and a changed record makes the plan stale (routes/commands.ts); unsent command text stays in the tab (command-window.tsx)",
-    "services/api/test/commands.db.test.ts (AC-C04, CMD-09: a changed record makes the plan stale)",
-    "The console does not register open drafts, so a command on a record with unsaved form changes neither warns nor offers keep, reconcile or discard (layer-7 plan §3; AC-C09)."
+    "pass",
+    "Screens register forms with unsaved text (screen-record.ts useOpenDraft: the mission narrative, closing note and lock reason; the need note); a change planned for that record shows an \"Unsaved changes\" group naming the form, with keep (cancels, focus back in the form) or discard and confirm, and no plain Confirm; a change carries the version it was planned against and a changed record makes the plan stale; after a change the screen showing the record reads it again; unsent command text stays in the tab",
+    "tests/e2e/console-l7.spec.ts (CMD-06, CMD-29, AC-C09: kept, then discarded, the note), services/api/test/commands.db.test.ts (AC-C04, CMD-09: a changed record makes the plan stale)",
+    ""
   ],
   "CMD-30": [
     "partial",
@@ -277,10 +277,10 @@
     "No message-sending command is catalogued, so the delivered-communication case itself is not exercised; plain words \"undo that\" map to no command."
   ],
   "AC-C09": [
-    "deferred",
-    "",
-    "",
-    "The console's open-draft registry (layer-7 plan §3) was not built in tasks B–C and is not scheduled, so a command does not ask to keep, reconcile or discard an unsaved form; the plan's version check only stops a write over a newer saved record (CMD-29)."
+    "pass",
+    "apps/web-console/src/ui/command-window.tsx (the unsaved-changes choice before confirming), screen-record.ts (open-draft registry), screens/needs.tsx and screens/missions.tsx register their forms",
+    "tests/e2e/console-l7.spec.ts (CMD-06, CMD-29, AC-C09: a claim over an unsaved note asks first; keep returns to the note with its text; discard empties it and the claim runs)",
+    ""
   ],
   "AC-C10": [
     "pass",

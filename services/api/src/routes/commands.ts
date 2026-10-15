@@ -35,7 +35,7 @@ import {
   type Verified,
 } from '../commands/catalog.ts';
 import { aliasMayRun, type AliasScope } from '../commands/aliases.ts';
-import { parseShorthand } from '../commands/parse.ts';
+import { ON_SCREEN, parseShorthand } from '../commands/parse.ts';
 import { ApiError, errors } from '../errors.ts';
 import { iso, uuidParam } from './helpers.ts';
 
@@ -407,6 +407,36 @@ async function resolveTarget(
   };
 }
 
+/** The kinds of record a console screen can offer as context (CMD-06). */
+const SCREEN_KINDS = ['mission', 'need'] as const;
+type ScreenRecord = { kind: (typeof SCREEN_KINDS)[number]; id: string };
+
+/**
+ * CMD-06: "this" is the record the person has open, read again through the
+ * console's own route with their credentials, so a record they may not see
+ * is simply not found. Context is used only when the command says "this".
+ */
+async function resolveOnScreen(
+  request: FastifyRequest,
+  kind: TargetKind,
+  context: ScreenRecord | undefined,
+): Promise<Resolution> {
+  if (!context || context.kind !== kind) return { kind: 'none' };
+  const where = RECORDS[kind];
+  const res = await op(request, { method: 'GET', path: where.one(context.id) });
+  if (res.status !== 200 || !res.body || typeof res.body !== 'object') return { kind: 'none' };
+  const r = res.body as ListRow;
+  return {
+    kind: 'one',
+    target: {
+      kind,
+      id: str(r['id']),
+      version: typeof r['version'] === 'number' ? r['version'] : 0,
+      label: where.label(r),
+    },
+  };
+}
+
 export interface CommandDeps {
   ai?: { providerFor(tenantId: string, trx: Transaction<Database>): Promise<AiProvider | null> };
 }
@@ -582,6 +612,7 @@ export const commandRoutesWith =
       now: Date,
       timeZone: string,
       phases: number[],
+      onScreen: ScreenRecord['kind'] | null,
     ): Promise<{ answer: ExecutionOut } | { shorthand: string; aiOutputId: string }> {
       const s = account(request);
       const off = (message: string) => ({ answer: blank(executionId, 'unsupported', message) });
@@ -606,7 +637,14 @@ export const commandRoutesWith =
       );
       const { text: redacted, tokens } = redact(text);
       const call = await callAi(() =>
-        llm.interpretCommand!({ text: redacted, commands, now: now.toISOString(), timeZone }),
+        // CMD-06: the model learns only which kind of record is open, never which one.
+        llm.interpretCommand!({
+          text: redacted,
+          commands,
+          now: now.toISOString(),
+          timeZone,
+          onScreen,
+        }),
       );
       const out = call.ok ? call.out.output : null;
       const aiOutputId = await request.tx((trx) =>
@@ -912,6 +950,8 @@ export const commandRoutesWith =
             targetId: z.uuid().optional(),
             /** The person chosen from a clarification, for a command that names one. */
             personId: z.uuid().optional(),
+            /** CMD-06: the record open on the person's screen, used only for "this". */
+            context: z.object({ kind: z.enum(SCREEN_KINDS), id: z.uuid() }).optional(),
             /** CMD-36: keep this exchange in the person's own history (never on a shared device). */
             remember: z.boolean().default(false),
           }),
@@ -940,7 +980,15 @@ export const commandRoutesWith =
         let line = b.input;
         let natural: { shorthand: string; aiOutputId: string } | null = null;
         if (!line.startsWith('/')) {
-          const r = await interpretWords(request, b.executionId, b.input, now, timeZone, phases);
+          const r = await interpretWords(
+            request,
+            b.executionId,
+            b.input,
+            now,
+            timeZone,
+            phases,
+            b.context?.kind ?? null,
+          );
           if ('answer' in r) return r.answer;
           natural = r;
           line = r.shorthand;
@@ -1006,7 +1054,10 @@ export const commandRoutesWith =
 
         let target: Target | null = null;
         if (spec.target) {
-          const r = await resolveTarget(request, spec.target, parsed.ref ?? '', b.targetId);
+          const here = parsed.ref === ON_SCREEN;
+          const r = here
+            ? await resolveOnScreen(request, spec.target, b.context)
+            : await resolveTarget(request, spec.target, parsed.ref ?? '', b.targetId);
           if (r.kind === 'none')
             return {
               ...head,
@@ -1014,7 +1065,11 @@ export const commandRoutesWith =
               message:
                 spec.target === 'check_in'
                   ? 'You are not checked in, so there is nothing to check out of.'
-                  : `No ${spec.target} you can see matches "${parsed.ref ?? ''}".`,
+                  : here
+                    ? b.context?.kind === spec.target
+                      ? `The ${spec.target} on your screen is not one you can see now.`
+                      : `"This" means the ${spec.target} open on your screen, and none is. Give its ${spec.target === 'mission' ? 'number' : 'reference code'} instead.`
+                    : `No ${spec.target} you can see matches "${parsed.ref ?? ''}".`,
             };
           if (r.kind === 'many')
             return {

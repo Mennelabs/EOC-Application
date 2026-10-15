@@ -8,7 +8,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p .",
-    "evaluate": "node src/evaluation/cli.ts"
+    "evaluate": "node src/evaluation/cli.ts",
+    "evaluate:live": "node src/evaluation/cli.ts openai"
   },
   "dependencies": {
     "@cg/db": "workspace:*",

@@ -113,11 +113,18 @@ export function validateExtraction(graph: QuestionGraph, raw: unknown): Validate
       evidence: c.evidence,
     });
   }
-  const out: ValidatedExtraction = {
-    candidates,
-    dropped,
-    injectionSuspected: parsed.data.injectionSuspected === true,
-  };
+  const injectionSuspected = parsed.data.injectionSuspected === true;
+  // AIG-02, fail closed: text that tried to instruct the system suggests nothing at all.
+  const out: ValidatedExtraction = injectionSuspected
+    ? {
+        candidates: [],
+        dropped: [
+          ...dropped,
+          ...candidates.map((c) => ({ questionId: c.questionId, reason: 'injection_suspected' })),
+        ],
+        injectionSuspected,
+      }
+    : { candidates, dropped, injectionSuspected };
   if (parsed.data.language) out.language = parsed.data.language;
   return out;
 }

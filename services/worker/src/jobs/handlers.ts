@@ -24,6 +24,7 @@ import {
   reportWithdrawn,
 } from './reports.ts';
 import { exportRequested } from './exports.ts';
+import { aiEvaluate } from './ai-evaluate.ts';
 import { equityEvaluate } from './equity.ts';
 import { officialReportIssued } from './official-reports.ts';
 import type { JobContext, OutboxMessage, TopicHandler } from './types.ts';
@@ -258,6 +259,7 @@ export const topicHandlers: Record<string, TopicHandler> = {
   'official_report.issued': officialReportIssued, // RULE-10, ADR-0010
   'export.requested': exportRequested, // DEC-11, DEC-12, SEC-18
   'equity.evaluate': equityEvaluate, // EQ-12, CON-07
+  'ai.evaluate': aiEvaluate, // AIG-08, ADR-0043
 };
 
 // ---- schedules --------------------------------------------------------------

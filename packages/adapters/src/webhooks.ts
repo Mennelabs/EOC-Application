@@ -16,7 +16,7 @@
 import { createHmac, randomBytes } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { request as httpsRequest } from 'node:https';
-import { BlockList, isIP } from 'node:net';
+import { BlockList, isIP, type LookupFunction } from 'node:net';
 
 export const WEBHOOK_EVENTS = ['official_report.issued', 'export.ready'] as const;
 export type WebhookEventName = (typeof WEBHOOK_EVENTS)[number];
@@ -24,7 +24,10 @@ export type WebhookEventName = (typeof WEBHOOK_EVENTS)[number];
 const ALLOWED_PORTS = new Set(['', '443', '8443']);
 
 /** Why a URL may not be a webhook, or null when it may (no lookup: that is done when sending). */
-export function webhookUrlProblem(raw: string): string | null {
+export function webhookUrlProblem(
+  raw: string,
+  ports: ReadonlySet<string> = ALLOWED_PORTS,
+): string | null {
   let url: URL;
   try {
     url = new URL(raw);
@@ -33,7 +36,7 @@ export function webhookUrlProblem(raw: string): string | null {
   }
   if (url.protocol !== 'https:') return 'The address must start with https://.';
   if (url.username || url.password) return 'The address may not hold a user name or password.';
-  if (!ALLOWED_PORTS.has(url.port)) return 'Use the standard HTTPS port (443) or 8443.';
+  if (!ports.has(url.port)) return 'Use the standard HTTPS port (443) or 8443.';
   const host = url.hostname.replace(/^\[|\]$/g, '');
   if (isIP(host)) return 'Use a host name, not an IP address.';
   if (!host.includes('.') || /(^|\.)(localhost|local|internal|localdomain|home\.arpa)$/i.test(host))
@@ -127,6 +130,21 @@ export type WebhookSender = (post: WebhookPost) => Promise<WebhookResult>;
 /** Resolves a host to its addresses; injected in tests. */
 export type Resolver = (host: string) => Promise<string[]>;
 
+/**
+ * A lookup that always answers with the address already checked, so the
+ * connection goes there and nowhere else (no second lookup to rebind).
+ * Node asks for every address (`all`, to try IPv4 and IPv6 in turn) when
+ * it connects; answering that call with a single address fails the
+ * connection, so both forms are answered.
+ */
+export function pinnedLookup(address: string): LookupFunction {
+  const family = isIP(address);
+  return (_host, options, callback) => {
+    if (options.all) callback(null, [{ address, family }]);
+    else callback(null, address, family);
+  };
+}
+
 const systemResolver: Resolver = async (host) =>
   (await lookup(host, { all: true, verbatim: true })).map((a) => a.address);
 
@@ -137,12 +155,20 @@ const systemResolver: Resolver = async (host) =>
  * check). Ten seconds at most; 2xx is success; redirects are failures.
  */
 export function httpsWebhookSender(
-  opts: { resolve?: Resolver; timeoutMs?: number } = {},
+  opts: {
+    resolve?: Resolver;
+    timeoutMs?: number;
+    /** Tests only: a local receiver's address, port and certificate authority. */
+    allow?: (address: string) => boolean;
+    ports?: ReadonlySet<string>;
+    ca?: string;
+  } = {},
 ): WebhookSender {
   const resolve = opts.resolve ?? systemResolver;
   const timeoutMs = opts.timeoutMs ?? 10_000;
+  const allow = opts.allow ?? isPublicAddress;
   return async ({ url, headers, body }) => {
-    const problem = webhookUrlProblem(url);
+    const problem = webhookUrlProblem(url, opts.ports);
     if (problem) return { status: null, error: problem };
     const target = new URL(url);
     let addresses: string[];
@@ -151,7 +177,7 @@ export function httpsWebhookSender(
     } catch {
       return { status: null, error: 'The host name did not resolve.' };
     }
-    if (!addresses.length || !addresses.every(isPublicAddress))
+    if (!addresses.length || !addresses.every(allow))
       return { status: null, error: 'The host name resolves to an address that is not public.' };
     const address = addresses[0]!;
     return new Promise<WebhookResult>((done) => {
@@ -169,7 +195,8 @@ export function httpsWebhookSender(
             'user-agent': 'webhook-delivery/1',
           },
           // Connect to the address already checked: no second lookup.
-          lookup: (_host, _opts, cb) => cb(null, address, isIP(address)),
+          lookup: pinnedLookup(address),
+          ...(opts.ca ? { ca: opts.ca } : {}),
           timeout: timeoutMs,
         },
         (res) => {

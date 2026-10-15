@@ -175,6 +175,16 @@ export const AI_FEATURES: readonly RegisterEntry[] = [
     owner: 'Field operations lead',
   },
   {
+    feature: 'field.handover',
+    needs: 'llm',
+    dataSent:
+      "Counts and summaries of a worker's own records from their shift, redacted of names, phone numbers, emails and street addresses; open assignments by mission name",
+    decisionInformed:
+      'Drafts the hand-over note for the next shift, each sentence citing its facts (FL-12)',
+    humanCheckpoint: 'The worker edits and confirms the note before checking out',
+    owner: 'Field operations lead',
+  },
+  {
     feature: 'discovery.web_search',
     needs: 'llm',
     dataSent:

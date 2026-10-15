@@ -1,8 +1,10 @@
 /**
  * Settings (FLD-15, EQ-06, DSP-08, FLD-14): language, high contrast, large
  * targets, one-handed layout, battery saver, location sharing, check-out
- * (clears resident details from the phone) and sign-out.
+ * (clears resident details from the phone; the hand-over for the next shift
+ * first, FL-12) and sign-out.
  */
+import { router } from 'expo-router';
 import { View } from 'react-native';
 import { useField } from '../src/field';
 import { localeNames, locales } from '../src/i18n';
@@ -59,6 +61,9 @@ export default function Settings() {
       {checkIn ? (
         <Card label={t('settings.checkout')}>
           <Body>{t('settings.checkoutBody')}</Body>
+          {f.can('check_in.end') ? (
+            <Button label={t('handover.heading')} onPress={() => router.push('/handover')} />
+          ) : null}
           <Button
             kind="secondary"
             label={t('settings.checkout')}

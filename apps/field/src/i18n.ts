@@ -474,6 +474,18 @@ const en = {
   'scribe.failed': 'The note could not be drafted. Try again, or write the note yourself below.',
   'scribe.retry': 'Try drafting again',
   'scribe.another': 'Start another conversation',
+  // Layer 7 task H: shift hand-over (FL-12).
+  'handover.heading': 'Hand-over for the next shift',
+  'handover.intro':
+    'What your shift did and what is still open, from your own records. Change it as needed; the next shift on your team reads it.',
+  'handover.text': 'Hand-over note',
+  'handover.ai': 'Draft with the AI assistant',
+  'handover.aiLabel':
+    "Drafted by the AI assistant ({provider}, {model}) from your shift's records; every figure was checked. Read it before you save.",
+  'handover.save': 'Save and check out',
+  'handover.skip': 'Check out without a hand-over',
+  'handover.last': 'From the last shift',
+  'handover.lastBy': '{name}, {time}',
   'check.heading': 'Checkpoint',
   'check.intro': 'Scan or type a badge code. You see only the name, agency and access.',
   'check.where': 'Checkpoint (optional)',
@@ -987,6 +999,17 @@ const es: Record<MessageKey, string> = {
     'No se pudo preparar la nota. Intente de nuevo o escriba la nota usted mismo abajo.',
   'scribe.retry': 'Intentar de nuevo',
   'scribe.another': 'Empezar otra conversación',
+  'handover.heading': 'Entrega para el siguiente turno',
+  'handover.intro':
+    'Lo que hizo su turno y lo que sigue pendiente, según sus propios registros. Cámbielo si hace falta; el siguiente turno de su equipo lo lee.',
+  'handover.text': 'Nota de entrega',
+  'handover.ai': 'Preparar con el asistente de IA',
+  'handover.aiLabel':
+    'Preparada por el asistente de IA ({provider}, {model}) a partir de los registros de su turno; se revisó cada cifra. Léala antes de guardar.',
+  'handover.save': 'Guardar y terminar el turno',
+  'handover.skip': 'Terminar el turno sin entrega',
+  'handover.last': 'Del turno anterior',
+  'handover.lastBy': '{name}, {time}',
   'check.heading': 'Punto de control',
   'check.intro':
     'Escanee o escriba el código de una credencial. Solo verá el nombre, la agencia y el acceso.',

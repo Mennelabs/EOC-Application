@@ -118,6 +118,8 @@ const PURPOSE: Record<DraftPurpose, string> = {
     'a script read aloud on low-power radio or an amateur radio net: short spoken sentences, numbers written as they are said, the most useful information first and repeated at the end',
   wea_alert:
     'a public alert message: what, where, when and what to do, in as few words as possible',
+  handover:
+    'a shift hand-over note from one field worker to the next shift: what was done, then what is still open and needs doing first, in short plain sentences',
 };
 
 /**

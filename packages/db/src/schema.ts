@@ -2294,6 +2294,20 @@ export interface RecommendationTable extends Stamped {
 }
 
 /** REC-13: a source the county names for resource discovery (its own feeds, or web search). */
+/** FL-12: the note a worker leaves for the next shift (layer-7 task H). */
+export interface ShiftHandoverTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  check_in_id: Uuid;
+  personnel_id: Uuid;
+  team_id: Uuid | null;
+  language: 'en' | 'es';
+  text: string;
+  sources: Generated<string[]>;
+  ai_output_id: Uuid | null;
+}
+
 /** FL-04, FL-18: one conversation the scribe recorded with a survivor's consent (layer-7 task H). */
 export interface ScribeSessionTable extends Stamped {
   id: Generated<Uuid>;
@@ -3190,6 +3204,7 @@ export interface Database {
   'cg.recommendation': RecommendationTable;
   'cg.public_audio': PublicAudioTable;
   'cg.scribe_session': ScribeSessionTable;
+  'cg.shift_handover': ShiftHandoverTable;
   'cg.discovery_source': DiscoverySourceTable;
   'cg.discovery_run': DiscoveryRunTable;
   'cg.discovery_candidate': DiscoveryCandidateTable;

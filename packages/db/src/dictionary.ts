@@ -2128,6 +2128,20 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     },
     execution_id: { c: 'internal' },
   }),
+  shift_handover: table({
+    event_id: { c: 'internal' },
+    check_in_id: { c: 'internal' },
+    personnel_id: { c: 'internal', d: 'Who wrote it' },
+    team_id: { c: 'internal' },
+    language: { c: 'internal' },
+    text: {
+      c: 'sensitive',
+      r: 'field_records',
+      d: 'The hand-over note the worker confirmed (FL-12)',
+    },
+    sources: { c: 'internal', d: 'The facts the note was drafted from' },
+    ai_output_id: { c: 'internal' },
+  }),
   scribe_session: table({
     client_uuid: { c: 'internal' },
     account_id: { c: 'internal', d: 'The worker who recorded the conversation' },

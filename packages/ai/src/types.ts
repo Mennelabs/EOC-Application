@@ -103,7 +103,8 @@ export type DraftPurpose =
   | 'declaration_box9'
   | 'pio_post'
   | 'radio_script'
-  | 'wea_alert';
+  | 'wea_alert'
+  | 'handover';
 
 /** One computed fact a draft may state; nothing else may be stated (AI-04, AI-09). */
 export interface DraftFact {

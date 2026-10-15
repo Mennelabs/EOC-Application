@@ -15,10 +15,17 @@ import type { Kysely } from 'kysely';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
 import { createDb, withTenant, type Database } from '@cg/db';
+import { westwindGraph } from '@cg/intake';
 import { loadSeed } from '../../../tools/seed/src/load.ts';
 import { buildApp, type App } from '../src/app.ts';
 import { AuthError, type SubjectLoader } from '../src/auth/subject.ts';
+import { RiskScorer } from '../src/public/abuse.ts';
+import { ReferenceCodeLeaser } from '../src/public/reference-codes.ts';
+import { publicRoutes } from '../src/public/routes.ts';
+import { TenantResolver } from '../src/public/tenant-resolver.ts';
 import { routesWith } from '../src/routes/index.ts';
+import { remindFacilityRechecks } from '../../worker/src/jobs/facilities.ts';
+import type { JobContext } from '../../worker/src/jobs/types.ts';
 
 const appUrl = process.env['API_DB_TEST_APP_URL'];
 const workerUrl = process.env['API_DB_TEST_WORKER_URL'];
@@ -48,6 +55,8 @@ describe.skipIf(!appUrl || !workerUrl)('the facility registry (database-backed)'
   let dbWorker: Kysely<Database>;
   let county = '';
   let seededCounty = '';
+  let slug = '';
+  const crypto = new FieldCrypto(new InMemoryKeyService(), new MemoryKeyStore());
   const run = randomUUID().slice(0, 8);
   const subjects: Record<string, AccountSubject> = {};
 
@@ -87,10 +96,12 @@ describe.skipIf(!appUrl || !workerUrl)('the facility registry (database-backed)'
         slug: `exercise-facilities-${run}`,
         name: `Exercise facilities county ${run}`,
         status: 'provisioning',
+        security_contact_email: `facilities-${run}@example.org`,
       })
       .returning(['id', 'path', 'kind'])
       .executeTakeFirstOrThrow();
     county = c.id;
+    slug = `exercise-facilities-${run}`;
     const as = (template: string): AccountSubject => {
       const t = roleTemplates.find((x) => x.key === template)!;
       return {
@@ -131,9 +142,19 @@ describe.skipIf(!appUrl || !workerUrl)('the facility registry (database-backed)'
       logLevel: 'silent',
       probes: [],
       db: dbApp,
-      fieldCrypto: new FieldCrypto(new InMemoryKeyService(), new MemoryKeyStore()),
+      fieldCrypto: crypto,
       subjects: loader,
       routes: routesWith(),
+      publicRoutes: [
+        publicRoutes({
+          resolver: new TenantResolver(dbApp),
+          codes: new ReferenceCodeLeaser(dbApp, 'test'),
+          risk: new RiskScorer(),
+          getQueue: () => undefined,
+          residentTokenSecret: 'test-secret-'.repeat(4),
+          defaultGraph: westwindGraph,
+        }),
+      ],
     });
   });
 
@@ -338,5 +359,120 @@ describe.skipIf(!appUrl || !workerUrl)('the facility registry (database-backed)'
       ]),
     );
     expect(rows.find((r) => r.name.startsWith('Iglesia'))!.floodplain).toBeNull();
+  });
+
+  it('REC-01: a place offered through the public form waits in the queue; a retry makes no second offer; approved, its contact comes along', async () => {
+    const executionId = randomUUID();
+    const offer = {
+      executionId,
+      facility: {
+        name: 'Exercise Lakeside Lodge',
+        kind: 'commercial',
+        address: { line1: '9 Lake Rd', city: 'Westwind', postal: '63003' },
+        sqft: 5000,
+        kitchen: true,
+      },
+      submitter: {
+        name: 'Exercise Owner',
+        organization: 'Lakeside Lodge',
+        email: `lodge-${run}@example.org`,
+      },
+      authorized: true,
+    };
+    const post = (body: unknown) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/public/facilities/${slug}/register`,
+        payload: body as Record<string, unknown>,
+      });
+    const first = await post(offer);
+    expect(first.statusCode, first.body).toBe(202);
+    expect(first.body).not.toContain('Exercise Owner');
+    expect((await post(offer)).statusCode).toBe(202);
+    expect(
+      (await post({ ...offer, executionId: randomUUID(), authorized: false })).statusCode,
+    ).toBe(400);
+    const rows = await dbWorker
+      .selectFrom('cg.facility_change')
+      .select(['id', 'version', 'source', 'submitter_enc', 'proposed_by'])
+      .where('tenant_id', '=', county)
+      .where('source', '=', 'self_registration')
+      .execute();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.proposed_by).toBeNull();
+    expect(rows[0]!.submitter_enc!.toString('utf8')).not.toContain('Exercise Owner');
+    const decided = await call(
+      'em',
+      'POST',
+      `/facility-changes/${rows[0]!.id}/decision`,
+      { decision: 'approve', reason: 'Exercise: visited the lodge' },
+      { 'if-match': `"${rows[0]!.version}"` },
+    );
+    expect(decided.status, JSON.stringify(decided.body)).toBe(200);
+    const lodge = ((await call('em', 'GET', '/facilities')).body as Facility[]).find(
+      (f) => f.name === 'Exercise Lakeside Lodge',
+    )!;
+    expect(lodge.source).toBe('self_registration');
+    const full = (await call('em', 'GET', `/facilities/${lodge.id}`)).body as Facility;
+    expect(full.contacts).toEqual([
+      { name: 'Exercise Owner', role: 'Lakeside Lodge', email: `lodge-${run}@example.org` },
+    ]);
+    // Offers are limited per address.
+    let limited = false;
+    for (let i = 0; i < 6 && !limited; i++)
+      limited = (await post({ ...offer, executionId: randomUUID() })).statusCode === 429;
+    expect(limited).toBe(true);
+  });
+
+  it('REC-01: a month before the yearly re-check, the facility contact and the approvers hear once', async () => {
+    const lodge = await dbWorker
+      .selectFrom('cg.facility')
+      .select('id')
+      .where('tenant_id', '=', county)
+      .where('name', '=', 'Exercise Lakeside Lodge')
+      .executeTakeFirstOrThrow();
+    await withTenant(dbWorker, { tenantId: county }, (trx) =>
+      trx
+        .updateTable('cg.facility')
+        .set({ last_confirmed_at: new Date(Date.now() - 340 * 86_400_000) })
+        .where('id', '=', lodge.id)
+        .execute(),
+    );
+    const ctx = {
+      db: dbWorker,
+      crypto,
+      log: { info() {}, warn() {}, error() {}, debug() {} },
+    } as unknown as JobContext;
+    expect(await remindFacilityRechecks(ctx)).toBeGreaterThanOrEqual(2);
+    expect(await remindFacilityRechecks(ctx)).toBe(0);
+    const notices = await withTenant(dbWorker, { tenantId: county }, (trx) =>
+      trx
+        .selectFrom('cg.notice_log')
+        .select(['kind', 'subject_id', 'recipient_count'])
+        .where('tenant_id', '=', county)
+        .where('kind', '=', 'facility_recheck')
+        .execute(),
+    );
+    expect(notices).toEqual([
+      { kind: 'facility_recheck', subject_id: lodge.id, recipient_count: 2 },
+    ]);
+    const sent = await dbWorker
+      .selectFrom('cg.outbox')
+      .select('payload')
+      .where('tenant_id', '=', county)
+      .where('topic', '=', 'message.send')
+      .execute();
+    expect(sent.map((m) => (m.payload as { template: string }).template)).toEqual([
+      'facility_recheck',
+      'facility_recheck',
+    ]);
+    const read = await dbWorker
+      .selectFrom('cg.audit_event')
+      .select(['actor_kind'])
+      .where('tenant_id', '=', county)
+      .where('action', '=', 'facility.read_contacts')
+      .where('actor_kind', '=', 'system')
+      .execute();
+    expect(read).toHaveLength(1);
   });
 });

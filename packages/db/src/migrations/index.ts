@@ -59,6 +59,7 @@ import * as m0057 from './0057_ai_register_command.ts';
 import * as m0058 from './0058_command_history.ts';
 import * as m0059 from './0059_command_alias.ts';
 import * as m0060 from './0060_facility_registry.ts';
+import * as m0061 from './0061_facility_recheck.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -122,4 +123,5 @@ export const migrations: Record<string, Migration> = {
   '0058_command_history': m0058,
   '0059_command_alias': m0059,
   '0060_facility_registry': m0060,
+  '0061_facility_recheck': m0061,
 };

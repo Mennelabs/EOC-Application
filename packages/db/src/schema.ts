@@ -798,7 +798,8 @@ export type NoticeKind =
   | 'contact_reverify'
   | 'publication'
   | 'publication_withdrawn'
-  | 'ai_health';
+  | 'ai_health'
+  | 'facility_recheck';
 
 /** Layer 3's send-once ledger (notices and reminders sent): one row per subject and cycle (BRD:FR-00.06). */
 export interface NoticeLogTable {
@@ -806,7 +807,13 @@ export interface NoticeLogTable {
   tenant_id: Uuid;
   kind: NoticeKind;
   subject_kind:
-    'site' | 'resource' | 'partner_contact' | 'publication' | 'tenant' | 'ai_health_alert';
+    | 'site'
+    | 'resource'
+    | 'partner_contact'
+    | 'publication'
+    | 'tenant'
+    | 'ai_health_alert'
+    | 'facility';
   subject_id: Uuid;
   cycle_key: string;
   due_at: ColumnType<Date, Date | string, Date | string>;

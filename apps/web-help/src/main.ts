@@ -7,6 +7,7 @@
  * Everything the visitor types stays in the address bar; nothing is stored.
  */
 import { langOf, strings, type Lang, type Strings } from './i18n.ts';
+import { offerForm } from './offer.ts';
 import './styles.css';
 
 interface Address {
@@ -352,6 +353,9 @@ function render(): void {
   });
   main.append(form);
   if (pathTenant ?? config.tenant) main.append(askForm(pathTenant ?? config.tenant!, t));
+  main.append(
+    el('p', { class: 'offer-link' }, el('a', { href: pageUrl({ view: 'offer' }) }, t.offerLink)),
+  );
 
   if (!data) {
     main.append(el('p', { role: 'status' }, t.loading));
@@ -523,6 +527,42 @@ window.addEventListener('afterprint', () => {
   document.getElementById('poster')?.remove();
 });
 
+/** REC-01: the "offer a place" view, on the same page and the same language switch. */
+function renderOffer(tenant: string): void {
+  const t = strings(lang);
+  document.documentElement.lang = lang;
+  document.title = `${t.offer.title} · ${config.countyName ?? ''}`.trim();
+  const otherLang: Lang = lang === 'en' ? 'es' : 'en';
+  const main = el('main', { id: 'main', tabindex: '-1' });
+  main.append(
+    el('p', { class: 'danger', role: 'note' }, t.danger),
+    el('p', { class: 'intro' }, t.offer.intro),
+    offerForm(el, tenant, lang, t, pageUrl({ view: null })),
+  );
+  app.replaceChildren(
+    el(
+      'header',
+      {},
+      el('p', { class: 'county' }, config.countyName ?? ''),
+      el('h1', {}, t.offer.title),
+      el(
+        'nav',
+        { 'aria-label': t.language },
+        el(
+          'a',
+          { href: pageUrl({ lang: otherLang }), lang: otherLang, hreflang: otherLang },
+          otherLang === 'es' ? 'Español' : 'English',
+        ),
+      ),
+    ),
+    main,
+  );
+}
+
 config = await loadConfig();
-render();
-await refresh();
+if (url.searchParams.get('view') === 'offer' && (pathTenant ?? config.tenant)) {
+  renderOffer(pathTenant ?? config.tenant!);
+} else {
+  render();
+  await refresh();
+}

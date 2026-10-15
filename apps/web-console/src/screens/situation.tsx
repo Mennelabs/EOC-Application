@@ -1,7 +1,7 @@
 /**
  * Situation map (layer-4 plan console 12; CON-03, AC-03C, ACC-07, PUB-05,
  * CON-10): reports, danger flags, verified damage, needs, sites, teams,
- * hazards, outages and the event's area. Each layer is a button with
+ * hazards, road closures, outages and the event's area. Each layer is a button with
  * aria-pressed and a table with the same items, so the map is never the only
  * way to read it. A layer the role does not include says so. Points marked
  * approximate were rounded for privacy. Danger flags are awareness only.
@@ -45,6 +45,7 @@ const LAYERS: {
   { key: 'sites', title: 'Sites', mark: 'S', shape: 'circle', tone: 'ok' },
   { key: 'teams', title: 'Teams', mark: 'T', shape: 'square', tone: 'ok' },
   { key: 'hazards', title: 'Hazards', mark: 'H', shape: 'triangle', tone: 'danger' },
+  { key: 'roadClosures', title: 'Road closures', mark: 'X', shape: 'square', tone: 'danger' },
   { key: 'outages', title: 'Outages', mark: 'O', shape: 'diamond', tone: 'warn' },
 ];
 const label = (s: string | null) => (s ? s.replace(/_/g, ' ') : '—');

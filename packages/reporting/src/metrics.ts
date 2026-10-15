@@ -23,7 +23,14 @@ import { loadDamageRecords } from './load.ts';
 type Trx = Transaction<Database>;
 
 export type MetricGroup =
-  'damage' | 'reports' | 'missions' | 'personnel' | 'badges' | 'needs' | 'accountability';
+  | 'damage'
+  | 'reports'
+  | 'missions'
+  | 'personnel'
+  | 'badges'
+  | 'needs'
+  | 'information'
+  | 'accountability';
 
 export interface MetricDefinition {
   key: string;
@@ -43,6 +50,7 @@ export const GROUP_TITLE: Record<MetricGroup, string> = {
   personnel: 'Personnel',
   badges: 'Badges',
   needs: 'Help for residents',
+  information: 'Recovery information',
   accountability: 'Privacy and accountability',
 };
 
@@ -131,6 +139,33 @@ export const METRICS = {
     params: {},
     requirements: ['MET-04', 'BRD:FR-14.07'],
   }),
+  'missions.overdue': d({
+    key: 'missions.overdue',
+    group: 'missions',
+    title: 'Overdue updates',
+    unit: 'alerts',
+    text: 'Safety alerts raised in the period because a team missed its check-in or did not acknowledge an assignment in time, with the median minutes to acknowledge those that were.',
+    params: {},
+    requirements: ['MET-04', 'DSP-07'],
+  }),
+  'missions.conflicts': d({
+    key: 'missions.conflicts',
+    group: 'missions',
+    title: 'Assignments made over a conflict',
+    unit: 'assignments',
+    text: 'Assignments made in the period although the board warned of a conflict (double booking, missing credential, off duty and the like), each with the reason given; by kind of conflict.',
+    params: {},
+    requirements: ['MET-04', 'RULE-06'],
+  }),
+  'personnel.utilization': d({
+    key: 'personnel.utilization',
+    group: 'personnel',
+    title: 'Team utilization',
+    unit: 'percent',
+    text: "Of the hours teams were on duty in the period (their members' check-ins merged), the share they were on an assignment, by department or organization. People checked in without a team are left out and disclosed.",
+    params: {},
+    requirements: ['BRD:FR-14.04'],
+  }),
   'personnel.checked_in': d({
     key: 'personnel.checked_in',
     group: 'personnel',
@@ -176,6 +211,24 @@ export const METRICS = {
     params: {},
     requirements: ['BRD:FR-14.07', 'EQ-12'],
   }),
+  'resources.current': d({
+    key: 'resources.current',
+    group: 'information',
+    title: 'Recovery information still current',
+    unit: 'percent',
+    text: 'Published help and program pages whose review date has not passed, as a share of all published pages. Pages as they stand now: their history is not kept.',
+    params: {},
+    requirements: ['MET-07', 'BRD:FR-16.03'],
+  }),
+  'resources.broken_links': d({
+    key: 'resources.broken_links',
+    group: 'information',
+    title: 'Broken outside links',
+    unit: 'percent',
+    text: 'Published pages with an outside link whose last daily check found it broken, as a share of published pages with an outside link. Links not checked yet are disclosed.',
+    params: {},
+    requirements: ['MET-07', 'BRD:FR-16.03'],
+  }),
   'accountability.denied': d({
     key: 'accountability.denied',
     group: 'accountability',
@@ -219,6 +272,8 @@ export interface MetricValue {
 export interface MetricFilters {
   missionKind?: string;
   priority?: string;
+  /** A mission state (BRD:FR-14.02 "status"). */
+  missionState?: string;
   /** A department or organization: the mission's owner or the check-in's agency. */
   department?: string;
   degree?: Degree;
@@ -505,6 +560,7 @@ export async function computeMetrics(
   const missionWhere = sql`m.event_id = ${eventId}::uuid
     ${filters.missionKind ? sql`and m.kind = ${filters.missionKind}` : sql``}
     ${filters.priority ? sql`and m.priority = ${filters.priority}` : sql``}
+    ${filters.missionState ? sql`and m.state = ${filters.missionState}` : sql``}
     ${filters.department ? sql`and coalesce(m.owning_tenant_id, m.tenant_id) = ${filters.department}::uuid` : sql``}`;
   const byState = await sql<{ k: string; n: string }>`
     select m.state as k, count(*) as n from cg.mission m
@@ -554,6 +610,56 @@ export async function computeMetrics(
     ),
   );
 
+  // MET-04: overdue updates (DSP-07); department filters do not apply to safety alerts.
+  const overdue = await sql<{ kind: string; minutes: number | null }>`
+    select a.kind, extract(epoch from (a.acknowledged_at - a.raised_at)) / 60 as minutes
+    from cg.safety_alert a
+    where a.event_id = ${eventId}::uuid
+      and a.kind in ('missed_check_in', 'unacknowledged_assignment')
+      and a.raised_at >= ${from} and a.raised_at < ${to}`.execute(trx);
+  const acked = overdue.rows.filter((r) => r.minutes !== null).map((r) => Number(r.minutes));
+  out.push(
+    value(
+      'missions.overdue',
+      overdue.rows.length,
+      [
+        {
+          key: 'missed_check_in',
+          label: 'Missed check-ins',
+          value: overdue.rows.filter((r) => r.kind === 'missed_check_in').length,
+        },
+        {
+          key: 'unacknowledged_assignment',
+          label: 'Assignments not acknowledged in time',
+          value: overdue.rows.filter((r) => r.kind === 'unacknowledged_assignment').length,
+        },
+        {
+          key: 'median_minutes_to_acknowledge',
+          label: 'Median minutes to acknowledge',
+          value: median(acked),
+        },
+      ],
+      overdue.rows.length - acked.length
+        ? { count: overdue.rows.length - acked.length, note: 'alerts not acknowledged yet' }
+        : null,
+    ),
+  );
+
+  // MET-04: assignments made over a conflict the board warned of.
+  const conflicts = await sql<{ k: string; n: string }>`
+    select coalesce(c->>'kind', 'other') as k, count(distinct a.id) as n
+    from cg.assignment a
+    join cg.mission m on m.id = a.mission_id
+    cross join lateral jsonb_array_elements(
+      case when jsonb_typeof(a.conflicts) = 'array' then a.conflicts else '[]'::jsonb end) c
+    where ${missionWhere} and a.assigned_at >= ${from} and a.assigned_at < ${to}
+    group by 1 order by 2 desc`.execute(trx);
+  const conflicted = await sql<{ n: string }>`
+    select count(*) as n from cg.assignment a join cg.mission m on m.id = a.mission_id
+    where ${missionWhere} and a.assigned_at >= ${from} and a.assigned_at < ${to}
+      and jsonb_typeof(a.conflicts) = 'array' and jsonb_array_length(a.conflicts) > 0`.execute(trx);
+  out.push(value('missions.conflicts', Number(conflicted.rows[0]?.n ?? 0), parts(conflicts.rows)));
+
   // ---------------------------------------------------------------- personnel
   const shifts = await sql<{
     dept: string | null;
@@ -584,6 +690,55 @@ export async function computeMetrics(
   const people = new Set(shifts.rows.map((s) => s.personnel_id));
   const openShifts = shifts.rows.filter((s) => s.open).length;
   const round1 = (n: number) => Math.round(n * 10) / 10;
+  // FR-14.04: utilization, the share of each team's time on duty spent on an assignment.
+  const util = await sql<{ dept: string; duty: string; busy: string }>`
+    with duty as (
+      select c.team_id,
+        range_agg(tstzrange(greatest(c.started_at, ${from}), least(coalesce(c.ended_at, ${end}), ${to}))) as r
+      from cg.check_in c
+      where c.event_id = ${eventId}::uuid and c.team_id is not null
+        and c.started_at < ${to} and coalesce(c.ended_at, ${end}) > ${from}
+      group by c.team_id
+    ), work as (
+      select a.team_id,
+        range_agg(tstzrange(greatest(a.assigned_at, ${from}),
+          least(coalesce(a.released_at, a.cleared_at, ${end}), ${to}))) as r
+      from cg.assignment a join cg.mission m on m.id = a.mission_id
+      where m.event_id = ${eventId}::uuid and a.team_id is not null and a.state <> 'declined'
+        and a.assigned_at < ${to} and coalesce(a.released_at, a.cleared_at, ${end}) > ${from}
+      group by a.team_id
+    )
+    select coalesce(t.name, 'County staff') as dept,
+      sum((select coalesce(sum(extract(epoch from upper(x) - lower(x))), 0) from unnest(d.r) x)) as duty,
+      sum((select coalesce(sum(extract(epoch from upper(x) - lower(x))), 0)
+        from unnest(d.r * coalesce(w.r, '{}'::tstzmultirange)) x)) as busy
+    from duty d
+    join cg.team tm on tm.id = d.team_id
+    left join work w on w.team_id = d.team_id
+    left join cg.tenant t on t.id = tm.agency_tenant_id
+    ${filters.department ? sql`where coalesce(tm.agency_tenant_id, tm.tenant_id) = ${filters.department}::uuid` : sql``}
+    group by 1 order by 1`.execute(trx);
+  const pctOf = (busy: number, duty: number) =>
+    duty > 0 ? Math.round((busy / duty) * 1000) / 10 : null;
+  const dutyAll = util.rows.reduce((n, r) => n + Number(r.duty), 0);
+  const busyAll = util.rows.reduce((n, r) => n + Number(r.busy), 0);
+  const noTeam = await sql<{ n: string }>`
+    select count(distinct c.personnel_id) as n from cg.check_in c
+    where c.event_id = ${eventId}::uuid and c.team_id is null
+      and c.started_at < ${to} and coalesce(c.ended_at, ${end}) > ${from}`.execute(trx);
+  const loose = Number(noTeam.rows[0]?.n ?? 0);
+  out.push(
+    value(
+      'personnel.utilization',
+      pctOf(busyAll, dutyAll),
+      util.rows.map((r) => ({
+        key: r.dept,
+        label: r.dept,
+        value: pctOf(Number(r.busy), Number(r.duty)),
+      })),
+      loose ? { count: loose, note: 'people checked in without a team' } : null,
+    ),
+  );
   out.push(
     value(
       'personnel.checked_in',
@@ -643,6 +798,50 @@ export async function computeMetrics(
       median(help.rows.map((r) => Number(r.hours))),
       [{ key: 'met', label: 'Needs met', value: help.rows.length }],
       pending ? { count: pending, note: 'needs recorded in the period and not met yet' } : null,
+    ),
+  );
+
+  // ---------------------------------------------------------------- recovery information (MET-07)
+  const pages = (
+    await sql<{
+      published: string;
+      stale: string;
+      undated: string;
+      linked: string;
+      broken: string;
+      unchecked: string;
+    }>`
+      select count(*) as published,
+        count(*) filter (where review_at is not null and review_at < ${end}) as stale,
+        count(*) filter (where review_at is null) as undated,
+        count(*) filter (where reference_url is not null) as linked,
+        count(*) filter (where reference_url is not null and link_status = 'broken') as broken,
+        count(*) filter (where reference_url is not null and link_status = 'unchecked') as unchecked
+      from cg.resource
+      where tenant_id = ${tenantId}::uuid and status = 'published'
+        and (expires_at is null or expires_at > ${end})`.execute(trx)
+  ).rows[0]!;
+  const share = (n: number, of: number) => (of ? Math.round((n / of) * 1000) / 10 : null);
+  const published = Number(pages.published);
+  const stale = Number(pages.stale);
+  out.push(
+    value('resources.current', share(published - stale, published), [
+      { key: 'published', label: 'Published pages', value: published },
+      { key: 'review_passed', label: 'Review date passed', value: stale },
+      { key: 'no_review_date', label: 'No review date', value: Number(pages.undated) },
+    ]),
+  );
+  const linked = Number(pages.linked);
+  const unchecked = Number(pages.unchecked);
+  out.push(
+    value(
+      'resources.broken_links',
+      share(Number(pages.broken), linked - unchecked),
+      [
+        { key: 'with_link', label: 'Pages with an outside link', value: linked },
+        { key: 'broken', label: 'Broken at the last check', value: Number(pages.broken) },
+      ],
+      unchecked ? { count: unchecked, note: 'links not checked yet' } : null,
     ),
   );
 
@@ -731,7 +930,7 @@ export async function computeMetrics(
       'Damage counts only approved, verified damage to primary residences, one home once; everything else is shown apart.',
       'No metric carries a name, contact detail or address.',
       'Response times leave out records missing a milestone and say how many.',
-      ...(filters.missionKind || filters.priority || filters.department
+      ...(filters.missionKind || filters.priority || filters.missionState || filters.department
         ? ['Mission and personnel figures are limited to the filters shown.']
         : []),
       ...(filters.degree ? ['Damage is limited to the degree shown.'] : []),
@@ -820,6 +1019,9 @@ export function metricsPdf(
           [
             r.scope.filters.missionKind ? `mission kind ${label(r.scope.filters.missionKind)}` : '',
             r.scope.filters.priority ? `priority ${r.scope.filters.priority}` : '',
+            r.scope.filters.missionState
+              ? `mission state ${label(r.scope.filters.missionState)}`
+              : '',
             r.scope.filters.department ? 'one department' : '',
             r.scope.filters.degree ? `degree ${r.scope.filters.degree}` : '',
           ]

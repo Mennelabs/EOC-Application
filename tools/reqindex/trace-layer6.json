@@ -31,10 +31,10 @@
     "Assistive-technology task success is measured in moderated testing (layer-6 plan §11); the screen records in docs/a11y hold the results."
   ],
   "MET-04": [
-    "partial",
-    "metrics missions.by_state, missions.closed (active definition), missions.time_to_close",
-    "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts",
-    "Assignment conflicts and overdue updates are raised as dispatch alerts (DSP-07) but not yet counted as metrics."
+    "pass",
+    "metrics missions.by_state, missions.closed (active definition), missions.time_to_close, missions.overdue (missed check-ins and assignments not acknowledged in time from the DSP-07 safety alerts, with the median minutes to acknowledge) and missions.conflicts (assignments made over a board conflict warning, by kind)",
+    "services/api/test/metrics.db.test.ts (MET-04 overdue updates; assignments over a conflict)",
+    ""
   ],
   "MET-05": [
     "pass",
@@ -49,10 +49,10 @@
     ""
   ],
   "MET-07": [
-    "partial",
-    "resource link checks and expiry (layer 3, worker jobs/reminders.ts); resources carry reviewed_at and link_status",
-    "services/worker/test/reminders.db.test.ts",
-    "Freshness and broken-link rate are checked and shown per resource but not yet reported as a metric."
+    "pass",
+    "metrics resources.current (published pages whose review date has not passed) and resources.broken_links (broken at the last daily check, unchecked links disclosed) over the layer-3 link checks and review dates (packages/reporting metrics.ts, worker jobs/reminders.ts)",
+    "services/api/test/metrics.db.test.ts (MET-07), services/worker/test/reminders.db.test.ts",
+    ""
   ],
   "MET-08": [
     "deferred",
@@ -74,10 +74,10 @@
     ""
   ],
   "BRD:FR-14.02": [
-    "partial",
-    "period bounded to 92 days in the tenant's time zone; filters mission kind, priority, department, degree (routes/metrics.ts)",
-    "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts, tests/e2e/console-l6.spec.ts (metrics journey)",
-    "No status or severity filter: missions by state is a breakdown instead."
+    "pass",
+    "period bounded to 92 days in the tenant's time zone; filters mission kind, priority, mission state (status), department and degree of damage (severity) (routes/metrics.ts)",
+    "services/api/test/metrics.db.test.ts (period bounds, degree and mission-state filters), tests/e2e/console-l6.spec.ts (metrics journey)",
+    "Severity is read as the FEMA degree of damage, the only severity the records carry."
   ],
   "BRD:FR-14.03": [
     "pass",
@@ -86,10 +86,10 @@
     ""
   ],
   "BRD:FR-14.04": [
-    "partial",
-    "trends by operational period (07:00 and 19:00 local, daylight saving handled); people and hours by department",
-    "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts",
-    "Utilization as a share of capacity is not computed."
+    "pass",
+    "trends by operational period (07:00 and 19:00 local, daylight saving handled); people and hours by department; personnel.utilization: each team's assigned time while on duty over its time on duty (intervals merged), by department (packages/reporting metrics.ts)",
+    "services/api/test/metrics.db.test.ts (utilization 25% for one hour assigned in four on duty), packages/reporting/test/metrics.test.ts",
+    ""
   ],
   "BRD:FR-14.05": [
     "pass",
@@ -237,9 +237,9 @@
   ],
   "DCL:DEC-09": [
     "partial",
-    "donated volunteer hours by partner organization and registered volunteers; shelter figures in the package (packages/reporting declaration.ts, fema/data.ts)",
-    "services/api/test/declaration.db.test.ts",
-    "Meals served, cleanup teams and donated goods from the needs and partner records are not summarized yet."
+    "declarationData partners: by organization, needs met, services logged for their teams (meals, water, tarps, cots, rides, people served), people and households sheltered at sites they run, teams checked in; on the Declaration screen and the state liaison's view (packages/reporting declaration.ts; screens/declaration.tsx Partners)",
+    "services/api/test/declaration.db.test.ts (DCL:DEC-09: totals, a partner's own log stays with the partner, no household detail)",
+    "Counts only what the county can read: services and shelter stays a partner records under its own accounts stay with the partner (tenant isolation) unless shared; whether partners' counts should roll up to the county automatically is a question for Adam. Donated goods are not recorded as such."
   ],
   "DCL:DEC-10": [
     "pass",
@@ -332,10 +332,10 @@
     ""
   ],
   "CON-03": [
-    "partial",
-    "GET /situation layers: reports, danger flags, verified damage, needs, sites, teams, hazards, event area, each on its own read action with a table (routes/situation.ts, screens/situation.tsx); layer 6: GET /situation/areas: tracts shaded by damaged units, reports per 100 homes (equity map), poverty and limited-English shares, each with source and as-of time and a table; outages placed at their facility (routes/situation-areas.ts, screens/situation.tsx)",
-    "services/api/test/siteoperator.db.test.ts (CON-03 layers by role), tests/e2e/console-l4.spec.ts (situation map with axe), services/api/test/equity.db.test.ts (CON-03 area layers), tests/e2e/console-l6.spec.ts (situation map journey)",
-    "Road closures are not a layer yet; an outage without a known facility is listed, not placed."
+    "pass",
+    "GET /situation layers: reports, danger flags, verified damage, needs, sites, teams, hazards, event area, each on its own read action with a table (routes/situation.ts, screens/situation.tsx); layer 6: GET /situation/areas: tracts shaded by damaged units, reports per 100 homes (equity map), poverty and limited-English shares, each with source and as-of time and a table; outages placed at their facility (routes/situation-areas.ts, screens/situation.tsx); a road closures layer (blocked-road hazards not cleared, routes/situation.ts)",
+    "services/api/test/siteoperator.db.test.ts (CON-03 layers by role; road closures apart from other hazards), tests/e2e/console-l4.spec.ts (situation map with axe), services/api/test/equity.db.test.ts (CON-03 area layers), tests/e2e/console-l6.spec.ts (situation map journey)",
+    "An outage whose facility is not in the reference data is listed with \"place not known\" rather than placed."
   ],
   "CON-17": [
     "partial",
@@ -350,10 +350,10 @@
     ""
   ],
   "FL-17": [
-    "partial",
-    "hours from check-in rows (cg.check_in, 0028), ICS 214 entries from check-in and assignments; layer 6: donated volunteer hours by organization on the Declaration screen and in the package (packages/reporting declaration.ts)",
-    "services/api/test/roster.db.test.ts (check-in hours), services/api/test/field.db.test.ts (check-out counts the hours), services/api/test/declaration.db.test.ts",
-    "Donated equipment is not logged yet."
+    "pass",
+    "hours from check-in rows (cg.check_in, 0028), ICS 214 entries from check-in and assignments; layer 6: donated volunteer hours by organization, and donated equipment: each item a partner team brought with the team's merged hours on duty, both derived from check-ins with no extra entry (packages/reporting declaration.ts; the Declaration screen)",
+    "services/api/test/roster.db.test.ts (check-in hours), services/api/test/field.db.test.ts (check-out counts the hours), services/api/test/declaration.db.test.ts (FL-17: donated hours; equipment hours with overlapping shifts counted once)",
+    "Whether an item was in use for all of its team's hours, and the FEMA equipment rates, are for the county to confirm in its claim."
   ],
   "DCL:DEC-03": [
     "pass",

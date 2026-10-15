@@ -229,6 +229,31 @@ export interface View {
     volunteerHours: number;
     includesOpenShifts: boolean;
     byOrganization: { organization: string; hours: number; people: number }[];
+    /** FL-17: equipment partners' teams brought, with the team's time on duty. */
+    equipment?: { organization: string; team: string; item: string; hours: number }[];
+  };
+  /** DCL:DEC-09: what partner organizations committed (absent from an older API). */
+  partners?: {
+    byOrganization: {
+      organization: string;
+      needsMet: number;
+      services: Record<string, number>;
+      shelteredHouseholds: number;
+      shelteredPeople: number;
+      teams: number;
+    }[];
+    totals: {
+      needsMet: number;
+      meals: number;
+      waterCases: number;
+      tarps: number;
+      cots: number;
+      rides: number;
+      peopleServed: number;
+      shelteredHouseholds: number;
+      shelteredPeople: number;
+      teams: number;
+    };
   };
 }
 
@@ -335,6 +360,7 @@ export function DeclarationScreen() {
           <Casualties view={view} editable={can('casualty.record')} run={run} />
           <PublicDamage view={view} sites={sites} editable={can('pa_site.write')} run={run} />
           <Donated view={view} />
+          <Partners view={view} />
           <PackagePhotos eventId={view.eventId} canChoose={can('declaration.export')} />
           <PackageExports eventId={view.eventId} canExport={can('declaration.export')} />
         </>
@@ -1355,6 +1381,71 @@ export function Donated({ view }: { view: View }) {
           { key: 'org', header: 'Organization', render: (r) => r.organization },
           { key: 'people', header: 'People', render: (r) => n(r.people) },
           { key: 'hours', header: 'Hours', render: (r) => n(r.hours) },
+        ]}
+      />
+      {d.equipment ? (
+        <>
+          <h3>Donated equipment</h3>
+          <p className="hint">
+            The equipment each partner team brought, with the team&apos;s hours on duty. Whether an
+            item was in use for all of them is for the county to confirm before a claim.
+          </p>
+          <DataTable
+            caption="Donated equipment by team"
+            rows={d.equipment}
+            rowKey={(r) => `${r.team}|${r.item}`}
+            empty="No partner team has recorded equipment for this event."
+            columns={[
+              { key: 'org', header: 'Organization', render: (r) => r.organization },
+              { key: 'team', header: 'Team', render: (r) => r.team },
+              { key: 'item', header: 'Equipment', render: (r) => r.item },
+              { key: 'hours', header: 'Hours on duty', render: (r) => n(r.hours) },
+            ]}
+          />
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+/** DCL:DEC-09: resources committed by partner organizations, counts only. */
+export function Partners({ view }: { view: View }) {
+  const p = view.partners;
+  if (!p) return null;
+  const t = p.totals;
+  const sv = (r: { services: Record<string, number> }, k: string) => n(r.services[k] ?? 0);
+  return (
+    <section aria-labelledby="decl-partners">
+      <h2 id="decl-partners">Resources committed by partners</h2>
+      <p>
+        From the needs partner organizations met, the services their teams logged, the shelters they
+        ran and their teams checked in: {n(t.needsMet)} needs met, {n(t.meals)} meals,{' '}
+        {n(t.waterCases)} cases of water, {n(t.tarps)} tarps, {n(t.cots)} cots, {n(t.rides)} rides,{' '}
+        {n(t.shelteredPeople)} people in {n(t.shelteredHouseholds)} households sheltered,{' '}
+        {n(t.teams)} teams.
+      </p>
+      <p className="hint">
+        Only what the county can see: services a partner records under its own accounts stay with
+        the partner unless it shares them.
+      </p>
+      <DataTable
+        caption="Resources committed by organization"
+        rows={p.byOrganization}
+        rowKey={(r) => r.organization}
+        empty="No partner organization has recorded work for this event yet."
+        columns={[
+          { key: 'org', header: 'Organization', render: (r) => r.organization },
+          { key: 'needs', header: 'Needs met', render: (r) => n(r.needsMet) },
+          { key: 'meals', header: 'Meals', render: (r) => sv(r, 'meal') },
+          { key: 'water', header: 'Water (cases)', render: (r) => sv(r, 'water_case') },
+          { key: 'tarps', header: 'Tarps', render: (r) => sv(r, 'tarp') },
+          { key: 'served', header: 'People served', render: (r) => sv(r, 'person_served') },
+          {
+            key: 'sheltered',
+            header: 'Sheltered',
+            render: (r) => `${n(r.shelteredPeople)} people, ${n(r.shelteredHouseholds)} households`,
+          },
+          { key: 'teams', header: 'Teams', render: (r) => n(r.teams) },
         ]}
       />
     </section>

@@ -15,6 +15,7 @@ import {
   Clock,
   Damage,
   Donated,
+  Partners,
   Outages,
   Profile,
   PublicDamage,
@@ -128,6 +129,7 @@ export function SharedDeclarationsScreen() {
           <Casualties view={view} editable={false} run={noRun} />
           <PublicDamage view={view} sites={null} editable={false} run={noRun} />
           <Donated view={view} />
+          <Partners view={view} />
           {j ? (
             <section aria-labelledby="shared-joint">
               <h2 id="shared-joint">Joint damage assessment</h2>

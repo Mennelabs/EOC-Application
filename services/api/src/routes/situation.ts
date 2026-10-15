@@ -2,7 +2,8 @@
  * Situation map layers (layer-4 plan console 12; CON-03, AC-03C, DSP-08,
  * PUB-05, RULE-16, SEC-05, SEC-18): one answer with every layer the caller's
  * role may see for an event: reports, danger flags, verified damage, needs,
- * sites, teams, hazards and the event footprint. Each layer is checked on
+ * sites, teams, hazards, road closures (blocked-road hazards not cleared)
+ * and the event footprint. Each layer is checked on
  * its own read action and says plainly when the role does not include it.
  * Exact report and need locations need the exact-location category;
  * otherwise points are rounded to about a kilometre. Confidential sites
@@ -40,6 +41,8 @@ const situationOut = z.object({
     sites: layer,
     teams: layer,
     hazards: layer,
+    /** Blocked roads reported as hazards and not cleared (CON-03). */
+    roadClosures: layer,
   }),
   /** GeoJSON MultiPolygon of the event's area, when drawn. */
   footprint: z.unknown().nullable(),
@@ -281,6 +284,19 @@ export const situationRoutes: FastifyPluginAsync = async (instance) => {
                 state: null,
                 detail: `Position from ${new Date(t.recorded_at).toISOString()}`,
               })),
+            },
+            roadClosures: {
+              available: !!hazards,
+              items: hazardRows
+                .filter((h) => h.kind === 'blocked_road')
+                .map((h) => ({
+                  id: h.id,
+                  position: { lat: Number(h.lat), lon: Number(h.lon) },
+                  approximate: false,
+                  label: h.summary ?? 'Blocked road',
+                  state: h.state,
+                  detail: h.severity,
+                })),
             },
             hazards: {
               available: !!hazards,

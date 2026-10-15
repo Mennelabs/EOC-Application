@@ -268,6 +268,159 @@ describe.skipIf(!appUrl || !workerUrl)('metrics (database-backed)', () => {
     ).toBe(1);
   });
 
+  it('BRD:FR-14.02: a mission state narrows the mission figures', async () => {
+    const r = (await get('director', `/events/${eventId}/metrics?${q}&missionState=open`)).json();
+    expect(metric(r, 'missions.by_state').parts.map((p) => p.key)).toEqual(['open']);
+    expect(metric(r, 'missions.closed').value).toBe(0);
+    expect(r.exclusions).toContain(
+      'Mission and personnel figures are limited to the filters shown.',
+    );
+    expect(
+      (await get('director', `/events/${eventId}/metrics?${q}&missionState=nope`)).status,
+    ).toBe(400);
+  });
+
+  it('MET-04: overdue check-ins and unacknowledged assignments, with the time to acknowledge', async () => {
+    const raised = new Date(Date.now() - 3 * 3_600_000);
+    await tx(async (trx) => {
+      await trx
+        .insertInto('cg.safety_alert')
+        .values({
+          tenant_id: county,
+          event_id: eventId,
+          kind: 'missed_check_in',
+          raised_at: raised,
+          state: 'acknowledged',
+          acknowledged_at: new Date(raised.getTime() + 12 * 60_000),
+        })
+        .execute();
+      await trx
+        .insertInto('cg.safety_alert')
+        .values({
+          tenant_id: county,
+          event_id: eventId,
+          kind: 'unacknowledged_assignment',
+          raised_at: raised,
+        })
+        .execute();
+      // A help button is not an overdue update.
+      await trx
+        .insertInto('cg.safety_alert')
+        .values({ tenant_id: county, event_id: eventId, kind: 'help_button', raised_at: raised })
+        .execute();
+    });
+    const r = (await get('director', `/events/${eventId}/metrics?${q}`)).json();
+    const m = metric(r, 'missions.overdue');
+    expect(m.value).toBe(2);
+    expect(Object.fromEntries(m.parts.map((p) => [p.key, p.value]))).toEqual({
+      missed_check_in: 1,
+      unacknowledged_assignment: 1,
+      median_minutes_to_acknowledge: 12,
+    });
+    expect(m.incomplete).toEqual({ count: 1, note: 'alerts not acknowledged yet' });
+  });
+
+  it('BRD:FR-14.04, MET-04: team utilization while on duty, and assignments made over a conflict', async () => {
+    const at = (h: number) => new Date(Date.now() - h * HOUR);
+    await tx(async (trx) => {
+      const mission = await trx
+        .selectFrom('cg.mission')
+        .select('id')
+        .where('event_id', '=', eventId)
+        .where('state', '=', 'open')
+        .executeTakeFirstOrThrow();
+      const team = await trx
+        .insertInto('cg.team')
+        .values({
+          tenant_id: county,
+          event_id: eventId,
+          key: `ut-${run}`,
+          name: `Exercise team ${run}`,
+        })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      // Two members on duty from 5 h to 1 h ago, overlapping: the team was on duty 4 hours.
+      for (const [from, to] of [
+        [5, 2],
+        [4, 1],
+      ] as const) {
+        const p = await trx
+          .insertInto('cg.personnel')
+          .values({ tenant_id: county, name: `Exercise member ${run} ${from}` })
+          .returning('id')
+          .executeTakeFirstOrThrow();
+        await trx
+          .insertInto('cg.check_in')
+          .values({
+            tenant_id: county,
+            personnel_id: p.id,
+            event_id: eventId,
+            agency_tenant_id: county,
+            team_id: team.id,
+            method: 'console',
+            started_at: at(from),
+            ended_at: at(to),
+            end_reason: 'checked_out',
+          })
+          .execute();
+      }
+      // On an assignment from 4 h to 3 h ago, made over an off-duty warning.
+      await trx
+        .insertInto('cg.assignment')
+        .values({
+          tenant_id: county,
+          mission_id: mission.id,
+          resource_kind: 'team',
+          team_id: team.id,
+          state: 'released',
+          assigned_at: at(4),
+          released_at: at(3),
+          conflicts: JSON.stringify([{ kind: 'off_duty', detail: 'Exercise: shift ending' }]),
+          override_reason: 'Exercise: closest team',
+        })
+        .execute();
+    });
+    const r = (await get('director', `/events/${eventId}/metrics?${q}`)).json();
+    const util = metric(r, 'personnel.utilization');
+    expect(util.parts.find((p) => p.key === 'County staff')!.value).toBe(25);
+    const conflicts = metric(r, 'missions.conflicts');
+    expect(conflicts.value).toBeGreaterThanOrEqual(1);
+    expect(conflicts.parts.find((p) => p.key === 'off_duty')!.value).toBeGreaterThanOrEqual(1);
+  });
+
+  it('MET-07: recovery information still current and broken outside links', async () => {
+    await tx(async (trx) => {
+      for (const [slug, review, url, link] of [
+        ['current-ok', 30, 'https://example.org/a', 'ok'],
+        ['stale-broken', -2, 'https://example.org/b', 'broken'],
+        ['current-unchecked', 10, 'https://example.org/c', 'unchecked'],
+        ['current-nolink', 5, null, 'unchecked'],
+      ] as const)
+        await trx
+          .insertInto('cg.resource')
+          .values({
+            tenant_id: county,
+            slug: `met07-${slug}`,
+            type: 'program',
+            status: 'published',
+            review_at: new Date(Date.now() + review * 86_400_000).toISOString().slice(0, 10),
+            reference_url: url,
+            link_status: link,
+          })
+          .execute();
+    });
+    const r = (await get('director', `/events/${eventId}/metrics?${q}`)).json();
+    const current = metric(r, 'resources.current');
+    const parts = Object.fromEntries(current.parts.map((p) => [p.key, p.value]));
+    expect(parts['published']).toBeGreaterThanOrEqual(4);
+    expect(parts['review_passed']).toBeGreaterThanOrEqual(1);
+    expect(current.value).toBeLessThan(100);
+    const broken = metric(r, 'resources.broken_links');
+    // Of the two checked links one is broken; the unchecked one is disclosed, not guessed.
+    expect(broken.value).toBe(50);
+    expect(broken.incomplete).toEqual({ count: 1, note: 'links not checked yet' });
+  });
+
   it('a county version of a definition changes the figure and names itself', async () => {
     const put = await app.inject({
       method: 'PUT',

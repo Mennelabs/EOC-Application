@@ -11,7 +11,7 @@
  * disposition. Axe runs on every enclave screen. Synthetic data only.
  */
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
-import { appears, expectNoViolations } from './support/console.ts';
+import { appears, expectNoViolations, expectReflow } from './support/console.ts';
 import { CJIS, CJIS_URL, enclaveApi, enclaveToken } from '../support/cjis.ts';
 
 const NEW_PASSWORD = 'Enclave-Exercise-Passphrase-2026!';
@@ -186,10 +186,9 @@ test.describe('CJIS enclave (SEC-12)', () => {
     await page.getByRole('button', { name: 'Add', exact: true }).click();
     await expect(page.getByRole('status').filter({ hasText: 'Narrative added' })).toBeVisible();
     await expectNoViolations(page);
-    // ACC-07: the record page reflows at phone width without a horizontal page scroll.
-    expect(
-      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
-    ).toBe(true);
+    // ACC-07: the record page reflows at phone width without a horizontal page scroll
+    // (against the document's width: window.innerWidth grows with overflow under emulation).
+    await expectReflow(page);
 
     // The disposition asks for a reason in the confirmation dialog (RULE-14) and closes the record.
     await page

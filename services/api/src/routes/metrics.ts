@@ -26,6 +26,9 @@ const query = z.object({
   to: z.iso.datetime({ offset: true }).optional(),
   missionKind: z.string().max(40).optional(),
   priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(),
+  missionState: z
+    .enum(['draft', 'open', 'en_route', 'on_scene', 'cleared', 'closed', 'canceled'])
+    .optional(),
   department: z.uuid().optional(),
   degree: z.enum(DEGREES).optional(),
 });
@@ -80,6 +83,7 @@ export const metricRoutes =
           filters: {
             ...(q.missionKind ? { missionKind: q.missionKind } : {}),
             ...(q.priority ? { priority: q.priority } : {}),
+            ...(q.missionState ? { missionState: q.missionState } : {}),
             ...(q.department ? { department: q.department } : {}),
             ...(q.degree ? { degree: q.degree } : {}),
           },

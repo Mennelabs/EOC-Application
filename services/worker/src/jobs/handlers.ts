@@ -23,6 +23,9 @@ import {
   reportCorrected,
   reportWithdrawn,
 } from './reports.ts';
+import { exportRequested } from './exports.ts';
+import { equityEvaluate } from './equity.ts';
+import { officialReportIssued } from './official-reports.ts';
 import type { JobContext, OutboxMessage, TopicHandler } from './types.ts';
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : String(v ?? ''));
@@ -251,6 +254,9 @@ export const topicHandlers: Record<string, TopicHandler> = {
   'referral.created': referralCreated,
   'refdata.pull': refdataPull, // ADR-0039
   'refdata.import': refdataImport,
+  'official_report.issued': officialReportIssued, // RULE-10, ADR-0010
+  'export.requested': exportRequested, // DEC-11, DEC-12, SEC-18
+  'equity.evaluate': equityEvaluate, // EQ-12, CON-07
 };
 
 // ---- schedules --------------------------------------------------------------

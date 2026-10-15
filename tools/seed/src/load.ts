@@ -24,6 +24,7 @@ import {
   ensureTemplateRoles,
 } from '@cg/provisioning';
 import type { Kysely, Transaction } from 'kysely';
+import { loadDamageReports } from './damage.ts';
 import {
   tenants as tenantSpecs,
   agreements as agreementSpecs,
@@ -130,21 +131,24 @@ export const cast = [
   },
   // Partner organizations run their own accounts (ADM-02, decision 2026-10-13). Each gets
   // a tenant administrator and a security administrator, because granting a role needs a
-  // second administrator inside the same organization (ADM-05 G6).
-  ...(['coad', 'canteen', 'shelter-ngo', 'cleanup', 'legal'] as const).flatMap((tenant) => [
-    {
-      email: `admin.${tenant}@example.org`,
-      name: `${tenant} administrator`,
-      role: 'tenant_admin',
-      tenant,
-    },
-    {
-      email: `security.${tenant}@example.org`,
-      name: `${tenant} security administrator`,
-      role: 'security_admin',
-      tenant,
-    },
-  ]),
+  // second administrator inside the same organization (ADM-05 G6). The state's pair onboards
+  // its own liaisons (layer 6).
+  ...(['coad', 'canteen', 'shelter-ngo', 'cleanup', 'legal', 'state'] as const).flatMap(
+    (tenant) => [
+      {
+        email: `admin.${tenant}@example.org`,
+        name: `${tenant} administrator`,
+        role: 'tenant_admin',
+        tenant,
+      },
+      {
+        email: `security.${tenant}@example.org`,
+        name: `${tenant} security administrator`,
+        role: 'security_admin',
+        tenant,
+      },
+    ],
+  ),
 ] as const;
 
 interface Loaded {
@@ -1170,12 +1174,21 @@ export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
     tenantIds[spec.key] = id;
     await withTenant(db, { tenantId: id }, async (trx) => {
       await ensureRetentionDefaults(trx, id);
-      if (spec.fips)
+      if (spec.fips || spec.outline) {
+        const geom = spec.outline
+          ? sql`ST_Multi(ST_MakeEnvelope(${spec.outline[0]}, ${spec.outline[1]}, ${spec.outline[2]}, ${spec.outline[3]}, 4326))`
+          : null;
         await trx
           .insertInto('cg.jurisdiction')
-          .values({ tenant_id: id, fips: spec.fips })
-          .onConflict((oc) => oc.column('tenant_id').doNothing())
+          .values({ tenant_id: id, fips: spec.fips ?? null, geom })
+          .onConflict((oc) =>
+            oc.column('tenant_id').doUpdateSet({
+              fips: sql`coalesce(cg.jurisdiction.fips, excluded.fips)`,
+              geom: sql`coalesce(cg.jurisdiction.geom, excluded.geom)`,
+            }),
+          )
           .execute();
+      }
       await ensureTemplateRoles(trx, id);
       await ensureIntakeGraph(trx, id, westwindGraph);
       await ensureAiRegister(trx, id, fakeProvider, evaluation);
@@ -1269,6 +1282,39 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   }
   const db = createDb(url, 2);
   const loaded = await loadSeed(db);
+  // Opt-in (layer 6): reviewed damage reports in the exercise event, for the counting rule,
+  // the declaration view and official reports. Off by default: other suites expect an
+  // empty review queue. Loaded once; a second run with the setting finds them and stops.
+  const damageCount = Number(process.env['SEED_DAMAGE_REPORTS'] ?? 0);
+  if (Number.isInteger(damageCount) && damageCount > 0) {
+    const countyId = loaded.tenants['county']!;
+    const already = await withTenant(db, { tenantId: countyId }, (trx) =>
+      trx
+        .selectFrom('cg.report')
+        .select('id')
+        .where('reference_code', 'like', 'SYN-seed-%')
+        .executeTakeFirst(),
+    );
+    if (!already) {
+      const event = await withTenant(db, { tenantId: countyId }, (trx) =>
+        trx
+          .selectFrom('cg.event')
+          .select('id')
+          .where('intake_slug', '=', 'westwind')
+          .executeTakeFirstOrThrow(),
+      );
+      const filed = await loadDamageReports(db, {
+        tenantId: countyId,
+        eventId: event.id,
+        reviewerId: loaded.accounts['priya.assessment@example.org']!,
+        count: Math.min(damageCount, 50_000),
+        tag: 'seed',
+      });
+      console.log(
+        JSON.stringify({ msg: 'damage reports loaded', reports: filed.reportIds.length }),
+      );
+    }
+  }
   await db.destroy();
   console.log(
     JSON.stringify({

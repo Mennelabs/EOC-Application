@@ -238,8 +238,10 @@ export const situationRoutes: FastifyPluginAsync = async (instance) => {
             verifiedDamage: {
               available: !!reports,
               items: reportRows
+                // The counting rule's test (layer-6 plan §2, DCL:DEC-03): approved and verified.
                 .filter(
                   (r) =>
+                    r.review_state === 'approved' &&
                     ['field_verified', 'desktop_verified'].includes(String(r.verification_level)) &&
                     r.fema_degree,
                 )

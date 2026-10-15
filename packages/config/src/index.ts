@@ -32,6 +32,14 @@ export const platformSchema = baseSchema.extend({
   S3_ACCESS_KEY_ID: z.string().min(1),
   S3_SECRET_ACCESS_KEY: z.string().min(8),
   S3_BUCKET: z.string().min(3),
+  /**
+   * Bucket with object lock for records that never change: issued official reports and audit
+   * anchors (ADR-0010, RULE-10). The worker creates it with object lock on; `<S3_BUCKET>-records`
+   * when not set.
+   */
+  S3_RECORDS_BUCKET: z.preprocess((v) => (v === '' ? undefined : v), z.string().min(3).optional()),
+  /** COMPLIANCE: nobody can shorten or lift a lock, not even the storage account's root. */
+  S3_LOCK_MODE: z.enum(['GOVERNANCE', 'COMPLIANCE']).default('COMPLIANCE'),
   /** Where browsers reach object storage for direct uploads (SCL-04); absent means the internal endpoint. */
   S3_PUBLIC_ENDPOINT: z.preprocess((v) => (v === '' ? undefined : v), url.optional()),
   KEYS_PROVIDER: z.enum(['openbao']).default('openbao'),

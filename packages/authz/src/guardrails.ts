@@ -107,7 +107,14 @@ export const G5: Guardrail = {
   },
 };
 
-const PERMISSION_WRITE_PREFIXES = ['permission_change.', 'role.', 'role_assignment.'];
+const PERMISSION_WRITE_PREFIXES = [
+  'permission_change.',
+  'role.',
+  'role_assignment.',
+  // SCL-09: an API key or a webhook is access granted to a system outside.
+  'api_key.',
+  'webhook.',
+];
 
 export const G6: Guardrail = {
   id: 'G6',
@@ -134,6 +141,14 @@ export const G6: Guardrail = {
       }
     }
     if (actionKey === 'role.publish' && resource.requestedBy === subject.accountId) {
+      return { deny: 'second_administrator_required' };
+    }
+    // SCL-09: a key or webhook is approved or declined by someone other than who asked.
+    if (
+      (actionKey === 'api_key.manage' || actionKey === 'webhook.manage') &&
+      resource.requestedBy !== undefined &&
+      resource.requestedBy === subject.accountId
+    ) {
       return { deny: 'second_administrator_required' };
     }
     return undefined;

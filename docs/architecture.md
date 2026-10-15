@@ -119,6 +119,9 @@ packages/
   adapters/         storage, keys, queue, idp, comms, email, ai, geocoder, routing
   i18n/             message catalogs (ICU), locale helpers, RTL support
   ui/               accessible React components shared by both web apps
+  refdata/          reference data connectors, recorded responses, file import  — layer 6 (ADR-0039, ADR-0041)
+  reporting/        the counting rule, declaration figures, report facts, FEMA package, metrics, equity — layer 6
+  pdf/              tagged PDF/UA-1 writer                                      — layer 6 (ADR-0040)
 tools/
   seed/             synthetic county generator (WESTWIND basis)
   reqindex/         requirements index generator
@@ -251,11 +254,25 @@ identity_outbox, idp_event_cursor, idempotency_key(response_body_enc)
 
 ### 4.8 Official outputs (layer 6)
 
+One counting rule (`packages/reporting/src/counting.ts`) decides what every official figure counts: approved and verified records only, one home one count (duplicates, field over desk, a building assessment absorbing its unit reports), per housing unit, with everything else shown apart rather than dropped (DCL:DEC-03/04). The Declaration screen, the metrics, official reports, the IDA package, the situation map's tracts and the PDA feature service all call it, so they cannot disagree (GATE-07; checked in `tests/integration/layer6.int.test.ts`).
+
 ```
-official_report(id, kind: sitrep|briefing|fema_package|ida, scope, cutoff_at,
-                state: draft|reviewed|issued, snapshot_object_key, amends_id)            -- F15
-fema_form_mapping(version, form, field, source_expression)                              -- DCL:DEC-15
+refdata_snapshot / refdata_current / ref_tract, ref_tract_profile, ref_structure,
+  ref_flood_zone, ref_facility, ref_declaration, ref_nfip_summary, ref_alert, ...  -- ADR-0039: pulled or imported, cited by snapshot (RULE-10)
+location_geo(location_id, tract_geoid, tract_snapshot_id, jurisdiction_tenant_id)  -- DCL:DEC-05
+declaration, outage, casualty_count (append-only), pa_site                          -- DCL:DEC-06–10, DEC-16
+official_report, official_report_section, official_report_snapshot (frozen, hash),
+  official_report_lock (object-locked copy in the records bucket)                   -- F15, RULE-10
+fema_form_mapping(form, mapping_version, fema_form_version, fields, status)         -- DCL:DEC-12, DEC-15
+export_file(kind ida_package|official_report, status, object_key, bytes, sha256,
+  mappings, figures)                                                                -- DCL:DEC-11; built by the worker
+package_photo (chosen, captioned, blurred derivatives only)                         -- DCL:DEC-13, PHO-07
+joint_pda, joint_pda_stop, joint_pda_mark (insert-only)                             -- FL:FR-10
+equity_alert (raised and cleared by the worker, acknowledged by staff)              -- EQ-11/12, CON-07
+api_key (SHA-256 only), webhook (secret encrypted), webhook_delivery                -- SCL-09, ADR-0042
 ```
+
+PDFs (the package, reports, metrics, the media sheet, the resident's own copy) are drawn by `packages/pdf` as PDF/UA-1 and checked by veraPDF in CI (ADR-0040). Exports are built by the worker from the outbox, at-least-once safe (each attempt its own object key, the first finished one recorded), stored in object storage and downloaded through the API with an audit row (SEC-18). The read-only feature service and signed webhooks are in ADR-0042.
 
 ### 4.9 Retention (layer 1 framework)
 

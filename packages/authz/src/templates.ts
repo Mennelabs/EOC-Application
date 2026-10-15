@@ -13,6 +13,8 @@ export interface RoleTemplate {
   description: string;
   source: 'cast' | 'field' | 'frontline' | 'original_a7' | 'platform';
   grants: Grant[];
+  /** An assignment must end within this many days of being requested (time-limited roles). */
+  maxAssignmentDays?: number;
 }
 
 /** Which templates may see each protected category (RULE-16, FL:FR-15/16/23/25). */
@@ -88,6 +90,9 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('intake_graph.*'),
       g('ai_register.*'),
       g('report.read'),
+      // SCL-09: explicit actions, never reached by the wildcard below.
+      g('api_key.manage'),
+      g('webhook.manage'),
       { action: '*', dataCategories: ['contact'] },
     ],
   },
@@ -107,6 +112,10 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('audit.*'),
       g('retention.*'),
       g('legal_hold.*'),
+      g('api_key.read'),
+      g('api_key.manage'),
+      g('webhook.read'),
+      g('webhook.manage'),
     ],
   },
   {
@@ -139,6 +148,22 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('audit.read'),
       g('definition.*'),
       g('refdata.read'),
+      g('declaration.*'),
+      g('outage.write'),
+      g('casualty.record'),
+      g('pa_site.write'),
+      g('official_report.read'),
+      g('official_report.draft'),
+      g('official_report.review'),
+      g('official_report.issue'),
+      g('official_report.export'),
+      g('fema_mapping.*'),
+      g('joint_assessment.read'),
+      g('joint_assessment.plan'),
+      g('metric.read'),
+      g('metric.export'),
+      g('equity.read'),
+      g('equity.act'),
       g('break_glass.start'),
       g('break_glass.end'),
       g('break_glass.read'),
@@ -162,6 +187,13 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('definition.read'),
       g('personnel.read'),
       g('refdata.*'),
+      g('declaration.read'),
+      // The PDA GIS layer and package for mapping work (DEC-12).
+      g('declaration.export'),
+      g('outage.write'),
+      g('joint_assessment.read'),
+      g('metric.read'),
+      g('equity.read'),
     ],
   },
   {
@@ -192,6 +224,15 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('team.manage'),
       g('check_in.read'),
       g('parcel.read'),
+      g('declaration.read'),
+      g('pa_site.write'),
+      // FL:FR-10: plans the joint assessment and walks it with the federal and state teams.
+      g('joint_assessment.read'),
+      g('joint_assessment.plan'),
+      g('joint_assessment.validate'),
+      // CON-07: coverage alerts say where to verify next.
+      g('metric.read'),
+      g('equity.read'),
     ],
   },
   {
@@ -259,6 +300,9 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('tenant.read'),
       g('event.read', ['contact', 'household', 'location_exact']),
       g('personnel.read'),
+      // EQ-11/12: under-reached tracts and groups are the outreach list.
+      g('equity.read'),
+      g('equity.act'),
     ],
   },
   {
@@ -329,6 +373,8 @@ export const roleTemplates: readonly RoleTemplate[] = [
       g('tenant.read'),
       g('event.read'),
       g('definition.read'),
+      g('official_report.read'),
+      g('metric.read'),
     ],
   },
   {
@@ -337,7 +383,28 @@ export const roleTemplates: readonly RoleTemplate[] = [
     description:
       'SEMA liaison and later FEMA validators: verified, de-identified data only, via agreements.',
     source: 'cast',
-    grants: [g('me.read'), g('tenant.read'), { action: 'event.read', tenants: 'subtree' }],
+    grants: [
+      g('me.read'),
+      g('tenant.read'),
+      { action: 'event.read', tenants: 'subtree' },
+      // DEC-13: de-identified figures of a county below, only under its signed agreement.
+      { action: 'shared_declaration.read', tenants: 'subtree' },
+    ],
+  },
+  {
+    key: 'fema_validator',
+    name: 'FEMA validator (joint assessment, time-limited)',
+    description:
+      'Federal member of the joint damage assessment team: the sample route of verified homes without personal details, and validation marks. Assigned with an end date.',
+    source: 'frontline',
+    maxAssignmentDays: 30,
+    grants: [
+      g('me.read'),
+      g('tenant.read'),
+      g('event.read'),
+      g('joint_assessment.read'),
+      g('joint_assessment.validate'),
+    ],
   },
   {
     key: 'dispatcher_call_taker',
@@ -416,7 +483,23 @@ export const roleTemplates: readonly RoleTemplate[] = [
     name: 'Reporting / planning staff',
     description: 'Official reports from approved definitions and retained snapshots.',
     source: 'original_a7',
-    grants: [g('me.read'), g('event.read'), g('definition.read'), g('refdata.read')],
+    grants: [
+      g('me.read'),
+      g('event.read'),
+      g('definition.read'),
+      g('refdata.read'),
+      g('declaration.read'),
+      g('official_report.read'),
+      g('official_report.draft'),
+      g('official_report.export'),
+      g('declaration.export'),
+      g('fema_mapping.read'),
+      g('fema_mapping.write'),
+      g('joint_assessment.read'),
+      g('metric.read'),
+      g('metric.export'),
+      g('equity.read'),
+    ],
   },
   {
     key: 'partner_coordinator',

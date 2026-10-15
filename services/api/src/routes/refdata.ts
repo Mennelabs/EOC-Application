@@ -29,6 +29,15 @@ import {
 } from '@cg/refdata';
 import { ApiError, errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
+import {
+  areaProfile,
+  areaProfileOut,
+  cite,
+  citation,
+  currentSnapshot,
+  profileOf,
+  profileOut,
+} from './area-profile.ts';
 import { classifierFor, enqueueOutbox, iso, uuidParam } from './helpers.ts';
 
 export interface RefdataDeps {
@@ -308,6 +317,95 @@ export const refdataRoutes =
           return q.execute();
         });
         return rows.map((r) => snapshotView(r as SnapshotRow));
+      },
+    );
+
+    // DCL:DEC-05/06, EQ-11: the tracts in use, each with its profile, for maps and lists.
+    app.get(
+      '/refdata/tracts',
+      {
+        schema: {
+          tags: ['refdata'],
+          response: {
+            200: z.object({
+              tracts: citation,
+              profiles: citation,
+              items: z.array(
+                z.object({
+                  geoid: z.string(),
+                  name: z.string().nullable(),
+                  landM2: z.number().nullable(),
+                  geometry: z.unknown(),
+                  profile: profileOut.nullable(),
+                }),
+              ),
+            }),
+          },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('refdata.read', target(s.tenantId));
+        return request.tx(async (trx) => {
+          const tracts = await currentSnapshot(trx, s.tenantId, 'tract');
+          const profiles = await currentSnapshot(trx, s.tenantId, 'tract_profile');
+          if (!tracts) return { tracts: null, profiles: cite(profiles), items: [] };
+          const rows = await sql<Record<string, unknown>>`
+            select t.geoid, t.name, t.land_m2,
+              ST_AsGeoJSON(ST_SimplifyPreserveTopology(t.geom, 0.00005), 6)::json as geometry,
+              p.geoid as p_geoid, p.population, p.households, p.renter_households,
+              p.median_household_income, p.poverty_pct, p.snap_households_pct, p.ssi_households_pct,
+              p.age65_pct, p.disability_pct, p.limited_english_households, p.no_vehicle_households,
+              p.languages, p.moe
+            from cg.ref_tract t
+            left join cg.ref_tract_profile p on p.geoid = t.geoid and p.snapshot_id = ${profiles?.id ?? null}
+            where t.snapshot_id = ${tracts.id}
+            order by t.geoid`.execute(trx);
+          return {
+            tracts: cite(tracts),
+            profiles: cite(profiles),
+            items: rows.rows.map((r) => ({
+              geoid: String(r['geoid']),
+              name: (r['name'] as string | null) ?? null,
+              landM2:
+                r['land_m2'] === null || r['land_m2'] === undefined ? null : Number(r['land_m2']),
+              geometry: r['geometry'],
+              profile: r['p_geoid'] ? profileOf(r) : null,
+            })),
+          };
+        });
+      },
+    );
+
+    /**
+     * DCL:DEC-06, EQ-11: the population profile of an event's area: the tracts
+     * its footprint touches, or else the tracts where its reports are. Shares
+     * are weighted by population or households; a tract without an estimate
+     * is named, never counted as zero (RULE-02). Low income stays a tract
+     * figure, never a household's (NED-09).
+     */
+    app.get(
+      '/refdata/profile',
+      {
+        schema: {
+          tags: ['refdata'],
+          querystring: z.object({ event: z.uuid() }),
+          response: { 200: areaProfileOut },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        const eventId = request.query.event;
+        await request.authorize('refdata.read', target(s.tenantId));
+        await request.authorize('event.read', {
+          type: 'event',
+          tenantId: s.tenantId,
+          id: eventId,
+          eventId,
+        });
+        const profile = await request.tx((trx) => areaProfile(trx, s.tenantId, eventId));
+        if (!profile) throw errors.notFound();
+        return profile;
       },
     );
 

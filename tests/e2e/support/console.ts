@@ -13,9 +13,33 @@ export const PASSWORD = 'Westwind-Exercise-2026!';
 // Node-side fetches in the test trust Caddy's development CA like the browser does.
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 
-export async function expectNoViolations(page: Page) {
+export async function expectNoViolations(page: Page, opts: { mapMarkers?: boolean } = {}) {
   const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help} (${v.nodes.length})`)).toEqual([]);
+  // WCAG 2.5.8 "Equivalent" exception: map markers can sit close together at
+  // a zoom, and every marker's item is in the table beside the map (ACC-07).
+  // Every other rule still runs on the markers.
+  const exempt = (v: (typeof results.violations)[number]) =>
+    opts.mapMarkers === true &&
+    v.id === 'target-size' &&
+    v.nodes.every((n) => /^<button[^>]*class="marker[ "]/.test(n.html));
+  expect(
+    results.violations
+      .filter((v) => !exempt(v))
+      .map((v) => `${v.id}: ${v.help} (${v.nodes.length})`),
+  ).toEqual([]);
+}
+
+/**
+ * WCAG 1.4.10, ACC-07: nothing makes the page scroll sideways. Compared with the
+ * document's client width: under phone emulation `innerWidth` grows with
+ * overflowing content, so a check against it passes when the page is zoomed out.
+ */
+export async function expectReflow(page: Page) {
+  const { scroll, client } = await page.evaluate(() => ({
+    scroll: document.documentElement.scrollWidth,
+    client: document.documentElement.clientWidth,
+  }));
+  expect(scroll, 'page wider than the screen').toBeLessThanOrEqual(client + 1);
 }
 
 /** True once the element is visible, false after `ms`. `isVisible()` alone never waits. */
@@ -113,6 +137,8 @@ export async function onboard(
   displayName: string,
   tag: string,
   realm = 'county',
+  /** A time-limited role (the FEMA validator) is assigned with an end date. */
+  assignment: { validTo?: string } = {},
 ): Promise<string> {
   const email = `e2e-${tag}-${Date.now().toString(36)}@example.org`;
 
@@ -134,7 +160,7 @@ export async function onboard(
   const roles = await api(admin, '/roles');
   const role = (roles.body as { id: string; key: string }[]).find((r) => r.key === roleKey)!;
   const request = await api(admin, '/permission-changes', {
-    body: { kind: 'assign_role', accountId, roleId: role.id, scope: {} },
+    body: { kind: 'assign_role', accountId, roleId: role.id, scope: {}, ...assignment },
   });
   expect(request.status).toBe(201);
   const approved = await api(security, `/permission-changes/${request.body['id']}/approve`, {

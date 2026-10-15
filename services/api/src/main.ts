@@ -29,6 +29,7 @@ import { ReferenceCodeLeaser } from './public/reference-codes.ts';
 import { submitIntake } from './public/submit.ts';
 import { publicRoutes } from './public/routes.ts';
 import { TenantResolver } from './public/tenant-resolver.ts';
+import { gisRoutes } from './routes/gis.ts';
 
 const config = loadConfig(platformSchema);
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
@@ -133,6 +134,15 @@ const app = await buildApp({
     missions: config.CJIS_PUBLIC_URL ? { cjisPublicUrl: config.CJIS_PUBLIC_URL } : {},
     fieldVoice: { ai, defaultGraph: westwindGraph },
     refdata: { objects: { client: s3, bucket: config.S3_BUCKET } },
+    exports: { objects: { client: s3, bucket: config.S3_BUCKET } },
+    metrics: { productName: config.PRODUCT_NAME },
+    packagePhotos: {
+      objects: {
+        client: s3,
+        ...(presignClient ? { presignClient } : {}),
+        bucket: config.S3_BUCKET,
+      },
+    },
     fieldSync: {
       objects: {
         client: s3,
@@ -165,6 +175,7 @@ const app = await buildApp({
       simulator: config.DATA_CLASSIFICATION_MODE === 'synthetic',
     }),
   ],
+  gisRoutes: [gisRoutes({ resolver, db })],
   probes: [
     postgresProbe('db', pool),
     queueProbe('queue', () => queue),

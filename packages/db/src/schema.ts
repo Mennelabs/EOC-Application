@@ -585,6 +585,7 @@ export interface PhotoTable extends Stamped {
     | 'inspection'
     | 'road_status'
     | 'canvass_visit'
+    | 'pa_site'
     | null;
   field_record_id: Uuid | null;
 }
@@ -2249,6 +2250,345 @@ export type ReferenceDataset =
   | 'alert'
   | 'power_outage';
 
+export interface DeclarationTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  incident_type: string | null;
+  incident_start: ColumnType<string | null, string | null | undefined, string | null>;
+  incident_end: ColumnType<string | null, string | null | undefined, string | null>;
+  requested_areas: JsonGen<{ name: string; tenantId?: string; programs: string[] }[]>;
+  box8_draft: string | null;
+  box9_draft: string | null;
+  review_label: Generated<string>;
+}
+
+export type OutageKind =
+  | 'hospital'
+  | 'water'
+  | 'wastewater'
+  | 'police'
+  | 'fire_ems'
+  | 'school'
+  | 'child_care'
+  | 'eldercare'
+  | 'roads'
+  | 'power';
+
+export interface OutageTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  client_uuid: Uuid;
+  kind: OutageKind;
+  facility_source_id: string | null;
+  facility_name: string | null;
+  description: string | null;
+  area: string | null;
+  customers_out: number | null;
+  started_at: ColumnType<Date, Date | string, Date | string>;
+  expected_restoration_at: TsNullable;
+  restored_at: TsNullable;
+  source: Generated<'staff' | 'feed_suggestion' | 'utility_report'>;
+  confirmed_by: Uuid | null;
+  confirmed_at: TsNullable;
+}
+
+export interface CasualtyCountTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  kind: 'injured' | 'missing' | 'deceased';
+  count: number;
+  official_source: string;
+  as_of: ColumnType<Date, Date | string, Date | string>;
+  note: string | null;
+  entered_by: Uuid;
+  created_at: TsGen;
+}
+
+export interface PaSiteTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  client_uuid: Uuid;
+  applicant: string;
+  applicant_tenant_id: Uuid | null;
+  name: string;
+  description: string | null;
+  category: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G';
+  geom: ColumnType<unknown, unknown, unknown> | null;
+  estimated_cost: ColumnType<string | null, number | string | null, number | string | null>;
+  cost_basis: Generated<'estimate' | 'verified'>;
+  percent_complete: number | null;
+  insured: Generated<'yes' | 'no' | 'unknown'>;
+  other_federal_agency: Generated<'yes' | 'no' | 'unknown'>;
+  debris_cubic_yards: ColumnType<string | null, number | string | null, number | string | null>;
+  status: Generated<'active' | 'withdrawn'>;
+}
+
+export type OfficialReportKind =
+  'sitrep' | 'briefing' | 'ida_package' | 'pda_package' | 'declaration_data' | 'media_sheet';
+export type OfficialReportState = 'draft' | 'reviewed' | 'issued' | 'superseded' | 'withdrawn';
+
+export interface OfficialReportTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  client_uuid: Uuid;
+  kind: OfficialReportKind;
+  sequence: number;
+  title: string;
+  period_from: ColumnType<Date, Date | string, Date | string>;
+  period_to: ColumnType<Date, Date | string, Date | string>;
+  time_zone: string;
+  cutoff: ColumnType<Date, Date | string, Date | string>;
+  state: Generated<OfficialReportState>;
+  classification: Generated<'internal' | 'public'>;
+  author_id: Uuid;
+  reviewer_id: Uuid | null;
+  reviewed_at: TsNullable;
+  reviewed_version: number | null;
+  review_note: string | null;
+  issuer_id: Uuid | null;
+  issued_at: TsNullable;
+  amends: Uuid | null;
+  facts_at: ColumnType<Date, Date | string, Date | string>;
+  definitions: JsonGen<unknown[]>;
+}
+
+export interface OfficialReportSectionTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  report_id: Uuid;
+  key: string;
+  position: number;
+  kind: 'fact' | 'judgment' | 'narrative';
+  title: string;
+  content: JsonGen<Record<string, unknown>>;
+  sources: JsonGen<Record<string, unknown>>;
+  drafted: Generated<boolean>;
+  edited_by: Uuid | null;
+  edited_at: TsNullable;
+}
+
+export interface OfficialReportSnapshotTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  report_id: Uuid;
+  content: JsonValue;
+  record_versions: JsonValue;
+  reference_snapshots: JsonValue;
+  content_hash: string;
+  issued_by: Uuid;
+  issued_at: ColumnType<Date, Date | string, Date | string>;
+  reason: string;
+  created_at: TsGen;
+}
+
+export interface OfficialReportLockTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  snapshot_id: Uuid;
+  object_key: string;
+  version_id: string | null;
+  lock_mode: 'GOVERNANCE' | 'COMPLIANCE';
+  retain_until: ColumnType<Date, Date | string, Date | string>;
+  content_hash: string;
+  written_at: TsGen;
+}
+
+export interface FemaFormMappingTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  form: string;
+  fema_form_version: string;
+  mapping_version: number;
+  status: Generated<'draft' | 'active' | 'retired'>;
+  scope: JsonGen<Record<string, unknown>>;
+  fields: ColumnType<unknown[], string, string>;
+  source_document: string | null;
+  note: string | null;
+  activated_by: Uuid | null;
+  activated_at: TsNullable;
+  activation_reason: string | null;
+}
+
+export interface ExportFileTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  client_uuid: Uuid;
+  kind: 'ida_package' | 'official_report';
+  format: 'zip' | 'pdf' | 'csv';
+  report_id: Uuid | null;
+  jurisdiction_tenant_id: Uuid | null;
+  status: Generated<'queued' | 'ready' | 'failed'>;
+  mappings: JsonGen<Record<string, unknown>>;
+  figures: JsonGen<Record<string, unknown>>;
+  file_name: string | null;
+  object_key: string | null;
+  bytes: ColumnType<string | null, number | null, number | null>;
+  sha256: string | null;
+  error: string | null;
+  requested_by: Uuid;
+  reason: string | null;
+  created_at: TsGen;
+  ready_at: TsNullable;
+}
+
+export interface PackagePhotoTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  photo_id: Uuid;
+  caption: string;
+  checked: boolean;
+  chosen_by: Uuid;
+  chosen_at: TsGen;
+  removed_at: TsNullable;
+  removed_by: Uuid | null;
+}
+
+export type JointPdaDegree = 'affected' | 'minor' | 'major' | 'destroyed';
+
+export interface JointPdaTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  starts_on: ColumnType<Date | null, Date | string | null, Date | string | null>;
+  ends_on: ColumnType<Date | null, Date | string | null, Date | string | null>;
+  areas: Generated<string[]>;
+  teams: JsonGen<{ name: string; members: string }[]>;
+  status: Generated<'planned' | 'in_progress' | 'done'>;
+  sample_version: Generated<number>;
+  sample_size: number | null;
+  sample_seed: number | null;
+  sampled_at: TsNullable;
+  sampled_by: Uuid | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid | null;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+export interface JointPdaStopTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  joint_pda_id: Uuid;
+  sample_version: number;
+  seq: number;
+  record_kind: 'report' | 'assessment';
+  record_id: Uuid;
+  stratum: JointPdaDegree;
+  created_at: TsGen;
+}
+
+export interface JointPdaMarkTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  stop_id: Uuid;
+  result: 'validated' | 'different' | 'not_seen';
+  degree_seen: JointPdaDegree | 'no_damage' | null;
+  note: string | null;
+  marked_by: Uuid;
+  marked_at: TsGen;
+}
+
+export interface EquityAlertTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  kind: 'coverage' | 'review_gap' | 'help_gap';
+  subject_kind: 'tract' | 'income_band' | 'tenure' | 'language' | 'channel';
+  subject: string;
+  label: string;
+  value: ColumnType<string | null, number | string | null, number | string | null>;
+  threshold: ColumnType<string, number | string, number | string>;
+  outreach: string;
+  raised_at: TsGen;
+  cleared_at: TsNullable;
+  acknowledged_by: Uuid | null;
+  acknowledged_at: TsNullable;
+  action_taken: string | null;
+  version: Generated<number>;
+  updated_at: TsGen;
+}
+
+export type ApiKeyScope = 'pda.read';
+export type WebhookEvent = 'official_report.issued' | 'export.ready';
+
+export interface ApiKeyTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  name: string;
+  prefix: string;
+  secret_hash: string;
+  scopes: ApiKeyScope[];
+  status: Generated<'pending' | 'active' | 'declined' | 'revoked'>;
+  expires_at: Ts;
+  created_by: Uuid;
+  decided_by: Uuid | null;
+  decided_at: TsNullable;
+  decision_reason: string | null;
+  revoked_by: Uuid | null;
+  revoked_at: TsNullable;
+  revoked_reason: string | null;
+  last_used_at: TsNullable;
+  version: Generated<number>;
+  created_at: TsGen;
+  updated_at: TsGen;
+}
+
+export interface WebhookTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  name: string;
+  url: string;
+  events: WebhookEvent[];
+  secret_enc: Buffer;
+  status: Generated<'pending' | 'active' | 'declined' | 'disabled'>;
+  created_by: Uuid;
+  decided_by: Uuid | null;
+  decided_at: TsNullable;
+  decision_reason: string | null;
+  disabled_by: Uuid | null;
+  disabled_at: TsNullable;
+  disabled_reason: string | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  updated_at: TsGen;
+}
+
+export interface WebhookDeliveryTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  webhook_id: Uuid;
+  event: WebhookEvent;
+  subject_id: Uuid;
+  payload: JsonValue;
+  status: Generated<'pending' | 'delivered' | 'failed'>;
+  attempts: Generated<number>;
+  next_attempt_at: TsNullable;
+  last_attempt_at: TsNullable;
+  last_status: number | null;
+  last_error: string | null;
+  delivered_at: TsNullable;
+  version: Generated<number>;
+  created_at: TsGen;
+  updated_at: TsGen;
+}
+
+export interface LocationGeoTable {
+  location_id: Uuid;
+  tenant_id: Uuid;
+  tract_geoid: string | null;
+  tract_snapshot_id: Uuid | null;
+  jurisdiction_tenant_id: Uuid | null;
+  assigned_at: TsGen;
+}
+
 export interface RefdataImportTable extends Stamped {
   id: Generated<Uuid>;
   tenant_id: Uuid;
@@ -2544,6 +2884,25 @@ export interface Database {
   'cg.field_assessment': FieldAssessmentTable;
   'cg.change_feed': ChangeFeedTable;
   'cg.client_command': ClientCommandTable;
+  'cg.location_geo': LocationGeoTable;
+  'cg.declaration': DeclarationTable;
+  'cg.outage': OutageTable;
+  'cg.casualty_count': CasualtyCountTable;
+  'cg.pa_site': PaSiteTable;
+  'cg.official_report': OfficialReportTable;
+  'cg.official_report_section': OfficialReportSectionTable;
+  'cg.official_report_snapshot': OfficialReportSnapshotTable;
+  'cg.official_report_lock': OfficialReportLockTable;
+  'cg.fema_form_mapping': FemaFormMappingTable;
+  'cg.export_file': ExportFileTable;
+  'cg.package_photo': PackagePhotoTable;
+  'cg.joint_pda': JointPdaTable;
+  'cg.joint_pda_stop': JointPdaStopTable;
+  'cg.joint_pda_mark': JointPdaMarkTable;
+  'cg.equity_alert': EquityAlertTable;
+  'cg.api_key': ApiKeyTable;
+  'cg.webhook': WebhookTable;
+  'cg.webhook_delivery': WebhookDeliveryTable;
   'cg.refdata_import': RefdataImportTable;
   'cg.refdata_snapshot': RefdataSnapshotTable;
   'cg.refdata_current': RefdataCurrentTable;

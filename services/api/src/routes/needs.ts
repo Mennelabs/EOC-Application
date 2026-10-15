@@ -19,6 +19,7 @@ import { sql, type Selectable, type Transaction } from 'kysely';
 import { z } from 'zod';
 import type { AccountSubject, FieldDescriptor } from '@cg/authz';
 import type { Database, NeedEventKind } from '@cg/db';
+import { toCsv } from '@cg/reporting';
 import { errors } from '../errors.ts';
 import { iso, listQuery, uuidParam } from './helpers.ts';
 
@@ -863,10 +864,7 @@ export const needRoutes: FastifyPluginAsync = async (instance) => {
       await request.authorize('need.export', { type: 'need', tenantId: s.tenantId });
       const rows = await board(request, { ...request.query, limit: 200, offset: 0 } as BoardQuery);
       // One board page per export keeps the file bounded; the audit names the count (NED-07).
-      const esc = (v: unknown) => {
-        const t = v === null || v === undefined ? '' : String(v);
-        return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
-      };
+      // BRD:FR-14.06: the shared writer guards against formulas and opens cleanly in Excel.
       const header = [
         'id',
         'reference',
@@ -880,25 +878,22 @@ export const needRoutes: FastifyPluginAsync = async (instance) => {
         'done_at',
         'created_at',
       ];
-      const lines = [header.join(',')];
-      for (const n of rows)
-        lines.push(
-          [
-            n.id,
-            n.referenceCode,
-            n.category,
-            n.status,
-            n.source,
-            n.area?.city,
-            n.area?.postal,
-            n.claim?.tenantName ?? (n.claimed ? 'claimed' : ''),
-            n.claim?.at,
-            n.doneAt,
-            n.createdAt,
-          ]
-            .map(esc)
-            .join(','),
-        );
+      const csv = toCsv(
+        header,
+        rows.map((n) => [
+          n.id,
+          n.referenceCode,
+          n.category,
+          n.status,
+          n.source,
+          n.area?.city,
+          n.area?.postal,
+          n.claim?.tenantName ?? (n.claimed ? 'claimed' : ''),
+          n.claim?.at,
+          n.doneAt,
+          n.createdAt,
+        ]),
+      );
       const { reason } = request.confirmation();
       await request.tx(async (trx) => {
         for (const n of rows.filter((r) => !r.sharedWith || true).slice(0, 200))
@@ -933,7 +928,7 @@ export const needRoutes: FastifyPluginAsync = async (instance) => {
       return reply
         .header('content-type', 'text/csv; charset=utf-8')
         .header('content-disposition', 'attachment; filename="needs.csv"')
-        .send(lines.join('\n') + '\n');
+        .send(csv);
     },
   );
 

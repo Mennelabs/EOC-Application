@@ -62,4 +62,30 @@ describe('G6 granting permissions needs a second administrator (ADM-05, Section 
     }
     expect(decide(bg, 'role.read', { type: 'role', tenantId: TENANT_A }).effect).toBe('allow');
   });
+
+  it('an API key or webhook is approved by a second administrator (SCL-09)', () => {
+    const keyAdmin = account([role([{ action: 'api_key.manage' }, { action: 'webhook.manage' }])]);
+    for (const [action, type] of [
+      ['api_key.manage', 'api_key'],
+      ['webhook.manage', 'webhook'],
+    ] as const) {
+      expect(
+        decide(keyAdmin, action, { type, tenantId: TENANT_A, requestedBy: ALICE }).reason,
+      ).toBe('guardrail:G6:second_administrator_required');
+      expect(decide(keyAdmin, action, { type, tenantId: TENANT_A, requestedBy: BOB }).effect).toBe(
+        'allow',
+      );
+      // Asking for one names no requester to compare with.
+      expect(decide(keyAdmin, action, { type, tenantId: TENANT_A }).effect).toBe('allow');
+    }
+  });
+
+  it('API keys and webhooks are explicit: a wildcard does not reach them', () => {
+    expect(decide(admin, 'api_key.manage', { type: 'api_key', tenantId: TENANT_A }).effect).toBe(
+      'deny',
+    );
+    expect(decide(admin, 'webhook.manage', { type: 'webhook', tenantId: TENANT_A }).effect).toBe(
+      'deny',
+    );
+  });
 });

@@ -4,9 +4,19 @@ import { aiRegisterRoutes } from './ai-register.ts';
 import { auditRoutes } from './audit.ts';
 import { breakGlassRoutes } from './breakglass.ts';
 import { contactRoutes } from './contacts.ts';
+import { declarationRoutes } from './declaration.ts';
+import { femaMappingRoutes } from './fema-mappings.ts';
+import { officialReportRoutes } from './official-reports.ts';
 import { definitionRoutes } from './definitions.ts';
 import { dispatchRoutes, type DispatchDeps } from './dispatch.ts';
 import { eventRoutes } from './events.ts';
+import { exportRoutes, type ExportDeps } from './exports.ts';
+import { jointPdaRoutes } from './joint-pda.ts';
+import { metricRoutes } from './metrics.ts';
+import { equityRoutes } from './equity.ts';
+import { integrationRoutes } from './integrations.ts';
+import { situationAreaRoutes } from './situation-areas.ts';
+import { packagePhotoRoutes, type PackagePhotoDeps } from './package-photos.ts';
 import { fieldAssessmentRoutes } from './field-assessments.ts';
 import { fieldOpsRoutes } from './field-ops.ts';
 import { fieldRecordRoutes, type FieldRecordDeps } from './field-records.ts';
@@ -33,11 +43,14 @@ import { volunteerRoutes } from './volunteers.ts';
 /** What the server gives the routes that talk to the broker, object storage or the AI provider (absent in tests: poll fallback, no map extracts). */
 export interface RouteDeps {
   dispatch?: DispatchDeps;
+  exports?: ExportDeps;
+  packagePhotos?: PackagePhotoDeps;
   fieldSync?: FieldSyncDeps;
   fieldVoice?: FieldVoiceDeps;
   fieldRecords?: FieldRecordDeps;
   missions?: MissionDeps;
   refdata?: RefdataDeps;
+  metrics?: { productName?: string };
 }
 
 /** Route plugins mounted under /api/v1. Each layer adds its modules here. */
@@ -72,6 +85,16 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   messageRoutes,
   referralRoutes,
   refdataRoutes(deps.refdata),
+  declarationRoutes,
+  officialReportRoutes,
+  femaMappingRoutes,
+  exportRoutes(deps.exports),
+  packagePhotoRoutes(deps.packagePhotos),
+  jointPdaRoutes,
+  metricRoutes(deps.metrics),
+  equityRoutes,
+  integrationRoutes,
+  situationAreaRoutes,
 ];
 
 /** The default set, as the tests mount it. */

@@ -27,6 +27,14 @@ import { MissionDetailScreen, MissionsScreen } from './screens/missions.tsx';
 import { KeyCounts, NeedsBoardScreen, PartnerScreen } from './screens/needs.tsx';
 import { PartnersScreen } from './screens/partners.tsx';
 import { ResourcesScreen } from './screens/resources.tsx';
+import { DeclarationScreen } from './screens/declaration.tsx';
+import { EquityScreen } from './screens/equity.tsx';
+import { FemaMappingsScreen } from './screens/fema-mappings.tsx';
+import { IntegrationsScreen } from './screens/integrations.tsx';
+import { MetricsScreen } from './screens/metrics.tsx';
+import { JointAssessmentScreen } from './screens/joint-assessment.tsx';
+import { SharedDeclarationsScreen } from './screens/shared-declarations.tsx';
+import { OfficialReportScreen, OfficialReportsScreen } from './screens/official-reports.tsx';
 import { RefdataScreen } from './screens/refdata.tsx';
 import { ReportDetailScreen, ReviewQueueScreen } from './screens/review.tsx';
 import { PublicationsScreen, SitesScreen } from './screens/sites.tsx';
@@ -62,7 +70,15 @@ const routes = [
   { path: '/console/badges', label: 'Badges', layer: 4 },
   { path: '/console/reminders', label: 'Reminders', layer: 4 },
   { path: '/console/devices', label: 'Field devices', layer: 4 },
+  { path: '/console/declaration', label: 'Declaration data', layer: 6 },
+  { path: '/console/joint-assessment', label: 'Joint assessment', layer: 6 },
+  { path: '/console/shared-declarations', label: 'Shared declaration figures', layer: 6 },
+  { path: '/console/official-reports', label: 'Official reports', layer: 6 },
+  { path: '/console/metrics', label: 'Metrics', layer: 6 },
+  { path: '/console/equity', label: 'Equity', layer: 6 },
   { path: '/console/reference-data', label: 'Reference data', layer: 6 },
+  { path: '/console/fema-mappings', label: 'FEMA form mappings', layer: 6 },
+  { path: '/console/integrations', label: 'API keys and webhooks', layer: 6 },
   { path: '/console/events', label: 'Events', layer: 1 },
   { path: '/console/tenants', label: 'Organizations', layer: 1 },
   { path: '/console/accounts', label: 'Staff accounts', layer: 1 },
@@ -211,6 +227,13 @@ export function App({ config }: { config: RuntimeConfig }) {
   const screen = (() => {
     if (path.startsWith('/console/missions/'))
       return <MissionDetailScreen id={path.slice('/console/missions/'.length)} />;
+    if (path.startsWith('/console/official-reports/'))
+      return (
+        <OfficialReportScreen
+          id={path.slice('/console/official-reports/'.length)}
+          navigate={navigate}
+        />
+      );
     if (path.startsWith('/console/reports/'))
       return <ReportDetailScreen id={path.slice('/console/reports/'.length)} navigate={navigate} />;
     switch (path) {
@@ -240,6 +263,22 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <DevicesScreen />;
       case '/console/reference-data':
         return <RefdataScreen />;
+      case '/console/fema-mappings':
+        return <FemaMappingsScreen />;
+      case '/console/integrations':
+        return <IntegrationsScreen />;
+      case '/console/declaration':
+        return <DeclarationScreen />;
+      case '/console/metrics':
+        return <MetricsScreen />;
+      case '/console/equity':
+        return <EquityScreen />;
+      case '/console/joint-assessment':
+        return <JointAssessmentScreen />;
+      case '/console/shared-declarations':
+        return <SharedDeclarationsScreen />;
+      case '/console/official-reports':
+        return <OfficialReportsScreen navigate={navigate} />;
       case '/console/reports':
         return <ReviewQueueScreen navigate={navigate} />;
       case '/console/assist':

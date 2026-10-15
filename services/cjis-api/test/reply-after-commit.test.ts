@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 const root = join(import.meta.dirname, '..', '..', '..');
 const TX_OPENER = /\.tx\(|transaction\(\)\.execute\(|withAgency\(|withTenant\(/;
 const HANDLER = /async \(request(?:, reply)?\) =>/;
-const SEND = /reply\s*\.\s*(?:code|status)\([^)]*\)\s*\.\s*send\(/;
+const SEND = /reply\s*(?:\.\s*(?:code|status|header)\([^)]*\)\s*)*\.\s*send\(/;
 
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -24,7 +24,10 @@ function sources(dir: string): string[] {
 
 /** Sends that sit inside a transaction callback, found by walking back over open braces. */
 function sendsInsideTransactions(file: string): string[] {
-  const lines = readFileSync(file, 'utf8').split('\n');
+  // A chain the formatter wrapped (`reply` / `.code(201)` / `.send(…)`) is read as one line.
+  const lines = readFileSync(file, 'utf8')
+    .replace(/\n\s*(?=\.)/g, ' ')
+    .split('\n');
   const found: string[] = [];
   lines.forEach((line, index) => {
     if (!SEND.test(line)) return;
@@ -51,8 +54,10 @@ describe('replies leave after the commit (FR-00.05/00.06)', () => {
     });
   }
 
-  it('the guard finds a send inside a transaction', () => {
+  it('the guard finds a send inside a transaction, also when the chain is wrapped', () => {
     const sample = join(import.meta.dirname, 'fixtures', 'send-inside-tx.ts.txt');
     expect(sendsInsideTransactions(sample)).toHaveLength(1);
+    const wrapped = join(import.meta.dirname, 'fixtures', 'send-inside-tx-wrapped.ts.txt');
+    expect(sendsInsideTransactions(wrapped)).toHaveLength(1);
   });
 });

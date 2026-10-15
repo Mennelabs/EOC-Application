@@ -9,7 +9,7 @@
  */
 import type { Kysely, Transaction } from 'kysely';
 import type { Logger } from 'pino';
-import type { SmsSender } from '@cg/adapters';
+import type { SmsSender, WebhookSender } from '@cg/adapters';
 import type { AiProvider } from '@cg/ai';
 import type { FieldCrypto } from '@cg/crypto';
 import type { Database } from '@cg/db';
@@ -23,6 +23,13 @@ export interface ObjectStore {
   get(key: string): Promise<{ body: Buffer; contentType: string | null }>;
   put(key: string, body: Buffer | string, contentType: string): Promise<void>;
   putAnchor(key: string, body: string): Promise<void>;
+  /** Writes to the records bucket under object lock until `retainUntil` (ADR-0010, RULE-10). */
+  putLocked(
+    key: string,
+    body: string,
+    contentType: string,
+    retainUntil: Date,
+  ): Promise<{ versionId: string | null; mode: 'GOVERNANCE' | 'COMPLIANCE' }>;
 }
 
 export interface JobContext {
@@ -37,6 +44,8 @@ export interface JobContext {
   /** Public URLs the worker needs to put into realms, emails and texts. */
   urls: { gatewayPublic: string; idpPublic: string; idpInternal: string };
   objects: ObjectStore | null;
+  /** The configured product name, for the files the worker writes (ADM-03). */
+  productName?: string;
   devDirectGrant: boolean;
   /** Provider in force for a tenant (AIG-12); the fake provider by default. */
   ai: { providerFor(tenantId: string, trx: Transaction<Database>): Promise<AiProvider> };
@@ -47,6 +56,8 @@ export interface JobContext {
   linkCheck?: (url: string) => Promise<boolean>;
   /** Reference data sources (ADR-0039); absent means no pulls (imports still work). */
   refdata?: RefdataDeps;
+  /** Outbound webhook sender (SCL-09); HTTPS to public addresses only by default. */
+  webhookSender?: WebhookSender;
 }
 
 export interface OutboxMessage {

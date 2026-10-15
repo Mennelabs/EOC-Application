@@ -32,17 +32,55 @@ describe('shipped role templates (ADM-04)', () => {
   it('preview: tenant_admin can do everything in layer 1 except see protected fields', () => {
     const admin = roleTemplates.find((t) => t.key === 'tenant_admin')!;
     const p = previewRole(admin.grants, admin.key);
-    // Live positions are for dispatch and safety roles only, and the CJIS enclave link for the
-    // liaison: no wildcard reaches them (DSP-08, SEC-12).
+    // Live positions are for dispatch and safety roles only, the CJIS enclave link for the
+    // liaison, official casualty counts, issuing official reports and joint-assessment
+    // validation for roles that name them: no wildcard reaches them (DSP-08, SEC-12,
+    // DCL:DEC-08, RULE-10, FL:FR-10).
     expect(p.deniedActions.sort()).toEqual([
+      'casualty.record',
+      'joint_assessment.validate',
       'mission.cji.link',
       'mission.cji.open',
+      'official_report.issue',
       'position.read',
     ]);
     expect(p.visibleCategories).not.toContain('health');
     expect(p.hiddenCategories.map((h) => h.category)).toEqual(
       expect.arrayContaining(['health', 'counseling', 'legal', 'cji']),
     );
+  });
+
+  it('RULE-10, A7: only the EM director issues official reports; reporting staff draft them', () => {
+    const holders = (action: string) =>
+      roleTemplates.filter((t) => t.grants.some((g) => g.action === action)).map((t) => t.key);
+    expect(holders('official_report.issue')).toEqual(['county_em_director']);
+    expect(holders('official_report.draft').sort()).toEqual([
+      'county_em_director',
+      'reporting_planning',
+    ]);
+  });
+
+  it('FL:FR-10, DEC-13: who validates the joint sample, and who sees a county through an agreement', () => {
+    const holders = (action: string) =>
+      roleTemplates
+        .filter((t) => t.grants.some((g) => g.action === action))
+        .map((t) => t.key)
+        .sort();
+    expect(holders('joint_assessment.validate')).toEqual([
+      'damage_assessment_coordinator',
+      'fema_validator',
+    ]);
+    expect(holders('shared_declaration.read')).toEqual(['state_liaison']);
+    const validator = roleTemplates.find((t) => t.key === 'fema_validator')!;
+    expect(validator.maxAssignmentDays).toBe(30);
+    // The validator sees the sample, never reports, photos or residents.
+    expect(validator.grants.map((g) => g.action).sort()).toEqual([
+      'event.read',
+      'joint_assessment.read',
+      'joint_assessment.validate',
+      'me.read',
+      'tenant.read',
+    ]);
   });
 
   it('SEC-12: only the law-enforcement liaison links missions to the CJIS enclave', () => {

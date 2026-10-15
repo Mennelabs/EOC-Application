@@ -12,7 +12,9 @@ import {
   connectQueue,
   createPool,
   createS3,
+  ensureLockedBucket,
   postgresProbe,
+  putLocked,
   queueProbe,
   runProbes,
   SimulatorSms,
@@ -36,7 +38,10 @@ import {
 } from './jobs/reminders.ts';
 import { relayChangesOnce, type ChangeRelayState } from './jobs/changes.ts';
 import { dropPositionTrails, watchFieldSafety, watchReminders } from './jobs/field.ts';
+import { assignLocationGeography } from './jobs/geography.ts';
 import { pruneReferenceSnapshots, scheduleReferencePulls } from './jobs/refdata.ts';
+import { evaluateEquityAlerts } from './jobs/equity.ts';
+import { webhookSchedule } from './jobs/webhooks.ts';
 import { consume, consumeIntake, relayOnce } from './jobs/relay.ts';
 import type { JobContext, Schedule } from './jobs/types.ts';
 import { nullMailer, smtpMailer } from './mail.ts';
@@ -62,9 +67,33 @@ const s3 = createS3({
   bucket: config.S3_BUCKET,
 });
 
+// RULE-10, ADR-0010: issued reports and audit anchors live in a bucket with object lock. The
+// bucket is checked (and created with lock on) before the first locked write, and again after a failure.
+const recordsBucket = config.S3_RECORDS_BUCKET ?? `${config.S3_BUCKET}-records`;
+let recordsReady: Promise<void> | null = null;
+const recordsBucketReady = () =>
+  (recordsReady ??= ensureLockedBucket(s3, recordsBucket).catch((err: unknown) => {
+    recordsReady = null;
+    throw err;
+  }));
+const lockedPut = async (key: string, body: string, contentType: string, retainUntil: Date) => {
+  await recordsBucketReady();
+  const { versionId } = await putLocked(s3, recordsBucket, {
+    key,
+    body,
+    contentType,
+    mode: config.S3_LOCK_MODE,
+    retainUntil,
+  });
+  return { versionId, mode: config.S3_LOCK_MODE };
+};
+/** Audit anchors are kept for the audit retention, which no tenant can shorten (SEC-13: 7 years). */
+const AUDIT_ANCHOR_YEARS = 7;
+
 const ctx: JobContext = {
   db,
   log,
+  productName: config.PRODUCT_NAME,
   idp: new KeycloakAdmin({
     adminBase: config.IDP_INTERNAL_BASE,
     adminUser: config.KC_ADMIN_USER,
@@ -104,15 +133,11 @@ const ctx: JobContext = {
       );
     },
     async putAnchor(key, body) {
-      await s3.send(
-        new PutObjectCommand({
-          Bucket: config.S3_BUCKET,
-          Key: key,
-          Body: body,
-          ContentType: 'application/json',
-        }),
-      );
+      const until = new Date();
+      until.setUTCFullYear(until.getUTCFullYear() + AUDIT_ANCHOR_YEARS);
+      await lockedPut(key, body, 'application/json', until);
     },
+    putLocked: lockedPut,
   },
   ai: {
     // AIG-12: the provider is tenant configuration; only registered, compliant providers exist here.
@@ -172,6 +197,11 @@ const schedules: Schedule[] = [
   // ADR-0039, SCL-09: reference data refreshed per its source's period; old snapshots pruned (SEC-13).
   { name: 'refdata-refresh', everyMs: 15 * 60_000, run: scheduleReferencePulls },
   { name: 'refdata-prune', everyMs: 24 * 3600_000, run: pruneReferenceSnapshots },
+  // DCL:DEC-05, EQ-11: each located place's census tract and jurisdiction, kept current.
+  { name: 'location-geography', everyMs: 60_000, run: assignLocationGeography },
+  // EQ-12, CON-07: coverage and gap alerts raised and cleared against the tenant's thresholds.
+  { name: 'equity-alerts', everyMs: 15 * 60_000, run: evaluateEquityAlerts },
+  webhookSchedule, // SCL-09
 ];
 
 const probes = [postgresProbe('db', pool), queueProbe('queue', queueNow)];

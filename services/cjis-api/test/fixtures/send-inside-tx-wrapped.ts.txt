@@ -1,0 +1,9 @@
+app.post('/things/:id/notes', async (request, reply) => {
+  const s = request.person();
+  return request.tx(async (trx) => {
+    const row = await trx.insertInto('note').values({ a: 1 }).returning('id').executeTakeFirst();
+    return reply
+      .code(201)
+      .send({ id: row.id, record: await loadRecord(trx, request.params.id) });
+  });
+});

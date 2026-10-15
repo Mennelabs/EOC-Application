@@ -1,7 +1,8 @@
 /**
  * My report (plan screen 12; RES-01, RES-02, RULE-17, SEC-09, NED-03):
  * reference number plus the contact on file, a one-time code, then status,
- * consent changes, corrections and withdrawal. The server answers the same
+ * consent changes, corrections and withdrawal, and a PDF copy to keep or
+ * send to an insurer (FL:FR-32). The server answers the same
  * whether or not the details matched; nothing is shown without the code.
  */
 import { useEffect, useState } from 'react';
@@ -9,6 +10,7 @@ import { useT, type Shell } from '../App.tsx';
 import {
   ApiFailure,
   correct,
+  downloadMyCopy,
   lookupStart,
   lookupVerify,
   myReport,
@@ -208,6 +210,23 @@ export function MyReport({ shell, tenant }: { shell: Shell; tenant: string }) {
         </p>
       </Card>
       {note ? <Status kind="success">{note}</Status> : null}
+      <section aria-labelledby="copy-heading">
+        <h2 id="copy-heading">{t('my.copy')}</h2>
+        <p>{t('my.copyHint')}</p>
+        <button
+          type="button"
+          onClick={() => {
+            setNote(null);
+            setError(null);
+            downloadMyCopy(tenant, token, shell.locale)
+              .then(() => setNote(t('my.copyReady')))
+              .catch(() => setError(t('my.copyFailed')));
+          }}
+        >
+          {t('my.copyDownload')}
+        </button>
+        {error ? <Status kind="error">{error}</Status> : null}
+      </section>
       {report.openQuestions.length > 0 ? (
         <section aria-labelledby="q-heading">
           <h2 id="q-heading">{t('my.questions')}</h2>

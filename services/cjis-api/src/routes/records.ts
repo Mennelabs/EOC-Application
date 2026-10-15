@@ -821,7 +821,8 @@ export const recordRoutes: FastifyPluginAsync = async (appBase) => {
         : s.roles.includes('officer')
           ? 'officer'
           : 'records';
-      return request.tx(async (trx) => {
+      // Answered after the commit, so the version the client gets is the one it will find.
+      const out = await request.tx(async (trx) => {
         const r = await loadRecord(trx, request.params.ref);
         const amends = request.body.amendsEventId;
         if (amends) {
@@ -858,10 +859,9 @@ export const recordRoutes: FastifyPluginAsync = async (appBase) => {
           fields: ['narrative'],
           reason: amends ? `amends ${amends}` : null,
         });
-        return reply
-          .code(201)
-          .send({ id: ev.id, record: await present(trx, await loadRecord(trx, r.cji_ref)) });
+        return { id: ev.id, record: await present(trx, await loadRecord(trx, r.cji_ref)) };
       });
+      return reply.code(201).send(out);
     },
   );
 

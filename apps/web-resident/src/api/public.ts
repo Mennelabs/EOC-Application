@@ -277,6 +277,41 @@ export const correct = (
     headers: resident(token),
   });
 
+/** FL:FR-32: the resident's own copy as a PDF, saved through a short-lived link. */
+export async function downloadMyCopy(tenant: string, token: string, lang: string): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(
+      `/api/public/intake/${tenant}/me/export.pdf?lang=${encodeURIComponent(lang)}`,
+      {
+        headers: resident(token),
+      },
+    );
+  } catch {
+    throw new Offline();
+  }
+  if (!res.ok)
+    throw new ApiFailure(res.status, {
+      code: 'error',
+      message: 'Something went wrong.',
+      fields: [],
+      retryable: res.status >= 500,
+      details: undefined,
+    });
+  const blob = await res.blob();
+  const name =
+    /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ??
+    'damage-report.pdf';
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
 export const withdraw = (tenant: string, token: string, reason?: string) =>
   call<{ status: string }>(`/intake/${tenant}/me/withdraw`, {
     body: reason ? { reason } : {},

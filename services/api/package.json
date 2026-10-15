@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "samples": "node src/public/pdf-samples.ts",
     "start": "node src/main.ts",
     "dev": "node --watch src/main.ts",
     "typecheck": "tsc --noEmit -p ."
@@ -20,13 +21,16 @@
     "@cg/db": "workspace:*",
     "@cg/field-core": "workspace:*",
     "@cg/intake": "workspace:*",
+    "@cg/pdf": "workspace:*",
     "@cg/refdata": "workspace:*",
+    "@cg/reporting": "workspace:*",
     "@fastify/swagger": "9.9.0",
     "fastify": "5.12.5",
     "fastify-plugin": "6.0.0",
     "fastify-type-provider-zod": "7.0.0",
     "jose": "6.2.12",
     "kysely": "0.29.6",
+    "sharp": "0.35.5",
     "zod": "4.6.5"
   }
 }

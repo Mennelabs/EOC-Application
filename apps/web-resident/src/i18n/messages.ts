@@ -210,6 +210,12 @@ const en = {
   'my.withdrawConfirm':
     'Withdraw this report? The county will no longer act on it. You can send a new one later.',
   'my.withdrawn': 'Your report was withdrawn.',
+  'my.copy': 'A copy for you or your insurer',
+  'my.copyHint':
+    'A PDF of what you told us about your home and the damage, with your photos. Your answers about how to reach you, your household and your needs are not in it.',
+  'my.copyDownload': 'Download my copy (PDF)',
+  'my.copyReady': 'Your copy was downloaded.',
+  'my.copyFailed': 'We could not make your copy just now. Try again in a few minutes.',
   'my.signOut': 'Close my report',
   'help.heading': 'Help near you',
   'help.body':
@@ -428,6 +434,12 @@ const es: Record<MessageId, string> = {
   'my.withdrawConfirm':
     '¿Retirar este reporte? El condado ya no actuará sobre él. Puede enviar uno nuevo después.',
   'my.withdrawn': 'Su reporte fue retirado.',
+  'my.copy': 'Una copia para usted o su aseguradora',
+  'my.copyHint':
+    'Un PDF de lo que nos dijo sobre su vivienda y los daños, con sus fotos. Sus respuestas sobre cómo comunicarnos con usted, su hogar y sus necesidades no están en él.',
+  'my.copyDownload': 'Descargar mi copia (PDF)',
+  'my.copyReady': 'Su copia se descargó.',
+  'my.copyFailed': 'No pudimos hacer su copia ahora. Intente de nuevo en unos minutos.',
   'my.signOut': 'Cerrar mi reporte',
   'help.heading': 'Ayuda cerca de usted',
   'help.body':

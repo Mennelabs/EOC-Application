@@ -131,6 +131,9 @@ describe.skipIf(!workerUrl)('worker filing (database-backed)', () => {
           store.set(key, { body: Buffer.isBuffer(body) ? body : Buffer.from(body), contentType });
         },
         async putAnchor() {},
+        async putLocked() {
+          return { versionId: null, mode: 'GOVERNANCE' as const };
+        },
       },
       devDirectGrant: false,
       ai: { providerFor: async () => fakeProvider },

@@ -20,3 +20,4 @@ apps/field/expo-env.d.ts
 
 # Python bytecode (tools/reqindex)
 __pycache__/
+out/

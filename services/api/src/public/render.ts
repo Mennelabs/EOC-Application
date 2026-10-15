@@ -25,6 +25,7 @@ export const T = {
     removed: 'This information was withdrawn on',
     noLonger: 'It is no longer current. Check the current list of help.',
     media: 'Media sheet',
+    pdf: 'Download the media sheet as a PDF',
     updated: 'Last updated',
     generated: 'Page generated',
     reload: 'Reload this page for the latest numbers; it does not refresh on its own.',
@@ -70,6 +71,7 @@ export const T = {
     removed: 'Esta información se retiró el',
     noLonger: 'Ya no está vigente. Consulte la lista actual de ayuda.',
     media: 'Hoja para medios',
+    pdf: 'Descargar la hoja para medios en PDF',
     updated: 'Última actualización',
     generated: 'Página generada',
     reload: 'Vuelva a cargar esta página para ver los datos más recientes; no se actualiza sola.',
@@ -119,6 +121,8 @@ export function addressText(site: PublicSite): string {
 const stamp = (iso: string) => `${iso.slice(0, 16).replace('T', ' ')} UTC`;
 const helpLink = (slug: string, lang: Lang) =>
   `/api/public/help/${encodeURIComponent(slug)}?lang=${lang}`;
+const mediaPdfLink = (slug: string, lang: Lang) =>
+  `/api/public/help/${encodeURIComponent(slug)}/media.pdf?lang=${lang}`;
 const resourceLink = (slug: string, resource: string, lang: Lang) =>
   `/api/public/help/${encodeURIComponent(slug)}/resources/${encodeURIComponent(resource)}?lang=${lang}`;
 
@@ -237,6 +241,7 @@ export function mediaPage(i: MediaPageInput): string {
     ) +
     // No timed refresh (WCAG 2.2.1, 3.2.5): a reload is the reader's choice.
     p(t.reload, 'muted') +
+    `<p><a href="${mediaPdfLink(i.tenantSlug, i.lang)}">${escapeHtml(t.pdf)}</a></p>` +
     `<h2>${escapeHtml(t.sites)}</h2>` +
     (i.sites.length
       ? `<table><thead><tr>${header}</tr></thead><tbody>${rows}</tbody></table>`

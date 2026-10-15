@@ -12,7 +12,9 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import { renderPdf } from '@cg/pdf';
 import { errors } from '../errors.ts';
+import { mediaSheetPdf } from './pdf.ts';
 import { sanitizeHtml } from './html.ts';
 import {
   addressText,
@@ -361,6 +363,47 @@ export const helpRoutes =
             generatedAt: new Date().toISOString(),
           }),
         );
+      },
+    );
+
+    // PUB-13: the same sheet as a PDF (PDF/UA), made on request so it is as current as the page.
+    app.get(
+      '/help/:tenant/media.pdf',
+      { schema: { tags: ['public help'], params: tenantParam, querystring: langQuery } },
+      async (request, reply) => {
+        const lang = langOf(request.query.lang);
+        const d = await gather(request, lang);
+        const zone = await request.tx((trx) =>
+          trx
+            .selectFrom('cg.tenant')
+            .select('timezone')
+            .where('id', '=', d.tenant.id)
+            .executeTakeFirst(),
+        );
+        const pdf = await renderPdf(
+          mediaSheetPdf({
+            lang,
+            tenantName: d.tenant.name,
+            tenantSlug: d.tenant.slug,
+            sites: d.sites,
+            resources: d.resources,
+            helpPhone: d.helpPhone,
+            statement: d.statement,
+            generatedAt: new Date().toISOString(),
+            timeZone: zone?.timezone ?? 'UTC',
+            publicBase: deps.publicBase ?? `${request.protocol}://${request.host}`,
+            producer: d.tenant.name,
+          }),
+        );
+        return reply
+          .header('content-type', 'application/pdf')
+          .header(
+            'content-disposition',
+            `inline; filename="media-sheet-${d.tenant.slug}-${lang}.pdf"`,
+          )
+          .header('cache-control', CACHE)
+          .header('x-content-type-options', 'nosniff')
+          .send(pdf);
       },
     );
   };

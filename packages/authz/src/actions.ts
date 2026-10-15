@@ -474,6 +474,133 @@ export const actions = {
     'refdata_snapshot',
     'Pull reference data now, and upload, map and apply reference data files',
   ),
+
+  // Layer 6 declaration data (DCL:DEC-07/08/10/14/16/17, FL-17).
+  'declaration.read': a(
+    'read',
+    'declaration',
+    'See the declaration view: verified totals, outages, casualties, public damage, the clock',
+  ),
+  'declaration.write': a(
+    'write',
+    'declaration',
+    'Enter the incident period, requested areas and the Box 8 and 9 drafts',
+  ),
+  'outage.write': a('write', 'outage', 'Log, update and confirm infrastructure outages'),
+  'casualty.record': a(
+    'write',
+    'casualty_count',
+    'Enter official injured, missing and deceased counts from an official source (DEC-08)',
+    { explicit: true },
+  ),
+  'pa_site.write': a(
+    'write',
+    'pa_site',
+    'Record public damage sites with category, cost and flags',
+  ),
+  'declaration.export': a(
+    'export',
+    'declaration',
+    'Export the IDA package (PDF, CSV, GeoJSON): counts and generalized places, no personal details',
+  ),
+
+  // Layer 6 metrics and equity (BRD:F14, MET, EQ-11/12/13, CON-07).
+  'metric.read': a('read', 'metric', 'See metrics from the shared definitions, with their trends'),
+  'metric.export': a('export', 'metric', 'Export metrics as CSV or PDF (counts only)'),
+  'equity.read': a(
+    'read',
+    'equity',
+    'See the equity dashboard: report and need rates by tract and group, small numbers hidden',
+  ),
+  'equity.act': a(
+    'write',
+    'equity',
+    'Acknowledge an equity or coverage alert and record the outreach taken',
+  ),
+
+  // Layer 6 joint damage assessment (FL:FR-10) and the state liaison's view (DCL:DEC-13).
+  'joint_assessment.read': a(
+    'read',
+    'joint_assessment',
+    'See the joint assessment schedule and sample route: verified homes without personal details',
+  ),
+  'joint_assessment.plan': a(
+    'write',
+    'joint_assessment',
+    'Schedule the joint assessment and draw its sample route',
+  ),
+  'joint_assessment.validate': a(
+    'write',
+    'joint_assessment',
+    'Mark a sampled home validated, seen at a different degree, or not seen',
+    { explicit: true },
+  ),
+  'shared_declaration.read': a(
+    'read',
+    'declaration',
+    "See a county's declaration figures, de-identified, under its signed agreement with your tenant",
+  ),
+
+  // Layer 6 official reports (F15, RULE-10, A7): drafted, reviewed and issued by different people.
+  'official_report.read': a(
+    'read',
+    'official_report',
+    'See official reports, their sections and issued snapshots, and what changed since the last one',
+  ),
+  'official_report.draft': a(
+    'write',
+    'official_report',
+    'Draft situation reports and briefings, edit their judgments and narrative, refresh their facts, draft amendments',
+  ),
+  'official_report.review': a(
+    'write',
+    'official_report',
+    'Approve, or return with a note, a report someone else drafted',
+  ),
+  'official_report.issue': a(
+    'admin',
+    'official_report',
+    'Issue a reviewed report someone else drafted; it is frozen and corrected only by amendment',
+    { consequential: true, explicit: true },
+  ),
+  'official_report.export': a(
+    'export',
+    'official_report',
+    'Export an issued official report as PDF or CSV, drawn from its frozen copy',
+  ),
+
+  // Layer 6 FEMA form mappings (DCL:DEC-12, DEC-15): changed without a release.
+  'fema_mapping.read': a('read', 'fema_form_mapping', 'See FEMA form mappings and their versions'),
+  'fema_mapping.write': a(
+    'write',
+    'fema_form_mapping',
+    'Draft and edit a new version of a FEMA form mapping',
+  ),
+  'fema_mapping.activate': a(
+    'admin',
+    'fema_form_mapping',
+    'Put a FEMA form mapping version in force for every export that follows',
+    { consequential: true },
+  ),
+  // Layer 6 outbound integrations (SCL-09): keys and webhooks need a second administrator (ADM-05).
+  'api_key.read': a(
+    'read',
+    'api_key',
+    'See API keys: name, scopes, status, expiry, last use; never the key',
+  ),
+  'api_key.manage': a(
+    'admin',
+    'api_key',
+    'Ask for, approve or decline (never your own), and revoke an API key',
+    { consequential: true, explicit: true },
+  ),
+  'webhook.read': a('read', 'webhook', 'See webhooks and their deliveries; never the secret'),
+  'webhook.manage': a(
+    'admin',
+    'webhook',
+    'Ask for, approve or decline (never your own), and disable a webhook',
+    { consequential: true, explicit: true },
+  ),
 } as const satisfies Record<string, ActionMeta>;
 
 export type ActionKey = keyof typeof actions;
@@ -503,4 +630,9 @@ export const SELF_REVIEW_ACTIONS: readonly string[] = [
   'report.set_degree',
   'assessment.approve',
   'finding.approve',
+  // Official reports: the author neither reviews nor issues (A7); the database refuses it too.
+  'official_report.review',
+  'official_report.issue',
+  // Joint assessment: nobody validates a home whose degree they set or assessed.
+  'joint_assessment.validate',
 ];

@@ -68,6 +68,29 @@ export async function blurRegions(image: Buffer, regions: Region[]): Promise<Buf
   return sharp(image).composite(overlays).webp({ quality: 82 }).toBuffer();
 }
 
+/**
+ * The derivatives written after detection (PHO-07): with regions to blur, the
+ * review image is blurred and the thumbnail is made again from it, so no size
+ * shows what the detector found.
+ */
+export async function blurredDerivatives(
+  derivatives: Record<DerivativeName, Buffer>,
+  regions: Region[],
+): Promise<Record<DerivativeName, Buffer>> {
+  if (regions.length === 0) return derivatives;
+  const review = await blurRegions(derivatives.review, regions);
+  const thumb = await sharp(review)
+    .resize({
+      width: DERIVATIVES.thumb,
+      height: DERIVATIVES.thumb,
+      fit: 'inside',
+      withoutEnlargement: true,
+    })
+    .webp({ quality: 70 })
+    .toBuffer();
+  return { review, thumb };
+}
+
 const str = (v: unknown): string => (typeof v === 'string' ? v : String(v ?? ''));
 
 /** photo.process: enqueued when an upload completes (public/routes.ts). Idempotent by status. */
@@ -126,7 +149,7 @@ export const photoProcess: TopicHandler = async (ctx, msg) => {
   await asSystem(ctx.db, row.tenant_id, async (trx) => {
     // Sensitive regions through the image interface (PHO-07); never a severity rating (PHO-12).
     let blurStatus: 'applied' | 'skipped_no_detector' | 'failed' = 'skipped_no_detector';
-    let review = processed.derivatives.review;
+    let written = processed.derivatives;
     let regions = 0;
     const feature = await trx
       .selectFrom('cg.ai_use_register')
@@ -137,10 +160,10 @@ export const photoProcess: TopicHandler = async (ctx, msg) => {
       const provider = await ctx.ai.providerFor(row.tenant_id, trx);
       if (provider.image && provider.info.provider === feature.provider) {
         try {
-          const a = await provider.image.analyse(review, 'image/webp');
+          const a = await provider.image.analyse(processed.derivatives.review, 'image/webp');
           if (a.output.detectorAvailable) {
             regions = a.output.sensitiveRegions.length;
-            if (regions > 0) review = await blurRegions(review, a.output.sensitiveRegions);
+            written = await blurredDerivatives(processed.derivatives, a.output.sensitiveRegions);
             blurStatus = 'applied';
           }
         } catch (err) {
@@ -149,8 +172,8 @@ export const photoProcess: TopicHandler = async (ctx, msg) => {
         }
       }
     }
-    await ctx.objects!.put(keys.review, review, 'image/webp');
-    await ctx.objects!.put(keys.thumb, processed.derivatives.thumb, 'image/webp');
+    await ctx.objects!.put(keys.review, written.review, 'image/webp');
+    await ctx.objects!.put(keys.thumb, written.thumb, 'image/webp');
 
     // The same bytes on another report are a duplicate for a person to judge (PHO-15).
     const twins = await trx

@@ -18,8 +18,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { fakeProvider } from '@cg/ai';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
-import { createDb, type Database } from '@cg/db';
+import { createDb, withTenant, type Database } from '@cg/db';
 import { westwindGraph } from '@cg/intake';
+import { loadDamageRecords } from '@cg/reporting';
 import type { Kysely } from 'kysely';
 import { loadSeed } from '../../../tools/seed/src/load.ts';
 import { buildApp, type App } from '../src/app.ts';
@@ -581,5 +582,62 @@ describe.skipIf(!appUrl || !workerUrl)('field assessments and counters (database
     });
     expect(off.status).toBe(409);
     expect(off.json<{ code: string; message: string }>()).toMatchObject({ code: 'ai_off' });
+  });
+
+  it('FLD-08, DCL:DEC-17: what the app sends is accepted (damage seen as a list, FEMA per-home fields); values outside FEMA ranges are refused', async () => {
+    const send = async (observations: Record<string, unknown>, degree = 'minor') => {
+      const [r] = await command('a1', [
+        {
+          id: randomUUID(),
+          kind: 'assessment.record',
+          body: {
+            mode: 'detailed',
+            parcelId,
+            structure: 'single_family',
+            degree,
+            observations,
+          },
+        },
+      ]);
+      return r!;
+    };
+    const ok = await send({
+      water_inside: 'yes',
+      seen: ['roof', 'walls'],
+      flood_depth_basement_in: 70,
+      flood_depth_first_floor_in: 30,
+      flood_depth_crawl_space_in: 0,
+      units: 1,
+      occupancy: 'rent',
+      insurance: ['flood', 'sewer_backup'],
+      utilities_out: 'yes',
+      tribal_ownership: 'unknown',
+    });
+    expect(ok.result, JSON.stringify(ok)).toBe('applied');
+    const reach = await send({ cant_reach_reason: 'private_road_or_bridge' }, 'cant_reach');
+    expect(reach.result, JSON.stringify(reach)).toBe('applied');
+    // The counting rule reads them: the reason a home was not reached, tenure and insurance.
+    const records = await withTenant(dbApp, { tenantId: tenants['county']! }, (trx) =>
+      loadDamageRecords(trx, eventId),
+    );
+    const byId = new Map(records.map((r) => [r.id, r]));
+    expect(byId.get(reach.record!.id!)).toMatchObject({
+      verification: 'cannot_verify',
+      inaccessibleReason: 'private_road_or_bridge',
+    });
+    expect(byId.get(ok.record!.id!)).toMatchObject({ tenure: 'renter', insurance: 'insured' });
+    for (const bad of [
+      { flood_depth_first_floor_in: -5 },
+      { flood_depth_basement_in: 1000 },
+      { occupancy: 'castle' },
+      { insurance: ['dragon'] },
+      { cant_reach_reason: 'no reason' },
+      { units: 0 },
+      { water_inside: 'maybe' },
+      { business_days_closed: 5000 },
+    ]) {
+      const r = await send(bad);
+      expect(r.result, JSON.stringify(bad)).not.toBe('applied');
+    }
   });
 });

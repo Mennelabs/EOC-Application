@@ -15,6 +15,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { sql, type Transaction } from 'kysely';
 import { z } from 'zod';
 import type { QueueConnection } from '@cg/adapters';
+import { renderPdf } from '@cg/pdf';
 import { extractionQuestions, redact, validateExtraction, type AiProvider } from '@cg/ai';
 import type { Database } from '@cg/db';
 import { normalisePhone } from '@cg/crypto';
@@ -29,7 +30,9 @@ import {
   normaliseCode,
   type ReferenceCodeLeaser,
 } from './reference-codes.ts';
-import { helpRoutes } from './help.ts';
+import { helpRoutes, langOf } from './help.ts';
+import { loadResidentCopy } from './my-copy.ts';
+import { residentCopyPdf } from './pdf.ts';
 import { signResidentToken, verifyResidentToken } from './resident-token.ts';
 import {
   answerValueSchema,
@@ -1093,6 +1096,53 @@ export const publicRoutes =
             })),
           };
         });
+      },
+    );
+
+    // FL:FR-32: the resident's own copy, to keep or send to their insurer (English or Spanish).
+    app.get(
+      '/intake/:tenant/me/export.pdf',
+      {
+        schema: {
+          tags: ['public intake'],
+          params: tenantParam,
+          querystring: z.object({ lang: z.string().min(2).max(10).default('en') }),
+        },
+      },
+      async (request, reply) => {
+        const tenant = tenantOf(request);
+        const reportId = residentOf(request, tenant.id);
+        await request.authorize('report.self_read', {
+          type: 'report',
+          id: reportId,
+          tenantId: tenant.id,
+        });
+        const lang = langOf(request.query.lang);
+        const input = await request.tx(async (trx) => {
+          const found = await loadResidentCopy(
+            trx,
+            { crypto: app.fieldCrypto, objects: deps.objects, defaultGraph: deps.defaultGraph },
+            { tenantId: tenant.id, tenantName: tenant.name, reportId, lang, now: now() },
+          );
+          if (!found) throw errors.notFound();
+          await request.audit(trx, {
+            action: 'report.self_export',
+            targetType: 'report',
+            targetId: reportId,
+            changes: { lang, photos: found.photos.length },
+          });
+          return found;
+        });
+        const pdf = await renderPdf(residentCopyPdf({ ...input, producer: tenant.name }));
+        return reply
+          .header('content-type', 'application/pdf')
+          .header(
+            'content-disposition',
+            `attachment; filename="damage-report-${input.referenceCode}.pdf"`,
+          )
+          .header('cache-control', 'no-store')
+          .header('x-content-type-options', 'nosniff')
+          .send(pdf);
       },
     );
 

@@ -102,10 +102,28 @@ export interface MapPoint {
   layer: string;
 }
 
+/** One tract shaded by class (CON-03); the table beside the map carries the same values. */
+export interface MapShadeArea {
+  id: string;
+  geometry: unknown;
+  /** 0 (lowest) to 4 (highest); null when unknown or hidden. */
+  band: number | null;
+  /** Drawn with a heavy dashed outline as well (the equity map's under-reported tracts). */
+  flagged: boolean;
+  /** Read aloud when picked: the tract and its value in words. */
+  label: string;
+}
+
+/** Five steps of one hue, light to dark, each readable against the base map. */
+export const SHADE_COLORS = ['#f1e7f8', '#d3b8ea', '#b08ad8', '#8a5cc2', '#5e2f9e'] as const;
+export const SHADE_UNKNOWN = '#c8c8c8';
+
 export interface ConsoleMap {
   setPoints(points: MapPoint[], visibleLayers: ReadonlySet<string>): void;
   /** The event's area (GeoJSON), outlined; null removes it. */
   setArea(geojson: unknown): void;
+  /** Tracts shaded by class; null removes the shading. */
+  setShading(areas: MapShadeArea[] | null, onPick: (label: string) => void): void;
   destroy(): void;
 }
 
@@ -133,6 +151,12 @@ export function openMap(
   });
   let markers: Marker[] = [];
   let fitted = false;
+  let shadePick: ((label: string) => void) | null = null;
+  // One listener for the shaded tracts, whichever shading is drawn.
+  map.on('click', 'shade-fill', (e) => {
+    const label = e.features?.[0]?.properties?.['label'];
+    if (typeof label === 'string') shadePick?.(label);
+  });
   return {
     setPoints(points, visible) {
       for (const m of markers) m.remove();
@@ -167,6 +191,77 @@ export function openMap(
           source: 'area',
           paint: { 'line-color': '#6b2fd6', 'line-width': 3, 'line-dasharray': [2, 1] },
         });
+      };
+      if (map.isStyleLoaded()) apply();
+      else map.once('load', apply);
+    },
+    setShading(areas, pick) {
+      shadePick = pick;
+      const apply = () => {
+        for (const id of ['shade-flag', 'shade-line', 'shade-fill'])
+          if (map.getLayer(id)) map.removeLayer(id);
+        if (map.getSource('shade')) map.removeSource('shade');
+        if (!areas) return;
+        map.addSource('shade', {
+          type: 'geojson',
+          data: {
+            type: 'FeatureCollection',
+            features: areas
+              .filter((a) => a.geometry)
+              .map((a) => ({
+                type: 'Feature',
+                geometry: a.geometry as never,
+                properties: { id: a.id, band: a.band ?? -1, flagged: a.flagged, label: a.label },
+              })),
+          },
+        });
+        // Below the event outline, so the area stays visible on top.
+        const before = map.getLayer('area-line') ? 'area-line' : undefined;
+        map.addLayer(
+          {
+            id: 'shade-fill',
+            type: 'fill',
+            source: 'shade',
+            paint: {
+              'fill-color': [
+                'match',
+                ['get', 'band'],
+                0,
+                SHADE_COLORS[0],
+                1,
+                SHADE_COLORS[1],
+                2,
+                SHADE_COLORS[2],
+                3,
+                SHADE_COLORS[3],
+                4,
+                SHADE_COLORS[4],
+                SHADE_UNKNOWN,
+              ],
+              'fill-opacity': 0.6,
+            },
+          },
+          before,
+        );
+        map.addLayer(
+          {
+            id: 'shade-line',
+            type: 'line',
+            source: 'shade',
+            paint: { 'line-color': '#3a3a3a', 'line-width': 0.8 },
+          },
+          before,
+        );
+        map.addLayer(
+          {
+            id: 'shade-flag',
+            type: 'line',
+            source: 'shade',
+            filter: ['==', ['get', 'flagged'], true],
+            paint: { 'line-color': '#111111', 'line-width': 3, 'line-dasharray': [1.5, 1] },
+          },
+          before,
+        );
       };
       if (map.isStyleLoaded()) apply();
       else map.once('load', apply);

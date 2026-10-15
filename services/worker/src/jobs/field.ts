@@ -259,6 +259,16 @@ export async function watchFieldSafety(ctx: JobContext): Promise<void> {
         .where('s.raised_at', '<', new Date(now.getTime() - escalateAfter * MINUTE))
         .execute();
       for (const s of toEscalate) {
+        // Only while still open: someone may have acknowledged it since the list
+        // was read (the update then waits for them and finds it no longer open).
+        const escalated = await trx
+          .updateTable('cg.safety_alert')
+          .set({ state: 'escalated', escalated_at: now, escalated_to_role: 'safety_officer' })
+          .where('id', '=', s.id)
+          .where('state', '=', 'open')
+          .returning('id')
+          .executeTakeFirst();
+        if (!escalated) continue;
         const sent = await notifySafety(ctx, trx, tenantId, {
           id: s.id,
           kind: s.kind,
@@ -266,11 +276,6 @@ export async function watchFieldSafety(ctx: JobContext): Promise<void> {
           raisedAt: new Date(s.raised_at),
           note: s.note,
         });
-        await trx
-          .updateTable('cg.safety_alert')
-          .set({ state: 'escalated', escalated_at: now, escalated_to_role: 'safety_officer' })
-          .where('id', '=', s.id)
-          .execute();
         await activity(
           trx,
           tenantId,
@@ -382,11 +387,22 @@ export async function watchReminders(ctx: JobContext): Promise<void> {
         )
         .execute();
       for (const r of due) {
-        await trx
+        // Only while still active: one completed or snoozed since the list was
+        // read keeps what its owner did.
+        const overdue = await trx
           .updateTable('cg.reminder')
           .set({ state: 'overdue', snoozed_until: null })
           .where('id', '=', r.id)
-          .execute();
+          .where('state', '=', 'active')
+          .where((eb) =>
+            eb.or([
+              eb.and([eb('snoozed_until', 'is', null), eb('due_at', '<=', now)]),
+              eb('snoozed_until', '<=', now),
+            ]),
+          )
+          .returning('id')
+          .executeTakeFirst();
+        if (!overdue) continue;
         await trx
           .insertInto('cg.reminder_event')
           .values({
@@ -409,6 +425,16 @@ export async function watchReminders(ctx: JobContext): Promise<void> {
         )
         .execute();
       for (const r of toEscalate) {
+        // Only while still overdue and not yet escalated (see above).
+        const escalated = await trx
+          .updateTable('cg.reminder')
+          .set({ escalated_at: now })
+          .where('id', '=', r.id)
+          .where('state', '=', 'overdue')
+          .where('escalated_at', 'is', null)
+          .returning('id')
+          .executeTakeFirst();
+        if (!escalated) continue;
         const recipients = await staffRecipients(trx, tenantId, ['reminder.acknowledge'], {
           includeAdmins: true,
         });
@@ -435,11 +461,6 @@ export async function watchReminders(ctx: JobContext): Promise<void> {
             reminderId: r.id,
           });
         }
-        await trx
-          .updateTable('cg.reminder')
-          .set({ escalated_at: now })
-          .where('id', '=', r.id)
-          .execute();
         await trx
           .insertInto('cg.reminder_event')
           .values({

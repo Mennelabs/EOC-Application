@@ -21,7 +21,8 @@ import { SimulatorSms } from '@cg/adapters';
 import { fakeProvider } from '@cg/ai';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
-import { createDb, type Database } from '@cg/db';
+import { recordAudit } from '@cg/audit';
+import { createDb, withTenant, type Database } from '@cg/db';
 import { westwindGraph } from '@cg/intake';
 import { sql, type Kysely } from 'kysely';
 import { loadSeed } from '../../../tools/seed/src/load.ts';
@@ -666,6 +667,74 @@ describe.skipIf(!appUrl || !workerUrl)(
       expect(resolved.status, resolved.body).toBe(200);
       expect(resolved.json<Alert>().state).toBe('resolved');
     });
+
+    it('DSP-07: an alert acknowledged while the timer escalates it stays acknowledged; nobody is emailed for it', async () => {
+      const raised = await call('volunteer', 'POST', '/api/v1/safety-alerts', {
+        clientUuid: randomUUID(),
+        position: { lat: 38.7907, lon: -90.9052, accuracyM: 5 },
+        note: 'Exercise: acknowledged as the timer runs',
+      });
+      expect(raised.status, raised.body).toBe(201);
+      const alert = raised.json<Alert>();
+      clock = Math.max(clock, Date.now()) + 16 * 60_000;
+      // A safety officer acknowledges: the row is theirs until they commit, and they audit last.
+      let go!: () => void;
+      const released = new Promise<void>((r) => (go = r));
+      let locked!: () => void;
+      const holding = new Promise<void>((r) => (locked = r));
+      const officer = withTenant(dbWorker, { tenantId: tenants['county']! }, async (trx) => {
+        await trx
+          .updateTable('cg.safety_alert')
+          .set({
+            state: 'acknowledged',
+            acknowledged_at: new Date(),
+            acknowledged_by: randomUUID(),
+          })
+          .where('id', '=', alert.id)
+          .execute();
+        locked();
+        await released;
+        await recordAudit(trx, {
+          tenantId: tenants['county']!,
+          actorKind: 'account',
+          action: 'safety_alert.acknowledge',
+          targetType: 'safety_alert',
+          targetId: alert.id,
+        });
+      });
+      await holding;
+      // The timer read the alert as open and now waits on the officer's row
+      // (both hold the worker pool's two connections; the check uses the other pool).
+      const timer = watchFieldSafety(worker);
+      try {
+        for (let i = 0; ; i++) {
+          const { rows } = await sql<{
+            n: number;
+          }>`select count(*)::int as n from pg_locks where not granted`.execute(dbApp);
+          if (rows[0]!.n > 0) break;
+          if (i > 1200) throw new Error('the timer never waited on the acknowledged alert');
+          await new Promise((r) => setTimeout(r, 25));
+        }
+      } finally {
+        go();
+      }
+      await Promise.all([officer, timer]);
+      const row = await dbWorker
+        .selectFrom('cg.safety_alert')
+        .select(['state', 'escalated_at'])
+        .where('id', '=', alert.id)
+        .executeTakeFirstOrThrow();
+      expect(row).toEqual({ state: 'acknowledged', escalated_at: null });
+      const notices = (
+        await dbWorker
+          .selectFrom('cg.outbox')
+          .select('payload')
+          .where('tenant_id', '=', tenants['county']!)
+          .where('topic', '=', 'message.send')
+          .execute()
+      ).filter((n) => (n.payload as { alertId?: string }).alertId === alert.id);
+      expect(notices).toEqual([]);
+    }, 60_000);
 
     it('FLD-02 / FLD-14: a registered device can be wiped remotely, which ends the shift and stops positions; check-out counts the hours (FL-17)', async () => {
       const device = await call('volunteer', 'POST', '/api/v1/devices', {

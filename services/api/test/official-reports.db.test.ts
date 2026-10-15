@@ -583,13 +583,25 @@ describe.skipIf(!appUrl || !workerUrl)('official reports (database-backed)', () 
     };
     await officialReportIssued(ctx, msg);
     await officialReportIssued(ctx, msg);
-    expect(puts).toHaveLength(1);
-    expect(puts[0]!.key).toBe(
-      `tenant/${county}/official-reports/${issued.id}/${issued.snapshot!.id}.json`,
+    // The stack's own worker may have taken the message first (CI runs these suites beside it),
+    // so the outcome is checked in the database: one locked copy, whichever worker wrote it.
+    expect(puts.length).toBeLessThanOrEqual(1);
+    const key = `tenant/${county}/official-reports/${issued.id}/${issued.snapshot!.id}.json`;
+    if (puts[0]) {
+      expect(puts[0].key).toBe(key);
+      expect(JSON.parse(puts[0].body).contentHash).toBe(issued.snapshot!.contentHash);
+    }
+    const locks = await tx((trx) =>
+      trx
+        .selectFrom('cg.official_report_lock')
+        .selectAll()
+        .where('snapshot_id', '=', issued.snapshot!.id)
+        .execute(),
     );
-    expect(JSON.parse(puts[0]!.body).contentHash).toBe(issued.snapshot!.contentHash);
+    expect(locks).toHaveLength(1);
+    expect(locks[0]).toMatchObject({ object_key: key, content_hash: issued.snapshot!.contentHash });
     // SEC-13 default: records are kept seven years from issue.
-    const years = (puts[0]!.retainUntil.getTime() - Date.now()) / (365.25 * 24 * HOUR);
+    const years = (locks[0]!.retain_until.getTime() - Date.now()) / (365.25 * 24 * HOUR);
     expect(years).toBeGreaterThan(6.9);
     expect(years).toBeLessThan(7.1);
     const now = (await call('pio', 'GET', `/official-reports/${issued.id}`)).body;

@@ -7,10 +7,13 @@
  * or download a file; the request, the result and each download are
  * audited; an issued report exports from its frozen copy, a draft not at
  * all; with no file storage the export fails visibly. Runs only with
- * API_DB_TEST_APP_URL and API_DB_TEST_WORKER_URL.
+ * API_DB_TEST_APP_URL, API_DB_TEST_WORKER_URL and MINIO_ROOT_PASSWORD (the
+ * stack's object store): the stack's own worker may take a request before
+ * the test runs the job, so the file is wherever the stack keeps it.
  */
 import { createHash, randomUUID } from 'node:crypto';
-import { GetObjectCommand } from '@aws-sdk/client-s3';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { createS3 } from '@cg/adapters';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Kysely } from 'kysely';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
@@ -28,6 +31,9 @@ import { routesWith } from '../src/routes/index.ts';
 
 const appUrl = process.env['API_DB_TEST_APP_URL'];
 const workerUrl = process.env['API_DB_TEST_WORKER_URL'];
+const objectsSecret = process.env['MINIO_ROOT_PASSWORD'];
+// The compose stack's object store and bucket (compose.yaml).
+const bucket = 'cg-local';
 
 interface Export {
   id: string;
@@ -70,7 +76,7 @@ function csvRows(text: string): string[][] {
   return out;
 }
 
-describe.skipIf(!appUrl || !workerUrl)('exports (database-backed)', () => {
+describe.skipIf(!appUrl || !workerUrl || !objectsSecret)('exports (database-backed)', () => {
   let app: App;
   let dbApp: Kysely<Database>;
   let dbWorker: Kysely<Database>;
@@ -78,7 +84,13 @@ describe.skipIf(!appUrl || !workerUrl)('exports (database-backed)', () => {
   let city = '';
   let eventId = '';
   const run = randomUUID().slice(0, 8);
-  const store = new Map<string, Buffer>();
+  const s3 = createS3({
+    endpoint: process.env['API_DB_TEST_S3_ENDPOINT'] ?? 'http://127.0.0.1:9000',
+    region: 'us-east-1',
+    accessKeyId: 'cg-local',
+    secretAccessKey: objectsSecret ?? '',
+    bucket,
+  });
   const people: Record<string, string> = {};
   const tx = <T>(fn: Parameters<typeof withTenant<T>>[2]) =>
     withTenant(dbWorker, { tenantId: county }, fn);
@@ -90,15 +102,15 @@ describe.skipIf(!appUrl || !workerUrl)('exports (database-backed)', () => {
       productName: 'Test Product',
       objects: objects
         ? {
-            async put(key: string, body: Buffer | string) {
-              store.set(key, Buffer.isBuffer(body) ? body : Buffer.from(body));
-            },
-            async get(key: string) {
-              return { body: store.get(key)!, contentType: null };
-            },
-            async putAnchor() {},
-            async putLocked() {
-              return { versionId: null, mode: 'GOVERNANCE' as const };
+            async put(key: string, body: Buffer | string, contentType: string) {
+              await s3.send(
+                new PutObjectCommand({
+                  Bucket: bucket,
+                  Key: key,
+                  Body: body,
+                  ContentType: contentType,
+                }),
+              );
             },
           }
         : null,
@@ -253,19 +265,7 @@ describe.skipIf(!appUrl || !workerUrl)('exports (database-backed)', () => {
       fieldCrypto: new FieldCrypto(new InMemoryKeyService(), new MemoryKeyStore()),
       subjects: loader,
       routes: routesWith({
-        exports: {
-          objects: {
-            bucket: 'test',
-            client: {
-              async send(cmd: unknown) {
-                const key = (cmd as GetObjectCommand).input.Key!;
-                const body = store.get(key);
-                if (!body) throw new Error('NoSuchKey');
-                return { Body: { transformToByteArray: async () => new Uint8Array(body) } };
-              },
-            } as never,
-          },
-        },
+        exports: { objects: { client: s3, bucket } },
       }),
     });
   });
@@ -510,12 +510,47 @@ describe.skipIf(!appUrl || !workerUrl)('exports (database-backed)', () => {
   });
 
   it('fails visibly when there is no file storage', async () => {
+    // A request with no outbox message, so only this job sees it.
+    const id = (
+      await tx((trx) =>
+        trx
+          .insertInto('cg.export_file')
+          .values({
+            tenant_id: county,
+            event_id: eventId,
+            client_uuid: randomUUID(),
+            kind: 'ida_package',
+            format: 'zip',
+            requested_by: people['director']!,
+          })
+          .returning('id')
+          .executeTakeFirstOrThrow(),
+      )
+    ).id;
+    await build(id, false);
+    const done = (await call('director', 'GET', `/exports/${id}`)).body;
+    expect(done).toMatchObject({ status: 'failed', error: 'No file storage is configured.' });
+    expect((await call('director', 'GET', `/exports/${id}/file`)).status).toBe(409);
+  });
+
+  it('records the first finished attempt only (at-least-once delivery)', async () => {
     const asked = await call('director', 'POST', `/events/${eventId}/exports`, {
       clientUuid: randomUUID(),
     });
-    await build(asked.body.id, false);
+    await Promise.all([build(asked.body.id), build(asked.body.id)]);
+    await build(asked.body.id);
     const done = (await call('director', 'GET', `/exports/${asked.body.id}`)).body;
-    expect(done).toMatchObject({ status: 'failed', error: 'No file storage is configured.' });
-    expect((await call('director', 'GET', `/exports/${asked.body.id}/file`)).status).toBe(409);
+    expect(done.status).toBe('ready');
+    const file = await call('director', 'GET', `/exports/${asked.body.id}/file`);
+    expect(createHash('sha256').update(file.raw).digest('hex')).toBe(done.sha256);
+    const ready = await tx((trx) =>
+      trx
+        .selectFrom('cg.audit_event')
+        .select('action')
+        .where('target_id', '=', asked.body.id)
+        .where('action', '=', 'export.ready')
+        .execute(),
+    );
+    expect(ready).toHaveLength(1);
   });
 });

@@ -6,9 +6,11 @@
  * issued official report as PDF or CSV from its frozen snapshot. The file
  * goes to object storage; the row records its size, SHA-256, the mapping
  * versions and the totals it carries. A failure is recorded and audited,
- * never left looking like a file.
+ * never left looking like a file. Delivery is at least once and more than
+ * one worker may run: each attempt writes under its own key and only the
+ * first to finish records its file (a later one leaves the row as it is).
  */
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { renderPdf } from '@cg/pdf';
 import {
   FORM_KEYS,
@@ -51,11 +53,13 @@ export const exportRequested: TopicHandler = async (ctx, msg) => {
   const productName = ctx.productName ?? 'the platform';
   const fail = async (reason: string) =>
     asSystem(ctx.db, tenantId, async (trx) => {
-      await trx
+      const marked = await trx
         .updateTable('cg.export_file')
         .set({ status: 'failed', error: reason })
         .where('id', '=', row.id)
-        .execute();
+        .where('status', '=', 'queued')
+        .executeTakeFirst();
+      if (marked.numUpdatedRows === 0n) return;
       await systemAudit(trx, tenantId, 'export', {
         action: 'export.failed',
         targetType: 'export_file',
@@ -133,11 +137,11 @@ export const exportRequested: TopicHandler = async (ctx, msg) => {
             };
       figures = { contentHash: snap.content_hash };
     }
-    const key = `tenant/${tenantId}/exports/${row.id}/${file.name}`;
+    const key = `tenant/${tenantId}/exports/${row.id}/${randomUUID()}/${file.name}`;
     await ctx.objects.put(key, file.body, file.contentType);
     const sha256 = createHash('sha256').update(file.body).digest('hex');
     await asSystem(ctx.db, tenantId, async (trx) => {
-      await trx
+      const recorded = await trx
         .updateTable('cg.export_file')
         .set({
           status: 'ready',
@@ -150,7 +154,9 @@ export const exportRequested: TopicHandler = async (ctx, msg) => {
           ready_at: new Date(),
         })
         .where('id', '=', row.id)
-        .execute();
+        .where('status', '=', 'queued')
+        .executeTakeFirst();
+      if (recorded.numUpdatedRows === 0n) return;
       await systemAudit(trx, tenantId, 'export', {
         action: 'export.ready',
         targetType: 'export_file',

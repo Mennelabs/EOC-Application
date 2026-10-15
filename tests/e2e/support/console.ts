@@ -100,9 +100,10 @@ export async function invitationLink(email: string): Promise<string> {
     const search = (await (
       await fetch(`${MAIL}/api/v1/search?query=${encodeURIComponent(`to:${email}`)}`)
     ).json()) as { messages: { ID: string }[] };
-    const id = search.messages[0]?.ID;
-    if (id) {
-      const msg = (await (await fetch(`${MAIL}/api/v1/message/${id}`)).json()) as {
+    // Not only the newest: an invited account already receives staff notices (a publication
+    // notice can land before the invitation is read).
+    for (const { ID } of search.messages) {
+      const msg = (await (await fetch(`${MAIL}/api/v1/message/${ID}`)).json()) as {
         Text: string;
         HTML: string;
       };

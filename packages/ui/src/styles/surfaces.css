@@ -403,6 +403,7 @@ button.cg-stat {
   font: inherit;
   color: inherit;
   cursor: pointer;
+  justify-content: start;
   justify-items: start;
   transition:
     border-color var(--cg-motion-fast) var(--cg-ease),

@@ -60,6 +60,12 @@ export interface CommandSpec<A = Record<string, unknown>> {
   target?: TargetKind;
   /** Needs the open event (drafts that are about one). */
   needsEvent?: boolean;
+  /**
+   * The `person` argument names someone on the roster. The server resolves it
+   * among the people the caller may see, asks which one when several match
+   * (CMD-08), and puts the chosen id in `personId` before the plan is shown.
+   */
+  person?: boolean;
   confirmation: Confirmation;
   reversal: Reversal;
   sideEffects: string;
@@ -694,6 +700,166 @@ export const CATALOG = [
       return {
         state: 'saved',
         summary: `Mission ${str(m['reference'])} is ${str(m['state']).replace('_', ' ')}.`,
+        records: [
+          {
+            kind: 'mission',
+            id: str(m['id']),
+            label: str(m['reference']),
+            version: ver(m['version']),
+          },
+        ],
+      };
+    },
+  }),
+  define({
+    name: 'mission.priority',
+    version: 1,
+    phase: 3,
+    action: 'mission.priority',
+    kind: 'change',
+    title: "Change a mission's priority",
+    usage: '/mission <reference> priority <low|normal|high|urgent>',
+    args: z.object({ priority: z.enum(['low', 'normal', 'high', 'urgent']) }),
+    target: 'mission',
+    confirmation: 'full_review',
+    reversal: 'compensating',
+    sideEffects:
+      'Changes the priority on the dispatch board, with your reason on the timeline and in the significant-events log.',
+    request: (a, t) => ({
+      method: 'POST',
+      path: `/missions/${t!.id}/priority`,
+      body: { priority: a.priority },
+      version: t!.version,
+    }),
+    describe: (a, t) => `Set mission ${t!.label} to ${a.priority} priority.`,
+    verify: (r) => {
+      const m = (r ?? {}) as Row;
+      return {
+        state: 'saved',
+        summary: `Mission ${str(m['reference'])} is now ${str(m['priority'])} priority.`,
+        records: [
+          {
+            kind: 'mission',
+            id: str(m['id']),
+            label: str(m['reference']),
+            version: ver(m['version']),
+          },
+        ],
+      };
+    },
+  }),
+  define({
+    name: 'mission.assign',
+    version: 1,
+    phase: 3,
+    action: 'assignment.create',
+    kind: 'change',
+    title: 'Assign a person to a mission',
+    usage: '/mission <reference> assign <person>',
+    args: z.object({ person: z.string().min(1).max(120), personId: z.uuid().optional() }),
+    target: 'mission',
+    person: true,
+    confirmation: 'one_tap',
+    reversal: 'compensating',
+    freeText: ['person'],
+    sideEffects:
+      'Assigns the person with the same checks as the dispatch board (CMD-14): a conflict stops it, and only an authorized override on the board can accept one.',
+    request: (a, t) => ({
+      method: 'POST',
+      path: `/missions/${t!.id}/assignments`,
+      body: { resources: [{ kind: 'person', id: a.personId }] },
+    }),
+    describe: (a, t) => `Assign ${a.person} to mission ${t!.label}.`,
+    verify: (r) => {
+      const list = rows(r);
+      return {
+        state: 'saved',
+        summary: list.length
+          ? `Assigned; the assignment is ${str(list[0]!['state']).replace('_', ' ')}.`
+          : 'Nothing was assigned.',
+        records: list.map((x) => ({
+          kind: 'assignment',
+          id: str(x['id']),
+          version: ver(x['version']),
+        })),
+      };
+    },
+  }),
+  define({
+    name: 'mission.close',
+    version: 1,
+    phase: 3,
+    action: 'mission.close',
+    kind: 'change',
+    title: 'Close a mission',
+    usage:
+      '/mission <reference> close [disposition:<completed|referred|no_action_needed|unable_to_locate|duplicate|transferred|other>]',
+    args: z.object({
+      disposition: z
+        .enum([
+          'completed',
+          'referred',
+          'no_action_needed',
+          'unable_to_locate',
+          'duplicate',
+          'transferred',
+          'other',
+        ])
+        .default('completed'),
+    }),
+    target: 'mission',
+    confirmation: 'full_review',
+    reversal: 'compensating',
+    sideEffects:
+      'Closes the mission with your reason and releases everyone still assigned; reopening it needs its own reason.',
+    request: (a, t) => ({
+      method: 'POST',
+      path: `/missions/${t!.id}/close`,
+      body: { disposition: a.disposition },
+      version: t!.version,
+    }),
+    describe: (a, t) => `Close mission ${t!.label} as ${a.disposition.replace(/_/g, ' ')}.`,
+    verify: (r) => {
+      const m = (r ?? {}) as Row;
+      return {
+        state: 'saved',
+        summary: `Mission ${str(m['reference'])} is ${str(m['state'])}.`,
+        records: [
+          {
+            kind: 'mission',
+            id: str(m['id']),
+            label: str(m['reference']),
+            version: ver(m['version']),
+          },
+        ],
+      };
+    },
+  }),
+  define({
+    name: 'mission.reopen',
+    version: 1,
+    phase: 3,
+    action: 'mission.reopen',
+    kind: 'change',
+    title: 'Reopen a mission',
+    usage: '/mission <reference> reopen',
+    args: z.object({}),
+    target: 'mission',
+    confirmation: 'full_review',
+    reversal: 'compensating',
+    sideEffects: 'Reopens a closed or canceled mission with your reason on its timeline.',
+    request: (_a, t) => ({
+      method: 'POST',
+      path: `/missions/${t!.id}/reopen`,
+      body: {},
+      version: t!.version,
+    }),
+    describe: (_a, t) => `Reopen mission ${t!.label}.`,
+    verify: (r) => {
+      const m = (r ?? {}) as Row;
+      return {
+        state: 'saved',
+        summary: `Mission ${str(m['reference'])} is ${str(m['state'])} again.`,
         records: [
           {
             kind: 'mission',

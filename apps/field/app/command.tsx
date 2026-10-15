@@ -7,7 +7,7 @@
  * never kept on the phone or sent later by itself, and no history is kept on
  * a phone that may be shared.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { View } from 'react-native';
 import { ApiError, OfflineError } from '../src/api';
 import { useField } from '../src/field';
@@ -46,15 +46,19 @@ export default function Command() {
     }
   };
 
-  const prepare = (extra: Record<string, string> = {}) =>
-    run(() =>
+  // Answers to "which one?" for this line add up: a mission, then a person.
+  const chosen = useRef<Record<string, string>>({});
+  const prepare = (extra: Record<string, string> | null = null) => {
+    chosen.current = extra ? { ...chosen.current, ...extra } : {};
+    return run(() =>
       f.send<Execution>('POST', '/commands', {
         executionId: globalThis.crypto.randomUUID(),
         input: text.trim(),
         remember: false,
-        ...extra,
+        ...chosen.current,
       }),
     );
+  };
   const act = (path: string, body: Record<string, unknown> = {}) =>
     run(() => f.send<Execution>('POST', path, body));
 
@@ -110,7 +114,13 @@ export default function Command() {
                   label={o.label}
                   disabled={busy}
                   onPress={() =>
-                    void prepare(o.kind === 'event' ? { eventId: o.id } : { targetId: o.id })
+                    void prepare(
+                      o.kind === 'event'
+                        ? { eventId: o.id }
+                        : o.kind === 'personnel'
+                          ? { personId: o.id }
+                          : { targetId: o.id },
+                    )
                   }
                 />
               ))}

@@ -168,6 +168,17 @@ export const COMMAND_EVAL_CATALOG: { usage: string; title: string }[] = [
     usage: '/mission <reference> status <open|en_route|on_scene|cleared>',
     title: "Change a mission's status",
   },
+  {
+    usage: '/mission <reference> priority <low|normal|high|urgent>',
+    title: "Change a mission's priority",
+  },
+  { usage: '/mission <reference> assign <person>', title: 'Assign a person to a mission' },
+  {
+    usage:
+      '/mission <reference> close [disposition:<completed|referred|no_action_needed|unable_to_locate|duplicate|transferred|other>]',
+    title: 'Close a mission',
+  },
+  { usage: '/mission <reference> reopen', title: 'Reopen a mission' },
 ];
 
 export const commandEvaluationCases: CommandEvalCase[] = [

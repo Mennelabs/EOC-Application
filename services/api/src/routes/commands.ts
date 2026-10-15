@@ -891,6 +891,8 @@ export const commandRoutesWith =
             eventId: z.uuid().optional(),
             /** The record chosen from a clarification (CMD-08). */
             targetId: z.uuid().optional(),
+            /** The person chosen from a clarification, for a command that names one. */
+            personId: z.uuid().optional(),
             /** CMD-36: keep this exchange in the person's own history (never on a shared device). */
             remember: z.boolean().default(false),
           }),
@@ -1002,6 +1004,40 @@ export const commandRoutesWith =
           target = r.target;
         }
 
+        // CMD-08, CMD-14: the person a command names is found among the people this person may
+        // see, by name; more than one asks which. Nothing about them is inferred.
+        const planArgs = args.data as Record<string, unknown>;
+        if (spec.person) {
+          const named = str(planArgs['person']).trim();
+          const res = await op(request, {
+            method: 'GET',
+            path: `/personnel?limit=10&q=${encodeURIComponent(named)}`,
+          });
+          let found = res.status === 200 && Array.isArray(res.body) ? (res.body as ListRow[]) : [];
+          const exact = found.filter((p) => str(p['name']).toLowerCase() === named.toLowerCase());
+          if (exact.length) found = exact;
+          if (b.personId) found = found.filter((p) => p['id'] === b.personId);
+          if (found.length === 0)
+            return {
+              ...head,
+              status: 'not_found',
+              message: `Nobody on the roster you can see matches "${named}".`,
+            };
+          if (found.length > 1)
+            return {
+              ...head,
+              status: 'clarify',
+              message: 'More than one person matches. Which one?',
+              options: found.map((p) => ({
+                kind: 'personnel',
+                id: str(p['id']),
+                label: `${str(p['name'])}${p['department'] ? `, ${str(p['department'])}` : ''} (${str(p['availability'])})`,
+              })),
+            };
+          planArgs['personId'] = str(found[0]!['id']);
+          planArgs['person'] = str(found[0]!['name']);
+        }
+
         let eventId: string | null = null;
         if (spec.needsEvent) {
           const ev = await op(request, { method: 'GET', path: '/events?limit=100' });
@@ -1027,7 +1063,7 @@ export const commandRoutesWith =
         const plan: Plan = {
           command: spec.name,
           version: spec.version,
-          args: args.data,
+          args: planArgs,
           target,
           eventId,
           ...(natural

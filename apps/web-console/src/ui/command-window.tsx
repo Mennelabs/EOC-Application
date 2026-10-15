@@ -162,6 +162,15 @@ const reversalText = (c: CommandMeta) =>
       ? 'This is not undone here: a mistake is corrected by a new entry, and both stay in the history.'
       : '';
 
+/** What a "which one?" answer sets: the event, the person or the record. */
+type Choice = { targetId?: string; eventId?: string; personId?: string };
+const choiceOf = (o: { kind: string; id: string }): Choice =>
+  o.kind === 'event'
+    ? { eventId: o.id }
+    : o.kind === 'personnel'
+      ? { personId: o.id }
+      : { targetId: o.id };
+
 export function CommandWindow({ navigate }: { navigate: (to: string) => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -239,9 +248,12 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
     setAnnounce(msg);
   };
 
-  const prepare = async (extra: { targetId?: string; eventId?: string } = {}) => {
+  // Choices made while answering "which one?" for this line: a mission, then a person, add up.
+  const chosen = useRef<Choice>({});
+  const prepare = async (extra: Choice | null = null) => {
     const line = text.trim();
     if (!line) return;
+    chosen.current = extra ? { ...chosen.current, ...extra } : {};
     setBusy(true);
     setProblem(null);
     setAnnounce('Working…');
@@ -251,7 +263,7 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
           executionId: crypto.randomUUID(),
           input: line,
           remember: !prefs.shared,
-          ...extra,
+          ...chosen.current,
         },
       });
       settle(e);
@@ -468,7 +480,7 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
                   e.preventDefault();
                   const o = current.options.find((x) => x.id === choice);
                   if (!o) return;
-                  void prepare(o.kind === 'event' ? { eventId: o.id } : { targetId: o.id });
+                  void prepare(choiceOf(o));
                 }}
               >
                 <fieldset>

@@ -37,7 +37,7 @@ interface Execution {
     target: { id: string; version: number } | null;
   } | null;
   planHash: string | null;
-  options: { id: string; label: string }[];
+  options: { kind: string; id: string; label: string }[];
   result: { state: string; summary: string | null; records: { kind: string; id: string }[] } | null;
   error: { status: number; code: string } | null;
   undoUntil: string | null;
@@ -506,6 +506,81 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
     const ok = await confirm('field', moved);
     expect(ok.body['status'], JSON.stringify(ok.body)).toBe('succeeded');
     expect(ok.body['message']).toContain('on scene');
+  });
+
+  it('CMD-13, AC-C01, CMD-08: with phase 3 on, priority, assignment of a named person, closure and reopening run through the dispatch rules; two matching people ask which', async () => {
+    const reason = { 'x-confirm': 'true', 'x-reason': 'Exercise: crew reports water rising' };
+    // Priority is consequential: the plan waits for the full review with a reason.
+    const urgent = await command('field', `/mission ${missionRef} priority urgent`);
+    expect(urgent.status, urgent.message).toBe('awaiting_confirmation');
+    expect((await confirm('field', urgent)).status).toBe(428);
+    const raised = await confirm('field', urgent, reason);
+    expect(raised.body['status'], JSON.stringify(raised.body)).toBe('succeeded');
+    expect(raised.body['message']).toContain('urgent priority');
+
+    const [cara, caraLee] = await withTenant(dbWorker, { tenantId: county }, async (trx) => {
+      const ids: string[] = [];
+      for (const name of [`Exercise Cara Diaz ${run}`, `Exercise Cara Diaz-Lee ${run}`])
+        ids.push(
+          (
+            await trx
+              .insertInto('cg.personnel')
+              .values({
+                tenant_id: county,
+                name,
+                skills: ['damage assessment'],
+                availability: 'available',
+                duty_status: 'on_duty',
+              })
+              .returning('id')
+              .executeTakeFirstOrThrow()
+          ).id,
+        );
+      return ids;
+    });
+    // Two people match "Cara Diaz": the window asks which, among those this person may see.
+    const which = await command('field', `/mission ${missionRef} assign Cara Diaz`);
+    expect(which.status).toBe('clarify');
+    expect(which.options.map((o) => [o.kind, o.id]).sort()).toEqual(
+      [
+        ['personnel', cara],
+        ['personnel', caraLee],
+      ].sort(),
+    );
+    const picked = await command('field', `/mission ${missionRef} assign Cara Diaz`, {
+      personId: caraLee,
+    });
+    expect(picked.status, picked.message).toBe('awaiting_confirmation');
+    expect(picked.plan?.description).toContain(`Exercise Cara Diaz-Lee ${run}`);
+    const assigned = await confirm('field', picked);
+    expect(assigned.body['status'], JSON.stringify(assigned.body)).toBe('succeeded');
+    const rows = await dbWorker
+      .selectFrom('cg.assignment')
+      .select(['personnel_id', 'mission_id'])
+      .where('mission_id', '=', missionId)
+      .execute();
+    expect(rows.map((r) => r.personnel_id)).toContain(caraLee);
+    // An exact full name needs no question.
+    const exact = await command('field', `/mission ${missionRef} assign Exercise Cara Diaz ${run}`);
+    expect(exact.status, exact.message).toBe('awaiting_confirmation');
+    expect((await command('field', `/mission ${missionRef} assign Nobody Here`)).status).toBe(
+      'not_found',
+    );
+
+    const closing = await command('field', `/mission ${missionRef} close disposition:completed`);
+    expect(closing.status, closing.message).toBe('awaiting_confirmation');
+    const closed = await confirm('field', closing, reason);
+    expect(closed.body['status'], JSON.stringify(closed.body)).toBe('succeeded');
+    expect(closed.body['message']).toContain('closed');
+    const reopening = await command('field', `/mission ${missionRef} reabrir`);
+    const reopened = await confirm('field', reopening, {
+      ...reason,
+      'x-reason': 'Exercise: second call from the same address',
+    });
+    expect(reopened.body['status'], JSON.stringify(reopened.body)).toBe('succeeded');
+    expect(reopened.body['message']).toContain('again');
+    // A role without the actions is refused before anything is planned.
+    expect((await command('mc', `/mission ${missionRef} priority low`)).status).toBe('denied');
   });
 
   it('CMD-03, AIG-01, AIG-09: plain words are read into shorthand only with the feature on; the plan shows the reading; injection is refused; cancel and confirm are recorded', async () => {

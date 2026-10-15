@@ -146,6 +146,29 @@ describe('shorthand', () => {
     });
   });
 
+  it('CMD-13, AC-C01: priority, assignment, closure and reopening of a mission', () => {
+    expect(parse('/mission M-00012 priority urgent')).toEqual({
+      ok: true,
+      command: 'mission.priority',
+      args: { priority: 'urgent' },
+      ref: 'M-00012',
+      refKind: 'mission',
+    });
+    expect(parse('/misión M-00012 prioridad alta')).toMatchObject({ args: { priority: 'high' } });
+    expect(parse('/mission M-00012 priority whenever')).toMatchObject({ error: 'usage' });
+    expect(parse('/mission M-00012 assign Ana Ruiz')).toMatchObject({
+      command: 'mission.assign',
+      args: { person: 'Ana Ruiz' },
+    });
+    expect(parse('/mision M-00012 asignar')).toMatchObject({ error: 'usage' });
+    expect(parse('/mission M-00012 close disposition:referred')).toMatchObject({
+      command: 'mission.close',
+      args: { disposition: 'referred' },
+    });
+    expect(parse('/mission M-00012 cerrar')).toMatchObject({ command: 'mission.close', args: {} });
+    expect(parse('/mission M-00012 reabrir')).toMatchObject({ command: 'mission.reopen' });
+  });
+
   it('free text after a sub-verb keeps its colons; only known keys are pairs', () => {
     expect(parse('/mission M-1 note Crew says: road closed at Elm')).toMatchObject({
       command: 'mission.note',
@@ -155,7 +178,7 @@ describe('shorthand', () => {
 
   it('CMD-12: unknown verbs and actions are unsupported, never guessed', () => {
     expect(parse('/delete everything')).toMatchObject({ ok: false, error: 'unsupported' });
-    expect(parse('/mission M-1 close')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/mission M-1 delete')).toMatchObject({ ok: false, error: 'usage' });
     expect(parse('claim the food need')).toMatchObject({ ok: false, error: 'unsupported' });
   });
 

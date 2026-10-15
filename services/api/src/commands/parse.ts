@@ -87,6 +87,24 @@ const SUBVERBS: Record<string, string> = {
   complete: 'done',
   hecho: 'done',
   completar: 'done',
+  priority: 'priority',
+  prioridad: 'priority',
+  assign: 'assign',
+  asignar: 'assign',
+  close: 'close',
+  cerrar: 'close',
+  reopen: 'reopen',
+  reabrir: 'reopen',
+};
+
+const PRIORITIES: Record<string, string> = {
+  low: 'low',
+  baja: 'low',
+  normal: 'normal',
+  high: 'high',
+  alta: 'high',
+  urgent: 'urgent',
+  urgente: 'urgent',
 };
 
 const MISSION_STATES: Record<string, string> = {
@@ -130,6 +148,7 @@ const KEYS = new Set([
   'skill',
   'department',
   'agency',
+  'disposition',
 ]);
 
 /** CMD-14: availability as the roster records it. */
@@ -269,9 +288,28 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
         const role = pairs['role'];
         return ok('mission.note', { text: body, ...(role ? { role } : {}) }, ref, 'mission');
       }
+      if (s === 'priority') {
+        const p = PRIORITIES[norm(rest[0] ?? '')];
+        if (!p)
+          return usage(
+            'Which priority? low, normal, high or urgent.',
+            '/mission <number> priority <low|normal|high|urgent>',
+          );
+        return ok('mission.priority', { priority: p }, ref, 'mission');
+      }
+      if (s === 'assign') {
+        const person = rest.join(' ').trim();
+        if (!person) return usage('Assign whom?', '/mission <number> assign <person>');
+        return ok('mission.assign', { person }, ref, 'mission');
+      }
+      if (s === 'close') {
+        const d = pairs['disposition'] ? norm(pairs['disposition']) : undefined;
+        return ok('mission.close', d ? { disposition: d } : {}, ref, 'mission');
+      }
+      if (s === 'reopen') return ok('mission.reopen', {}, ref, 'mission');
       return usage(
         `"${sub}" is not something the command window can do to a mission yet.`,
-        '/mission <number> [status <state> | note <text>]',
+        '/mission <number> [status <state> | note <text> | priority <level> | assign <person> | close | reopen]',
       );
     }
 

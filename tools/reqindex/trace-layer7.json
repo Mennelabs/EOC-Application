@@ -74,21 +74,21 @@
   ],
   "CMD-13": [
     "partial",
-    "catalog.ts: missions.find and mission.show (phase 1), mission.note (phase 2, narrative entry), mission.status (phase 3: open, en route, on scene, cleared through /missions/:id/transitions with If-Match); locks and the transition graph are the console route's own (RULE-05, AC-02C)",
-    "services/api/test/commands.db.test.ts (lookups; CMD-27 mission note; Section 30.2 phase 3 and AC-02C: a locked mission refuses the command as it refuses the screen; Spanish /mision estado en_sitio)",
-    "Mission drafts, field updates, priority, assigning or releasing personnel, and closure or reopening are not catalogued (Section 30.2 phases 3–4); they stay on the dispatch screens."
+    "catalog.ts: missions.find and mission.show (phase 1), mission.note (phase 2, narrative entry), mission.status (phase 3: open, en route, on scene, cleared through /missions/:id/transitions with If-Match); locks and the transition graph are the console route's own (RULE-05, AC-02C); mission.priority (consequential, full review with a reason), mission.assign (the named person resolved among those the caller may see, the dispatch board's conflict checks), mission.close (disposition, releases everyone), mission.reopen, all phase 3",
+    "services/api/test/commands.db.test.ts (lookups; CMD-27 mission note; Section 30.2 phase 3 and AC-02C: a locked mission refuses the command as it refuses the screen; Spanish /mision estado en_sitio); services/api/test/commands.db.test.ts (CMD-13, AC-C01, CMD-08: priority, assignment of a named person, closure and reopening)",
+    "Mission drafts and field updates of other fields stay on the dispatch screens; release of a person is on the board."
   ],
   "CMD-14": [
-    "deferred",
-    "",
-    "",
-    "No personnel command in the catalog: finding people by skill or availability, profile updates and assignment requests stay on the roster and dispatch screens. Adding one is a catalog entry over the existing routes (ADR-0044); not scheduled in layer 7."
+    "partial",
+    "catalog.ts people.find (phase 1, personnel.read): GET /personnel gains q, skill, department, availability and onDuty filters; the answer lists only recorded skills (\"no skills recorded\" otherwise), never contact details; mission.assign requests an assignment through the dispatch board's own rules (conflicts stop it)",
+    "services/api/test/commands.db.test.ts (CMD-14, CMD-15, CMD-17: people by recorded skill and availability …; CMD-13, AC-C01: assignment), services/api/test/commands.test.ts",
+    "Updating profile and status fields from the window is not catalogued; assignment conflicts are shown by the board, and an override stays there."
   ],
   "CMD-15": [
-    "deferred",
-    "",
-    "",
-    "No damage-assessment command in the catalog (drafts, duplicate suggestions, evidence, review requests); these stay on the review and field screens. Not scheduled in layer 7."
+    "partial",
+    "catalog.ts reports.find (phase 1, report.read): the review queue by state, flags, danger and reference, the verification level kept apart from the review state and possible duplicates named",
+    "services/api/test/commands.db.test.ts (CMD-14, CMD-15, CMD-17 …), services/api/test/commands.test.ts",
+    "Creating or updating assessment drafts, recording evidence and requesting review from the window are not catalogued; they stay on the review and field screens."
   ],
   "CMD-16": [
     "partial",
@@ -97,10 +97,10 @@
     "Exports and changing a reminder's text are not catalogued; they stay on their screens."
   ],
   "CMD-17": [
-    "deferred",
-    "",
-    "",
-    "No staff resource, contact or badge command in the catalog (Brother badge printing, decided 2026-10-15, runs from its screens). Residents find published resources through the Find help ask box (CMD-19). Not scheduled in layer 7."
+    "partial",
+    "catalog.ts resources.find (published resources) and contacts.find (active partner contacts by type and agency; restricted reads audited), phase 1; GET /contacts gains an agency filter",
+    "services/api/test/commands.db.test.ts (CMD-14, CMD-15, CMD-17 …), services/api/test/commands.test.ts",
+    "Drafting or updating resources and badge requests are not catalogued; badge printing (Brother, decided 2026-10-15) is a later task."
   ],
   "CMD-18": [
     "deferred",
@@ -229,16 +229,16 @@
     "The targets are not enforced or measured: the OpenAI call times out at 20 s (AI_TIMEOUT_MS) and executions have no timeout; clarifications are not recorded; no completion, clarification or duplicate metric yet."
   ],
   "AC-C01": [
-    "partial",
-    "The command window is in the header of every console workspace (App.tsx, command-window.tsx) and acts on missions by reference from any screen (catalog.ts mission.show, mission.note, mission.status)",
-    "tests/e2e/console-l7.spec.ts (the window over the current screen), services/api/test/commands.db.test.ts (mission status from the window)",
-    "No assignment command is catalogued (Section 30.2 phase 3), so a dispatcher cannot yet request a mission assignment from the window; assignments stay on the dispatch board."
+    "pass",
+    "The command window is in the header of every console workspace (App.tsx, command-window.tsx) and acts on missions by reference from any screen (catalog.ts mission.show, mission.note, mission.status); /mission <reference> assign <person> (mission.assign, phase 3) from any screen, the person resolved by name among those the dispatcher may see",
+    "tests/e2e/console-l7.spec.ts (the window over the current screen), services/api/test/commands.db.test.ts (mission status from the window); services/api/test/commands.db.test.ts (CMD-13, AC-C01, CMD-08: assignment of a named person)",
+    "Phase 3 is on per county (Section 30.2)."
   ],
   "AC-C02": [
-    "partial",
-    "routes/commands.ts resolveTarget answers \"clarify\" with the authorized matches and plans nothing until one is chosen",
-    "services/api/test/commands.db.test.ts (CMD-08, AC-C02: two matching reminders ask which; nothing runs until one is chosen)",
-    "Shown with two reminders of similar title; there is no person-assignment command, so \"Assign Alex\" itself cannot be asked yet."
+    "pass",
+    "routes/commands.ts resolveTarget answers \"clarify\" with the authorized matches and plans nothing until one is chosen; the person a command names is resolved the same way: two people matching \"Cara Diaz\" ask which",
+    "services/api/test/commands.db.test.ts (CMD-08, AC-C02: two matching reminders ask which; nothing runs until one is chosen); services/api/test/commands.db.test.ts (CMD-13, AC-C01, CMD-08: two matching people ask which)",
+    ""
   ],
   "AC-C03": [
     "pass",
@@ -320,9 +320,9 @@
   ],
   "BRD:FR-C04": [
     "partial",
-    "catalog.ts: missions (find, show, note, status), needs (find, claim, release), reminders (list, create, snooze, complete), situation-report draft, each through the console's validated route; public coverage through /api/public/help/:tenant/ask",
+    "catalog.ts: missions (find, show, note, status), needs (find, claim, release), reminders (list, create, snooze, complete), situation-report draft, each through the console's validated route; public coverage through /api/public/help/:tenant/ask; people, reports, resources and contacts lookups; mission priority, assignment, closure and reopening",
     "services/api/test/commands.db.test.ts, services/api/test/help.db.test.ts (CMD-19)",
-    "Personnel, assessment, resource/contact/badge and administration commands are not catalogued (CMD-14, CMD-15, CMD-17, CMD-18)."
+    "Assessment drafts, resource drafts, badges and administration commands are not catalogued (CMD-15, CMD-17, CMD-18)."
   ],
   "BRD:FR-C05": [
     "pass",

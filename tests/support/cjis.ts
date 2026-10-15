@@ -167,6 +167,29 @@ async function refreshGrant(refresh: string): Promise<GrantResult | null> {
 
 type Step = { token: Held } | { wait: true } | { failed: GrantResult };
 
+let realmKeys: Promise<Set<string>> | null = null;
+/** The key ids the enclave realm signs with now (once per process). */
+function currentKeyIds(): Promise<Set<string>> {
+  realmKeys ??= fetch(`${CJIS_URL}/auth/realms/cjis/protocol/openid-connect/certs`)
+    .then((r) => r.json() as Promise<{ keys?: { kid?: string }[] }>)
+    .then((j) => new Set((j.keys ?? []).flatMap((k) => (k.kid ? [k.kid] : []))))
+    .catch(() => new Set<string>());
+  return realmKeys;
+}
+
+/**
+ * A token left by a run against a stack since recreated (`docker compose
+ * down -v`) is unexpired but signed by a key the new realm never had; the
+ * enclave refuses it. Unknown when the key set could not be read.
+ */
+function signedByCurrentKey(token: string, keys: Set<string>): boolean {
+  if (keys.size === 0) return true;
+  const header = JSON.parse(
+    Buffer.from(token.split('.')[0] ?? '', 'base64url').toString('utf8'),
+  ) as { kid?: unknown };
+  return typeof header.kid === 'string' && keys.has(header.kid);
+}
+
 /**
  * Under the lock: a token another process left that is still fresh, else a
  * refresh of it, else a grant with a code this account has not used yet.
@@ -174,7 +197,13 @@ type Step = { token: Held } | { wait: true } | { failed: GrantResult };
 function nextStep(username: string): Promise<Step> {
   return withOtpLock(async () => {
     const state = readState();
-    const shared = state.tokens[username];
+    const keys = await currentKeyIds();
+    let shared = state.tokens[username];
+    if (shared && !signedByCurrentKey(shared.token, keys)) {
+      delete state.tokens[username];
+      writeState(state);
+      shared = undefined;
+    }
     if (shared && shared.exp > Date.now() + 30_000) return { token: shared };
     if (shared) {
       const refreshed = await refreshGrant(shared.refresh);

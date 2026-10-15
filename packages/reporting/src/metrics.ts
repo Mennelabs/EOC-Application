@@ -139,6 +139,15 @@ export const METRICS = {
     params: {},
     requirements: ['MET-04', 'BRD:FR-14.07'],
   }),
+  'missions.overdue': d({
+    key: 'missions.overdue',
+    group: 'missions',
+    title: 'Overdue updates',
+    unit: 'alerts',
+    text: 'Safety alerts raised in the period because a team missed its check-in or did not acknowledge an assignment in time, with the median minutes to acknowledge those that were.',
+    params: {},
+    requirements: ['MET-04', 'DSP-07'],
+  }),
   'personnel.checked_in': d({
     key: 'personnel.checked_in',
     group: 'personnel',
@@ -580,6 +589,41 @@ export async function computeMetrics(
       'missions.time_to_close',
       median(counted.filter((r) => r.hours !== null).map((r) => Number(r.hours))),
       [{ key: 'closed', label: 'Missions closed', value: counted.length }],
+    ),
+  );
+
+  // MET-04: overdue updates (DSP-07); department filters do not apply to safety alerts.
+  const overdue = await sql<{ kind: string; minutes: number | null }>`
+    select a.kind, extract(epoch from (a.acknowledged_at - a.raised_at)) / 60 as minutes
+    from cg.safety_alert a
+    where a.event_id = ${eventId}::uuid
+      and a.kind in ('missed_check_in', 'unacknowledged_assignment')
+      and a.raised_at >= ${from} and a.raised_at < ${to}`.execute(trx);
+  const acked = overdue.rows.filter((r) => r.minutes !== null).map((r) => Number(r.minutes));
+  out.push(
+    value(
+      'missions.overdue',
+      overdue.rows.length,
+      [
+        {
+          key: 'missed_check_in',
+          label: 'Missed check-ins',
+          value: overdue.rows.filter((r) => r.kind === 'missed_check_in').length,
+        },
+        {
+          key: 'unacknowledged_assignment',
+          label: 'Assignments not acknowledged in time',
+          value: overdue.rows.filter((r) => r.kind === 'unacknowledged_assignment').length,
+        },
+        {
+          key: 'median_minutes_to_acknowledge',
+          label: 'Median minutes to acknowledge',
+          value: median(acked),
+        },
+      ],
+      overdue.rows.length - acked.length
+        ? { count: overdue.rows.length - acked.length, note: 'alerts not acknowledged yet' }
+        : null,
     ),
   );
 

@@ -280,6 +280,46 @@ describe.skipIf(!appUrl || !workerUrl)('metrics (database-backed)', () => {
     ).toBe(400);
   });
 
+  it('MET-04: overdue check-ins and unacknowledged assignments, with the time to acknowledge', async () => {
+    const raised = new Date(Date.now() - 3 * 3_600_000);
+    await tx(async (trx) => {
+      await trx
+        .insertInto('cg.safety_alert')
+        .values({
+          tenant_id: county,
+          event_id: eventId,
+          kind: 'missed_check_in',
+          raised_at: raised,
+          state: 'acknowledged',
+          acknowledged_at: new Date(raised.getTime() + 12 * 60_000),
+        })
+        .execute();
+      await trx
+        .insertInto('cg.safety_alert')
+        .values({
+          tenant_id: county,
+          event_id: eventId,
+          kind: 'unacknowledged_assignment',
+          raised_at: raised,
+        })
+        .execute();
+      // A help button is not an overdue update.
+      await trx
+        .insertInto('cg.safety_alert')
+        .values({ tenant_id: county, event_id: eventId, kind: 'help_button', raised_at: raised })
+        .execute();
+    });
+    const r = (await get('director', `/events/${eventId}/metrics?${q}`)).json();
+    const m = metric(r, 'missions.overdue');
+    expect(m.value).toBe(2);
+    expect(Object.fromEntries(m.parts.map((p) => [p.key, p.value]))).toEqual({
+      missed_check_in: 1,
+      unacknowledged_assignment: 1,
+      median_minutes_to_acknowledge: 12,
+    });
+    expect(m.incomplete).toEqual({ count: 1, note: 'alerts not acknowledged yet' });
+  });
+
   it('MET-07: recovery information still current and broken outside links', async () => {
     await tx(async (trx) => {
       for (const [slug, review, url, link] of [

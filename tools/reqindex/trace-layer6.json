@@ -32,9 +32,9 @@
   ],
   "MET-04": [
     "partial",
-    "metrics missions.by_state, missions.closed (active definition), missions.time_to_close",
-    "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts",
-    "Assignment conflicts and overdue updates are raised as dispatch alerts (DSP-07) but not yet counted as metrics."
+    "metrics missions.by_state, missions.closed (active definition), missions.time_to_close, and missions.overdue (missed check-ins and assignments not acknowledged in time from the DSP-07 safety alerts, with the median minutes to acknowledge)",
+    "services/api/test/metrics.db.test.ts (MET-04)",
+    "Assignment conflicts are refused by the database (RULE-06) rather than recorded, so they are not counted."
   ],
   "MET-05": [
     "pass",

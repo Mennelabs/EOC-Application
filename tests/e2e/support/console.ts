@@ -22,10 +22,16 @@ export async function expectNoViolations(page: Page, opts: { mapMarkers?: boolea
     opts.mapMarkers === true &&
     v.id === 'target-size' &&
     v.nodes.every((n) => /^<button[^>]*class="marker[ "]/.test(n.html));
+  // Each failing node with its reason, so a failure in CI names the element.
   expect(
     results.violations
       .filter((v) => !exempt(v))
-      .map((v) => `${v.id}: ${v.help} (${v.nodes.length})`),
+      .flatMap((v) =>
+        v.nodes.map(
+          (n) =>
+            `${v.id}: ${n.target.join(' ')} ${n.html.slice(0, 160)} :: ${n.failureSummary?.replace(/\s+/g, ' ')}`,
+        ),
+      ),
   ).toEqual([]);
 }
 

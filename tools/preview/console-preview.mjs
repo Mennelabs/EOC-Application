@@ -67,17 +67,43 @@ const ACTIONS = {
     'dsa.read',
   ],
   nurse: ['shelter_stay.read', 'health_note.read', 'me.read', 'event.read'],
+  partner: [
+    'need.read',
+    'need.claim',
+    'need.release',
+    'need.done',
+    'shared.read',
+    'referral.create',
+    'referral.respond',
+    'message.send',
+    'site.read',
+    'dsa.read',
+    'dashboard.read',
+    'me.read',
+    'tenant.read',
+    'event.read',
+  ],
 };
 const me = {
   accountId: 'a',
   tenantId: 't',
-  tenantKind: 'county',
+  tenantKind: role === 'partner' ? 'partner_org' : 'county',
   status: 'active',
   roles: [
     {
-      key: role === 'nurse' ? 'shelter_nurse' : 'county_em_director',
+      key:
+        role === 'nurse'
+          ? 'shelter_nurse'
+          : role === 'partner'
+            ? 'ngo_incident_commander'
+            : 'county_em_director',
       version: 1,
-      templateKey: role === 'nurse' ? 'shelter_nurse' : 'county_em_director',
+      templateKey:
+        role === 'nurse'
+          ? 'shelter_nurse'
+          : role === 'partner'
+            ? 'ngo_incident_commander'
+            : 'county_em_director',
     },
   ],
   agreementTenantIds: [],
@@ -147,6 +173,54 @@ const routes = {
   [`/api/v1/events/${EVENT.id}/declaration`]: {
     clock: { daysLeft: 28, overdue: false, deadline: '2026-11-12' },
   },
+  ...(role !== 'partner'
+    ? {}
+    : {
+        '/api/v1/shared/reports': [
+          {
+            grantIds: ['g1'],
+            reportId: 'r1',
+            referenceCode: 'KXMR-4827',
+            orgTypes: ['feeding'],
+            sections: ['needs', 'contact', 'household'],
+            maskedSections: ['location'],
+            name: 'Exercise Resident',
+            contact: { phone: '+13145550199' },
+            contactPreference: 'sms',
+            address: null,
+            area: { city: 'Westwind', postal: '63001' },
+            householdBand: '3-4',
+            needs: [{ id: 'n1', category: 'food', status: 'claimed' }],
+            accessNeeds: ['medical_power'],
+            grantedAt: ago(40),
+          },
+        ],
+        '/api/v1/needs': [
+          {
+            id: 'n1',
+            referenceCode: 'KXMR-4827',
+            category: 'food',
+            status: 'claimed',
+            area: { city: 'Westwind', postal: '63001' },
+            claim: { at: ago(20), tenantId: 't' },
+            version: 1,
+          },
+        ],
+        '/api/v1/referrals': [
+          {
+            id: 'ref1',
+            status: 'open',
+            fromTenantName: 'Westwind County',
+            toTenantName: 'Hope Canteen Services',
+            toTenantId: 't',
+            fromTenantId: 'county',
+            referenceCode: 'KXMR-4827',
+            purpose: 'Meals for a household of four',
+            outcome: null,
+            createdAt: ago(30),
+          },
+        ],
+      }),
   '/config.json': {
     productName: 'Showcase County Tools',
     countyName: 'Westwind County',

@@ -114,6 +114,16 @@ th {
 tbody tr:last-child td {
   border-block-end: 0;
 }
+/* In a table that scrolls sideways (a phone), a last column of actions stays inside the
+   visible area instead of being cut off at the edge: a half-visible button is no target
+   (WCAG 2.5.8; axe target-size on clipped elements). */
+.table-wrap td:last-child:has(> button, > .actions, > a),
+.cg-table-wrap td:last-child:has(> button, > .actions, > a) {
+  position: sticky;
+  inset-inline-end: 0;
+  background: var(--cg-surface);
+  box-shadow: -1px 0 0 var(--cg-line);
+}
 tbody tr:hover td {
   background: color-mix(in srgb, var(--cg-accent-soft) 45%, var(--cg-surface));
 }

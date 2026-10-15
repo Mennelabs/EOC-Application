@@ -196,3 +196,12 @@ describe('pre-check against the registry criteria (REC-13)', () => {
     );
   });
 });
+
+describe('the digest period (REC-14)', () => {
+  it('is the ISO week when no event is active, across the year boundary too', async () => {
+    const { isoWeek } = await import('../src/jobs/discovery.ts');
+    expect(isoWeek(new Date('2026-10-15T12:00:00Z'))).toBe('2026-W42');
+    expect(isoWeek(new Date('2027-01-01T12:00:00Z'))).toBe('2026-W53');
+    expect(isoWeek(new Date('2027-01-04T12:00:00Z'))).toBe('2027-W01');
+  });
+});

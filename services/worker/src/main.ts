@@ -43,7 +43,7 @@ import { pruneReferenceSnapshots, scheduleReferencePulls } from './jobs/refdata.
 import { evaluateEquityAlerts } from './jobs/equity.ts';
 import { evaluateAiHealth } from './jobs/ai-health.ts';
 import { staleAbandonedPlans, sweepCommandHistory } from './jobs/commands.ts';
-import { runDiscovery } from './jobs/discovery.ts';
+import { notifyDiscovery, runDiscovery } from './jobs/discovery.ts';
 import { remindFacilityRechecks } from './jobs/facilities.ts';
 import { webhookSchedule } from './jobs/webhooks.ts';
 import { consume, consumeIntake, relayOnce } from './jobs/relay.ts';
@@ -202,8 +202,16 @@ const schedules: Schedule[] = [
     everyMs: 24 * 3600_000,
     run: (c) => remindFacilityRechecks(c).then(() => undefined),
   },
-  // REC-13: resource discovery on each tenant's schedule (weekly; daily in an active event), or when asked.
-  { name: 'discovery', everyMs: 5 * 60_000, run: (c) => runDiscovery(c).then(() => undefined) },
+  // REC-13, REC-14: resource discovery on each tenant's schedule (weekly; daily in an active event), or
+  // when asked; then the alert for a place near unmet need and the digest of what is new.
+  {
+    name: 'discovery',
+    everyMs: 5 * 60_000,
+    run: (c) =>
+      runDiscovery(c)
+        .then(() => notifyDiscovery(c))
+        .then(() => undefined),
+  },
   { name: 'contact-reverify', everyMs: 60 * 60_000, run: remindContactVerification }, // CNT-01
   { name: 'publication-notices', everyMs: 30_000, run: noticePublications }, // PUB-06
   { name: 'ai-health', everyMs: 10 * 60_000, run: evaluateAiHealth }, // AIG-09 (alerts only)

@@ -24,7 +24,9 @@ export type TemplateName =
   | 'field_message'
   | 'reminder_overdue'
   | 'ai_quality_notice'
-  | 'facility_recheck';
+  | 'facility_recheck'
+  | 'discovery_digest'
+  | 'discovery_alert';
 
 export const TEMPLATE_NAMES: readonly TemplateName[] = [
   'confirmation',
@@ -46,6 +48,8 @@ export const TEMPLATE_NAMES: readonly TemplateName[] = [
   'reminder_overdue',
   'ai_quality_notice',
   'facility_recheck',
+  'discovery_digest',
+  'discovery_alert',
 ];
 
 export interface TemplateVars {
@@ -121,6 +125,10 @@ const EN = {
       `${v.county} Emergency Mgmt: the AI feature "${v.title ?? ''}" needs a look: ${v.what ?? ''} It keeps running. Open the AI use register.`,
     facility_recheck: (v: TemplateVars) =>
       `${v.county} Emergency Mgmt: please check that the details of ${v.site ?? 'your facility'} in the facility registry are still right by ${v.dueAt ?? 'its re-check date'}.`,
+    discovery_digest: (v: TemplateVars) =>
+      `${v.county} Emergency Mgmt: resource discovery found ${v.count ?? 'some'} place(s) for the registry. Review them in the console's discovery queue.`,
+    discovery_alert: (v: TemplateVars) =>
+      `${v.county} Emergency Mgmt: a possible resource near unmet need: ${v.site ?? 'a place'} (${v.kind ?? 'place'}). Review it in the discovery queue; nothing is added until someone decides.`,
     resource_attention: (v: TemplateVars) =>
       `${v.county} Emergency Mgmt: the public resource "${v.title ?? ''}" ${v.what ?? 'needs attention'}.`,
     contact_reverify: (v: TemplateVars) =>
@@ -215,6 +223,19 @@ const EN = {
         `The reminder "${v.title ?? ''}" was due ${v.dueAt ?? 'earlier'} and nobody on ${v.county}'s console has acknowledged it.\n\n` +
         `${v.what ? `${v.what}\n\n` : ''}Open the console to acknowledge, snooze or complete it: ${v.url ?? ''}\n`,
     }),
+    discovery_digest: (v: TemplateVars) => ({
+      subject: `${v.county}: ${v.count ?? 'some'} place(s) found by resource discovery`,
+      body:
+        `Resource discovery found these places for ${v.county}'s facility registry:\n\n${v.items ?? ''}\n\n` +
+        `Review each one in the console's discovery queue, with its source links and what is still unknown, and qualify it in or out with a reason. ` +
+        `Nothing is added to, changed in or removed from the registry until someone decides. A place set aside is not proposed again unless something about it changes.\n`,
+    }),
+    discovery_alert: (v: TemplateVars) => ({
+      subject: `${v.county}: a possible resource near unmet need: ${v.site ?? 'a place'}`,
+      body:
+        `${v.site ?? 'A place'} (${v.kind ?? 'place'}) was found by ${v.county}'s resource discovery (${v.what ?? 'a source'}). It is within 3 km of open requests for food or a place to stay in the active event.\n\n` +
+        `It is not in the facility registry. Review it now in the console's discovery queue and qualify it in or out. Nothing is added until someone decides.\n`,
+    }),
     facility_recheck: (v: TemplateVars) => ({
       subject: `${v.county}: please re-check ${v.site ?? 'a facility'} in the facility registry`,
       body:
@@ -292,6 +313,10 @@ const ES: typeof EN = {
       `Gestión de Emergencias de ${v.county}: la función de IA "${v.title ?? ''}" necesita revisión: ${v.what ?? ''} Sigue funcionando. Abra el registro de uso de IA.`,
     facility_recheck: (v) =>
       `Manejo de Emergencias de ${v.county}: revise que los datos de ${v.site ?? 'su instalación'} en el registro de instalaciones sigan correctos antes de ${v.dueAt ?? 'su fecha de revisión'}.`,
+    discovery_digest: (v) =>
+      `Manejo de Emergencias de ${v.county}: la búsqueda de recursos encontró ${v.count ?? 'algunos'} lugar(es) para el registro. Revíselos en la cola de búsqueda de la consola.`,
+    discovery_alert: (v) =>
+      `Manejo de Emergencias de ${v.county}: un posible recurso cerca de necesidades sin atender: ${v.site ?? 'un lugar'} (${v.kind ?? 'lugar'}). Revíselo en la cola de búsqueda; nada se agrega hasta que alguien decida.`,
     resource_attention: (v) =>
       `Manejo de Emergencias de ${v.county}: el recurso público "${v.title ?? ''}" ${v.what ?? 'necesita atención'}.`,
     contact_reverify: (v) =>
@@ -385,6 +410,19 @@ const ES: typeof EN = {
       body:
         `El recordatorio "${v.title ?? ''}" venció ${v.dueAt ?? 'antes'} y nadie en la consola de ${v.county} lo ha atendido.\n\n` +
         `${v.what ? `${v.what}\n\n` : ''}Abra la consola para atenderlo, posponerlo o completarlo: ${v.url ?? ''}\n`,
+    }),
+    discovery_digest: (v) => ({
+      subject: `${v.county}: ${v.count ?? 'algunos'} lugar(es) encontrados por la búsqueda de recursos`,
+      body:
+        `La búsqueda de recursos encontró estos lugares para el registro de instalaciones de ${v.county}:\n\n${v.items ?? ''}\n\n` +
+        `Revise cada uno en la cola de búsqueda de la consola, con sus enlaces de origen y lo que aún se desconoce, y acéptelo o descártelo con un motivo. ` +
+        `Nada se agrega, cambia o quita del registro hasta que alguien decida. Un lugar descartado no se vuelve a proponer salvo que algo cambie.\n`,
+    }),
+    discovery_alert: (v) => ({
+      subject: `${v.county}: un posible recurso cerca de necesidades sin atender: ${v.site ?? 'un lugar'}`,
+      body:
+        `${v.site ?? 'Un lugar'} (${v.kind ?? 'lugar'}) fue encontrado por la búsqueda de recursos de ${v.county} (${v.what ?? 'una fuente'}). Está a menos de 3 km de solicitudes abiertas de comida o de un lugar donde quedarse en el evento activo.\n\n` +
+        `No está en el registro de instalaciones. Revíselo ahora en la cola de búsqueda de la consola y acéptelo o descártelo. Nada se agrega hasta que alguien decida.\n`,
     }),
     facility_recheck: (v) => ({
       subject: `${v.county}: revise ${v.site ?? 'una instalación'} en el registro de instalaciones`,

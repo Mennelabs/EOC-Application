@@ -8,7 +8,8 @@
  * near unmet need in the active event. Planning may reject but not qualify a
  * place in; county EM qualifies one in, which enters the registry. A rejected
  * place stays rejected on the next run, and comes back only once something
- * about it changes. Web search runs only once the county lists it and the AI
+ * about it changes. The place near unmet need is raised at once and a digest
+ * of what is new goes once per period (REC-14). Web search runs only once the county lists it and the AI
  * use register has it on; its call is recorded, and a closure it reports for a
  * registered place retires the place only when county EM agrees. A role
  * without the actions sees nothing. Runs on a
@@ -25,7 +26,7 @@ import { loadSeed } from '../../../tools/seed/src/load.ts';
 import { buildApp, type App } from '../src/app.ts';
 import { AuthError, type SubjectLoader } from '../src/auth/subject.ts';
 import { routesWith } from '../src/routes/index.ts';
-import { runDiscovery } from '../../worker/src/jobs/discovery.ts';
+import { notifyDiscovery, runDiscovery } from '../../worker/src/jobs/discovery.ts';
 import type { JobContext } from '../../worker/src/jobs/types.ts';
 
 const appUrl = process.env['API_DB_TEST_APP_URL'];
@@ -124,6 +125,7 @@ describe.skipIf(!appUrl || !workerUrl)('resource discovery (database-backed)', (
         name: `Exercise discovery county ${run}`,
         status: 'provisioning',
         timezone: 'America/Chicago',
+        security_contact_email: `discovery-${run}@example.org`,
       })
       .returning(['id', 'path', 'kind'])
       .executeTakeFirstOrThrow();
@@ -411,6 +413,49 @@ describe.skipIf(!appUrl || !workerUrl)('resource discovery (database-backed)', (
       ]),
     );
     expect(await audits('discovery.run')).toHaveLength(1);
+  });
+
+  it('REC-14: the place near unmet need is raised at once; a digest of what is new goes once per period', async () => {
+    const notify = () =>
+      notifyDiscovery(
+        {
+          db: dbWorker,
+          log: { info() {}, warn() {}, error() {}, debug() {} },
+          crypto: new FieldCrypto(new InMemoryKeyService(), new MemoryKeyStore()),
+        } as unknown as JobContext,
+        { tenantIds: [county] },
+      );
+    // Both places are within 3 km of the food requests: two alerts and one digest. No reviewer
+    // accounts in this county, so the security contact hears (one email each).
+    expect(await notify()).toBe(3);
+    const notices = await dbWorker
+      .selectFrom('cg.notice_log')
+      .select(['kind', 'subject_kind', 'cycle_key', 'recipient_count'])
+      .where('tenant_id', '=', county)
+      .where('kind', 'in', ['discovery_alert', 'discovery_digest'])
+      .orderBy('kind')
+      .execute();
+    const alert = {
+      kind: 'discovery_alert',
+      subject_kind: 'discovery_candidate',
+      cycle_key: 'once',
+      recipient_count: 1,
+    };
+    expect(notices).toEqual([
+      alert,
+      alert,
+      {
+        kind: 'discovery_digest',
+        subject_kind: 'tenant',
+        // An event is active: daily.
+        cycle_key: new Date().toISOString().slice(0, 10),
+        recipient_count: 1,
+      },
+    ]);
+    // Nothing new: no second alert, no second digest.
+    expect(await notify()).toBe(0);
+    expect(await audits('discovery.alerted')).toHaveLength(2);
+    expect(await audits('discovery.digest')).toHaveLength(1);
   });
 
   it('REC-13: planning may set a place aside but not qualify one in; county EM qualifies it into the registry', async () => {

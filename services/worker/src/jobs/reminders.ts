@@ -44,7 +44,8 @@ export interface ReminderSpec {
     | 'publication'
     | 'tenant'
     | 'ai_health_alert'
-    | 'facility';
+    | 'facility'
+    | 'discovery_candidate';
   subjectId: string;
   cycleKey: string;
   dueAt: Date;

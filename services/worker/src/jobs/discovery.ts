@@ -23,6 +23,8 @@ import { publicGet, type PublicGet } from '@cg/adapters';
 import { callAi, recordAiOutput, type AiProvider, type DiscoveredPlace } from '@cg/ai';
 import { distanceKm } from '@cg/reporting';
 import { allTenantIds, asSystem, systemAudit } from '../system.ts';
+import { claimReminder, sendReminder } from './reminders.ts';
+import { staffRecipients } from './recipients.ts';
 import {
   contentHashOf,
   fingerprintOf,
@@ -569,4 +571,135 @@ export async function runDiscovery(ctx: JobContext, deps: DiscoveryDeps = {}): P
     }
   }
   return added;
+}
+
+// ====================================================================== REC-14: the digest and the alert
+
+const KIND_WORDS: Record<string, string> = {
+  school: 'school',
+  place_of_worship: 'place of worship',
+  community_center: 'community center',
+  parking_lot: 'parking lot',
+  government: 'government building',
+  commercial: 'business',
+  other: 'place',
+};
+const SOURCE_WORDS: Record<string, string> = {
+  partner_post: 'a partner post',
+  hsds: 'the service directory',
+  csv: 'an open-data feed',
+  geojson: 'an open-data map layer',
+  web_search: 'web search',
+};
+const day = (d: Date) => d.toISOString().slice(0, 10);
+/** ISO week, e.g. 2026-W42: one digest a week when no event is active. */
+export function isoWeek(d: Date): string {
+  const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dow = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - dow);
+  const start = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((t.getTime() - start.getTime()) / DAY + 1) / 7);
+  return `${t.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
+/**
+ * REC-14: people who review discovery hear at once about a candidate near
+ * unmet need in an active event (once per candidate), and otherwise get a
+ * digest of what is new: daily during an active event, weekly otherwise, once
+ * per period, only when something is new. Returns the emails queued.
+ */
+export async function notifyDiscovery(ctx: JobContext, deps: DiscoveryDeps = {}): Promise<number> {
+  const now = nowOf(ctx);
+  let queued = 0;
+  for (const tenantId of deps.tenantIds ?? (await allTenantIds(ctx.db))) {
+    queued += await asSystem(ctx.db, tenantId, async (trx) => {
+      let staff: Awaited<ReturnType<typeof staffRecipients>> | null = null;
+      const recipients = async () =>
+        (staff ??= await staffRecipients(trx, tenantId, ['discovery.review']));
+      let n = 0;
+      const urgent = await trx
+        .selectFrom('cg.discovery_candidate')
+        .select(['id', 'name', 'kind', 'source_kind'])
+        .where('tenant_id', '=', tenantId)
+        .where('state', '=', 'pending')
+        .where('near_unmet_need', '=', true)
+        .orderBy('created_at')
+        .limit(20)
+        .execute();
+      for (const c of urgent) {
+        const id = await claimReminder(trx, tenantId, {
+          kind: 'discovery_alert',
+          subjectKind: 'discovery_candidate',
+          subjectId: c.id,
+          cycleKey: 'once',
+          dueAt: now,
+        });
+        if (!id) continue;
+        const r = await recipients();
+        const sent = await sendReminder(ctx, trx, tenantId, id, r.emails, 'discovery_alert', {
+          county: r.tenantName,
+          site: c.name,
+          kind: KIND_WORDS[c.kind] ?? 'place',
+          what: SOURCE_WORDS[c.source_kind] ?? 'a source',
+        });
+        await systemAudit(trx, tenantId, 'discovery', {
+          action: 'discovery.alerted',
+          targetType: 'discovery_candidate',
+          targetId: c.id,
+          reason: `${sent} recipient(s): near unmet need`,
+        });
+        n += sent;
+      }
+      const active = await trx
+        .selectFrom('cg.event')
+        .select('id')
+        .where('tenant_id', '=', tenantId)
+        .where('status', '=', 'active')
+        .limit(1)
+        .executeTakeFirst();
+      const last = await trx
+        .selectFrom('cg.notice_log')
+        .select((eb) => eb.fn.max('sent_at').as('at'))
+        .where('tenant_id', '=', tenantId)
+        .where('kind', '=', 'discovery_digest')
+        .executeTakeFirst();
+      let fresh = trx
+        .selectFrom('cg.discovery_candidate')
+        .select(['name', 'kind', 'source_kind', 'change', 'near_unmet_need'])
+        .where('tenant_id', '=', tenantId)
+        .where('state', '=', 'pending');
+      if (last?.at) fresh = fresh.where('created_at', '>', new Date(last.at as Date));
+      const items = await fresh.orderBy('near_unmet_need', 'desc').orderBy('created_at').execute();
+      if (!items.length) return n;
+      const id = await claimReminder(trx, tenantId, {
+        kind: 'discovery_digest',
+        subjectKind: 'tenant',
+        subjectId: tenantId,
+        cycleKey: active ? day(now) : isoWeek(now),
+        dueAt: now,
+      });
+      if (!id) return n;
+      const r = await recipients();
+      const lines = items
+        .slice(0, 15)
+        .map(
+          (c) =>
+            `- ${c.name} (${c.change === 'new' ? (KIND_WORDS[c.kind] ?? 'place') : c.change === 'closed' ? 'reported closed' : 'reported changed'}; from ${SOURCE_WORDS[c.source_kind] ?? 'a source'})${c.near_unmet_need ? '; near open requests' : ''}`,
+        );
+      if (items.length > 15) lines.push(`- and ${items.length - 15} more`);
+      const sent = await sendReminder(ctx, trx, tenantId, id, r.emails, 'discovery_digest', {
+        county: r.tenantName,
+        count: String(items.length),
+        items: lines.join('\n'),
+      });
+      await systemAudit(trx, tenantId, 'discovery', {
+        action: 'discovery.digest',
+        targetType: 'tenant',
+        targetId: tenantId,
+        reason: `${items.length} place(s); ${sent} recipient(s)`,
+      });
+      return n + sent;
+    });
+  }
+  return queued;
 }

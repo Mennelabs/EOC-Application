@@ -4,7 +4,8 @@
  * field lead of the Field Exercise Team sets a PIN, checks in by the event
  * code, saves a quick report while offline ("On this phone") that is
  * received once the signal returns, records a damage assessment with the
- * details FEMA asks for, asks the command window for its reminders, presses
+ * details FEMA asks for, asks the command window for its reminders, opens
+ * the conversation note-taker (consent in Spanish; AI off here), presses
  * the help button, and checks out. Every screen
  * passes axe WCAG 2.2 AA. The session comes from the development test
  * client (the browser sign-in itself is covered by the console journeys);
@@ -152,6 +153,19 @@ test.describe('field app (web build)', () => {
     await page.getByRole('button', { name: 'Go', exact: true }).click();
     await expect(page.getByText(/open reminder|reminders?:/i)).toBeVisible();
     await expectNoViolations(page);
+
+    // FL-04, FL-05, FL-18: the conversation note-taker asks first, in the person's language,
+    // and is never for counseling; with no AI provider configured it says so and records nothing.
+    await page.getByRole('link', { name: 'Home' }).click();
+    await page.getByRole('button', { name: 'Conversation note-taker' }).click();
+    await expect(page.getByRole('heading', { name: 'Conversation note-taker' })).toBeVisible();
+    await expect(page.getByText(/Never for counseling, spiritual care or prayer/)).toBeVisible();
+    await page.getByRole('radio', { name: 'Español' }).click();
+    await expect(page.getByText(/¿Puedo usar un asistente de notas/)).toBeVisible();
+    await expectNoViolations(page);
+    await page.getByRole('button', { name: 'They tapped yes' }).click();
+    await expect(page.getByText(/The scribe is off here/)).toBeVisible();
+    await expect(page.getByText(/^Listening/)).toHaveCount(0);
 
     // FLD-16: the help button asks once, then dispatch has the alert.
     await page.getByRole('link', { name: 'Home' }).click();

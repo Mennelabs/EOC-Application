@@ -177,6 +177,13 @@ export default function Home() {
               onPress={() => router.push('/stock')}
             />
           ) : null}
+          {f.can('scribe.use') ? (
+            <Button
+              kind="secondary"
+              label={t('scribe.heading')}
+              onPress={() => router.push('/scribe')}
+            />
+          ) : null}
           {f.can('interpreter.respond') ? (
             <Button
               kind="secondary"

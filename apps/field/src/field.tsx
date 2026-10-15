@@ -185,6 +185,8 @@ interface FieldActions {
     body?: unknown,
     headers?: Record<string, string>,
   ): Promise<T>;
+  /** Raw bytes for a screen that needs signal (the scribe's recording, FL-04). */
+  sendBytes(path: string, contentType: string, data: Uint8Array): Promise<void>;
   /** A frontline role record (task J), kept on the phone and sent as `record.<kind>`. */
   saveRecord(
     kind: string,
@@ -829,6 +831,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
       body?: unknown,
       headers?: Record<string, string>,
     ) => api.current.call<T>(method, path, body ?? {}, headers),
+    sendBytes: (path, contentType, data) => api.current.put(path, contentType, data),
     async saveRecord(kind, body, summary, opts) {
       const s = store.current;
       if (!s) throw new Error('locked');

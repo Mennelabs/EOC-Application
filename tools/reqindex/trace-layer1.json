@@ -479,7 +479,7 @@
     "deferred",
     "",
     "",
-    "AI confirmation, scope and injection defences: layer 7 (the fake provider and guardrail G3/G4 scaffolding exist)."
+    "AI confirmation, scope and injection defences: layer 7 (docs/plans/layer-7.md). What exists: the fake provider, delimited prompts and the output filter (packages/ai), and the guardrails every action passes (G1 default deny with a fresh subject, G4 no self-approval, which also covers an AI command); none is AI-specific yet."
   ],
   "GATE-10": [
     "deferred",

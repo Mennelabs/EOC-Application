@@ -1,6 +1,6 @@
 # Layer 6 report: the FEMA package and official reports
 
-Date: 2026-10-15. Branch `claude/determined-gates-zd5i8m`. Tasks P, A and B (with the two enclave fixes) reached `main` in Mennelabs/EOC-Application#11; tasks C to K in Mennelabs/EOC-Application#12 (merge commit `8b00498`) with CI green end to end on `691b567`. Follow-ups that close stated gaps (MET-04, MET-07, BRD:FR-14.02, BRD:FR-14.04, CON-03, FL-17 and part of DCL:DEC-09) are in Mennelabs/EOC-Application#13. Task commits are in [`layer-6-status.md`](layer-6-status.md); the plan is [`layer-6.md`](layer-6.md). Evidence per requirement: [`../traceability.md`](../traceability.md) (557 rows across layers 1 to 6; the 67 layer-6 rows, including earlier rows this layer finishes, in `tools/reqindex/trace-layer6.json`: 56 pass, 7 partial with the gap stated, 4 deferred).
+Date: 2026-10-15. Branch `claude/determined-gates-zd5i8m`. Tasks P, A and B (with the two enclave fixes) reached `main` in Mennelabs/EOC-Application#11; tasks C to K in Mennelabs/EOC-Application#12 (merge commit `8b00498`) with CI green end to end on `691b567`. Follow-ups that close stated gaps (MET-04, MET-07, BRD:FR-14.02, BRD:FR-14.04, CON-03, FL-17 and part of DCL:DEC-09) are in Mennelabs/EOC-Application#13 (`ad7a806`); faults found while driving it to green (audit lock order, timer races, webhook delivery, link-check SSRF) are fixed in #14 (`1980f42`); a test-harness fix and the draft layer-7 plan are in #15 (`7408b02`). Task commits are in [`layer-6-status.md`](layer-6-status.md); the plan is [`layer-6.md`](layer-6.md). Evidence per requirement: [`../traceability.md`](../traceability.md) (557 rows across layers 1 to 6; the 67 layer-6 rows, including earlier rows this layer finishes, in `tools/reqindex/trace-layer6.json`: 56 pass, 7 partial with the gap stated, 4 deferred).
 
 Everything in the stack is synthetic or the WESTWIND exercise (SCL-12). Reference data replays recorded synthetic responses; the live federal pull is checked by you in production (decision 2026-10-15).
 
@@ -41,6 +41,11 @@ Everything in the stack is synthetic or the WESTWIND exercise (SCL-12). Referenc
 - On the situation map an outage is placed only when its facility is in the reference data; otherwise it is listed with "place not known" (CON-03).
 - **Existing tenants** get the new actions only through a role change approved by a second administrator; new tenants get them from the templates. A release note for a live county must say so.
 - Found and fixed on the way: a layer-4 bug that refused every field assessment with "damage seen" boxes (`1a2eea7`); the photo thumbnail made from the unblurred image (`d79b572`); a version bump on every API-key use that would have made revokes fail while a key was in use (fixed before commit).
+- Found and fixed after the merge (#13, #14), each with a test that failed before the fix:
+  - a deadlock between approving a role and the worker linking a new account, which returned a 500 in CI. Audit rows are now written just before commit for every transaction, so a transaction always takes its row locks before the audit chain lock (ADR-0012 amendment; the enclave's audit writer too, ADR-0037);
+  - the safety timer escalated, and emailed the safety officers about, an alert someone had just acknowledged, and the reminder timer flipped an acknowledged reminder back to overdue;
+  - **webhook deliveries never connected** on Node 22, so every real delivery failed (ADR-0042 amendment);
+  - the outside-link checks, both the daily review and the console's "check link" button, could probe services inside the stack (SSRF). They now reach public addresses only.
 
 ## What was deferred and why
 

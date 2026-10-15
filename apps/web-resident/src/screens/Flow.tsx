@@ -30,9 +30,10 @@ import {
   saveDraft,
   type ExtractionCandidate,
   type IntakeInfo,
+  dictate,
 } from '../api/public.ts';
 import { preparePhoto } from '../intake/photos.ts';
-import { dictationAvailable, startDictation, type Dictation } from '../intake/speech.ts';
+import { recordingSupported, startRecording, type Recording } from '../intake/speech.ts';
 import {
   advance,
   answer as setAnswer,
@@ -297,6 +298,7 @@ export function Flow({
             state={state}
             locale={locale}
             online={shell.online}
+            dictation={info.dictation === true}
             candidates={candidates}
             setCandidates={setCandidates}
             update={update}
@@ -785,6 +787,7 @@ function OwnWords({
   update,
   onDone,
   onSkip,
+  dictation,
 }: {
   node: StepNode;
   graph: QuestionGraph;
@@ -796,34 +799,54 @@ function OwnWords({
   update: (fn: (s: FlowState) => FlowState) => void;
   onDone: () => void;
   onSkip: () => void;
+  /** INT-12: the county's AI service may write down what the resident says. */
+  dictation: boolean;
 }) {
   const t = useT();
   const [words, setWords] = useState(state.ownWords ?? '');
   const [listening, setListening] = useState(false);
+  const [writing, setWriting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<Record<string, boolean>>({});
-  const dictation = useRef<Dictation | null>(null);
+  const recording = useRef<Recording | null>(null);
 
-  useEffect(() => () => dictation.current?.stop(), []);
+  // Leaving the step throws away a clip still recording; nothing is sent.
+  useEffect(() => () => recording.current?.cancel(), []);
 
-  const toggleDictation = () => {
-    if (listening) {
-      dictation.current?.stop();
-      setListening(false);
-      return;
-    }
-    const base = words;
-    const d = startDictation(
-      locale,
-      (spoken) => setWords(`${base}${base && spoken ? ' ' : ''}${spoken}`),
-      () => setListening(false),
-    );
-    if (d) {
-      dictation.current = d;
-      setListening(true);
+  const finishRecording = async () => {
+    const r = recording.current;
+    recording.current = null;
+    setListening(false);
+    if (!r) return;
+    const clip = await r.stop();
+    if (!clip) return;
+    setWriting(true);
+    try {
+      const heard = await dictate(state.tenant, state.executionId, locale, clip);
+      if (heard.text)
+        setWords((before) => `${before}${before && heard.text ? ' ' : ''}${heard.text}`);
+    } catch {
+      setNote(t('ownWords.dictateFailed'));
+    } finally {
+      setWriting(false);
     }
   };
+
+  const toggleDictation = async () => {
+    if (listening) {
+      await finishRecording();
+      return;
+    }
+    setNote(null);
+    try {
+      recording.current = await startRecording(() => void finishRecording());
+      setListening(true);
+    } catch {
+      setNote(t('ownWords.micBlocked'));
+    }
+  };
+  const canDictate = dictation && online && !state.aiOff && recordingSupported();
 
   const ask = async () => {
     setBusy(true);
@@ -894,8 +917,13 @@ function OwnWords({
         )}
       </Field>
       <ButtonRow>
-        {dictationAvailable() ? (
-          <button type="button" onClick={toggleDictation} aria-pressed={listening}>
+        {canDictate ? (
+          <button
+            type="button"
+            onClick={() => void toggleDictation()}
+            aria-pressed={listening}
+            disabled={writing}
+          >
             {listening ? t('ownWords.stop') : t('ownWords.dictate')}
           </button>
         ) : null}
@@ -909,7 +937,10 @@ function OwnWords({
           </button>
         ) : null}
       </ButtonRow>
-      {listening ? <p role="status">{t('ownWords.listening')}</p> : null}
+      {canDictate ? <p className="hint">{t('ownWords.dictateNote')}</p> : null}
+      <p role="status">
+        {listening ? t('ownWords.listening') : writing ? t('ownWords.writing') : ''}
+      </p>
       {note ? <Status kind="info">{note}</Status> : null}
       {state.aiOff ? <p className="hint">{t('ownWords.offNote')}</p> : null}
       {candidates && candidates.items.length > 0 ? (

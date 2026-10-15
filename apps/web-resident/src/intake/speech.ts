@@ -1,59 +1,64 @@
 /**
- * Dictation through the browser's speech recognition where it exists
- * (INT-12); nothing is sent anywhere by this module, and the flow works the
- * same without it (AC-A06).
+ * Dictation (INT-12, AIG-06, AIG-10, AC-A06): the resident records a short
+ * clip on this device; it goes to the county's own AI service, which writes
+ * the words down, and they come back into the text box to read and change.
+ * The browser's built-in speech recognition is not used: in Chrome it streams
+ * the audio to Google and in Safari to Apple, outside the county's provider
+ * terms. Nothing is kept on the device, and the step works the same without it.
  */
-interface RecognitionLike {
-  lang: string;
-  interimResults: boolean;
-  continuous: boolean;
-  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
-  onerror: ((e: unknown) => void) | null;
-  onend: (() => void) | null;
-  start(): void;
-  stop(): void;
+
+/** The longest clip, in seconds; recording stops by itself after it. */
+export const MAX_SECONDS = 120;
+
+const TYPES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+
+export function recordingSupported(): boolean {
+  return (
+    typeof MediaRecorder !== 'undefined' &&
+    typeof navigator !== 'undefined' &&
+    typeof navigator.mediaDevices?.getUserMedia === 'function'
+  );
 }
 
-type RecognitionCtor = new () => RecognitionLike;
+export interface Recording {
+  /** Ends the clip; null when nothing was recorded or it was cancelled. */
+  stop(): Promise<{ blob: Blob; type: string } | null>;
+  /** Ends it and throws the sound away. */
+  cancel(): void;
+}
 
-function ctor(): RecognitionCtor | null {
-  const w = globalThis as unknown as {
-    SpeechRecognition?: RecognitionCtor;
-    webkitSpeechRecognition?: RecognitionCtor;
+/** Starts recording; throws when the microphone is refused or missing. */
+export async function startRecording(onLimit: () => void): Promise<Recording> {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const type = TYPES.find((t) => MediaRecorder.isTypeSupported?.(t)) ?? '';
+  const recorder = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+  const chunks: Blob[] = [];
+  recorder.ondataavailable = (e) => {
+    if (e.data.size > 0) chunks.push(e.data);
   };
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
-}
-
-export function dictationAvailable(): boolean {
-  return ctor() !== null;
-}
-
-export interface Dictation {
-  stop(): void;
-}
-
-export function startDictation(
-  locale: string,
-  onText: (text: string, final: boolean) => void,
-  onEnd: () => void,
-): Dictation | null {
-  const C = ctor();
-  if (!C) return null;
-  const r = new C();
-  r.lang = locale.startsWith('es') ? 'es-US' : 'en-US';
-  r.interimResults = true;
-  r.continuous = true;
-  r.onresult = (e) => {
-    let text = '';
-    for (let i = 0; i < e.results.length; i++) text += e.results[i]?.[0]?.transcript ?? '';
-    onText(text.trim(), false);
+  const stopped = new Promise<void>((resolve) => {
+    recorder.onstop = () => resolve();
+  });
+  const release = () => stream.getTracks().forEach((t) => t.stop());
+  const limit = setTimeout(onLimit, MAX_SECONDS * 1000);
+  let cancelled = false;
+  recorder.start();
+  return {
+    async stop() {
+      clearTimeout(limit);
+      if (recorder.state !== 'inactive') recorder.stop();
+      await stopped;
+      release();
+      if (cancelled || chunks.length === 0) return null;
+      const blobType = recorder.mimeType || type || 'audio/webm';
+      return { blob: new Blob(chunks, { type: blobType }), type: blobType };
+    },
+    cancel() {
+      cancelled = true;
+      clearTimeout(limit);
+      if (recorder.state !== 'inactive') recorder.stop();
+      release();
+      chunks.length = 0;
+    },
   };
-  r.onerror = () => onEnd();
-  r.onend = () => onEnd();
-  try {
-    r.start();
-  } catch {
-    return null;
-  }
-  return { stop: () => r.stop() };
 }

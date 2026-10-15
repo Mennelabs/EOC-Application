@@ -404,6 +404,97 @@ describe.skipIf(!appUrl || !workerUrl)('public intake API (database-backed)', ()
     }
   });
 
+  it('INT-12, AIG-06, AI-10: dictation goes to the tenant provider only when the register allows it; the words come back, nothing is kept, the call is recorded', async () => {
+    const setFeature = (enabled: boolean) =>
+      withTenant(dbWorker, { tenantId }, (trx) =>
+        trx
+          .updateTable('cg.ai_use_register')
+          .set({ enabled })
+          .where('tenant_id', '=', tenantId)
+          .where('feature', '=', 'intake.transcription')
+          .execute(),
+      );
+    const heard: { bytes: number; mime: string; language: string | undefined }[] = [];
+    let failing = false;
+    provider = {
+      ...fakeProvider,
+      stt: {
+        transcribe: async (audio, mime, language) => {
+          if (failing) throw new AiProviderError('timeout');
+          heard.push({ bytes: audio.length, mime, language });
+          return {
+            output: { text: ' The roof is gone and water came in. ', language: language ?? 'en' },
+            provider: fakeProvider.info,
+            latencyMs: 3,
+          };
+        },
+      },
+    };
+    const audio = Buffer.from('exercise recording, not a voice');
+    const dictate = (executionId: string, type = 'audio/webm;codecs=opus') =>
+      app.inject({
+        method: 'POST',
+        url: `/api/public/intake/county/dictation?executionId=${executionId}&language=en`,
+        headers: { 'content-type': type },
+        payload: audio,
+      });
+    const recorded = (executionId: string) =>
+      dbWorker
+        .selectFrom('cg.ai_output')
+        .select(['feature', 'outcome', 'language'])
+        .where('execution_id', '=', executionId)
+        .execute();
+    try {
+      await setFeature(false);
+      const boot = await app.inject({ url: '/api/public/intake/county/westwind' });
+      expect(boot.json().dictation).toBe(false);
+      const offId = randomUUID();
+      const off = await dictate(offId);
+      expect(off.statusCode).toBe(409);
+      expect(off.json()).toMatchObject({ code: 'ai_off' });
+      expect(off.json().message).toMatch(/type your words/);
+      expect(heard).toEqual([]);
+      expect(await recorded(offId)).toEqual([]);
+
+      await setFeature(true);
+      expect(
+        (await app.inject({ url: '/api/public/intake/county/westwind' })).json().dictation,
+      ).toBe(true);
+      const onId = randomUUID();
+      const on = await dictate(onId);
+      expect(on.statusCode, on.body).toBe(200);
+      expect(on.json()).toEqual({ text: 'The roof is gone and water came in.', language: 'en' });
+      expect(heard).toEqual([{ bytes: audio.length, mime: 'audio/webm', language: 'en' }]);
+      expect(await recorded(onId)).toEqual([
+        { feature: 'intake.transcription', outcome: 'ok', language: 'en' },
+      ]);
+      // Nothing of the words or the recording is kept anywhere but the resident's text box.
+      expect(JSON.stringify(await recorded(onId))).not.toContain('roof');
+
+      failing = true;
+      const downId = randomUUID();
+      const down = await dictate(downId);
+      expect(down.statusCode).toBe(409);
+      expect(down.json()).toMatchObject({ code: 'ai_unavailable' });
+      expect(await recorded(downId)).toEqual([
+        { feature: 'intake.transcription', outcome: 'timeout', language: 'en' },
+      ]);
+      failing = false;
+
+      expect((await dictate(randomUUID(), 'image/png')).statusCode).toBe(415);
+      const empty = await app.inject({
+        method: 'POST',
+        url: `/api/public/intake/county/dictation?executionId=${randomUUID()}`,
+        headers: { 'content-type': 'audio/webm' },
+        payload: Buffer.alloc(0),
+      });
+      expect(empty.statusCode).toBe(400);
+    } finally {
+      await setFeature(true);
+      provider = fakeProvider;
+    }
+  });
+
   it('ADR-0043, AIG-01, AIG-08: the seed lists OpenAI for every feature, switched off until evaluated; never the fake provider', async () => {
     expect(seededRegister.length).toBeGreaterThan(0);
     for (const r of seededRegister) expect(r.provider).toBe('openai');

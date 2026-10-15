@@ -75,6 +75,9 @@ async function answerUntilReview(
       await page.getByLabel('Email (optional)').fill(email);
       await chooseRadio(page, 'Email');
     } else if (heading.startsWith('Or tell us in your own words')) {
+      // INT-12, AIG-06: speaking goes only through the county's AI service; with none set up
+      // here there is no "Speak instead", and never the browser's own speech recognition.
+      await expect(page.getByRole('button', { name: 'Speak instead' })).toHaveCount(0);
       await page
         .getByLabel('What happened?')
         .fill('A tree fell on the back bedroom and water came in.');

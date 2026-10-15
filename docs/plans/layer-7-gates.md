@@ -65,7 +65,7 @@ Every AI feature in the register (`packages/ai/src/registry.ts`), against the fi
 | Feature                   | Confirmation                                       | Scope                                    | Injection defences                                                                  | Verified result                         | Manual fallback                                |
 | ------------------------- | -------------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------- | ---------------------------------------------- |
 | `intake.extraction`       | tested (the yes/no screen itself: code only)       | tested                                   | tested (evaluation set, delimiting)                                                 | tested                                  | tested (off: J2; timeout)                      |
-| `intake.transcription`    | **not wired** (task: resident dictation)           | —                                        | —                                                                                   | —                                       | typing always works                            |
+| `intake.transcription`    | tested (the words land in the text box to change)  | tested (off; register and provider)      | n/a (audio); the words then meet extraction's defences                              | tested (record without content)         | tested (off; failure); typing always works     |
 | `review.translation`      | n/a (a reading aid; the reviewer decides)          | tested (off: J2)                         | provider level only                                                                 | tested (label; record: J2)              | tested (off and failing: J2)                   |
 | `field.voice_draft`       | tested (per-field confirm on the phone: code only) | tested                                   | tested                                                                              | tested                                  | off tested; provider failure code only         |
 | `command.interpret`       | tested                                             | tested                                   | tested (evaluation set)                                                             | tested                                  | tested (shorthand without AI)                  |
@@ -97,7 +97,7 @@ Tests added by task J2:
 
 Remaining gaps, each with an owner:
 
-1. `intake.transcription` and `photo.quality` are register rows with no provider call. Resident dictation uses the browser's speech recognition, which in Chrome sends audio to Google, outside AIG-06. Both have their own tasks in the layer-7 status file.
+1. `photo.quality` is a register row with no provider call; it has its own task. (`intake.transcription` was in the same state; resident dictation now goes through the county's provider, see below.)
 2. The evaluation suite (AIG-08) has injection cases for extraction and the command window only. Scribe notes, drafting, translation and discovery rely on per-output checks and their own tests, not on labelled evaluation cases. There is no labelled photo set for fairness slices.
 3. These are code only:
    - `field.voice_draft`'s provider-failure answer;
@@ -106,7 +106,9 @@ Remaining gaps, each with an owner:
 4. No test hides instructions inside an image for the classifier or the detector.
 5. For `public.speech`, the PIO listening to the audio before it airs is a procedure, not a gate in the software.
 
-Found and fixed while gathering this evidence (J2):
+Found and fixed while gathering this evidence (J2 and after):
+
+- Resident dictation used the browser's speech recognition, which in Chrome streams the audio to Google and in Safari to Apple, outside AIG-06. It now records on the device and sends the clip to the county's provider through `POST /api/public/intake/:tenant/dictation`, only where the register has `intake.transcription` on. Nothing is kept, and the call is recorded (`public.db.test.ts`: "INT-12, AIG-06, AI-10: dictation goes to the tenant provider only when the register allows it …").
 
 - The severity classifier was sent any processed photo's review copy. That copy is unblurred when the sensitive-region detector is off or failed, so faces and plates could reach the provider. It now sees only photos the detector cleared (`blur_status = applied`; PHO-07, AIG-05).
 - A legal-aid referral's outcome note reached the referring organization and the county's audit log, against FL:FR-23. Fixed: legal aid responses now share the status only (`updates.db.test.ts`).

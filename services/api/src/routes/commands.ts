@@ -333,7 +333,13 @@ const str = (v: unknown) => (typeof v === 'string' ? v : '');
 /** Where the console lists and reads each kind of record the catalog targets. */
 const RECORDS: Record<
   TargetKind,
-  { list(ref: string): string | null; one(id: string): string; label(r: ListRow): string }
+  {
+    list(ref: string): string | null;
+    one(id: string): string;
+    label(r: ListRow): string;
+    /** No version to compare at confirmation; the operation checks the record's state. */
+    unversioned?: boolean;
+  }
 > = {
   mission: {
     list: (ref) => `/missions?limit=10&reference=${encodeURIComponent(ref)}`,
@@ -353,6 +359,14 @@ const RECORDS: Record<
     list: () => '/reminders?limit=100&open=true&mine=true',
     one: (id) => `/reminders/${id}`,
     label: (r) => `${str(r['title'])} (due ${str(r['dueAt'])})`,
+  },
+  // FL-07: "I'm done here" is your own open check-in; it carries no version, and ending it
+  // twice is refused by the route itself.
+  check_in: {
+    list: () => '/check-ins?limit=5&open=true&mine=true',
+    one: (id) => `/check-ins/${id}`,
+    label: (r) => `checked in ${str(r['startedAt']).slice(0, 16).replace('T', ' ')} UTC`,
+    unversioned: true,
   },
 };
 
@@ -384,7 +398,12 @@ async function resolveTarget(
   const r = rows[0]!;
   return {
     kind: 'one',
-    target: { kind, id: str(r['id']), version: Number(r['version']), label: where.label(r) },
+    target: {
+      kind,
+      id: str(r['id']),
+      version: typeof r['version'] === 'number' ? r['version'] : 0,
+      label: where.label(r),
+    },
   };
 }
 
@@ -992,7 +1011,10 @@ export const commandRoutesWith =
             return {
               ...head,
               status: 'not_found',
-              message: `No ${spec.target} you can see matches "${parsed.ref ?? ''}".`,
+              message:
+                spec.target === 'check_in'
+                  ? 'You are not checked in, so there is nothing to check out of.'
+                  : `No ${spec.target} you can see matches "${parsed.ref ?? ''}".`,
             };
           if (r.kind === 'many')
             return {
@@ -1201,7 +1223,7 @@ export const commandRoutesWith =
           });
 
         // CMD-09, AC-C04: the record is read again; a different version means a different plan.
-        if (plan.target) {
+        if (plan.target && !RECORDS[plan.target.kind].unversioned) {
           const cur = await op(request, {
             method: 'GET',
             path: RECORDS[plan.target.kind].one(plan.target.id),

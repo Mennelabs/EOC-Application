@@ -185,6 +185,7 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
     subjects['pio'] = as('public_information_officer');
     subjects['admin'] = as('tenant_admin');
     subjects['planner'] = as('reporting_planning');
+    subjects['canteen'] = as('canteen_crew');
     const loader: SubjectLoader = {
       async fromBearer(token) {
         const s = subjects[token];
@@ -321,6 +322,81 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
     // A role without the read is refused before anything runs.
     expect((await command('pio', '/people available')).status).toBe('denied');
     expect((await command('field', '/reports')).status).toBe('denied');
+  });
+
+  it('FL-07: "log two meals" counts with one tap and undoes with a counter-entry; "I\'m done here" checks out the person\'s own shift', async () => {
+    // Without a check-in there is nothing to check out of.
+    const none = await command('canteen', '/checkout');
+    expect(none.status).toBe('not_found');
+    expect(none.message).toContain('not checked in');
+    const personnelId = await withTenant(dbWorker, { tenantId: county }, async (trx) => {
+      await trx
+        .insertInto('cg.account')
+        .values({
+          id: subjects['canteen']!.accountId,
+          tenant_id: county,
+          email: `canteen-${run}@example.org`,
+          display_name: `Exercise canteen crew ${run}`,
+        })
+        .execute();
+      const p = await trx
+        .insertInto('cg.personnel')
+        .values({
+          tenant_id: county,
+          account_id: subjects['canteen']!.accountId,
+          name: `Exercise canteen crew ${run}`,
+          duty_status: 'on_duty',
+        })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      await trx
+        .insertInto('cg.check_in')
+        .values({
+          tenant_id: county,
+          personnel_id: p.id,
+          event_id: eventId,
+          method: 'console',
+          started_at: new Date(Date.now() - 3 * 3_600_000),
+        })
+        .execute();
+      return p.id;
+    });
+    const counted = async () =>
+      (
+        await dbWorker
+          .selectFrom('cg.service_log')
+          .select('count')
+          .where('tenant_id', '=', county)
+          .where('kind', '=', 'meal')
+          .execute()
+      ).reduce((n, r) => n + Number(r.count), 0);
+    const before = await counted();
+    const meals = await command('canteen', '/log 2 meals');
+    expect(meals.status, meals.message).toBe('awaiting_confirmation');
+    expect(meals.plan?.description).toBe('Log 2 meals.');
+    const logged = await confirm('canteen', meals);
+    expect(logged.body['status'], JSON.stringify(logged.body)).toBe('succeeded');
+    expect(logged.body['message']).toBe('Logged 2 meals.');
+    expect(await counted()).toBe(before + 2);
+    // Undo inside the window adds a counter-entry; nothing is edited or deleted.
+    const undo = await call('canteen', 'POST', `/commands/${meals.id}/undo`, {
+      executionId: randomUUID(),
+    });
+    expect(undo.status, JSON.stringify(undo.body)).toBe(200);
+    expect(await counted()).toBe(before);
+
+    const out = await command('canteen', '/salida');
+    expect(out.status, out.message).toBe('awaiting_confirmation');
+    const done = await confirm('canteen', out);
+    expect(done.body['status'], JSON.stringify(done.body)).toBe('succeeded');
+    expect(done.body['message']).toMatch(/Checked out after 3 hours\. You are off duty\./);
+    const person = await dbWorker
+      .selectFrom('cg.personnel')
+      .select('duty_status')
+      .where('id', '=', personnelId)
+      .executeTakeFirstOrThrow();
+    expect(person.duty_status).toBe('off_duty');
+    expect((await command('canteen', '/checkout')).status).toBe('not_found');
   });
 
   it('CMD-21: a role without the action is refused before anything is planned', async () => {

@@ -92,7 +92,7 @@
   ],
   "CMD-16": [
     "partial",
-    "catalog.ts sitrep.draft (a draft through POST /official-reports, never issued, RULE-10), reminders.list, reminder.create, reminder.snooze, reminder.complete (the note of what was done saves before the reminder completes); AI summary drafting from the facts (routes/official-reports.ts, routes/drafting.ts, task G)",
+    "catalog.ts sitrep.draft (a draft through POST /official-reports, never issued, RULE-10), reminders.list, reminder.create, reminder.snooze, reminder.complete (the note of what was done saves before the reminder completes), service.log and shift.end (FL-07); AI summary drafting from the facts (routes/official-reports.ts, routes/drafting.ts, task G)",
     "services/api/test/commands.db.test.ts (Section 30.2: /sitrep drafted, not issued; reminders set, completed, ambiguous titles asked), services/api/test/commands.test.ts (CMD-16: done only with what was done), services/api/test/drafting.db.test.ts (CMD-16, AI-04: drafted from the facts)",
     "Exports and changing a reminder's text are not catalogued; they stay on their screens."
   ],
@@ -734,9 +734,9 @@
   ],
   "FL-07": [
     "partial",
-    "apps/field/app/command.tsx \"Ask or command\" (home button for command.use): said with the keyboard's microphone or typed, plain words (read by the model when command.interpret is on) or shorthand; the plan is shown and confirmed on screen before anything saves; needs a connection and keeps nothing; routes/commands.ts over the 12-command catalog",
-    "tests/e2e/field.spec.ts (FL-07: asks for its reminders from the phone), services/api/test/commands.db.test.ts (AC-C06: a change waits for a confirmation bound to its plan; CMD-03: plain words with the feature on), services/api/test/commands.test.ts",
-    "The catalog has no command to log meals or refer to case management; a mission status change is the phase-3 command, on per county. Voice is the phone's own dictation, not server speech-to-text."
+    "apps/field/app/command.tsx \"Ask or command\" (home button for command.use): said with the keyboard's microphone or typed, plain words (read by the model when command.interpret is on) or shorthand; the plan is shown and confirmed on screen before anything saves; needs a connection and keeps nothing; routes/commands.ts over the catalog, which now has service.log (\"log two meals\": one tap, undone by a counter-entry, never an edit) and shift.end (\"I'm done here\": checks out the person's own open shift and puts them off duty); GET /check-ins?mine=true honours open",
+    "tests/e2e/field.spec.ts (FL-07: asks for its reminders from the phone), services/api/test/commands.db.test.ts (FL-07: log two meals and undo, check out, nothing to check out of; AC-C06: a change waits for a confirmation bound to its plan; CMD-03: plain words with the feature on), services/api/test/commands.test.ts (FL-07 shorthand in English and Spanish)",
+    "Referral to case management waits for the case-management work after layer 8 (decision 2026-10-15). A mission status change is the phase-3 command, on per county. Voice is the phone's own dictation, not server speech-to-text."
   ],
   "FL-12": [
     "pass",

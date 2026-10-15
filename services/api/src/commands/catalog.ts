@@ -15,7 +15,7 @@ import { z } from 'zod';
 
 export type Confirmation = 'none' | 'one_tap' | 'full_review' | 'second_person';
 export type Reversal = 'undo_15_min' | 'compensating' | 'none';
-export type TargetKind = 'mission' | 'need' | 'reminder';
+export type TargetKind = 'mission' | 'need' | 'reminder' | 'check_in';
 
 /** A resolved record the command acts on, with the version it had when the plan was made. */
 export interface Target {
@@ -634,6 +634,88 @@ export const CATALOG = [
         state: 'saved',
         summary: `"${str(x['title'])}" is ${str(x['state'])}.`,
         records: [{ kind: 'reminder', id: str(x['id']), version: ver(x['version']) }],
+      };
+    },
+  }),
+  define({
+    name: 'service.log',
+    version: 1,
+    phase: 2,
+    action: 'service_log.write',
+    kind: 'change',
+    title: 'Log services given (meals, water, tarps …)',
+    usage: '/log <count> <meals|water|tarps|cots|rides|people|vouchers|pet_food>',
+    args: z.object({
+      count: z.number().int().min(1).max(1000),
+      kind: z.enum([
+        'meal',
+        'water_case',
+        'tarp',
+        'cot',
+        'ride',
+        'person_served',
+        'voucher',
+        'pet_food',
+      ]),
+    }),
+    confirmation: 'one_tap',
+    reversal: 'undo_15_min',
+    sideEffects:
+      'Adds to the service counts for the event; a correction is a new entry, never an edit (FL-06).',
+    request: (a, _t, ctx) => ({
+      method: 'POST',
+      path: '/service-logs',
+      body: { clientUuid: ctx.executionId, kind: a.kind, count: a.count },
+    }),
+    // A count is corrected by a counter-entry, as on the phone's counters.
+    undo: (a) => ({
+      method: 'POST',
+      path: '/service-logs',
+      body: {
+        clientUuid: globalThis.crypto.randomUUID(),
+        kind: a.kind,
+        count: -a.count,
+        note: 'Undone from the command window',
+      },
+    }),
+    describe: (a) => `Log ${a.count} ${a.kind.replace(/_/g, ' ')}${a.count === 1 ? '' : 's'}.`,
+    verify: (r) => {
+      const x = (r ?? {}) as Row;
+      const n = typeof x['count'] === 'number' ? x['count'] : 0;
+      return {
+        state: 'saved',
+        summary: `Logged ${n} ${str(x['kind']).replace(/_/g, ' ')}${n === 1 ? '' : 's'}.`,
+        records: [{ kind: 'service_log', id: str(x['id']) }],
+      };
+    },
+  }),
+  define({
+    name: 'shift.end',
+    version: 1,
+    phase: 2,
+    action: 'check_in.end',
+    kind: 'change',
+    title: 'Check out at the end of your shift',
+    usage: '/checkout',
+    args: z.object({}),
+    target: 'check_in',
+    confirmation: 'one_tap',
+    reversal: 'none',
+    sideEffects:
+      'Ends your check-in and puts you off duty. To leave a hand-over for the next shift, use the check-out screen (FL-12).',
+    request: (_a, t) => ({
+      method: 'POST',
+      path: `/check-ins/${t!.id}/end`,
+      body: { reason: 'checked_out' },
+    }),
+    describe: (_a, t) => `Check out (${t!.label}).`,
+    verify: (r) => {
+      const c = (r ?? {}) as Row;
+      const hours = typeof c['hours'] === 'number' ? Math.round(c['hours'] * 10) / 10 : null;
+      return {
+        state: 'saved',
+        summary: `Checked out${hours !== null ? ` after ${hours} hours` : ''}. You are off duty.`,
+        records: [{ kind: 'check_in', id: str(c['id']) }],
       };
     },
   }),

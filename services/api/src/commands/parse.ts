@@ -63,6 +63,12 @@ const VERBS: Record<string, string> = {
   recursos: 'resources',
   contacts: 'contacts',
   contactos: 'contacts',
+  log: 'log',
+  registrar: 'log',
+  anotar: 'log',
+  checkout: 'checkout',
+  check_out: 'checkout',
+  salida: 'checkout',
   help: 'help',
   ayuda: 'help',
 };
@@ -183,6 +189,65 @@ const REPORT_FILTERS: Record<string, [string, string | boolean]> = {
   marcados: ['flagged', true],
   danger: ['danger', true],
   peligro: ['danger', true],
+};
+
+/** FL-07: what a frontline worker counts, in English and Spanish, singular or plural. */
+const SERVICE_KINDS: Record<string, string> = {
+  meal: 'meal',
+  meals: 'meal',
+  comida: 'meal',
+  comidas: 'meal',
+  water: 'water_case',
+  waters: 'water_case',
+  water_case: 'water_case',
+  water_cases: 'water_case',
+  agua: 'water_case',
+  aguas: 'water_case',
+  tarp: 'tarp',
+  tarps: 'tarp',
+  lona: 'tarp',
+  lonas: 'tarp',
+  cot: 'cot',
+  cots: 'cot',
+  catre: 'cot',
+  catres: 'cot',
+  ride: 'ride',
+  rides: 'ride',
+  viaje: 'ride',
+  viajes: 'ride',
+  people: 'person_served',
+  person: 'person_served',
+  persons: 'person_served',
+  personas: 'person_served',
+  voucher: 'voucher',
+  vouchers: 'voucher',
+  vale: 'voucher',
+  vales: 'voucher',
+  pet_food: 'pet_food',
+};
+
+const NUMBER_WORDS: Record<string, number> = {
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  uno: 1,
+  una: 1,
+  dos: 2,
+  tres: 3,
+  cuatro: 4,
+  cinco: 5,
+  seis: 6,
+  siete: 7,
+  ocho: 8,
+  nueve: 9,
+  diez: 10,
 };
 
 /** CMD-17: the kinds of partner contact. */
@@ -426,6 +491,26 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
       const category = words.map(norm).join('_');
       return ok('resources.find', category ? { category } : {});
     }
+
+    case 'log': {
+      let count: number | null = null;
+      let kind: string | null = null;
+      for (const w of words) {
+        const n = norm(w);
+        if (/^\d{1,4}$/.test(n)) count = Number(n);
+        else if (NUMBER_WORDS[n]) count = NUMBER_WORDS[n]!;
+        else if (SERVICE_KINDS[n]) kind = SERVICE_KINDS[n]!;
+      }
+      if (!count || !kind)
+        return usage(
+          'How many of what? For example "/log 2 meals".',
+          '/log <count> <meals|water|tarps|cots|rides|people|vouchers|pet_food>',
+        );
+      return ok('service.log', { count, kind });
+    }
+
+    case 'checkout':
+      return ok('shift.end', {}, '', 'check_in');
 
     case 'contacts': {
       const args: Record<string, unknown> = {};

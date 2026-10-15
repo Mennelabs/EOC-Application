@@ -169,6 +169,21 @@ describe('shorthand', () => {
     expect(parse('/mission M-00012 reabrir')).toMatchObject({ command: 'mission.reopen' });
   });
 
+  it('FL-07: "log two meals" and "I\'m done here" as shorthand, in English and Spanish', () => {
+    expect(parse('/log 2 meals')).toEqual({
+      ok: true,
+      command: 'service.log',
+      args: { count: 2, kind: 'meal' },
+      ref: null,
+      refKind: null,
+    });
+    expect(parse('/registrar tres comidas')).toMatchObject({ args: { count: 3, kind: 'meal' } });
+    expect(parse('/log water 12')).toMatchObject({ args: { count: 12, kind: 'water_case' } });
+    expect(parse('/log some meals')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/checkout')).toMatchObject({ command: 'shift.end', refKind: 'check_in' });
+    expect(parse('/salida')).toMatchObject({ command: 'shift.end' });
+  });
+
   it('free text after a sub-verb keeps its colons; only known keys are pairs', () => {
     expect(parse('/mission M-1 note Crew says: road closed at Elm')).toMatchObject({
       command: 'mission.note',

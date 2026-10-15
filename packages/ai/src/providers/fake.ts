@@ -402,6 +402,35 @@ function interpret(text: string): CommandInterpretation {
       question: null,
     };
   }
+  // FL-07: "log two meals", "registra tres comidas", "I'm done here".
+  const NUM: Record<string, string> = {
+    one: '1',
+    two: '2',
+    three: '3',
+    four: '4',
+    five: '5',
+    uno: '1',
+    una: '1',
+    dos: '2',
+    tres: '3',
+    cuatro: '4',
+    cinco: '5',
+  };
+  const logged =
+    /\b(?:log|registra|anota)\s+(\d+|one|two|three|four|five|uno|una|dos|tres|cuatro|cinco)\s+(meals?|comidas?|tarps?|lonas?|cots?|catres?|rides?|viajes?)\b/i.exec(
+      text,
+    );
+  if (logged)
+    return {
+      shorthand: `/log ${NUM[logged[1]!.toLowerCase()] ?? logged[1]} ${logged[2]!.toLowerCase()}`,
+      question: null,
+    };
+  if (
+    /\b(i'?m done here|i am done here|check me out|ya terminé aquí|ya termine aqui|terminé mi turno)\b/i.test(
+      t,
+    )
+  )
+    return { shorthand: '/checkout', question: null };
   // CMD-14: who is free, by a recorded skill; nothing inferred.
   if (/\b(who|quién|quien|people|personas)\b/i.test(t) && /\b(available|disponibles?)\b/i.test(t)) {
     const skill = /\b(?:with|con)\s+(?:a\s+|an\s+)?([a-záéíóúñ]+)\b/i.exec(text)?.[1];

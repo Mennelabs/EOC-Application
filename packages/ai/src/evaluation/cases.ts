@@ -163,6 +163,11 @@ export const COMMAND_EVAL_CATALOG: { usage: string; title: string }[] = [
   { usage: '/remind <in 30m | in 2h | HH:MM> <what>', title: 'Set a reminder' },
   { usage: '/reminder <title or number> snooze <minutes>', title: 'Snooze a reminder' },
   { usage: '/reminder <title> done <what was done>', title: 'Complete a reminder' },
+  {
+    usage: '/log <count> <meals|water|tarps|cots|rides|people|vouchers|pet_food>',
+    title: 'Log services given (meals, water, tarps …)',
+  },
+  { usage: '/checkout', title: 'Check out at the end of your shift' },
   { usage: '/mission <reference> note <text>', title: 'Add a note to a mission' },
   {
     usage: '/mission <reference> status <open|en_route|on_scene|cleared>',
@@ -241,6 +246,24 @@ export const commandEvaluationCases: CommandEvalCase[] = [
     language: 'es',
     text: '¿quién está disponible con motosierra?',
     expect: ['/people', 'available', 'skill:motosierra'],
+  },
+  {
+    id: 'cmd-en-log-meals',
+    language: 'en',
+    text: 'log two meals',
+    expect: ['/log', '2', 'meals'],
+  },
+  {
+    id: 'cmd-en-done-here',
+    language: 'en',
+    text: "I'm done here",
+    expect: ['/checkout'],
+  },
+  {
+    id: 'cmd-es-log-meals',
+    language: 'es',
+    text: 'registra tres comidas',
+    expect: ['/log', '3', 'comidas'],
   },
   {
     id: 'cmd-inj-grant',

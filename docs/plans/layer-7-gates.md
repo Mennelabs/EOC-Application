@@ -1,0 +1,113 @@
+# Layer 7 launch-gate evidence
+
+Task J, 2026-10-15. The launch gates that apply to layer 7 (GATE-02, 03, 04, 05 and 08; layer-7 status row J) and the evidence for each. Every suite named here runs in CI on every push (`.github/workflows/ci.yml`), and the layer merges only when CI is green.
+
+## GATE-02: released feature acceptance cases pass
+
+The layer's acceptance cases are the requirement IDs in `docs/traceability.md` (layer 7 rows, evidence in `tools/reqindex/trace-layer7.json`). Each `pass` row names its tests. They run in four places:
+
+- **Database suites:** `commands`, `command-history`, `facilities`, `recommendations`, `discovery`, `drafting`, `scribe`, `handover`, `translation`, `severity`, `ai-register`, `tenant-config` and `authz-sweep` in `services/api/test`; `ai-health` and `intake` in `services/worker/test`.
+- **Unit suites:** `packages/ai/test/*`, `packages/reporting/test/recommend*.test.ts`, `agreement.test.ts`, and `services/api/test/*-units.test.ts`.
+- **Browser journeys** on desktop and phone: `tests/e2e/console-l7.spec.ts`, `console.spec.ts`, `field.spec.ts` and `help.spec.ts`.
+- **Live AI evaluation** (`packages/ai/test/live.test.ts`): runs only where `OPENAI_API_KEY` is set. It is not set in CI or in the cloud environment yet, so the live suite has not run.
+
+Partial and deferred rows are listed with their gaps in the layer-7 report.
+
+## GATE-03: accessibility evidence for released public tasks
+
+Every layer-7 screen has a record in `docs/a11y/screens/`:
+
+- `command-window.md`, `facilities.md`, `recommendations.md` and `discovery.md`;
+- the layer-7 notes in `console-layer3.md` (sites), `console-review.md` (severity suggestion, AI register) and `field-app.md` (note-taker, hand-over, translation).
+
+The checklist index (`docs/a11y/checklist.md`) lists them. axe with WCAG 2.2 AA rules runs on every state the journeys reach, with a reflow check at phone width. The public tasks are Find help's "Ask a question" and "Offer a place for disaster use"; both pass axe in `help.spec.ts`.
+
+**Open:** the screen-reader pass (check 2 on each record) needs a person with NVDA and VoiceOver, and the field app needs a pass on a real device.
+
+## GATE-04: no known unauthorized-access bypass
+
+- **Every route, both callers.** `services/api/test/authz-sweep.db.test.ts` calls every staff route under `/api/v1` (364 today) two ways: without a token, and as an account of a county that holds no role.
+  - Neither ever succeeds or hits a server error.
+  - Any route open to any account must be listed with its reason; none is.
+  - An administrator through the same harness gets 200, which proves the harness itself works.
+  - Bodies are empty, so routes that validate first answer 400 before reading anything. The feature suites cover those routes with real bodies.
+- **Per-feature permission cases in layer 7:**
+
+| Feature             | What is proven                                                                                                                                                                                                                                                                                         | Test                                                   |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ |
+| Command window      | A role without the action is refused before anything is planned; a role taken away between plan and confirmation blocks the execution; a choice offers only records the person may see; personal aliases only look things up for their owner; organization aliases need the explicit, confirmed action | `commands.db.test.ts` (CMD-21, AC-C05, AC-C02, CMD-04) |
+| Command history     | History belongs to its owner alone, through the API and the rows, administrators included                                                                                                                                                                                                              | `command-history.db.test.ts` (CMD-36)                  |
+| Facilities          | Contacts are encrypted, kept out of lists and audited when read; the COAD and mass care propose; a named approver decides, never on their own proposal                                                                                                                                                 | `facilities.db.test.ts` (REC-01, REC-10, A7)           |
+| Recommendations     | The COAD may ask but not decide                                                                                                                                                                                                                                                                        | `recommendations.db.test.ts` (REC-04)                  |
+| Scribe              | A counselor has no scribe; counseling is refused; a legal aid note is only its author's                                                                                                                                                                                                                | `scribe.db.test.ts`                                    |
+| Hand-over           | The next shift on the team reads it; another team does not; a lead reads them all                                                                                                                                                                                                                      | `handover.db.test.ts` (FL-12)                          |
+| Translation         | A nurse has no machine translation                                                                                                                                                                                                                                                                     | `translation.db.test.ts`                               |
+| Severity suggestion | A reviewer who may set the degree reads it; the PIO does not; residents never see it; the agreement report and alerts are for the register's readers only                                                                                                                                              | `severity.db.test.ts`                                  |
+| Tenant scoping      | Settings and AI switches are read for the tenant in context, never the first row the system role sees                                                                                                                                                                                                  | `tenant-config.db.test.ts`                             |
+
+## GATE-05: save consistency, duplicate prevention, concurrency
+
+| Write                    | What is proven                                                                                                                                                                                                                                                                      | Test                                                                                                                                                                                                                                                           |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Command execution        | A change waits for a confirmation bound to its plan. Confirming twice claims once, and the same execution id returns the same execution. A record changed between plan and confirmation makes the plan stale, and nothing runs. Undo is a linked execution, once, inside its window | `commands.db.test.ts` ("AC-C06, CMD-25: … confirming twice claims once …", "AC-C04, CMD-09: a record changed between the plan and the confirmation makes the plan stale; nothing runs", "AC-C08, CMD-28: undo is a linked execution, once, inside its window") |
+| Unconfirmed plans        | A plan nobody confirms goes stale after 15 minutes and keeps only a digest of its text                                                                                                                                                                                              | `command-history.db.test.ts`                                                                                                                                                                                                                                   |
+| Facility registry        | A change against an old version is refused with the current entry. A retried public offer makes no second offer                                                                                                                                                                     | `facilities.db.test.ts` ("BRD:FR-00.05: …", "REC-01: a place offered through the public form waits in the queue; a retry makes no second offer …")                                                                                                             |
+| Recommendation decisions | Once decided, a recommendation stays decided                                                                                                                                                                                                                                        | `recommendations.db.test.ts` (REC-04)                                                                                                                                                                                                                          |
+| Discovery                | The next run proposes neither candidate again; a change to a rejected place brings it back; the digest goes once per period                                                                                                                                                         | `discovery.db.test.ts` (REC-13, REC-14)                                                                                                                                                                                                                        |
+| Hand-over                | Saving again updates the one hand-over                                                                                                                                                                                                                                              | `handover.db.test.ts` (FL-12)                                                                                                                                                                                                                                  |
+| Severity suggestion      | The same set of photos is never classified twice                                                                                                                                                                                                                                    | `severity.db.test.ts` (PHO-09)                                                                                                                                                                                                                                 |
+| Fairness alerts          | One open alert per group; a second run raises nothing new; acknowledging twice is refused                                                                                                                                                                                           | `severity.db.test.ts` (PHO-13)                                                                                                                                                                                                                                 |
+
+## GATE-08: AI confirmation, scope, injection defences, verified results, manual fallback
+
+Every AI feature in the register (`packages/ai/src/registry.ts`), against the five things GATE-08 asks for. **Tested** means an automated test proves it; the test names are in the appendix, [`layer-7-gate-08.md`](layer-7-gate-08.md).
+
+| Feature                   | Confirmation                                       | Scope                                    | Injection defences                                                                  | Verified result                         | Manual fallback                                |
+| ------------------------- | -------------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------- | ---------------------------------------------- |
+| `intake.extraction`       | tested (the yes/no screen itself: code only)       | tested                                   | tested (evaluation set, delimiting)                                                 | tested                                  | tested (off: J2; timeout)                      |
+| `intake.transcription`    | tested (the words land in the text box to change)  | tested (off; register and provider)      | n/a (audio); the words then meet extraction's defences                              | tested (record without content)         | tested (off; failure); typing always works     |
+| `review.translation`      | n/a (a reading aid; the reviewer decides)          | tested (off: J2)                         | provider level only                                                                 | tested (label; record: J2)              | tested (off and failing: J2)                   |
+| `field.voice_draft`       | tested (per-field confirm on the phone: code only) | tested                                   | tested                                                                              | tested                                  | off tested; provider failure code only         |
+| `command.interpret`       | tested                                             | tested                                   | tested (evaluation set)                                                             | tested                                  | tested (shorthand without AI)                  |
+| `scribe.transcription`    | tested                                             | tested                                   | n/a (audio); transcript redacted, tested                                            | tested                                  | tested (off; failure: J2)                      |
+| `scribe.note`             | tested                                             | tested                                   | tested                                                                              | tested (each line quotes what was said) | tested (off, discard); model failure code only |
+| `field.handover`          | tested                                             | tested                                   | shared draft check only                                                             | tested (refused draft: J2)              | tested                                         |
+| `field.translation`       | n/a (interpreter for consent, legal, medical)      | tested                                   | provider level only                                                                 | tested                                  | tested (off; failure: J2)                      |
+| `discovery.web_search`    | tested                                             | tested                                   | tested (discard on a page's instructions: J2)                                       | tested                                  | tested (off; failure: J2)                      |
+| `report.drafting`         | tested                                             | tested (route's own check via the sweep) | shared draft check only                                                             | tested                                  | tested                                         |
+| `declaration.drafting`    | tested                                             | tested (off: J2)                         | shared draft check only                                                             | tested (refused figure: J2)             | tested (off: J2; by hand in the journey)       |
+| `public.drafting`         | tested                                             | tested                                   | tested (output filter)                                                              | tested                                  | tested (off: J2; journey)                      |
+| `public.speech`           | tested (listening before air is procedural)        | tested                                   | n/a (a script a person wrote)                                                       | tested                                  | tested                                         |
+| `photo.sensitive_regions` | tested (a person clears photos for the package)    | tested (register gate: J2)               | n/a; fails closed, tested                                                           | tested (record and blur status: J2)     | tested (no detector; failure: J2)              |
+| `photo.severity`          | tested                                             | tested                                   | fixed list of degrees; only cleared photos sent (J2); no image-borne injection test | tested                                  | tested (off; failure: J2)                      |
+
+Tests added by task J2:
+
+- `reports.db.test.ts`: "GATE-08, AI-10, EQ-08: with machine translation off, or the provider failing, the reviewer reads the original; a failure is recorded"
+- `public.db.test.ts`: "INT-16, AI-10, GATE-08: with extraction switched off the resident is told to answer directly; nothing is sent or recorded"
+- `scribe.db.test.ts`: "GATE-08, AI-10: when speech to text fails, the worker is told to write the note themselves; the failure is recorded and the recording kept for a retry"
+- `translation.db.test.ts`: "GATE-08, AI-10: when the provider fails, the worker is told to ask for an interpreter and the failure is recorded"
+- `discovery.db.test.ts`: "AIG-02, OWASP LLM01, GATE-08: a search a page tried to instruct keeps nothing; a search that fails says so; both are recorded"
+- `drafting.db.test.ts`: "GATE-08, AI-10, AI-04: declaration and public drafting say so when switched off; a Box 8 draft with a figure the facts do not hold is refused and recorded"
+- `handover.db.test.ts`: "AI-04, AI-09, GATE-08: a hand-over draft with a figure the shift never logged is refused, recorded and never shown"
+- `severity.db.test.ts`:
+  - "PHO-07, AIG-05, GATE-08: a photo the detector did not clear is never sent; a failing classifier is recorded and suggests nothing"
+  - "PHO-07, AIG-01, GATE-08: switched on, the detector blurs what it finds and the call is recorded; when it fails the photo keeps an unblurred, restricted copy marked failed"
+
+Remaining gaps, each with an owner:
+
+1. Two register rows had no provider call. `intake.transcription` now carries resident dictation through the county's provider (see below). `photo.quality` was retired from the register by migration 0074: PHO-03's retake suggestion runs on the device without AI, as PHO-03 asks.
+2. The evaluation suite (AIG-08) has injection cases for extraction and the command window only. Scribe notes, drafting, translation and discovery rely on per-output checks and their own tests, not on labelled evaluation cases. There is no labelled photo set for fairness slices; the harness to run one is `evaluate:photos` (`packages/ai/src/evaluation/photos.ts`).
+3. These are code only:
+   - `field.voice_draft`'s provider-failure answer;
+   - the scribe note model's failure;
+   - the resident's and the field worker's per-suggestion confirm controls.
+4. No test hides instructions inside an image for the classifier or the detector.
+5. For `public.speech`, the PIO listening to the audio before it airs is a procedure, not a gate in the software.
+
+Found and fixed while gathering this evidence (J2 and after):
+
+- Resident dictation used the browser's speech recognition, which in Chrome streams the audio to Google and in Safari to Apple, outside AIG-06. It now records on the device and sends the clip to the county's provider through `POST /api/public/intake/:tenant/dictation`, only where the register has `intake.transcription` on. Nothing is kept, and the call is recorded (`public.db.test.ts`: "INT-12, AIG-06, AI-10: dictation goes to the tenant provider only when the register allows it …").
+
+- The severity classifier was sent any processed photo's review copy. That copy is unblurred when the sensitive-region detector is off or failed, so faces and plates could reach the provider. It now sees only photos the detector cleared (`blur_status = applied`; PHO-07, AIG-05).
+- A legal-aid referral's outcome note reached the referring organization and the county's audit log, against FL:FR-23. Fixed: legal aid responses now share the status only (`updates.db.test.ts`).

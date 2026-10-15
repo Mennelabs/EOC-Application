@@ -164,6 +164,12 @@ export const actions = {
   'intake.extract': a('read', 'extraction', 'Candidate answers from free text (fixed schema)', {
     public: true,
   }),
+  'intake.transcribe': a(
+    'read',
+    'dictation',
+    'Spoken words written down by the provider, kept nowhere (INT-12)',
+    { public: true },
+  ),
   'intake.lookup': a('read', 'report', 'Start and verify a reference-code lookup (one-time code)', {
     public: true,
   }),

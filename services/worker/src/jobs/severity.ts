@@ -2,7 +2,8 @@
  * The damage severity suggestion (layer-7 task I; PHO-09, PHO-10, PHO-12 as
  * decided 2026-10-15, AI-10, AIG-01). After a report's photo is processed, the
  * provider's classifier looks at the report's blurred review copies with its
- * home type and hazard, and suggests a FEMA degree or "cannot tell", with a
+ * home type and hazard (only photos the sensitive-region detector cleared), and
+ * suggests a FEMA degree or "cannot tell", with a
  * confidence and the features it rests on. It runs only where the register has
  * `photo.severity` on for the provider in force; the call is made outside any
  * transaction and recorded whatever its outcome. The suggestion is kept for
@@ -36,11 +37,15 @@ export const reportSeverity: TopicHandler = async (ctx, msg) => {
       .where('r.id', '=', reportId)
       .executeTakeFirst();
     if (!report || report.withdrawn_at) return null;
+    // Only photos the detector cleared: their review copy is blurred where it found faces,
+    // plates, documents or house numbers (PHO-07, AIG-05). A photo whose detection was off or
+    // failed keeps an unblurred review copy and is never sent.
     const photos = await trx
       .selectFrom('cg.photo')
       .select(['id', 'derivative_keys'])
       .where('report_id', '=', reportId)
       .where('status', '=', 'processed')
+      .where('blur_status', '=', 'applied')
       .orderBy('created_at')
       .limit(MAX_PHOTOS)
       .execute();

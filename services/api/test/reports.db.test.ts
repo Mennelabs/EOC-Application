@@ -13,10 +13,10 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SimulatorSms } from '@cg/adapters';
-import { fakeProvider } from '@cg/ai';
+import { fakeProvider, type AiProvider } from '@cg/ai';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
-import { createDb, type Database } from '@cg/db';
+import { createDb, withTenant, type Database } from '@cg/db';
 import { westwindGraph } from '@cg/intake';
 import type { Kysely } from 'kysely';
 import { enableAiTestDouble } from '../../../tools/seed/src/ai-test-double.ts';
@@ -116,7 +116,7 @@ describe.skipIf(!appUrl || !workerUrl)('staff review routes (database-backed)', 
       crypto,
       now: () => new Date(),
     };
-    const ai = { providerFor: async () => fakeProvider };
+    const ai = { providerFor: async () => provider };
     app = await buildApp({
       productName: 'Test Product',
       version: '0.0.0',
@@ -182,6 +182,8 @@ describe.skipIf(!appUrl || !workerUrl)('staff review routes (database-backed)', 
   });
 
   let assistedId: string;
+  /** The provider the routes see; a test swaps in a failing one (GATE-08). */
+  let provider: AiProvider = fakeProvider;
   let assistedCode: string;
   let residentId: string;
 
@@ -589,6 +591,64 @@ describe.skipIf(!appUrl || !workerUrl)('staff review routes (database-backed)', 
       payload: { to: 'en' },
     });
     expect(noFreeText.statusCode).toBe(403);
+  });
+
+  it('GATE-08, AI-10, EQ-08: with machine translation off, or the provider failing, the reviewer reads the original; a failure is recorded', async () => {
+    const translate = () =>
+      app.inject({
+        method: 'POST',
+        url: `/api/v1/reports/${assistedId}/translate`,
+        headers: headers('priya'),
+        payload: { to: 'en' },
+      });
+    const setFeature = (enabled: boolean) =>
+      withTenant(dbWorker, { tenantId }, (trx) =>
+        trx
+          .updateTable('cg.ai_use_register')
+          .set({ enabled })
+          .where('tenant_id', '=', tenantId)
+          .where('feature', '=', 'review.translation')
+          .execute(),
+      );
+    await setFeature(false);
+    try {
+      const off = await translate();
+      expect(off.statusCode).toBe(409);
+      expect(off.json().code).toBe('ai_off');
+    } finally {
+      await setFeature(true);
+    }
+    provider = {
+      ...fakeProvider,
+      translation: {
+        translate: async () => {
+          throw new Error('provider unavailable');
+        },
+      },
+    };
+    try {
+      const failed = await translate();
+      expect(failed.statusCode).toBe(409);
+      expect(failed.json().code).toBe('ai_unavailable');
+      expect(failed.json().message).toContain('original words');
+    } finally {
+      provider = fakeProvider;
+    }
+    const recorded = await dbWorker
+      .selectFrom('cg.ai_output')
+      .select('outcome')
+      .where('tenant_id', '=', tenantId)
+      .where('feature', '=', 'review.translation')
+      .where('target_id', '=', assistedId)
+      .execute();
+    expect(recorded.map((r) => r.outcome)).toEqual(expect.arrayContaining(['ok', 'error']));
+    // The original words are untouched.
+    const row = await dbWorker
+      .selectFrom('cg.report')
+      .select('original_text_enc')
+      .where('id', '=', assistedId)
+      .executeTakeFirstOrThrow();
+    expect(await crypto.decrypt(tenantId, row.original_text_enc!)).toContain('árbol');
   });
 
   it('question graphs: list, draft a new version that must pass the string rules, publish with confirmation (INT-01, INT-08, CON-02)', async () => {

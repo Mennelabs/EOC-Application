@@ -74,6 +74,8 @@ export interface IntakeInfo {
   sms: { termsUrl: string | null; privacyUrl: string | null };
   graph: QuestionGraph & { emergencyInstructions?: Record<string, string> };
   uploads: { enabled: boolean; maxBytes?: number };
+  /** INT-12: speaking instead of typing, through the county's AI service; absent means off. */
+  dictation?: boolean;
 }
 
 export const getIntake = (tenant: string, event: string, lang: string) =>
@@ -146,6 +148,35 @@ export const extract = (
     graphVersion: number;
   },
 ) => call<ExtractionResult>(`/intake/${tenant}/extract`, { body });
+
+/** INT-12: the county's AI service writes a recorded clip down; nothing is kept. */
+export async function dictate(
+  tenant: string,
+  executionId: string,
+  language: string,
+  clip: { blob: Blob; type: string },
+): Promise<{ text: string; language: string }> {
+  let res: Response;
+  try {
+    res = await fetch(
+      `/api/public/intake/${tenant}/dictation?executionId=${encodeURIComponent(executionId)}&language=${encodeURIComponent(language)}`,
+      { method: 'POST', headers: { 'content-type': clip.type }, body: clip.blob },
+    );
+  } catch {
+    throw new Offline();
+  }
+  const text = await res.text();
+  const json = text ? (JSON.parse(text) as unknown) : null;
+  if (res.ok) return json as { text: string; language: string };
+  const env = (json ?? {}) as Partial<Envelope>;
+  throw new ApiFailure(res.status, {
+    code: env.code ?? 'error',
+    message: env.message ?? 'Something went wrong.',
+    fields: env.fields ?? [],
+    retryable: env.retryable ?? res.status >= 500,
+    details: env.details,
+  });
+}
 
 export const saveDraft = (tenant: string, executionId: string, payload: unknown) =>
   call<{ resumeCode: string; expiresAt: string }>(`/intake/${tenant}/drafts`, {

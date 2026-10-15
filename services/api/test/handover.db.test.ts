@@ -36,13 +36,27 @@ describe.skipIf(!appUrl || !workerUrl)('shift hand-over (database-backed)', () =
   const crypto = new FieldCrypto(new InMemoryKeyService(), new MemoryKeyStore());
   /** What the model was given, to check nothing personal reached it. */
   const seen: DraftRequest[] = [];
+  /** Set to make the model add a figure the shift's records do not hold (GATE-08). */
+  let straying = false;
   const watching: AiProvider = {
     ...fakeProvider,
     llm: {
       extract: (r) => fakeProvider.llm!.extract(r),
       draft: async (r) => {
         seen.push(r);
-        return fakeProvider.llm!.draft!(r);
+        const real = await fakeProvider.llm!.draft!(r);
+        if (!straying) return real;
+        const first = real.output.sentences[0]!;
+        return {
+          ...real,
+          output: {
+            ...real.output,
+            sentences: [
+              ...real.output.sentences,
+              { text: 'We checked 999 homes on Levee Road.', factIds: first.factIds },
+            ],
+          },
+        };
       },
     },
   };
@@ -330,6 +344,26 @@ describe.skipIf(!appUrl || !workerUrl)('shift hand-over (database-backed)', () =
     expect(sent).not.toContain('Willow');
     expect(sent).not.toContain('Levee');
     expect(sent).toContain('Damage assessments recorded');
+  });
+
+  it('AI-04, AI-09, GATE-08: a hand-over draft with a figure the shift never logged is refused, recorded and never shown', async () => {
+    straying = true;
+    try {
+      const refused = await call('ana', 'POST', `/check-ins/${checkInId}/handover/ai-draft`, {});
+      expect(refused.status).toBe(422);
+      expect(refused.body['code']).toBe('ai_draft_refused');
+      expect(JSON.stringify(refused.body)).not.toContain('We checked 999 homes');
+    } finally {
+      straying = false;
+    }
+    const recorded = await dbWorker
+      .selectFrom('cg.ai_output')
+      .select('outcome')
+      .where('tenant_id', '=', county)
+      .where('feature', '=', 'field.handover')
+      .orderBy('created_at')
+      .execute();
+    expect(recorded.map((r) => r.outcome)).toEqual(['ok', 'invalid']);
   });
 
   it('FL-12, AIG-01: the worker confirms it; the record says it was kept; saving again updates it', async () => {

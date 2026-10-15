@@ -55,6 +55,7 @@ export default tseslint.config(
       'services/cjis-api/src/provision.ts',
       'packages/intake/src/lint-cli.ts',
       'packages/ai/src/evaluation/cli.ts',
+      'packages/ai/src/evaluation/photos-cli.ts',
       'tools/**/*.mjs',
     ],
     rules: { 'no-console': 'off' },

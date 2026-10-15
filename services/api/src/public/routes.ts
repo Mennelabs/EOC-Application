@@ -31,6 +31,7 @@ import { validateAnswer, type QuestionGraph, type QuestionNode } from '@cg/intak
 import { ApiError, errors } from '../errors.ts';
 import { enqueueOutbox } from '../routes/helpers.ts';
 import { RiskScorer, WindowCounter } from './abuse.ts';
+import { dictationOn, dictationRoutes } from './dictation.ts';
 import { facilityRegistrationRoutes } from './facility-registration.ts';
 import {
   CODE_DIGITS,
@@ -152,6 +153,7 @@ export const publicRoutes =
     await app.register(helpRoutes({ publicBase: deps.publicBase }));
     // REC-01: a place offered through the public form waits for county approval.
     await app.register(facilityRegistrationRoutes);
+    await app.register(dictationRoutes({ ...(deps.ai ? { ai: deps.ai } : {}) }));
 
     // ---------------------------------------------------------------- graph
     app.get(
@@ -204,6 +206,8 @@ export const publicRoutes =
             uploads: deps.objects
               ? { maxBytes: deps.objects.maxBytes, enabled: true }
               : { enabled: false },
+            // INT-12: speaking instead of typing, through the tenant's provider only.
+            dictation: await dictationOn(deps, trx, tenant.id),
           };
         });
       },

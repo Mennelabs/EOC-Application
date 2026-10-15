@@ -473,6 +473,76 @@ describe.skipIf(!appUrl || !workerUrl)('AI drafting from facts (database-backed)
     expect(author.statusCode).toBe(403);
   });
 
+  it('GATE-08, AI-10, AI-04: declaration and public drafting say so when switched off; a Box 8 draft with a figure the facts do not hold is refused and recorded', async () => {
+    const setFeature = (feature: string, enabled: boolean) =>
+      withTenant(dbWorker, { tenantId: county }, (trx) =>
+        trx
+          .updateTable('cg.ai_use_register')
+          .set({ enabled })
+          .where('tenant_id', '=', county)
+          .where('feature', '=', feature)
+          .execute(),
+      );
+    const post = (who: string, url: string, payload: Record<string, unknown>) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/v1${url}`,
+        headers: { authorization: `Bearer ${who}`, 'idempotency-key': randomUUID() },
+        payload,
+      });
+    await setFeature('declaration.drafting', false);
+    await setFeature('public.drafting', false);
+    try {
+      const box = await post('director', `/events/${eventId}/declaration/ai-draft`, { box: 8 });
+      expect(box.statusCode).toBe(409);
+      expect(box.json().code).toBe('ai_off');
+      const site = await post('pio', '/sites', {
+        kind: 'shelter',
+        name: `Cedar Ridge church hall ${run}`,
+        slug: `drf-off-${run}`,
+        status: 'open',
+        address: { line1: '12 Ridge Rd', city: 'Harmon City', postal: '63005' },
+      });
+      expect(site.statusCode, site.body).toBe(201);
+      const pub = await post('pio', '/alerts/ai-draft', {
+        siteId: (site.json() as { id: string }).id,
+        change: 'opened',
+        form: 'social',
+        language: 'en',
+      });
+      // The rules' drafts on the sites screen stay; only the AI version is off.
+      expect(pub.statusCode, pub.body).toBe(409);
+      expect(pub.json().code).toBe('ai_off');
+    } finally {
+      await setFeature('declaration.drafting', true);
+      await setFeature('public.drafting', true);
+    }
+    const before = await dbWorker
+      .selectFrom('cg.ai_output')
+      .select('id')
+      .where('tenant_id', '=', county)
+      .where('feature', '=', 'declaration.drafting')
+      .execute();
+    provider = straying;
+    try {
+      const refused = await post('director', `/events/${eventId}/declaration/ai-draft`, {
+        box: 8,
+      });
+      expect(refused.statusCode).toBe(422);
+      expect(refused.json().code).toBe('ai_draft_refused');
+    } finally {
+      provider = fakeProvider;
+    }
+    const after = await dbWorker
+      .selectFrom('cg.ai_output')
+      .select(['id', 'outcome'])
+      .where('tenant_id', '=', county)
+      .where('feature', '=', 'declaration.drafting')
+      .execute();
+    const added = after.filter((a) => !before.some((b) => b.id === a.id));
+    expect(added.map((a) => a.outcome)).toEqual(['invalid']);
+  });
+
   it('PUB-11, PUB-12, PUB-14, AI-04: the social post, radio loop and alert text are drafted from the site facts, within each channel’s length, in both languages', async () => {
     const pio = (url: string, payload?: unknown) =>
       app.inject({

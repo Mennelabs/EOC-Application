@@ -482,13 +482,32 @@ describe.skipIf(!appUrl || !workerUrl)(
       expect(done.statusCode, done.body).toBe(200);
       const finished = done.json() as Referral;
       expect(finished.status).toBe('done');
-      expect(finished.outcome).toContain('tenant rights');
       expect(finished.attempts).toHaveLength(3);
+      // FL:FR-23: a legal aid organization's notes stay outside the shared record; the
+      // referring organization learns "accepted" and "service given", nothing more.
+      expect(finished.outcome).toBeNull();
       const mine = await app.inject({
         url: '/api/v1/referrals?direction=out',
         headers: headers('luis'),
       });
-      expect((mine.json() as Referral[]).find((r) => r.id === ref.id)?.status).toBe('done');
+      const seen = (mine.json() as Referral[]).find((r) => r.id === ref.id)!;
+      expect(seen.status).toBe('done');
+      expect(seen.outcome).toBeNull();
+      expect(JSON.stringify(seen)).not.toContain('tenant rights');
+      expect(JSON.stringify(seen)).not.toContain('Intake call booked');
+      const stored = await dbWorker
+        .selectFrom('cg.referral')
+        .select(['outcome', 'attempts'])
+        .where('id', '=', ref.id)
+        .executeTakeFirstOrThrow();
+      expect(JSON.stringify(stored)).not.toContain('tenant rights');
+      const reasons = await dbWorker
+        .selectFrom('cg.audit_event')
+        .select('reason')
+        .where('target_id', '=', ref.id)
+        .where('action', '=', 'referral.respond')
+        .execute();
+      expect(reasons.map((r) => r.reason).join(' ')).not.toMatch(/tenant rights|Intake call/);
       const audits = await dbWorker
         .selectFrom('cg.audit_event')
         .select(['action', 'tenant_id'])

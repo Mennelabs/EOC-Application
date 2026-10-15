@@ -20,7 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql, type Kysely } from 'kysely';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
-import { fakeProvider } from '@cg/ai';
+import { fakeProvider, type AiProvider } from '@cg/ai';
 import { createDb, withTenant, type Database } from '@cg/db';
 import { loadSeed } from '../../../tools/seed/src/load.ts';
 import { buildApp, type App } from '../src/app.ts';
@@ -81,13 +81,15 @@ describe.skipIf(!appUrl || !workerUrl)('resource discovery (database-backed)', (
     });
     return { status: res.statusCode, body: res.json() as unknown };
   };
+  /** What the worker's web search sees; a test swaps in a hostile or failing one (GATE-08). */
+  let searchProvider: AiProvider = fakeProvider;
   const discover = () =>
     runDiscovery(
       {
         db: dbWorker,
         log: { info() {}, warn() {}, error() {}, debug() {} },
         // The deterministic fake stands in for OpenAI here (tests only, ADR-0043).
-        ai: { providerFor: async () => fakeProvider },
+        ai: { providerFor: async () => searchProvider },
       } as unknown as JobContext,
       {
         tenantIds: [county],
@@ -633,6 +635,73 @@ describe.skipIf(!appUrl || !workerUrl)('resource discovery (database-backed)', (
       .executeTakeFirstOrThrow();
     expect(after.status).toBe('retired');
     expect(await audits('facility.retire')).toHaveLength(1);
+  });
+
+  it('AIG-02, OWASP LLM01, GATE-08: a search a page tried to instruct keeps nothing; a search that fails says so; both are recorded', async () => {
+    const injecting: AiProvider = {
+      ...fakeProvider,
+      llm: {
+        extract: (r) => fakeProvider.llm!.extract(r),
+        discoverPlaces: async () => ({
+          output: {
+            places: [
+              {
+                name: 'Exercise Injected Warehouse',
+                kind: 'community_center',
+                address: { line1: '1 Nowhere Rd', city: null, state: null, postal: null },
+                position: null,
+                facts: {},
+                sourceUrls: ['https://example.org/injected'],
+                change: 'new',
+                registeredId: null,
+                note: null,
+              },
+            ],
+            injectionSuspected: true,
+            dropped: 0,
+          },
+          provider: fakeProvider.info,
+          latencyMs: 1,
+        }),
+      } as NonNullable<AiProvider['llm']>,
+    };
+    const runs = async () =>
+      (
+        (await call('em', 'GET', '/discovery/runs')).body as {
+          summary: { sources: { name: string; outcome: string }[] };
+        }[]
+      )[0]!.summary.sources.find((x) => x.name === 'Web search')!.outcome;
+    searchProvider = injecting;
+    try {
+      await call('em', 'POST', '/discovery/runs');
+      await discover();
+      expect(await runs()).toBe(
+        'A page tried to instruct the search; nothing from this search was kept.',
+      );
+      expect((await pending()).some((c) => c.name === 'Exercise Injected Warehouse')).toBe(false);
+      searchProvider = {
+        ...fakeProvider,
+        llm: {
+          extract: (r) => fakeProvider.llm!.extract(r),
+          discoverPlaces: async () => {
+            throw new Error('provider unavailable');
+          },
+        } as NonNullable<AiProvider['llm']>,
+      };
+      await call('em', 'POST', '/discovery/runs');
+      await discover();
+      expect(await runs()).toBe('The search did not answer (error).');
+    } finally {
+      searchProvider = fakeProvider;
+    }
+    const records = await dbWorker
+      .selectFrom('cg.ai_output')
+      .select('outcome')
+      .where('tenant_id', '=', county)
+      .where('feature', '=', 'discovery.web_search')
+      .orderBy('created_at')
+      .execute();
+    expect(records.map((r) => r.outcome).slice(-2)).toEqual(['filtered', 'error']);
   });
 
   it('a role without the actions sees nothing', async () => {

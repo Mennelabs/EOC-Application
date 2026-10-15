@@ -350,10 +350,10 @@
     ""
   ],
   "FL-17": [
-    "partial",
-    "hours from check-in rows (cg.check_in, 0028), ICS 214 entries from check-in and assignments; layer 6: donated volunteer hours by organization on the Declaration screen and in the package (packages/reporting declaration.ts)",
-    "services/api/test/roster.db.test.ts (check-in hours), services/api/test/field.db.test.ts (check-out counts the hours), services/api/test/declaration.db.test.ts",
-    "Donated equipment is not logged yet."
+    "pass",
+    "hours from check-in rows (cg.check_in, 0028), ICS 214 entries from check-in and assignments; layer 6: donated volunteer hours by organization, and donated equipment: each item a partner team brought with the team's merged hours on duty, both derived from check-ins with no extra entry (packages/reporting declaration.ts; the Declaration screen)",
+    "services/api/test/roster.db.test.ts (check-in hours), services/api/test/field.db.test.ts (check-out counts the hours), services/api/test/declaration.db.test.ts (FL-17: donated hours; equipment hours with overlapping shifts counted once)",
+    "Whether an item was in use for all of its team's hours, and the FEMA equipment rates, are for the county to confirm in its claim."
   ],
   "DCL:DEC-03": [
     "pass",

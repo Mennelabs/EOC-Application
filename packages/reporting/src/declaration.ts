@@ -342,6 +342,28 @@ export async function declarationData(trx: Trx, tenantId: string, eventId: strin
     order by 3 desc, 1`.execute(trx);
   const donatedRows = hours.rows.filter((h) => h.donated);
   const round1 = (n: number) => Math.round(n * 10) / 10;
+  // FL-17: donated equipment, from the equipment a partner's team brought and the
+  // team's time on duty (its members' check-ins merged, so overlaps count once).
+  const equipment = await sql<{
+    organization: string;
+    team: string;
+    items: string[];
+    hours: string;
+  }>`
+    select t.name as organization, tm.name as team, tm.equipment as items,
+      (select coalesce(sum(extract(epoch from (upper(r) - lower(r)))), 0) / 3600
+         from unnest(d.duty) as r) as hours
+    from (
+      select c.team_id,
+        range_agg(tstzrange(c.started_at, coalesce(c.ended_at, now()))) as duty
+      from cg.check_in c
+      where c.event_id = ${eventId} and c.team_id is not null
+      group by c.team_id
+    ) d
+    join cg.team tm on tm.id = d.team_id
+    join cg.tenant t on t.id = tm.agency_tenant_id
+    where t.kind = 'partner_org' and cardinality(tm.equipment) > 0
+    order by 1, 2`.execute(trx);
 
   // DCL:DEC-09: what partner organizations committed, from the needs they met, the
   // services logged for their teams, the shelters they ran and their teams checked
@@ -488,6 +510,15 @@ export async function declarationData(trx: Trx, tenantId: string, eventId: strin
         hours: round1(Number(h.hours)),
         people: Number(h.people),
       })),
+      // Hours each item was on duty with its team; whether it was in use is for the county to confirm.
+      equipment: equipment.rows.flatMap((e) =>
+        e.items.map((item) => ({
+          organization: e.organization,
+          team: e.team,
+          item,
+          hours: round1(Number(e.hours)),
+        })),
+      ),
     },
     partners: {
       byOrganization: partnerList,

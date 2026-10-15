@@ -229,6 +229,8 @@ export interface View {
     volunteerHours: number;
     includesOpenShifts: boolean;
     byOrganization: { organization: string; hours: number; people: number }[];
+    /** FL-17: equipment partners' teams brought, with the team's time on duty. */
+    equipment?: { organization: string; team: string; item: string; hours: number }[];
   };
   /** DCL:DEC-09: what partner organizations committed (absent from an older API). */
   partners?: {
@@ -1381,6 +1383,27 @@ export function Donated({ view }: { view: View }) {
           { key: 'hours', header: 'Hours', render: (r) => n(r.hours) },
         ]}
       />
+      {d.equipment ? (
+        <>
+          <h3>Donated equipment</h3>
+          <p className="hint">
+            The equipment each partner team brought, with the team&apos;s hours on duty. Whether an
+            item was in use for all of them is for the county to confirm before a claim.
+          </p>
+          <DataTable
+            caption="Donated equipment by team"
+            rows={d.equipment}
+            rowKey={(r) => `${r.team}|${r.item}`}
+            empty="No partner team has recorded equipment for this event."
+            columns={[
+              { key: 'org', header: 'Organization', render: (r) => r.organization },
+              { key: 'team', header: 'Team', render: (r) => r.team },
+              { key: 'item', header: 'Equipment', render: (r) => r.item },
+              { key: 'hours', header: 'Hours on duty', render: (r) => n(r.hours) },
+            ]}
+          />
+        </>
+      ) : null}
     </section>
   );
 }

@@ -62,6 +62,7 @@ interface DeclarationView {
     volunteerHours: number;
     includesOpenShifts: boolean;
     byOrganization: { organization: string }[];
+    equipment: { organization: string; team: string; item: string; hours: number }[];
   };
 }
 /** A created or changed record: its id and version, and whatever else it carries. */
@@ -623,6 +624,44 @@ describe.skipIf(!appUrl || !workerUrl)('the declaration view (database-backed)',
     expect((await view()).body.partners.totals['meals']).toBe(40);
     // Counts and organizations only: no household detail.
     expect(JSON.stringify(p)).not.toMatch(/household_party|wristband|access_needs/);
+  });
+
+  it('lists donated equipment with its team’s hours on duty, overlaps counted once (FL-17)', async () => {
+    await tx(partner, async (trx) => {
+      const team = await trx
+        .updateTable('cg.team')
+        .set({ equipment: ['2 chainsaws', 'pickup with trailer'] })
+        .where('key', '=', `pc-${run}`)
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      // A second member on duty from three hours ago to an hour ago: with the first
+      // member's two hours (to now), the team was on duty for three hours.
+      const p = await trx
+        .insertInto('cg.personnel')
+        .values({ tenant_id: partner, name: `Exercise canteen driver ${run}` })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      await trx
+        .insertInto('cg.check_in')
+        .values({
+          tenant_id: partner,
+          personnel_id: p.id,
+          event_id: eventId,
+          agency_tenant_id: partner,
+          team_id: team.id,
+          method: 'console',
+          started_at: new Date(Date.now() - 3 * HOUR),
+          ended_at: new Date(Date.now() - HOUR),
+          end_reason: 'checked_out',
+        })
+        .execute();
+    });
+    const e = (await view()).body.donated.equipment;
+    expect(e.map((x) => x.item).sort()).toEqual(['2 chainsaws', 'pickup with trailer']);
+    for (const x of e) {
+      expect(x.organization).toBe(`Exercise partner ${run}`);
+      expect(x.hours).toBeCloseTo(3, 0);
+    }
   });
 
   it('starts the 30-day clock at the incident end date (DEC-16)', () => {

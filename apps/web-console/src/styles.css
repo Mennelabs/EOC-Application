@@ -620,3 +620,19 @@ dialog.command select {
 .command-history .who {
   font-weight: 600;
 }
+
+/* Recommendations (layer 7, REC-02–REC-12): the answer as one panel; reasons as short lists. */
+.card {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 1rem;
+  margin-block: 1rem;
+  border-radius: 4px;
+}
+ul.plain {
+  margin: 0;
+  padding-inline-start: 1.1rem;
+}
+ul.plain li + li {
+  margin-block-start: 0.25rem;
+}

@@ -1141,6 +1141,15 @@ const NO_COMMAND_WINDOW = new Set(['fema_validator']);
  * care, the COAD and partner incident commanders propose or keep their own
  * entries current; AFN and partner coordinators read it.
  */
+/** Layer 7 (REC-02–REC-12): who asks for recommendations and who decides them. */
+const RECOMMENDATION_GRANTS: Record<string, string[]> = {
+  county_em_director: ['recommendation.request', 'recommendation.decide'],
+  mass_care_coordinator: ['recommendation.request', 'recommendation.decide'],
+  planning_gis_lead: ['recommendation.request'],
+  afn_coordinator: ['recommendation.request'],
+  coad_chair: ['recommendation.request'],
+};
+
 const FACILITY_GRANTS: Record<string, (string | Grant)[]> = {
   // Those who open a site call its contacts; the read of contacts is audited (SEC-18).
   county_em_director: [g('facility.read', ['contact']), 'facility.manage', 'facility.approve'],
@@ -1157,6 +1166,7 @@ export const roleTemplates: readonly RoleTemplate[] = templates.map((t) => ({
   grants: [
     ...t.grants,
     ...(FACILITY_GRANTS[t.key] ?? []).map((a) => (typeof a === 'string' ? g(a) : a)),
+    ...(RECOMMENDATION_GRANTS[t.key] ?? []).map((a) => g(a)),
     ...(NO_COMMAND_WINDOW.has(t.key) ? [] : [g('command.use')]),
   ],
 }));

@@ -290,6 +290,17 @@ export const actions = {
     'Approve or reject facilities and changes for the registry (never your own proposal)',
     { explicit: true },
   ),
+  // REC-02–REC-12: recommendations come from rules; a named person decides.
+  'recommendation.request': a(
+    'write',
+    'recommendation',
+    'Ask for a shelter, feeding, POD, walk-up point or MARC recommendation',
+  ),
+  'recommendation.decide': a(
+    'write',
+    'recommendation',
+    'Accept, edit or reject a recommendation, with a reason',
+  ),
   'command_alias.manage': a(
     'admin',
     'command_alias',

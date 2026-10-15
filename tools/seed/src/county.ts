@@ -791,6 +791,8 @@ export interface TeamSpec {
   callsign?: string;
   skills: CredentialKind[];
   equipment: string[];
+  /** A canteen's declared serving rate (REC-06). */
+  mealsPerHour?: number;
   checkInIntervalMinutes: number;
   members: RosterMember[];
 }
@@ -804,6 +806,7 @@ interface TeamShape {
   callsign?: string;
   skills: CredentialKind[];
   equipment: string[];
+  mealsPerHour?: number;
   checkInIntervalMinutes?: number;
   size: number;
   operationalRole: string;
@@ -901,6 +904,7 @@ const teamShapes: TeamShape[] = [
     callsign: `CANTEEN-${n}`,
     skills: ['food_safety'],
     equipment: ['canteen truck', 'cambro set', 'hand-wash station'],
+    mealsPerHour: 200,
     size: 3,
     operationalRole: 'canteen_staff',
     everyone: ['food_safety', 'background_check'],
@@ -996,6 +1000,7 @@ function rosterTeams(rng: Rng): TeamSpec[] {
       ...(shape.callsign ? { callsign: shape.callsign } : {}),
       skills: shape.skills,
       equipment: shape.equipment,
+      ...(shape.mealsPerHour ? { mealsPerHour: shape.mealsPerHour } : {}),
       checkInIntervalMinutes: shape.checkInIntervalMinutes ?? 60,
       members,
     };

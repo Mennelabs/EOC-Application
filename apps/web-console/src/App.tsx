@@ -31,6 +31,7 @@ import { ResourcesScreen } from './screens/resources.tsx';
 import { DeclarationScreen } from './screens/declaration.tsx';
 import { EquityScreen } from './screens/equity.tsx';
 import { FacilitiesScreen, FacilityApprovalsScreen } from './screens/facilities.tsx';
+import { RecommendationsScreen } from './screens/recommendations.tsx';
 import { FemaMappingsScreen } from './screens/fema-mappings.tsx';
 import { IntegrationsScreen } from './screens/integrations.tsx';
 import { MetricsScreen } from './screens/metrics.tsx';
@@ -85,6 +86,7 @@ const routes = [
   { path: '/console/integrations', label: 'API keys and webhooks', layer: 6 },
   { path: '/console/facilities', label: 'Facility registry', layer: 7 },
   { path: '/console/facility-approvals', label: 'Facility approvals', layer: 7 },
+  { path: '/console/recommendations', label: 'Recommendations', layer: 7 },
   { path: '/console/events', label: 'Events', layer: 1 },
   { path: '/console/tenants', label: 'Organizations', layer: 1 },
   { path: '/console/accounts', label: 'Staff accounts', layer: 1 },
@@ -277,6 +279,8 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <FacilitiesScreen />;
       case '/console/facility-approvals':
         return <FacilityApprovalsScreen />;
+      case '/console/recommendations':
+        return <RecommendationsScreen />;
       case '/console/declaration':
         return <DeclarationScreen />;
       case '/console/metrics':

@@ -31,6 +31,7 @@ import { messageRoutes } from './messages.ts';
 import { missionRoutesWith, type MissionDeps } from './missions.ts';
 import { needRoutes } from './needs.ts';
 import { personnelRoutes } from './personnel.ts';
+import { recommendationRoutes } from './recommendations.ts';
 import { referralRoutes } from './referrals.ts';
 import { refdataRoutes, type RefdataDeps } from './refdata.ts';
 import { reportRoutes } from './reports.ts';
@@ -102,6 +103,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   commandRoutesWith(deps.commands),
   commandAliasRoutes,
   facilityRoutes,
+  recommendationRoutes,
 ];
 
 /** The default set, as the tests mount it. */

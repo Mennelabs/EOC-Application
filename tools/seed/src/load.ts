@@ -606,6 +606,7 @@ async function ensureRoster(
         skills: spec.skills,
         equipment: spec.equipment,
         capacity: spec.members.length,
+        meals_per_hour: spec.mealsPerHour ?? null,
         check_in_interval_minutes: spec.checkInIntervalMinutes,
         notes: 'Synthetic exercise roster (SCL-12)',
         created_by: SEED_ACTOR_A,

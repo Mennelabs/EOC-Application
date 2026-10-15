@@ -112,6 +112,8 @@ const teamOut = z.object({
   skills: z.array(z.string()),
   equipment: z.array(z.string()),
   capacity: z.number().int().nullable(),
+  /** REC-06: a canteen's declared serving rate. */
+  mealsPerHour: z.number().int().nullable(),
   checkInIntervalMinutes: z.number().int(),
   status: z.enum(['active', 'stood_down', 'archived']),
   notes: z.string().nullable(),
@@ -627,6 +629,7 @@ export const rosterRoutes: FastifyPluginAsync = async (instance) => {
       skills: t.skills,
       equipment: t.equipment,
       capacity: t.capacity,
+      mealsPerHour: t.meals_per_hour,
       checkInIntervalMinutes: t.check_in_interval_minutes,
       status: t.status,
       notes: t.notes,
@@ -743,6 +746,7 @@ export const rosterRoutes: FastifyPluginAsync = async (instance) => {
     skills: z.array(z.string().max(60)).max(20),
     equipment: z.array(z.string().max(120)).max(40),
     capacity: z.number().int().min(0).nullable(),
+    mealsPerHour: z.number().int().min(0).max(5000).nullable(),
     checkInIntervalMinutes: z.number().int().min(5).max(480),
     notes: z.string().max(2000).nullable(),
   };
@@ -757,6 +761,7 @@ export const rosterRoutes: FastifyPluginAsync = async (instance) => {
     skills: 'skills',
     equipment: 'equipment',
     capacity: 'capacity',
+    mealsPerHour: 'meals_per_hour',
     checkInIntervalMinutes: 'check_in_interval_minutes',
     notes: 'notes',
   } as const;
@@ -776,6 +781,7 @@ export const rosterRoutes: FastifyPluginAsync = async (instance) => {
           skills: teamFields.skills.default([]),
           equipment: teamFields.equipment.default([]),
           capacity: teamFields.capacity.optional(),
+          mealsPerHour: teamFields.mealsPerHour.optional(),
           checkInIntervalMinutes: teamFields.checkInIntervalMinutes.default(60),
           notes: teamFields.notes.optional(),
           members: z

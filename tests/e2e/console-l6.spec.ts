@@ -26,7 +26,10 @@
  * (DEC-13): read-only, no sites, no forms. The director starts a new
  * edition of the IA summary sheet mapping, is told what is missing, renames
  * a field and puts the version in force through the confirmation dialog
- * (DEC-15, RULE-14). Axe runs on each state, and each layer-6
+ * (DEC-15, RULE-14). A reporting officer reads the metrics, narrows them to
+ * one degree and downloads the CSV (F14, AC-14C); an AFN coordinator asks
+ * for an equity check, sees an under-reported area with suggested outreach
+ * and records the outreach taken (EQ-11/12, CON-07). Axe runs on each state, and each layer-6
  * screen is checked for reflow: no sideways scrolling at phone width
  * (WCAG 1.4.10, ACC-07).
  */
@@ -567,5 +570,108 @@ test.describe('layer 6 console: reference data', () => {
     await expect(page.getByRole('table', { name: `Fields of version ${n}` })).toContainText(label);
     await expectNoViolations(page);
     await expectReflow(page);
+  });
+
+  test('a reporting officer reads the metrics and downloads them as CSV', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'reporting_planning',
+      `Reporting officer G ${tag}`,
+      `l6g-${testInfo.project.name}`,
+    );
+    await page.goto('/console/metrics');
+    await expect(page.getByRole('heading', { level: 1, name: 'Metrics' })).toBeVisible();
+    const damage = page.getByRole('table', { name: 'Damage', exact: true });
+    await expect(damage).toBeVisible({ timeout: 30_000 });
+    await expect(damage).toContainText('Housing units with verified damage');
+    await expect(page.getByRole('table', { name: 'Trends by operational period' })).toBeVisible();
+    await expectNoViolations(page);
+    await expectReflow(page);
+    // A period that ends before it starts is named before anything is asked.
+    await page.getByLabel('From (optional)').fill('2026-10-10T08:00');
+    await page.getByLabel('To (optional)').fill('2026-10-09T08:00');
+    await expect(page.getByText('The period must start before it ends.')).toBeVisible();
+    await page.getByLabel('From (optional)').fill('');
+    await page.getByLabel('To (optional)').fill('');
+    await page.getByLabel('Degree of damage').selectOption({ label: 'Major' });
+    await page.getByRole('button', { name: 'Show the figures' }).click();
+    await expect(page.getByText('Damage is limited to the degree shown.')).toBeVisible();
+    const [file] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: 'Download CSV' }).click(),
+    ]);
+    expect(file.suggestedFilename()).toMatch(/\.csv$/);
+    await expectNoViolations(page);
+    await expectReflow(page);
+  });
+
+  test('an AFN coordinator records outreach on an equity alert', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(300_000);
+    // Every area below the best-covered income band is flagged, so the seeded county has alerts.
+    const admin = await token('county', 'admin@example.org');
+    const countyId = (await api(admin, '/me')).body['tenantId'] as string;
+    const key = `/tenants/${countyId}/config/equity.coverage_ratio`;
+    const set = async (value: number) => {
+      // An existing setting is changed at its current version (FR-00.05).
+      const current = await api(admin, key);
+      return api(admin, key, {
+        method: 'PUT',
+        body: { value },
+        confirm: `Exercise: equity journey (${tag})`,
+        ...(current.status === 200 ? { version: current.body['version'] as number } : {}),
+      });
+    };
+    expect((await set(1)).status).toBeLessThan(300);
+    try {
+      await onboard(
+        page,
+        context,
+        'afn_coordinator',
+        `AFN coordinator ${tag}`,
+        `l6q-${testInfo.project.name}`,
+      );
+      await page.goto('/console/equity');
+      await expect(page.getByRole('heading', { level: 1, name: 'Equity' })).toBeVisible();
+      await expect(
+        page.getByRole('table', { name: 'Reports and needs by census tract' }),
+      ).toBeVisible({
+        timeout: 30_000,
+      });
+      await expectNoViolations(page);
+      await expectReflow(page);
+      await page.getByRole('button', { name: 'Check now' }).click();
+      await expect(page.getByText(/Asked for a check/)).toBeVisible();
+      const record = page.getByRole('button', { name: 'Record outreach' }).first();
+      await expect(async () => {
+        await page.getByRole('button', { name: 'Reload' }).click();
+        await expect(record).toBeVisible({ timeout: 2_000 });
+      }).toPass({ timeout: 120_000 });
+      const alert = page.getByRole('article').filter({ has: record }).first();
+      await expect(alert).toContainText('Suggested outreach');
+      const field = alert.getByRole('textbox');
+      await field.fill('ok');
+      await alert.getByRole('button', { name: 'Record outreach' }).click();
+      await expect(
+        alert.getByText('Say what outreach was taken or planned, in a few words.'),
+      ).toBeVisible();
+      await field.fill(
+        `Exercise: canvass team and a text broadcast in English and Spanish (${tag}).`,
+      );
+      await alert.getByRole('button', { name: 'Record outreach' }).click();
+      await expect(page.getByText(/^Outreach recorded for /)).toBeVisible();
+      await expect(page.getByText(/Outreach recorded by AFN coordinator/).first()).toBeVisible();
+      await expectNoViolations(page);
+      await expectReflow(page);
+    } finally {
+      await set(0.7);
+    }
   });
 });

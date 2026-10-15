@@ -7,8 +7,37 @@
  */
 import { equityData, raiseEquityAlerts } from '@cg/reporting';
 import { asSystem, systemAudit } from '../system.ts';
-import type { JobContext } from './types.ts';
+import type { JobContext, TopicHandler } from './types.ts';
 
+/** One event: the flags that hold now are recorded, the rest cleared; each change audited. */
+export async function evaluateEvent(
+  ctx: JobContext,
+  tenantId: string,
+  eventId: string,
+): Promise<{ raised: number; cleared: number }> {
+  return asSystem(ctx.db, tenantId, async (trx) => {
+    const data = await equityData(trx, tenantId, eventId, ctx.now?.() ?? new Date());
+    if (!data) return { raised: 0, cleared: 0 };
+    const { raised, cleared } = await raiseEquityAlerts(trx, tenantId, eventId, data.alerts);
+    for (const id of raised)
+      await systemAudit(trx, tenantId, 'equity', {
+        action: 'equity.alert_raised',
+        targetType: 'equity_alert',
+        targetId: id,
+        changes: { eventId },
+      });
+    for (const id of cleared)
+      await systemAudit(trx, tenantId, 'equity', {
+        action: 'equity.alert_cleared',
+        targetType: 'equity_alert',
+        targetId: id,
+        changes: { eventId },
+      });
+    return { raised: raised.length, cleared: cleared.length };
+  });
+}
+
+/** Every active event, on the schedule. */
 export async function evaluateEquityAlerts(ctx: JobContext): Promise<void> {
   const events = await ctx.db
     .selectFrom('cg.event as e')
@@ -19,27 +48,16 @@ export async function evaluateEquityAlerts(ctx: JobContext): Promise<void> {
     .execute();
   for (const e of events) {
     try {
-      await asSystem(ctx.db, e.tenant_id, async (trx) => {
-        const data = await equityData(trx, e.tenant_id, e.id, ctx.now?.() ?? new Date());
-        if (!data) return;
-        const { raised, cleared } = await raiseEquityAlerts(trx, e.tenant_id, e.id, data.alerts);
-        for (const id of raised)
-          await systemAudit(trx, e.tenant_id, 'equity', {
-            action: 'equity.alert_raised',
-            targetType: 'equity_alert',
-            targetId: id,
-            changes: { eventId: e.id },
-          });
-        for (const id of cleared)
-          await systemAudit(trx, e.tenant_id, 'equity', {
-            action: 'equity.alert_cleared',
-            targetType: 'equity_alert',
-            targetId: id,
-            changes: { eventId: e.id },
-          });
-      });
+      await evaluateEvent(ctx, e.tenant_id, e.id);
     } catch (err) {
       ctx.log.warn({ err, eventId: e.id }, 'equity alerts could not be evaluated');
     }
   }
 }
+
+/** equity.evaluate: staff asked for a check now (the console's "Check now"). */
+export const equityEvaluate: TopicHandler = async (ctx, msg) => {
+  const eventId = msg.payload['eventId'];
+  if (typeof eventId !== 'string') return;
+  await evaluateEvent(ctx, msg.tenantId, eventId);
+};

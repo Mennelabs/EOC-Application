@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { equityData } from '@cg/reporting';
 import { errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
-import { iso, uuidParam } from './helpers.ts';
+import { enqueueOutbox, iso, uuidParam } from './helpers.ts';
 
 const alertOut = z.object({
   id: z.uuid(),
@@ -103,6 +103,39 @@ export const equityRoutes: FastifyPluginAsync = async (raw) => {
           .execute();
         return { ...data, alerts: alerts.map((a) => alertView(a as AlertRow)) };
       });
+    },
+  );
+
+  // "Check now": the worker works the figures out again for this event and records the flags.
+  app.post(
+    '/events/:id/equity/evaluate',
+    {
+      schema: {
+        tags: ['equity'],
+        params: uuidParam,
+        response: { 202: z.object({ queued: z.literal(true) }) },
+      },
+    },
+    async (request, reply) => {
+      const s = account(request);
+      const eventId = request.params.id;
+      await request.authorize('equity.act', { type: 'equity', tenantId: s.tenantId, eventId });
+      await request.tx(async (trx) => {
+        const event = await trx
+          .selectFrom('cg.event')
+          .select(['id', 'tenant_id'])
+          .where('id', '=', eventId)
+          .executeTakeFirst();
+        if (!event) throw errors.notFound();
+        await enqueueOutbox(
+          trx,
+          event.tenant_id,
+          'equity.evaluate',
+          { eventId },
+          request.executionId,
+        );
+      });
+      return reply.code(202).send({ queued: true });
     },
   );
 

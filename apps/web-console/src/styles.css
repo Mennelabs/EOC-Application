@@ -486,3 +486,11 @@ fieldset {
 code.hash {
   overflow-wrap: anywhere;
 }
+
+/* Layer 6: equity alerts */
+.alert-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}

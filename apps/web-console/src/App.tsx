@@ -28,6 +28,7 @@ import { KeyCounts, NeedsBoardScreen, PartnerScreen } from './screens/needs.tsx'
 import { PartnersScreen } from './screens/partners.tsx';
 import { ResourcesScreen } from './screens/resources.tsx';
 import { DeclarationScreen } from './screens/declaration.tsx';
+import { FemaMappingsScreen } from './screens/fema-mappings.tsx';
 import { JointAssessmentScreen } from './screens/joint-assessment.tsx';
 import { SharedDeclarationsScreen } from './screens/shared-declarations.tsx';
 import { OfficialReportScreen, OfficialReportsScreen } from './screens/official-reports.tsx';
@@ -71,6 +72,7 @@ const routes = [
   { path: '/console/shared-declarations', label: 'Shared declaration figures', layer: 6 },
   { path: '/console/official-reports', label: 'Official reports', layer: 6 },
   { path: '/console/reference-data', label: 'Reference data', layer: 6 },
+  { path: '/console/fema-mappings', label: 'FEMA form mappings', layer: 6 },
   { path: '/console/events', label: 'Events', layer: 1 },
   { path: '/console/tenants', label: 'Organizations', layer: 1 },
   { path: '/console/accounts', label: 'Staff accounts', layer: 1 },
@@ -255,6 +257,8 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <DevicesScreen />;
       case '/console/reference-data':
         return <RefdataScreen />;
+      case '/console/fema-mappings':
+        return <FemaMappingsScreen />;
       case '/console/declaration':
         return <DeclarationScreen />;
       case '/console/joint-assessment':

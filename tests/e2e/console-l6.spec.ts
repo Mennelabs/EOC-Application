@@ -23,7 +23,10 @@
  * role that ends within 30 days and in their own browser, sees the stops
  * without addresses and marks two. A state liaison reads the county's
  * figures once the county has signed a counts-only agreement with the state
- * (DEC-13): read-only, no sites, no forms. Axe runs on each state, and each layer-6
+ * (DEC-13): read-only, no sites, no forms. The director starts a new
+ * edition of the IA summary sheet mapping, is told what is missing, renames
+ * a field and puts the version in force through the confirmation dialog
+ * (DEC-15, RULE-14). Axe runs on each state, and each layer-6
  * screen is checked for reflow: no sideways scrolling at phone width
  * (WCAG 1.4.10, ACC-07).
  */
@@ -494,6 +497,74 @@ test.describe('layer 6 console: reference data', () => {
     await expect(page.getByRole('table', { name: 'Public damage sites' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Log outage' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Record count' })).toHaveCount(0);
+    await expectNoViolations(page);
+    await expectReflow(page);
+  });
+
+  test('an EM director puts a new edition of a FEMA form mapping in force', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    const run = `${tag}-${testInfo.project.name}`;
+    await onboard(
+      page,
+      context,
+      'county_em_director',
+      `EM director M ${tag}`,
+      `l6m-${testInfo.project.name}`,
+    );
+    await page.goto('/console/fema-mappings');
+    await expect(page.getByRole('heading', { level: 1, name: 'FEMA form mappings' })).toBeVisible();
+    await expect(page.getByRole('table', { name: 'FEMA forms' })).toBeVisible({ timeout: 30_000 });
+    await expectNoViolations(page);
+    await expectReflow(page);
+    await page.getByRole('button', { name: 'Open IA summary sheet' }).click();
+    await expect(
+      page.getByRole('table', { name: 'Versions of the IA summary sheet mapping' }),
+    ).toBeVisible();
+    // A draft left by an earlier run is carried on; otherwise one is started.
+    const start = page.getByRole('button', { name: 'Start a draft from the version in force' });
+    if (await start.isVisible()) {
+      await start.click();
+      await expect(page.getByText('Name the FEMA edition the new version follows.')).toBeVisible();
+      await page.getByLabel('FEMA edition it follows').fill(`Exercise edition ${run}`);
+      await start.click();
+      await expect(page.getByText(/^Draft version \d+ started/)).toBeVisible();
+    }
+    const heading = page.getByRole('heading', { name: /^Draft version \d+$/ });
+    await expect(heading).toBeVisible({ timeout: 30_000 });
+    const n = /(\d+)$/.exec((await heading.textContent()) ?? '')![1]!;
+    await expectNoViolations(page);
+    await expectReflow(page);
+    // A field without a code is named before anything is sent.
+    const code = page.getByLabel('Code of field 1', { exact: true });
+    const original = await code.inputValue();
+    await code.fill('');
+    await page.getByRole('button', { name: 'Save the draft' }).click();
+    await expect(page.getByText('Field 1 needs a code.')).toBeVisible();
+    await code.fill(original);
+    const label = `Total damaged housing units (${run})`;
+    await page.getByLabel('Label of field 5', { exact: true }).fill(label);
+    await page.getByRole('button', { name: 'Save the draft' }).click();
+    await expect(page.getByText(`Draft version ${n} saved.`)).toBeVisible();
+    const edition = await page.getByLabel('FEMA edition it follows').inputValue();
+    // RULE-14: every later package uses it, so it is confirmed with a reason.
+    await page.getByRole('button', { name: `Put version ${n} in force` }).click();
+    const dialog = page.getByRole('dialog', { name: 'Please confirm' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel('Reason').fill(`Exercise: FEMA published ${edition}`);
+    await dialog.getByRole('button', { name: 'Confirm' }).click();
+    await expect(
+      page.getByText(`Version ${n} is now in force for IA summary sheet.`),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByRole('table', { name: 'FEMA forms' })
+        .getByRole('row')
+        .filter({ hasText: 'IA summary sheet' }),
+    ).toContainText(`Version ${n} (${edition})`);
+    await expect(page.getByRole('table', { name: `Fields of version ${n}` })).toContainText(label);
     await expectNoViolations(page);
     await expectReflow(page);
   });

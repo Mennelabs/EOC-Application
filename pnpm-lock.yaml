@@ -213,6 +213,9 @@ importers:
 
   apps/web-help:
     dependencies:
+      '@cg/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       maplibre-gl:
         specifier: 6.12.0
         version: 6.12.0

@@ -251,7 +251,8 @@ export async function onboard(
   // then the passkey) unless the SSO session from the invitation carries over.
   // The runner's pace decides which of these pages appear and in what order,
   // so the loop acts on whatever is on screen until the console shows home.
-  const welcome = page.getByRole('heading', { name: 'Welcome' });
+  // The home heading (its id is stable; it reads "Situation" or "Your work" by role).
+  const welcome = page.locator('main h1#home-h');
   const org = page.getByLabel('Organization');
   const username = page.getByRole('textbox', { name: /username or email/i });
   const useKey = page.getByRole('button', {

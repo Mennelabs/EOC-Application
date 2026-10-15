@@ -1,375 +1,32 @@
-/* Staff console. WCAG 2.2 AA: 4.5:1 text, visible focus, 44 px targets, reflow at 320 px. */
-:root {
-  --ink: #1b1f23;
-  --muted: #4a5560;
-  --surface: #ffffff;
-  --panel: #f3f5f7;
-  --line: #d0d7de;
-  --brand: #0b4f6c;
-  --brand-ink: #ffffff;
-  --focus: #b34700;
-  --ok-bg: #e6f4ea;
-  --ok-ink: #1e4620;
-  --err-bg: #fdecea;
-  --err-ink: #7a1d14;
-  --warn-bg: #fff4e5;
-  --warn-ink: #663c00;
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
-  line-height: 1.5;
-  color: var(--ink);
-  background: var(--surface);
-}
-* {
-  box-sizing: border-box;
-}
-body {
-  margin: 0;
-}
-.skip {
-  position: absolute;
-  inset-inline-start: -999px;
-}
-.skip:focus {
-  inset-inline-start: 1rem;
-  inset-block-start: 1rem;
-  background: var(--surface);
-  padding: 0.5rem;
-  z-index: 2;
-}
-.top {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 1rem;
-  align-items: center;
-  background: var(--brand);
-  color: var(--brand-ink);
-  padding: 0.75rem 1rem;
-}
-.top p {
-  margin: 0;
-}
-.top .light {
-  color: var(--brand-ink);
-  margin-inline-start: auto;
-}
-.product {
-  font-weight: 700;
-}
-.banner {
-  margin: 0;
-  padding: 0.5rem 1rem;
-  background: var(--warn-bg);
-  color: var(--warn-ink);
-  border-block-end: 1px solid var(--warn-ink);
-}
-.layout {
-  display: flex;
-  flex-wrap: wrap;
-}
-nav {
-  background: var(--panel);
-  min-inline-size: 14rem;
-  flex: 0 0 auto;
-}
-nav ul {
-  list-style: none;
-  margin: 0;
-  padding: 0.5rem 0;
-}
-nav a {
-  display: block;
-  padding: 0.625rem 1rem;
-  color: var(--ink);
-  text-decoration: none;
-  min-block-size: 44px;
-}
-nav a[aria-current='page'] {
-  font-weight: 700;
-  border-inline-start: 4px solid var(--brand);
-  background: var(--surface);
-}
-nav a:hover {
-  text-decoration: underline;
-}
-main {
-  flex: 1 1 20rem;
-  /* ACC-07: a wide table scrolls inside its .table-wrap instead of widening the page on a phone. */
-  min-inline-size: 0;
-  padding: 1rem 1.5rem 3rem;
-  max-inline-size: 72rem;
-}
-main:focus {
-  outline: none;
-}
-h1 {
-  font-size: 1.5rem;
-  margin-block: 0.5rem 0.75rem;
-}
-h2 {
-  font-size: 1.2rem;
-  margin-block: 1.5rem 0.5rem;
-}
-h3 {
-  font-size: 1rem;
-  margin-block: 1rem 0.25rem;
-}
-.signin {
-  max-inline-size: 28rem;
-  margin-inline: auto;
-}
-button,
-input,
-select,
-textarea {
-  font: inherit;
-  min-block-size: 44px;
-}
-input,
-select,
-textarea {
-  inline-size: 100%;
-  padding: 0.5rem;
-  border: 1px solid var(--muted);
-  border-radius: 4px;
-  background: var(--surface);
-  color: var(--ink);
-}
-textarea {
-  min-block-size: 5rem;
-}
-button {
-  padding-inline: 1rem;
-  border: 1px solid var(--brand);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--brand);
-  cursor: pointer;
-}
-button.primary {
-  background: var(--brand);
-  color: var(--brand-ink);
-}
-button.link {
-  border: 0;
-  background: none;
-  color: var(--brand);
-  text-decoration: underline;
-  padding: 0.25rem;
-  min-block-size: 24px;
-}
-:focus-visible {
-  outline: 3px solid var(--focus);
-  outline-offset: 2px;
-}
-.field {
-  margin-block: 0.75rem;
-}
-.field label {
-  display: block;
-  font-weight: 600;
-  margin-block-end: 0.25rem;
-}
-.hint {
-  margin: 0 0 0.25rem;
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-.error {
-  margin: 0.25rem 0 0;
-  color: var(--err-ink);
-  font-weight: 600;
-}
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-  gap: 0 1rem;
-  align-items: end;
-}
-.form-grid .toolbar {
-  grid-column: 1 / -1;
-}
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-block: 0.75rem;
-}
-.status {
-  padding: 0.5rem 0.75rem;
-  border-radius: 4px;
-}
-.status.success {
-  background: var(--ok-bg);
-  color: var(--ok-ink);
-}
-.status.error {
-  background: var(--err-bg);
-  color: var(--err-ink);
-}
-.status.info {
-  background: var(--panel);
-}
-.table-wrap {
-  overflow-x: auto;
-}
-.table-wrap:focus-visible {
-  outline: 3px solid var(--brand);
-  outline-offset: 2px;
-}
-table {
-  border-collapse: collapse;
-  inline-size: 100%;
-}
-caption {
-  text-align: start;
-  font-weight: 600;
-  padding-block: 0.5rem;
-}
-th,
-td {
-  text-align: start;
-  padding: 0.5rem;
-  border-block-end: 1px solid var(--line);
-  vertical-align: top;
-}
-th {
-  background: var(--panel);
-}
-.empty {
-  color: var(--muted);
-}
-.panel {
-  background: var(--panel);
-  padding: 1rem;
-  border-radius: 6px;
-  margin-block: 1rem;
-}
-.meta {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 0.25rem 1rem;
-}
-.meta dt {
-  font-weight: 600;
-}
-.meta dd {
-  margin: 0;
-}
-dialog.confirm {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 1.25rem;
-  max-inline-size: 32rem;
-  inline-size: calc(100% - 2rem);
-}
-dialog::backdrop {
-  background: rgb(0 0 0 / 0.4);
-}
-.actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-}
-code {
-  font-size: 0.9em;
-}
-@media (prefers-reduced-motion: reduce) {
-  * {
-    animation: none !important;
-    transition: none !important;
-  }
-}
+/*
+ * Console-only styles. Everything shared (tokens, type, buttons, fields, tables,
+ * cards, pills, notices, dialogs, the shell) comes from @cg/ui (ADR-0045).
+ * WCAG 2.2 AA: 4.5:1 text, visible focus, 44 px targets, reflow at 320 px.
+ */
 
-.photo-grid {
-  list-style: none;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
-  gap: 0.75rem;
-}
-.photo-grid img {
-  inline-size: 100%;
-  block-size: 9rem;
-  object-fit: cover;
-  border-radius: 6px;
-}
-blockquote {
-  margin: 0.5rem 0;
-  padding: 0.5rem 1rem;
-  border-inline-start: 4px solid var(--brand);
-  background: var(--panel);
-}
-
-/* Layer 3: boards, badges and filters */
-.badge {
-  display: inline-block;
-  padding: 0.05rem 0.5rem;
-  border-radius: 999px;
-  border: 1px solid currentColor;
-  font-size: 0.9em;
-  white-space: nowrap;
-}
-.badge-open {
-  color: #1b6e3a;
-}
-.badge-claimed,
-.badge-in_progress,
-.badge-limited {
-  color: #8a5a00;
-}
-.badge-full,
-.badge-closed {
-  color: #9a1b1b;
-}
-.badge-met {
-  color: #1b4f6c;
-}
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: flex-end;
-}
-.filters label,
-label.inline {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.95rem;
-}
+/* Layer 3: boards */
 .need-actions .actions {
   justify-content: flex-start;
   flex-wrap: wrap;
   align-items: center;
 }
 .counts dl.meta {
-  margin-top: 0.25rem;
-}
-fieldset {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  margin: 0.5rem 0;
-  grid-column: 1 / -1;
+  margin-top: var(--cg-space-1);
 }
 
 /* Layer 4: dispatch board, markers and alerts (DSP-01, CON-03; never colour alone) */
 .map {
   height: 420px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #f3f1ec;
+  border: 1px solid var(--cg-line);
+  border-radius: var(--cg-radius-lg);
+  background: var(--cg-surface-2);
 }
 .marker {
   min-width: 28px;
   min-height: 28px;
   padding: 2px 4px;
   font:
-    700 12px/1 system-ui,
+    700 12px/1 var(--cg-font-sans),
     sans-serif;
   border: 3px solid #111;
   background: #fff;
@@ -412,50 +69,13 @@ fieldset {
 .tone-info {
   background: #d6e6f5;
 }
-.layer-toggles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-.layer-toggles button[aria-pressed='true'] {
-  font-weight: 700;
-  outline: 2px solid var(--brand);
-}
-.takeover {
-  border: 4px solid #9a1b1b;
-  border-radius: 8px;
-  padding: 1rem;
-  max-width: 40rem;
-}
-.takeover::backdrop {
-  background: rgb(0 0 0 / 55%);
-}
-.panel {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 0.75rem 1rem;
-  margin: 0.5rem 0;
-  background: var(--panel);
-}
 .drop-target {
-  outline: 3px dashed var(--brand);
-}
-.badge-team-available {
-  color: #1b6e3a;
-}
-.badge-team-en_route,
-.badge-team-on_task,
-.badge-team-break {
-  color: #8a5a00;
-}
-.badge-team-overdue,
-.badge-team-out_of_service {
-  color: #9a1b1b;
+  outline: 3px dashed var(--cg-accent);
 }
 .badge-card {
   border: 2px solid #111;
-  border-radius: 8px;
-  padding: 1rem;
+  border-radius: var(--cg-radius-lg);
+  padding: var(--cg-space-4);
   max-width: 22rem;
   background: #fff;
   color: #111;
@@ -492,20 +112,20 @@ code.hash {
   list-style: none;
   padding: 0;
   display: grid;
-  gap: 0.75rem;
+  gap: var(--cg-space-3);
 }
 
 /* Situation map shading (layer 6, CON-03): the legend says each class in words. */
 .shade-choice {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem 1.25rem;
+  gap: var(--cg-space-1) var(--cg-space-5);
 }
 /* WCAG 2.5.8: each choice is at least 24 px, with its label as part of the target. */
 .shade-choice label.inline {
   flex-direction: row;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--cg-space-2);
   min-height: 2.75rem;
 }
 .shade-choice input[type='radio'] {
@@ -518,7 +138,7 @@ code.hash {
   padding: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem 1.25rem;
+  gap: var(--cg-space-1) var(--cg-space-5);
 }
 .legend .swatch {
   display: inline-block;
@@ -529,49 +149,15 @@ code.hash {
 }
 .legend .swatch.flagged {
   background: transparent;
-  border: 3px dashed #111111;
+  border: 3px dashed var(--cg-ink);
 }
 
-/* Command window (layer 7; CON-12, CMD-31–34). */
-.visually-hidden {
-  position: absolute;
-  inline-size: 1px;
-  block-size: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-.top :focus-visible {
-  outline-color: var(--brand-ink);
-}
-.top .command-open {
-  margin-inline-start: auto;
-  background: transparent;
-  color: var(--brand-ink);
-  border: 1px solid var(--brand-ink);
-  border-radius: 4px;
-  min-block-size: 44px;
-  padding-inline: 0.75rem;
-}
-.top .command-open + .light {
-  margin-inline-start: 0;
-}
-.kbd {
-  font-size: 0.85em;
-}
-dialog.command {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 1rem 1.25rem;
-  max-inline-size: 40rem;
-  inline-size: calc(100% - 2rem);
-  margin-block-start: 10vh;
-}
+/* Command window (layer 7; CON-12, CMD-31–34). The trigger is styled by the shell (.cg-command-open). */
 .command-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: var(--cg-space-4);
 }
 .command-head h2 {
   margin: 0;
@@ -579,60 +165,38 @@ dialog.command {
 dialog.command input:not([type]),
 dialog.command select {
   inline-size: 100%;
-  min-block-size: 44px;
+  min-block-size: var(--cg-target);
   font: inherit;
 }
 .command-result {
-  border-block-start: 1px solid var(--line);
-  margin-block-start: 0.75rem;
-  padding-block-start: 0.5rem;
+  border-block-start: 1px solid var(--cg-line);
+  margin-block-start: var(--cg-space-3);
+  padding-block-start: var(--cg-space-2);
 }
 .command-result h3 {
-  margin-block: 0.25rem;
+  margin-block: var(--cg-space-1);
 }
 .command-help,
 .command-records {
-  padding-inline-start: 1.25rem;
+  padding-inline-start: var(--cg-space-5);
 }
 .command-help code,
 .command-result code {
   overflow-wrap: anywhere;
 }
-.choice {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-block-size: 44px;
-}
 .command-settings {
-  margin-block-start: 1rem;
+  margin-block-start: var(--cg-space-4);
 }
 .command-settings summary {
-  min-block-size: 44px;
+  min-block-size: var(--cg-target);
   display: flex;
   align-items: center;
   cursor: pointer;
 }
 /* No scroll box of its own: a scrolling region must be reachable by keyboard (WCAG 2.1.1). */
 .command-history {
-  padding-inline-start: 1.25rem;
+  padding-inline-start: var(--cg-space-5);
 }
 .command-history .who {
-  font-weight: 600;
-}
-
-/* Recommendations (layer 7, REC-02–REC-12): the answer as one panel; reasons as short lists. */
-.card {
-  border: 1px solid var(--line);
-  background: var(--panel);
-  padding: 1rem;
-  margin-block: 1rem;
-  border-radius: 4px;
-}
-ul.plain {
-  margin: 0;
-  padding-inline-start: 1.1rem;
-}
-ul.plain li + li {
-  margin-block-start: 0.25rem;
+  font-weight: var(--cg-weight-semibold);
 }

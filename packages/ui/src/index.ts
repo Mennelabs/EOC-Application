@@ -46,3 +46,4 @@ export { Shell } from './components/shell/Shell.tsx';
 export * from './theme.ts';
 export * from './format.ts';
 export * as icons from './icons.ts';
+export type { LucideIcon } from './icons.ts';

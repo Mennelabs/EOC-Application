@@ -189,3 +189,27 @@ export function signOut(): void {
     location.assign('/console/');
   }
 }
+
+/** The display claims in the ID token (name, email), read on the device for the top bar; nothing is trusted from them. */
+export function sessionClaims(
+  s: Session,
+): { name?: string; email?: string; preferredUsername?: string } | null {
+  if (!s.idToken) return null;
+  try {
+    const payload = s.idToken.split('.')[1];
+    if (!payload) return null;
+    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+    const c = JSON.parse(json) as Record<string, unknown>;
+    const str = (v: unknown) => (typeof v === 'string' && v ? v : undefined);
+    const out: { name?: string; email?: string; preferredUsername?: string } = {};
+    const name = str(c['name']);
+    const email = str(c['email']);
+    const preferred = str(c['preferred_username']);
+    if (name) out.name = name;
+    if (email) out.email = email;
+    if (preferred) out.preferredUsername = preferred;
+    return out;
+  } catch {
+    return null;
+  }
+}

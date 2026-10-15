@@ -10,6 +10,7 @@
  * nothing is replayed by itself after a lost connection (CMD-34).
  */
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { icons } from '@cg/ui';
 import { api, ApiFailure, describeFailure } from '../api/client.ts';
 import { Field } from './primitives.tsx';
 
@@ -387,11 +388,13 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
     <>
       <button
         type="button"
-        className="command-open"
+        className="command-open cg-command-open"
         onClick={open}
         aria-keyshortcuts={`${navigator.platform.startsWith('Mac') ? 'Meta' : 'Control'}+${prefs.letter.toUpperCase()}`}
       >
-        Command window <span className="kbd">({shortcutLabel})</span>
+        <icons.Search width={16} height={16} aria-hidden="true" />
+        <span className="cg-command-open__text">Command window: ask or do anything</span>
+        <span className="kbd">{shortcutLabel}</span>
       </button>
       <dialog ref={dialog} className="command" aria-labelledby={titleId} onClose={onClose}>
         <div className="command-head">

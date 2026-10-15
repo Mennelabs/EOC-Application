@@ -376,8 +376,22 @@ th.cg-num {
   border-color: var(--cg-danger-line);
   box-shadow: inset 4px 0 0 var(--cg-danger-line);
 }
-.cg-stat a {
+a.cg-stat {
   color: inherit;
+  text-decoration: none;
+  transition:
+    border-color var(--cg-motion-fast) var(--cg-ease),
+    box-shadow var(--cg-motion-fast) var(--cg-ease);
+}
+a.cg-stat:hover {
+  border-color: var(--cg-accent);
+  box-shadow: var(--cg-shadow-2);
+}
+a.cg-stat .cg-stat__label {
+  color: var(--cg-accent);
+}
+a.cg-stat .cg-stat__label::after {
+  content: ' →';
 }
 
 /* Decision cards: something a named person must decide. */

@@ -41,7 +41,9 @@ test.describe('console sign-in', () => {
     await page.getByRole('link', { name: 'Events' }).click();
     await expect(page.getByRole('heading', { name: 'Events' })).toBeVisible();
     await expectNoViolations(page);
-    await page.getByRole('link', { name: 'Permission changes' }).click();
+    // A workspace the person cannot use is not listed (CON-01); the address still shows the denial, never a blank page.
+    await expect(page.getByRole('link', { name: 'Permission changes' })).toHaveCount(0);
+    await page.goto('/console/approvals');
     await expect(page.getByRole('alert')).toContainText('permission');
   });
 });

@@ -30,6 +30,7 @@ import { ResourcesScreen } from './screens/resources.tsx';
 import { DeclarationScreen } from './screens/declaration.tsx';
 import { EquityScreen } from './screens/equity.tsx';
 import { FemaMappingsScreen } from './screens/fema-mappings.tsx';
+import { IntegrationsScreen } from './screens/integrations.tsx';
 import { MetricsScreen } from './screens/metrics.tsx';
 import { JointAssessmentScreen } from './screens/joint-assessment.tsx';
 import { SharedDeclarationsScreen } from './screens/shared-declarations.tsx';
@@ -77,6 +78,7 @@ const routes = [
   { path: '/console/equity', label: 'Equity', layer: 6 },
   { path: '/console/reference-data', label: 'Reference data', layer: 6 },
   { path: '/console/fema-mappings', label: 'FEMA form mappings', layer: 6 },
+  { path: '/console/integrations', label: 'API keys and webhooks', layer: 6 },
   { path: '/console/events', label: 'Events', layer: 1 },
   { path: '/console/tenants', label: 'Organizations', layer: 1 },
   { path: '/console/accounts', label: 'Staff accounts', layer: 1 },
@@ -263,6 +265,8 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <RefdataScreen />;
       case '/console/fema-mappings':
         return <FemaMappingsScreen />;
+      case '/console/integrations':
+        return <IntegrationsScreen />;
       case '/console/declaration':
         return <DeclarationScreen />;
       case '/console/metrics':

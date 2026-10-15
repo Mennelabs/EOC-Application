@@ -29,7 +29,10 @@
  * (DEC-15, RULE-14). A reporting officer reads the metrics, narrows them to
  * one degree and downloads the CSV (F14, AC-14C); an AFN coordinator asks
  * for an equity check, sees an under-reported area with suggested outreach
- * and records the outreach taken (EQ-11/12, CON-07). Axe runs on each state, and each layer-6
+ * and records the outreach taken (EQ-11/12, CON-07). A tenant administrator
+ * asks for an API key and a webhook and sees each once; neither can be
+ * approved by them; the security administrator approves the key and the
+ * feature service answers with it (SCL-09, ADM-05). Axe runs on each state, and each layer-6
  * screen is checked for reflow: no sideways scrolling at phone width
  * (WCAG 1.4.10, ACC-07).
  */
@@ -673,5 +676,106 @@ test.describe('layer 6 console: reference data', () => {
     } finally {
       await set(0.7);
     }
+  });
+  test('a tenant administrator asks for an API key and a webhook; a second administrator approves', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    const run = `${tag}-${testInfo.project.name}`;
+    await onboard(
+      page,
+      context,
+      'tenant_admin',
+      `Tenant admin K ${tag}`,
+      `l6k-${testInfo.project.name}`,
+    );
+    await page.goto('/console/integrations');
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'API keys and webhooks' }),
+    ).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: 'API keys' })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expectNoViolations(page);
+    await expectReflow(page);
+
+    // A key: named first, then asked for through the confirmation dialog.
+    await page.getByRole('button', { name: 'Ask for the key' }).click();
+    await expect(page.getByText('Name what the key is for.')).toBeVisible();
+    const name = `Exercise GIS desk ${run}`;
+    await page.getByLabel('What it is for').fill(name);
+    await page.getByRole('button', { name: 'Ask for the key' }).click();
+    let dialog = page.getByRole('dialog', { name: 'Please confirm' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel('Reason').fill(`Exercise: state GIS desk reads the PDA layer (${run})`);
+    await dialog.getByRole('button', { name: 'Confirm' }).click();
+    const once = page.getByLabel('API key', { exact: true });
+    await expect(once).toBeVisible();
+    const key = await once.inputValue();
+    expect(key).toMatch(/^cgk_[a-z0-9]{12}_/);
+    await expect(page.getByText('This is the only time it is shown.')).toBeVisible();
+    await expectNoViolations(page);
+    await expectReflow(page);
+    await page.getByRole('button', { name: 'I have stored it' }).click();
+    await expect(once).toHaveCount(0);
+    const row = page
+      .getByRole('table', { name: 'API keys' })
+      .getByRole('row')
+      .filter({ hasText: name });
+    await expect(row).toContainText('Waiting for a second administrator');
+    await expect(row).not.toContainText(key);
+    // ADM-05: the one who asked is offered no approval.
+    await expect(row.getByRole('button', { name: `Approve ${name}` })).toHaveCount(0);
+    const service = (await page
+      .locator('code')
+      .filter({ hasText: '/FeatureServer' })
+      .first()
+      .textContent())!;
+    const query = `${service.replace(/^https?:\/\/[^/]+/, BASE)}/0/query?where=1%3D1&returnCountOnly=true&f=json`;
+    expect((await fetch(query, { headers: { 'x-api-key': key } })).status).toBe(401);
+
+    // The security administrator approves it; the feature service answers.
+    const security = await token('county', 'security.admin@example.org');
+    const listed = await api(security, '/api-keys');
+    const asked = (listed.body['keys'] as { id: string; version: number; name: string }[]).find(
+      (k) => k.name === name,
+    )!;
+    const approved = await api(security, `/api-keys/${asked.id}/approve`, {
+      method: 'POST',
+      version: asked.version,
+      confirm: `Exercise: second administrator approves (${run})`,
+    });
+    expect(approved.status).toBe(200);
+    const answer = await fetch(query, { headers: { 'x-api-key': key } });
+    expect(answer.status).toBe(200);
+    expect(typeof ((await answer.json()) as { count: unknown }).count).toBe('number');
+    await page.reload();
+    await expect(row).toContainText('Active', { timeout: 30_000 });
+
+    // A webhook: the address is checked, then the secret is shown once.
+    await page.getByLabel('Receiver').fill(`Exercise state EOC ${run}`);
+    await page.getByLabel('Address').fill('http://hooks.example.org/in');
+    await page.getByRole('button', { name: 'Add the webhook' }).click();
+    await expect(page.getByText('Enter a full address starting with https://.')).toBeVisible();
+    await page.getByLabel('Address').fill('https://10.0.0.5/in');
+    await page.getByRole('button', { name: 'Add the webhook' }).click();
+    await expect(page.getByText('Use a host name, not an IP address.')).toBeVisible();
+    await page.getByLabel('Address').fill('https://hooks.state-eoc.example.org/in');
+    await page.getByRole('button', { name: 'Add the webhook' }).click();
+    dialog = page.getByRole('dialog', { name: 'Please confirm' });
+    await dialog.getByLabel('Reason').fill(`Exercise: the state hears of issued reports (${run})`);
+    await dialog.getByRole('button', { name: 'Confirm' }).click();
+    await expect(page.getByLabel('Signing secret', { exact: true })).toHaveValue(/^whsec_/);
+    await page.getByRole('button', { name: 'I have stored it' }).click();
+    const hook = page
+      .getByRole('table', { name: 'Webhooks' })
+      .getByRole('row')
+      .filter({ hasText: `Exercise state EOC ${run}` });
+    await expect(hook).toContainText('Waiting for a second administrator');
+    await hook.getByRole('button', { name: `Deliveries to Exercise state EOC ${run}` }).click();
+    await expect(page.getByText('Nothing has been sent yet.')).toBeVisible();
+    await expectNoViolations(page);
+    await expectReflow(page);
   });
 });

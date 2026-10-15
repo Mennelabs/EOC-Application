@@ -8,6 +8,11 @@
  * own command history and clears it. Escape closes the window and returns focus to where it was
  * opened; "/" opens it when the cursor is not in a text field. Axe runs on
  * each state and, on the phone project, the window reflows at phone width.
+ *
+ * Recommendations (REC-02–REC-12): mass care asks for a shelter; the top
+ * three come with reasons, the fairgrounds lot is set aside as no shelter,
+ * inputs carry their age and the equity check shows; mass care accepts with
+ * a reason. Feeding stops, a POD and a MARC render too. Axe runs on each.
  */
 import { devices, expect, test } from '@playwright/test';
 import {
@@ -190,5 +195,62 @@ test.describe('layer 7 console: the command window', () => {
     } finally {
       await second.close();
     }
+  });
+
+  test('REC-02–REC-12: mass care asks for a shelter, reads why, and accepts it with a reason', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'mass_care_coordinator',
+      `Mass care R ${tag}`,
+      `l7r-${testInfo.project.name}`,
+    );
+    await page.goto('/console/recommendations');
+    await expect(page.getByRole('heading', { level: 1, name: 'Recommendations' })).toBeVisible();
+    await page.getByLabel('What to recommend').selectOption('shelter');
+    await page.getByRole('button', { name: 'Work it out' }).click();
+    const panel = page.getByRole('region', { name: /^Shelter for tonight, asked/ });
+    await expect(panel).toBeVisible();
+    await expect(panel.getByRole('table', { name: 'Top three shelters' })).toContainText(
+      'Harmon High School gym',
+    );
+    await expect(panel.getByRole('table', { name: 'Places set aside, with why' })).toContainText(
+      'a parking lot is not a shelter',
+    );
+    await expect(panel.getByRole('table', { name: 'Inputs and their age' })).toContainText(
+      'Facility registry (oldest re-check)',
+    );
+    await expect(
+      panel.getByRole('heading', { name: 'Who is in reach (equity check)' }),
+    ).toBeVisible();
+    await expectNoViolations(page);
+    if (testInfo.project.name === 'phone') await expectReflow(page);
+    await panel
+      .getByLabel('Reason for the decision')
+      .fill('Exercise: gym has a generator and showers');
+    await panel.getByRole('button', { name: 'Record the decision' }).click();
+    await expect(page.getByText('Shelter for tonight: accepted.')).toBeVisible();
+    await expect(panel.getByText('Accepted', { exact: false }).first()).toBeVisible();
+
+    // The other kinds render with their own tables, and pass axe.
+    for (const [kind, title, table] of [
+      ['feeding', 'Feeding stops for the canteens', 'Inputs and their age'],
+      ['pod', 'Point of distribution and walk-up points', 'Inputs and their age'],
+      ['marc', 'Multi-Agency Resource Center', 'Inputs and their age'],
+    ] as const) {
+      await page.getByLabel('What to recommend').selectOption(kind);
+      await page.getByRole('button', { name: 'Work it out' }).click();
+      const shown = page.getByRole('region', { name: new RegExp(`^${title}, asked`) });
+      await expect(shown).toBeVisible();
+      await expect(shown.getByRole('region', { name: table })).toBeVisible();
+      await expectNoViolations(page);
+    }
+    await expect(page.getByRole('table', { name: 'Recommendations for this event' })).toContainText(
+      'Exercise: gym has a generator and showers',
+    );
   });
 });

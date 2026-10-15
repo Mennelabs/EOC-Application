@@ -156,7 +156,7 @@ function toForm(f: Facility): Form {
   };
 }
 
-function Select({
+export function Select({
   label: text,
   value,
   onChange,
@@ -189,7 +189,7 @@ function Select({
   );
 }
 
-function Text({
+export function Text({
   label: text,
   value,
   onChange,

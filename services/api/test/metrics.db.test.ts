@@ -320,6 +320,74 @@ describe.skipIf(!appUrl || !workerUrl)('metrics (database-backed)', () => {
     expect(m.incomplete).toEqual({ count: 1, note: 'alerts not acknowledged yet' });
   });
 
+  it('BRD:FR-14.04, MET-04: team utilization while on duty, and assignments made over a conflict', async () => {
+    const at = (h: number) => new Date(Date.now() - h * HOUR);
+    await tx(async (trx) => {
+      const mission = await trx
+        .selectFrom('cg.mission')
+        .select('id')
+        .where('event_id', '=', eventId)
+        .where('state', '=', 'open')
+        .executeTakeFirstOrThrow();
+      const team = await trx
+        .insertInto('cg.team')
+        .values({
+          tenant_id: county,
+          event_id: eventId,
+          key: `ut-${run}`,
+          name: `Exercise team ${run}`,
+        })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      // Two members on duty from 5 h to 1 h ago, overlapping: the team was on duty 4 hours.
+      for (const [from, to] of [
+        [5, 2],
+        [4, 1],
+      ] as const) {
+        const p = await trx
+          .insertInto('cg.personnel')
+          .values({ tenant_id: county, name: `Exercise member ${run} ${from}` })
+          .returning('id')
+          .executeTakeFirstOrThrow();
+        await trx
+          .insertInto('cg.check_in')
+          .values({
+            tenant_id: county,
+            personnel_id: p.id,
+            event_id: eventId,
+            agency_tenant_id: county,
+            team_id: team.id,
+            method: 'console',
+            started_at: at(from),
+            ended_at: at(to),
+            end_reason: 'checked_out',
+          })
+          .execute();
+      }
+      // On an assignment from 4 h to 3 h ago, made over an off-duty warning.
+      await trx
+        .insertInto('cg.assignment')
+        .values({
+          tenant_id: county,
+          mission_id: mission.id,
+          resource_kind: 'team',
+          team_id: team.id,
+          state: 'released',
+          assigned_at: at(4),
+          released_at: at(3),
+          conflicts: JSON.stringify([{ kind: 'off_duty', detail: 'Exercise: shift ending' }]),
+          override_reason: 'Exercise: closest team',
+        })
+        .execute();
+    });
+    const r = (await get('director', `/events/${eventId}/metrics?${q}`)).json();
+    const util = metric(r, 'personnel.utilization');
+    expect(util.parts.find((p) => p.key === 'County staff')!.value).toBe(25);
+    const conflicts = metric(r, 'missions.conflicts');
+    expect(conflicts.value).toBeGreaterThanOrEqual(1);
+    expect(conflicts.parts.find((p) => p.key === 'off_duty')!.value).toBeGreaterThanOrEqual(1);
+  });
+
   it('MET-07: recovery information still current and broken outside links', async () => {
     await tx(async (trx) => {
       for (const [slug, review, url, link] of [

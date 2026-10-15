@@ -148,6 +148,24 @@ export const METRICS = {
     params: {},
     requirements: ['MET-04', 'DSP-07'],
   }),
+  'missions.conflicts': d({
+    key: 'missions.conflicts',
+    group: 'missions',
+    title: 'Assignments made over a conflict',
+    unit: 'assignments',
+    text: 'Assignments made in the period although the board warned of a conflict (double booking, missing credential, off duty and the like), each with the reason given; by kind of conflict.',
+    params: {},
+    requirements: ['MET-04', 'RULE-06'],
+  }),
+  'personnel.utilization': d({
+    key: 'personnel.utilization',
+    group: 'personnel',
+    title: 'Team utilization',
+    unit: 'percent',
+    text: "Of the hours teams were on duty in the period (their members' check-ins merged), the share they were on an assignment, by department or organization. People checked in without a team are left out and disclosed.",
+    params: {},
+    requirements: ['BRD:FR-14.04'],
+  }),
   'personnel.checked_in': d({
     key: 'personnel.checked_in',
     group: 'personnel',
@@ -627,6 +645,21 @@ export async function computeMetrics(
     ),
   );
 
+  // MET-04: assignments made over a conflict the board warned of.
+  const conflicts = await sql<{ k: string; n: string }>`
+    select coalesce(c->>'kind', 'other') as k, count(distinct a.id) as n
+    from cg.assignment a
+    join cg.mission m on m.id = a.mission_id
+    cross join lateral jsonb_array_elements(
+      case when jsonb_typeof(a.conflicts) = 'array' then a.conflicts else '[]'::jsonb end) c
+    where ${missionWhere} and a.assigned_at >= ${from} and a.assigned_at < ${to}
+    group by 1 order by 2 desc`.execute(trx);
+  const conflicted = await sql<{ n: string }>`
+    select count(*) as n from cg.assignment a join cg.mission m on m.id = a.mission_id
+    where ${missionWhere} and a.assigned_at >= ${from} and a.assigned_at < ${to}
+      and jsonb_typeof(a.conflicts) = 'array' and jsonb_array_length(a.conflicts) > 0`.execute(trx);
+  out.push(value('missions.conflicts', Number(conflicted.rows[0]?.n ?? 0), parts(conflicts.rows)));
+
   // ---------------------------------------------------------------- personnel
   const shifts = await sql<{
     dept: string | null;
@@ -657,6 +690,55 @@ export async function computeMetrics(
   const people = new Set(shifts.rows.map((s) => s.personnel_id));
   const openShifts = shifts.rows.filter((s) => s.open).length;
   const round1 = (n: number) => Math.round(n * 10) / 10;
+  // FR-14.04: utilization, the share of each team's time on duty spent on an assignment.
+  const util = await sql<{ dept: string; duty: string; busy: string }>`
+    with duty as (
+      select c.team_id,
+        range_agg(tstzrange(greatest(c.started_at, ${from}), least(coalesce(c.ended_at, ${end}), ${to}))) as r
+      from cg.check_in c
+      where c.event_id = ${eventId}::uuid and c.team_id is not null
+        and c.started_at < ${to} and coalesce(c.ended_at, ${end}) > ${from}
+      group by c.team_id
+    ), work as (
+      select a.team_id,
+        range_agg(tstzrange(greatest(a.assigned_at, ${from}),
+          least(coalesce(a.released_at, a.cleared_at, ${end}), ${to}))) as r
+      from cg.assignment a join cg.mission m on m.id = a.mission_id
+      where m.event_id = ${eventId}::uuid and a.team_id is not null and a.state <> 'declined'
+        and a.assigned_at < ${to} and coalesce(a.released_at, a.cleared_at, ${end}) > ${from}
+      group by a.team_id
+    )
+    select coalesce(t.name, 'County staff') as dept,
+      sum((select coalesce(sum(extract(epoch from upper(x) - lower(x))), 0) from unnest(d.r) x)) as duty,
+      sum((select coalesce(sum(extract(epoch from upper(x) - lower(x))), 0)
+        from unnest(d.r * coalesce(w.r, '{}'::tstzmultirange)) x)) as busy
+    from duty d
+    join cg.team tm on tm.id = d.team_id
+    left join work w on w.team_id = d.team_id
+    left join cg.tenant t on t.id = tm.agency_tenant_id
+    ${filters.department ? sql`where coalesce(tm.agency_tenant_id, tm.tenant_id) = ${filters.department}::uuid` : sql``}
+    group by 1 order by 1`.execute(trx);
+  const pctOf = (busy: number, duty: number) =>
+    duty > 0 ? Math.round((busy / duty) * 1000) / 10 : null;
+  const dutyAll = util.rows.reduce((n, r) => n + Number(r.duty), 0);
+  const busyAll = util.rows.reduce((n, r) => n + Number(r.busy), 0);
+  const noTeam = await sql<{ n: string }>`
+    select count(distinct c.personnel_id) as n from cg.check_in c
+    where c.event_id = ${eventId}::uuid and c.team_id is null
+      and c.started_at < ${to} and coalesce(c.ended_at, ${end}) > ${from}`.execute(trx);
+  const loose = Number(noTeam.rows[0]?.n ?? 0);
+  out.push(
+    value(
+      'personnel.utilization',
+      pctOf(busyAll, dutyAll),
+      util.rows.map((r) => ({
+        key: r.dept,
+        label: r.dept,
+        value: pctOf(Number(r.busy), Number(r.duty)),
+      })),
+      loose ? { count: loose, note: 'people checked in without a team' } : null,
+    ),
+  );
   out.push(
     value(
       'personnel.checked_in',

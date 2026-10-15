@@ -31,10 +31,10 @@
     "Assistive-technology task success is measured in moderated testing (layer-6 plan §11); the screen records in docs/a11y hold the results."
   ],
   "MET-04": [
-    "partial",
-    "metrics missions.by_state, missions.closed (active definition), missions.time_to_close, and missions.overdue (missed check-ins and assignments not acknowledged in time from the DSP-07 safety alerts, with the median minutes to acknowledge)",
-    "services/api/test/metrics.db.test.ts (MET-04)",
-    "Assignment conflicts are refused by the database (RULE-06) rather than recorded, so they are not counted."
+    "pass",
+    "metrics missions.by_state, missions.closed (active definition), missions.time_to_close, missions.overdue (missed check-ins and assignments not acknowledged in time from the DSP-07 safety alerts, with the median minutes to acknowledge) and missions.conflicts (assignments made over a board conflict warning, by kind)",
+    "services/api/test/metrics.db.test.ts (MET-04 overdue updates; assignments over a conflict)",
+    ""
   ],
   "MET-05": [
     "pass",
@@ -86,10 +86,10 @@
     ""
   ],
   "BRD:FR-14.04": [
-    "partial",
-    "trends by operational period (07:00 and 19:00 local, daylight saving handled); people and hours by department",
-    "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts",
-    "Utilization as a share of capacity is not computed."
+    "pass",
+    "trends by operational period (07:00 and 19:00 local, daylight saving handled); people and hours by department; personnel.utilization: each team's assigned time while on duty over its time on duty (intervals merged), by department (packages/reporting metrics.ts)",
+    "services/api/test/metrics.db.test.ts (utilization 25% for one hour assigned in four on duty), packages/reporting/test/metrics.test.ts",
+    ""
   ],
   "BRD:FR-14.05": [
     "pass",

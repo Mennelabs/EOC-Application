@@ -156,6 +156,7 @@ const SIGNAL_LABEL: Record<string, string> = {
 const FLAG_LABEL: Record<string, string> = {
   possible_duplicate: 'possible duplicate',
   duplicate_photo: 'same photo as another report',
+  near_duplicate_photo: 'a photo that looks the same as one on another report',
   verify_suggested: 'verify before acting',
   ai_assisted: 'answers drafted from the resident’s words',
 };
@@ -199,10 +200,10 @@ export function ReviewQueueScreen({ navigate }: { navigate: (to: string) => void
     <section aria-labelledby="queue-h">
       <h1 id="queue-h">Review queue</h1>
       <p>
-        People first: reports with someone unsafe, no shelter or a medical need come first, then the
-        oldest waiting (PHO-14). Where the county has switched it on, an AI severity suggestion from
-        the photos waits on each report for its reviewer; it never changes the order ahead of
-        people's needs and never sets a degree (PHO-12).
+        People first: reports with someone unsafe, no shelter or a medical need come first (PHO-14).
+        Where the county has switched it on, the AI severity suggestion from the photos comes
+        second, only among reports with the same needs; then the oldest waiting. It never moves a
+        report ahead of people's needs and never sets a degree (PHO-12).
       </p>
       <form
         className="form-grid"

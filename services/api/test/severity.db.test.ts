@@ -18,6 +18,8 @@ import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { createDb, withTenant, type Database } from '@cg/db';
 import { loadDamageReports } from '../../../tools/seed/src/damage.ts';
 import { loadSeed } from '../../../tools/seed/src/load.ts';
+import sharp from 'sharp';
+import { photoProcess } from '../../worker/src/jobs/photos.ts';
 import { reportSeverity } from '../../worker/src/jobs/severity.ts';
 import type { JobContext } from '../../worker/src/jobs/types.ts';
 import { buildApp, type App } from '../src/app.ts';
@@ -317,5 +319,147 @@ describe.skipIf(!appUrl || !workerUrl)('damage severity suggestion (database-bac
       human_action: 'rejected',
       acted_by: subjects['reviewer']!.accountId,
     });
+  });
+
+  it('PHO-14: among reports with the same needs, the more severe suggestion comes first; age next', async () => {
+    const [first, second] = [
+      reportId,
+      (
+        await dbWorker
+          .selectFrom('cg.report')
+          .select('id')
+          .where('tenant_id', '=', county)
+          .where('id', '<>', reportId)
+          .executeTakeFirstOrThrow()
+      ).id,
+    ];
+    await withTenant(dbWorker, { tenantId: county }, async (trx) => {
+      await trx
+        .updateTable('cg.report')
+        .set({ need_signals: '{}' })
+        .where('tenant_id', '=', county)
+        .execute();
+      // Age alone would put the second first; the first carries the "major" suggestion.
+      await trx
+        .updateTable('cg.report')
+        .set({ submitted_at: new Date() })
+        .where('id', '=', first)
+        .execute();
+      await trx
+        .updateTable('cg.report')
+        .set({ submitted_at: new Date(Date.now() - 86_400_000) })
+        .where('id', '=', second!)
+        .execute();
+    });
+    const list = (
+      await app.inject({
+        url: '/api/v1/reports?limit=50',
+        headers: { authorization: 'Bearer reviewer' },
+      })
+    ).json() as { id: string }[];
+    const ids = list.map((r) => r.id);
+    expect(ids.indexOf(first)).toBeLessThan(ids.indexOf(second!));
+    // A need signal still outranks any suggestion.
+    await withTenant(dbWorker, { tenantId: county }, (trx) =>
+      trx
+        .updateTable('cg.report')
+        .set({ need_signals: JSON.stringify({ no_shelter: true }) })
+        .where('id', '=', second!)
+        .execute(),
+    );
+    const again = (
+      (
+        await app.inject({
+          url: '/api/v1/reports?limit=50',
+          headers: { authorization: 'Bearer reviewer' },
+        })
+      ).json() as { id: string }[]
+    ).map((r) => r.id);
+    expect(again.indexOf(second!)).toBeLessThan(again.indexOf(first));
+  });
+
+  it('PHO-15: a photo that looks the same as one on another report flags that report for a person', async () => {
+    const store = new Map<string, Buffer>();
+    const scene = await sharp({
+      create: { width: 1000, height: 750, channels: 3, background: '#4a6' },
+    })
+      .composite([
+        {
+          input: Buffer.from(
+            '<svg width="1000" height="750"><rect x="90" y="100" width="380" height="300" fill="#fff"/><circle cx="760" cy="520" r="140" fill="#222"/></svg>',
+          ),
+        },
+      ])
+      .jpeg({ quality: 92 })
+      .toBuffer();
+    const copy = await sharp(scene).resize(500).jpeg({ quality: 50 }).toBuffer();
+    const reports = await dbWorker
+      .selectFrom('cg.report')
+      .select(['id', 'execution_id'])
+      .where('tenant_id', '=', county)
+      .orderBy('submitted_at')
+      .execute();
+    const photoIds: string[] = [];
+    for (const [i, bytes] of [scene, copy].entries()) {
+      const key = `tenants/${county}/restricted/${run}/near-${i}/original.jpg`;
+      store.set(key, bytes);
+      photoIds.push(
+        (
+          await withTenant(dbWorker, { tenantId: county }, (trx) =>
+            trx
+              .insertInto('cg.photo')
+              .values({
+                tenant_id: county,
+                execution_id: reports[i]!.execution_id,
+                report_id: reports[i]!.id,
+                object_key_original: key,
+                status: 'uploaded',
+                content_type: 'image/jpeg',
+              })
+              .returning('id')
+              .executeTakeFirstOrThrow(),
+          )
+        ).id,
+      );
+    }
+    const worker = {
+      db: dbWorker,
+      log: { warn: () => undefined },
+      objects: {
+        get: async (key: string) => ({ body: store.get(key)!, contentType: 'image/jpeg' }),
+        put: async (key: string, body: Buffer) => {
+          store.set(key, body);
+        },
+      },
+      ai: { providerFor: async () => null },
+    } as unknown as JobContext;
+    for (const id of photoIds)
+      await photoProcess(worker, {
+        id: 1,
+        tenantId: county,
+        topic: 'photo.process',
+        payload: { photoId: id },
+        executionId: null,
+      });
+    const flagged = await dbWorker
+      .selectFrom('cg.report')
+      .select('flags')
+      .where('id', '=', reports[1]!.id)
+      .executeTakeFirstOrThrow();
+    expect(flagged.flags).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'near_duplicate_photo',
+          photoId: photoIds[1],
+          reportId: reports[0]!.id,
+        }),
+      ]),
+    );
+    const hashes = await dbWorker
+      .selectFrom('cg.photo')
+      .select('phash')
+      .where('id', 'in', photoIds)
+      .execute();
+    expect(hashes.every((h) => h.phash !== null)).toBe(true);
   });
 });

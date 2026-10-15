@@ -378,7 +378,12 @@ export type VerificationLevel =
   'self_reported' | 'desktop_verified' | 'field_verified' | 'cannot_verify';
 /** What a reviewer must see about a filed report; set by the worker, never a decision (PHO-15, SEC-17). */
 export interface ReportFlag {
-  kind: 'possible_duplicate' | 'duplicate_photo' | 'verify_suggested' | 'ai_assisted';
+  kind:
+    | 'possible_duplicate'
+    | 'duplicate_photo'
+    | 'near_duplicate_photo'
+    | 'verify_suggested'
+    | 'ai_assisted';
   reason: string;
   reportId?: string;
   photoId?: string;
@@ -567,6 +572,8 @@ export interface PhotoTable extends Stamped {
   height: number | null;
   bytes: ColumnType<string | number, number | string, number | string> | null;
   sha256: Buffer | null;
+  /** PHO-15: 64-bit difference hash; near-identical photos differ in a few bits. */
+  phash: ColumnType<string | null, string | null, string | null>;
   suggested_taken_at: TsNullable;
   suggested_geom: ColumnType<unknown, unknown, unknown> | null;
   uploaded_at: TsNullable;

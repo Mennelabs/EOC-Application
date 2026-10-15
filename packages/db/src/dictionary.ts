@@ -2335,6 +2335,31 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     },
     { standard: false },
   ),
+  equity_alert: table(
+    {
+      id: { c: 'internal' },
+      tenant_id: { c: 'internal' },
+      event_id: { c: 'internal' },
+      kind: {
+        c: 'internal',
+        d: 'Coverage (CON-07), or a gap in time to review or to help (EQ-12)',
+      },
+      subject_kind: { c: 'internal', d: 'Tract, income band, occupancy, language or channel' },
+      subject: { c: 'internal', d: 'Which tract or group; never a person' },
+      label: { c: 'internal' },
+      value: { c: 'internal', d: 'The rate or median; null when hidden (EQ-13)' },
+      threshold: { c: 'internal', d: 'The tenant threshold it was compared with' },
+      outreach: { c: 'internal', d: 'Suggested outreach' },
+      raised_at: { c: 'internal' },
+      cleared_at: { c: 'internal', d: 'When the condition stopped holding' },
+      acknowledged_by: { c: 'internal' },
+      acknowledged_at: { c: 'internal' },
+      action_taken: { c: 'internal', d: 'Outreach recorded by staff; no names' },
+      version: { c: 'internal' },
+      updated_at: { c: 'internal' },
+    },
+    { standard: false },
+  ),
   location_geo: table(
     {
       location_id: { c: 'internal' },

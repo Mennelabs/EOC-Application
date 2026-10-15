@@ -13,6 +13,7 @@ import { eventRoutes } from './events.ts';
 import { exportRoutes, type ExportDeps } from './exports.ts';
 import { jointPdaRoutes } from './joint-pda.ts';
 import { metricRoutes } from './metrics.ts';
+import { equityRoutes } from './equity.ts';
 import { packagePhotoRoutes, type PackagePhotoDeps } from './package-photos.ts';
 import { fieldAssessmentRoutes } from './field-assessments.ts';
 import { fieldOpsRoutes } from './field-ops.ts';
@@ -89,6 +90,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   packagePhotoRoutes(deps.packagePhotos),
   jointPdaRoutes,
   metricRoutes(deps.metrics),
+  equityRoutes,
 ];
 
 /** The default set, as the tests mount it. */

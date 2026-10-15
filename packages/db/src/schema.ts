@@ -2496,6 +2496,26 @@ export interface JointPdaMarkTable {
   marked_at: TsGen;
 }
 
+export interface EquityAlertTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  kind: 'coverage' | 'review_gap' | 'help_gap';
+  subject_kind: 'tract' | 'income_band' | 'tenure' | 'language' | 'channel';
+  subject: string;
+  label: string;
+  value: ColumnType<string | null, number | string | null, number | string | null>;
+  threshold: ColumnType<string, number | string, number | string>;
+  outreach: string;
+  raised_at: TsGen;
+  cleared_at: TsNullable;
+  acknowledged_by: Uuid | null;
+  acknowledged_at: TsNullable;
+  action_taken: string | null;
+  version: Generated<number>;
+  updated_at: TsGen;
+}
+
 export interface LocationGeoTable {
   location_id: Uuid;
   tenant_id: Uuid;
@@ -2815,6 +2835,7 @@ export interface Database {
   'cg.joint_pda': JointPdaTable;
   'cg.joint_pda_stop': JointPdaStopTable;
   'cg.joint_pda_mark': JointPdaMarkTable;
+  'cg.equity_alert': EquityAlertTable;
   'cg.refdata_import': RefdataImportTable;
   'cg.refdata_snapshot': RefdataSnapshotTable;
   'cg.refdata_current': RefdataCurrentTable;

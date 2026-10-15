@@ -40,6 +40,7 @@ import { relayChangesOnce, type ChangeRelayState } from './jobs/changes.ts';
 import { dropPositionTrails, watchFieldSafety, watchReminders } from './jobs/field.ts';
 import { assignLocationGeography } from './jobs/geography.ts';
 import { pruneReferenceSnapshots, scheduleReferencePulls } from './jobs/refdata.ts';
+import { evaluateEquityAlerts } from './jobs/equity.ts';
 import { consume, consumeIntake, relayOnce } from './jobs/relay.ts';
 import type { JobContext, Schedule } from './jobs/types.ts';
 import { nullMailer, smtpMailer } from './mail.ts';
@@ -197,6 +198,8 @@ const schedules: Schedule[] = [
   { name: 'refdata-prune', everyMs: 24 * 3600_000, run: pruneReferenceSnapshots },
   // DCL:DEC-05, EQ-11: each located place's census tract and jurisdiction, kept current.
   { name: 'location-geography', everyMs: 60_000, run: assignLocationGeography },
+  // EQ-12, CON-07: coverage and gap alerts raised and cleared against the tenant's thresholds.
+  { name: 'equity-alerts', everyMs: 15 * 60_000, run: evaluateEquityAlerts },
 ];
 
 const probes = [postgresProbe('db', pool), queueProbe('queue', queueNow)];

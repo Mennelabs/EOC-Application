@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import sharp from 'sharp';
-import { blurRegions, DERIVATIVES, processImage } from '../src/jobs/photos.ts';
+import { blurRegions, blurredDerivatives, DERIVATIVES, processImage } from '../src/jobs/photos.ts';
 
 async function jpegWithExif(width: number, height: number, orientation = 1): Promise<Buffer> {
   return sharp({ create: { width, height, channels: 3, background: '#3b6ea5' } })
@@ -99,5 +99,22 @@ describe('photo processing', () => {
       .toBuffer();
     expect(untouchedAfter.equals(untouchedBefore)).toBe(true);
     expect((await sharp(blurred).metadata()).exif).toBeUndefined();
+  });
+
+  it('makes the thumbnail from the blurred image, so it hides what the review image hides (PHO-07)', async () => {
+    const { derivatives } = await processImage(await jpegWithExif(800, 600));
+    const regions = [{ kind: 'face' as const, x: 0.05, y: 0.05, width: 0.3, height: 0.3 }];
+    const out = await blurredDerivatives(derivatives, regions);
+    expect(out.review.equals(await blurRegions(derivatives.review, regions))).toBe(true);
+    // In the 320 px thumbnail the region is about 16–112 px across; the rectangle's edge (x≈110) is in it.
+    const patch = (img: Buffer) =>
+      sharp(img).extract({ left: 96, top: 24, width: 16, height: 40 }).raw().toBuffer();
+    expect((await patch(out.thumb)).equals(await patch(derivatives.thumb))).toBe(false);
+    const meta = await sharp(out.thumb).metadata();
+    expect(meta.format).toBe('webp');
+    expect(meta.exif).toBeUndefined();
+    expect(Math.max(meta.width ?? 0, meta.height ?? 0)).toBeLessThanOrEqual(DERIVATIVES.thumb);
+    // Nothing to blur: the derivatives are written as they were made.
+    expect(await blurredDerivatives(derivatives, [])).toBe(derivatives);
   });
 });

@@ -241,12 +241,19 @@ test.describe('layer 6 console: reference data', () => {
     // DEC-11, SEC-18: the worker makes the package; the download is the ZIP.
     await page.getByLabel('Package for').selectOption({ label: 'Whole event' });
     await page.getByLabel('Reason (optional)').fill(`Exercise: state asked, run ${run}`);
+    // Newest first: wait for this package's row, so an earlier package of the event (another
+    // suite's, on the shared database) is never read as this one.
+    const rows = page.getByRole('table', { name: 'Packages made for this event' }).getByRole('row');
+    await expect(
+      page
+        .getByRole('table', { name: 'Packages made for this event' })
+        .or(page.getByText('No package has been made for this event yet.')),
+    ).toBeVisible();
+    const before = await rows.count(); // 0 while no package exists, else header + rows
     await page.getByRole('button', { name: 'Make the package' }).click();
     await expect(page.getByText(/The package is being made/)).toBeVisible();
-    const newest = page
-      .getByRole('table', { name: 'Packages made for this event' })
-      .getByRole('row')
-      .nth(1);
+    await expect(rows).toHaveCount(before === 0 ? 2 : before + 1);
+    const newest = rows.nth(1);
     const zip = newest.getByRole('button', { name: 'Download package for Whole event' });
     await expect(zip).toBeVisible({ timeout: 120_000 });
     await expect(newest).toContainText('housing units counted');

@@ -10,11 +10,12 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
-import { createDb, type Database } from '@cg/db';
+import { createDb, withTenant, type Database } from '@cg/db';
 import { sql, type Kysely } from 'kysely';
 import { loadSeed } from '../../../tools/seed/src/load.ts';
 import { buildApp, type App } from '../src/app.ts';
 import { AuthError, type SubjectLoader } from '../src/auth/subject.ts';
+import { publicSites } from '../src/public/sites-view.ts';
 import { routesWith } from '../src/routes/index.ts';
 
 const appUrl = process.env['API_DB_TEST_APP_URL'];
@@ -27,6 +28,7 @@ describe.skipIf(!appUrl || !workerUrl)('site operator (database-backed)', () => 
   let eventId: string;
   let siteId: string;
   let ngo: string;
+  let county: string;
   const subjects: Record<string, AccountSubject> = {};
   const call = async (
     who: string,
@@ -52,7 +54,7 @@ describe.skipIf(!appUrl || !workerUrl)('site operator (database-backed)', () => 
     dbApp = createDb(appUrl!, 3);
     dbWorker = createDb(workerUrl!, 2);
     const seeded = await loadSeed(dbWorker);
-    const county = seeded.tenants['county']!;
+    county = seeded.tenants['county']!;
     ngo = seeded.tenants['shelter-ngo']!;
     const other = seeded.tenants['canteen']!;
     eventId = (
@@ -91,6 +93,8 @@ describe.skipIf(!appUrl || !workerUrl)('site operator (database-backed)', () => 
       ['otherShelter', other, 'shelter_worker'],
       ['gis', county, 'planning_gis_lead'],
       ['admin', county, 'tenant_admin'],
+      ['ngoLead', ngo, 'ngo_incident_commander'],
+      ['otherLead', other, 'ngo_incident_commander'],
     ] as const) {
       const email = `${who.toLowerCase()}.operator@example.org`;
       const existing = await dbWorker
@@ -405,5 +409,184 @@ describe.skipIf(!appUrl || !workerUrl)('site operator (database-backed)', () => 
     } finally {
       await dbWorker.updateTable('cg.report').set(before).where('id', '=', report.id).execute();
     }
+  });
+  it('partner posting (2026-10-15; PUB-01, PUB-05, PUB-06, CON-16): a partner drafts and its approver publishes its own service at once; the county sees who posted it and can withdraw it; the partner touches nothing else', async () => {
+    const run = randomUUID().slice(0, 6);
+    const service = {
+      kind: 'feeding',
+      name: `Exercise canteen stop ${run}`,
+      eventId,
+      address: { line1: '200 Exercise Plaza', city: 'Westwind', postal: '63001' },
+      position: { lat: 38.792, lon: -90.903 },
+      hours: { daily: '11:00-19:00' },
+      services: ['hot meals', 'water'],
+      languages: ['en', 'es'],
+    };
+    // Shelter staff run a site; posting a service is the partner's approver's.
+    expect((await call('ngoShelter', 'POST', '/api/v1/partner/sites', service)).status).toBe(403);
+    const posted = await call('ngoLead', 'POST', '/api/v1/partner/sites', service);
+    expect(posted.status, posted.body).toBe(201);
+    const site = posted.json<{
+      id: string;
+      version: number;
+      published: boolean;
+      operatorTenantId: string;
+      postedBy: { tenantId: string; name: string | null };
+      slug: string;
+    }>();
+    expect(site.operatorTenantId).toBe(ngo);
+    expect(site.postedBy.tenantId).toBe(ngo);
+    expect(site.published).toBe(false);
+    // An event of another county is refused.
+    expect(
+      (
+        await call('ngoLead', 'POST', '/api/v1/partner/sites', {
+          ...service,
+          eventId: randomUUID(),
+        })
+      ).status,
+    ).toBe(400);
+
+    // PUB-06: the partner's approver publishes with a confirmation and a reason; it is live at once.
+    expect((await call('ngoLead', 'POST', `/api/v1/partner/sites/${site.id}/publish`)).status).toBe(
+      428,
+    );
+    const live = await call(
+      'ngoLead',
+      'POST',
+      `/api/v1/partner/sites/${site.id}/publish`,
+      undefined,
+      {
+        'x-confirm': 'true',
+        'x-reason': 'Exercise: canteen opening at the plaza',
+      },
+    );
+    expect(live.status, live.body).toBe(200);
+    expect(live.json()['published']).toBe(true);
+    const onPage = await withTenant(dbApp, { tenantId: county }, (trx) => publicSites(trx, county));
+    expect(onPage.map((x) => x.id)).toContain(site.id);
+    const publication = await dbWorker
+      .selectFrom('cg.publication')
+      .select(['tenant_id', 'approved_by'])
+      .where('subject_id', '=', site.id)
+      .executeTakeFirstOrThrow();
+    expect(publication).toEqual({ tenant_id: county, approved_by: subjects['ngoLead']!.accountId });
+
+    // The county sees who posted it, and edits the partner's post like its own.
+    const seen = await call('countyCare', 'GET', `/api/v1/sites/${site.id}`);
+    expect(seen.status, seen.body).toBe(200);
+    expect(seen.json()['postedBy']).toMatchObject({ tenantId: ngo });
+
+    // The partner changes its own post, nothing else: not a county site, not another partner's.
+    const v = (live.json() as { version: number }).version;
+    const changed = await call(
+      'ngoLead',
+      'PATCH',
+      `/api/v1/partner/sites/${site.id}`,
+      { hours: { daily: '11:00-20:00' } },
+      { 'if-match': String(v) },
+    );
+    expect(changed.status, changed.body).toBe(200);
+    // A live post keeps meeting the publish checks: no alert wording slipped in afterwards.
+    const reworded = await call(
+      'ngoLead',
+      'PATCH',
+      `/api/v1/partner/sites/${site.id}`,
+      { name: `Emergency alert: canteen ${run}` },
+      { 'if-match': String(changed.json<{ version: number }>().version) },
+    );
+    expect(reworded.status, reworded.body).toBe(400);
+    for (const [who, path] of [
+      ['ngoLead', `/api/v1/partner/sites/${siteId}/publish`],
+      ['otherLead', `/api/v1/partner/sites/${site.id}/publish`],
+      ['otherLead', `/api/v1/partner/sites/${site.id}/unpublish`],
+    ] as const)
+      expect(
+        (
+          await call(who, 'POST', path, undefined, {
+            'x-confirm': 'true',
+            'x-reason': 'Exercise: not theirs to publish',
+          })
+        ).status,
+      ).toBe(404);
+    const others = (await call('otherLead', 'GET', '/api/v1/partner/sites')).json<
+      { id: string }[]
+    >();
+    expect(others.map((x) => x.id)).not.toContain(site.id);
+    // A county account is not a partner: the partner routes are not for it.
+    expect((await call('countyCare', 'GET', '/api/v1/partner/sites')).status).toBe(403);
+
+    // PUB-05: a confidential service is posted for the county's eyes but never published.
+    const hidden = await call('ngoLead', 'POST', '/api/v1/partner/sites', {
+      ...service,
+      name: `Exercise safe house ${run}`,
+      confidential: true,
+    });
+    expect(hidden.status, hidden.body).toBe(201);
+    const hiddenId = hidden.json<{ id: string }>().id;
+    expect(
+      (
+        await call('ngoLead', 'POST', `/api/v1/partner/sites/${hiddenId}/publish`, undefined, {
+          'x-confirm': 'true',
+          'x-reason': 'Exercise: should be refused',
+        })
+      ).status,
+    ).toBe(400);
+
+    // A post needs a place people can find, and no alert-style wording (it reaches the SHELTER
+    // text replies; docs/06).
+    const vague = await call('ngoLead', 'POST', '/api/v1/partner/sites', {
+      kind: 'pod',
+      name: `EMERGENCY ALERT water point ${run}`,
+      eventId,
+    });
+    expect(vague.status, vague.body).toBe(201);
+    const refused = await call(
+      'ngoLead',
+      'POST',
+      `/api/v1/partner/sites/${vague.json<{ id: string }>().id}/publish`,
+      undefined,
+      { 'x-confirm': 'true', 'x-reason': 'Exercise: should be refused' },
+    );
+    expect(refused.status, refused.body).toBe(400);
+    expect(
+      refused
+        .json<{ fields: { name: string }[] }>()
+        .fields.map((f) => f.name)
+        .sort(),
+    ).toEqual(['address', 'name']);
+
+    // The county withdraws the partner's post.
+    const withdrawn = await call(
+      'countyCare',
+      'POST',
+      `/api/v1/sites/${site.id}/unpublish`,
+      undefined,
+      {
+        'x-confirm': 'true',
+        'x-reason': 'Exercise: county withdraws the post',
+      },
+    );
+    expect(withdrawn.status, withdrawn.body).toBe(200);
+    const after = await withTenant(dbApp, { tenantId: county }, (trx) => publicSites(trx, county));
+    expect(after.map((x) => x.id)).not.toContain(site.id);
+
+    // Every step is in the county's audit chain, attributed to the partner's approver.
+    const audit = await dbWorker
+      .selectFrom('cg.audit_event')
+      .select(['tenant_id', 'action', 'actor_account_id'])
+      .where('target_id', '=', site.id)
+      .orderBy('seq')
+      .execute();
+    expect(audit.map((a) => a.action)).toEqual([
+      'site.create',
+      'site.publish',
+      'site.update',
+      'site.publish',
+    ]);
+    expect(new Set(audit.map((a) => a.tenant_id))).toEqual(new Set([county]));
+    expect(
+      audit.slice(0, 3).every((a) => a.actor_account_id === subjects['ngoLead']!.accountId),
+    ).toBe(true);
   });
 });

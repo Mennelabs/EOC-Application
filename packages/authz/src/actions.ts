@@ -221,6 +221,21 @@ export const actions = {
   'site.publish': a('admin', 'site', 'Publish or unpublish a site on every public channel', {
     consequential: true,
   }),
+  // Partner self-posting (decided 2026-10-15): a partner organization drafts its own service in
+  // its county, as the site's operator, and its named approver publishes it (PUB-06). Explicit,
+  // so 'site.*' never carries them.
+  'site.post': a(
+    'write',
+    'site',
+    "Draft or change your organization's own service (a shelter, feeding site, POD) in the county",
+    { explicit: true },
+  ),
+  'site.post_publish': a(
+    'admin',
+    'site',
+    "Publish or withdraw your organization's own service on the county's public pages",
+    { consequential: true, explicit: true },
+  ),
   'resource.read': a('read', 'resource', 'Read published resources and drafts'),
   'resource.edit': a('write', 'resource', 'Draft or change a resource'),
   'resource.publish': a('admin', 'resource', 'Publish or unpublish a resource', {

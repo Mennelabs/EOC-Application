@@ -433,7 +433,12 @@ export async function remindContactVerification(ctx: JobContext): Promise<void> 
   }
 }
 
-async function approverName(trx: Trx, tenantId: string, accountId: string | null) {
+async function approverName(
+  trx: Trx,
+  tenantId: string,
+  accountId: string | null,
+  fallback = 'a named approver',
+) {
   if (!accountId) return 'the system';
   const a = await trx
     .selectFrom('cg.account')
@@ -441,7 +446,7 @@ async function approverName(trx: Trx, tenantId: string, accountId: string | null
     .where('tenant_id', '=', tenantId)
     .where('id', '=', accountId)
     .executeTakeFirst();
-  return a ? `${a.display_name} (${a.email})` : 'a named approver';
+  return a ? `${a.display_name} (${a.email})` : fallback;
 }
 
 /**
@@ -474,8 +479,21 @@ export async function noticePublications(ctx: JobContext): Promise<void> {
       if (rows.length === 0) return;
       let recipients: string[] | null = null;
       for (const p of rows) {
-        const snap = (p.snapshot ?? {}) as { name?: unknown; title?: unknown; slug?: unknown };
+        const snap = (p.snapshot ?? {}) as {
+          name?: unknown;
+          title?: unknown;
+          slug?: unknown;
+          postedBy?: { organization?: unknown; approver?: unknown };
+        };
         const title = String(snap.name ?? snap.title ?? snap.slug ?? p.subject_kind);
+        // A partner's own post (2026-10-15): its approver's account is the partner's, not the
+        // county's, so the notice names them as the publication recorded them.
+        const org =
+          typeof snap.postedBy?.organization === 'string' ? snap.postedBy.organization : null;
+        const poster =
+          org && typeof snap.postedBy?.approver === 'string'
+            ? `${snap.postedBy.approver} of ${org}`
+            : org;
         const events: { kind: NoticeKind; at: Date; what: string; by: string | null }[] = [
           {
             kind: 'publication',
@@ -507,7 +525,12 @@ export async function noticePublications(ctx: JobContext): Promise<void> {
             kind: p.subject_kind.replace(/_/g, ' '),
             title,
             version: String(p.subject_version),
-            approver: await approverName(trx, tenantId, e.by),
+            approver: await approverName(
+              trx,
+              tenantId,
+              e.by,
+              poster ? (e.kind === 'publication' ? poster : `someone at ${org}`) : undefined,
+            ),
             why: p.reason,
             channels: p.channels.join(', '),
             what: e.what,

@@ -747,6 +747,7 @@ export interface SiteTable extends Stamped {
   usng: string | null;
   /** CON-16: the partner organization that runs the site. */
   operator_tenant_id: Uuid | null;
+  posted_by_tenant_id: Uuid | null;
 }
 
 export interface ZipCentroidTable {

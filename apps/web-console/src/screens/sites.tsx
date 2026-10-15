@@ -3,7 +3,8 @@
  * PUB-02–06, PUB-11, PUB-15): open, update, confirm, publish with the
  * approval dialog, close and unpublish a site; the confidential flag; the
  * next-nearest preview from the public view; alert drafts from a site
- * change; the log of what went public, by whom and when.
+ * change; the log of what went public, by whom and when. Sites a partner
+ * posted itself (2026-10-15) show the posting organization.
  */
 import { useState, type FormEvent } from 'react';
 import { api, describeFailure } from '../api/client.ts';
@@ -29,6 +30,7 @@ interface Site {
   confirmDueAt: string | null;
   published: boolean;
   publishedAt: string | null;
+  postedBy: { tenantId: string; name: string | null } | null;
 }
 interface Publication {
   id: string;
@@ -40,7 +42,12 @@ interface Publication {
   channels: string[];
   reason: string;
   unpublishedAt: string | null;
-  snapshot: { name?: string; slug?: string; change?: string } | null;
+  snapshot: {
+    name?: string;
+    slug?: string;
+    change?: string;
+    postedBy?: { organization?: string; approver?: string | null };
+  } | null;
 }
 interface AlertDraft {
   lang: string;
@@ -175,6 +182,11 @@ export function SitesScreen() {
             key: 'name',
             header: 'Site',
             render: (s) => (s.confidential ? `${s.name} (confidential)` : s.name),
+          },
+          {
+            key: 'posted',
+            header: 'Posted by',
+            render: (s) => (s.postedBy ? (s.postedBy.name ?? 'a partner organization') : 'county'),
           },
           { key: 'kind', header: 'Kind', render: (s) => label(s.kind) },
           {
@@ -487,7 +499,17 @@ export function PublicationsScreen() {
           },
           { key: 'v', header: 'Version', render: (p) => String(p.subjectVersion) },
           { key: 'when', header: 'Approved', render: (p) => fmt(p.approvedAt) },
-          { key: 'who', header: 'By', render: (p) => <code>{p.approvedBy.slice(0, 8)}</code> },
+          {
+            key: 'who',
+            header: 'By',
+            // A partner's own post (2026-10-15) names the organization and its approver.
+            render: (p) =>
+              p.snapshot?.postedBy?.organization ? (
+                `Posted by ${p.snapshot.postedBy.organization}${p.snapshot.postedBy.approver ? ` (${p.snapshot.postedBy.approver})` : ''}`
+              ) : (
+                <code>{p.approvedBy.slice(0, 8)}</code>
+              ),
+          },
           { key: 'why', header: 'Reason', render: (p) => p.reason },
           { key: 'channels', header: 'Channels', render: (p) => p.channels.join(', ') },
           { key: 'down', header: 'Taken down', render: (p) => fmt(p.unpublishedAt) },

@@ -112,6 +112,8 @@ const siteOut = z.object({
   unpublishedAt: z.iso.datetime().nullable(),
   usng: z.string().nullable(),
   operatorTenantId: z.uuid().nullable(),
+  /** Partner self-posting (2026-10-15): the partner organization that posted the site, if one did. */
+  postedBy: z.object({ tenantId: z.uuid(), name: z.string().nullable() }).nullable(),
 });
 type SiteOut = z.infer<typeof siteOut>;
 
@@ -155,14 +157,17 @@ export const siteRoutes: FastifyPluginAsync = async (instance) => {
     postal: string | null;
     lat: number | string | null;
     lon: number | string | null;
+    posted_by_name: string | null;
   };
 
   const query = (trx: Trx) =>
     trx
       .selectFrom('cg.site as s')
       .leftJoin('cg.location as l', 'l.id', 's.location_id')
+      .leftJoin('cg.tenant as pt', 'pt.id', 's.posted_by_tenant_id')
       .selectAll('s')
       .select([
+        'pt.name as posted_by_name',
         'l.line1',
         'l.unit',
         'l.city',
@@ -217,6 +222,9 @@ export const siteRoutes: FastifyPluginAsync = async (instance) => {
       unpublishedAt: iso(r.unpublished_at),
       usng: r.usng,
       operatorTenantId: r.operator_tenant_id,
+      postedBy: r.posted_by_tenant_id
+        ? { tenantId: r.posted_by_tenant_id, name: r.posted_by_name }
+        : null,
     };
   }
 
@@ -753,6 +761,379 @@ export const siteRoutes: FastifyPluginAsync = async (instance) => {
       return toOut(row);
     },
   );
+
+  // ------------------------------------------------- partner self-posting
+  // Decided 2026-10-15 (PUB-01, PUB-06, CON-16, REC-13): a partner organization posts its own
+  // service (a shelter, a feeding site, a POD) in its county, as the site's operator, and its
+  // named approver publishes it on every public channel at once. The site belongs to the county,
+  // so the county sees it, is told of the publication (the publication notices) and can edit,
+  // close or withdraw it. The writes run in the county's context after `site.post` (drafting) or
+  // `site.post_publish` (the named approver) is authorized for the partner, as the partner's
+  // mission and need work does; these routes keep the partner to the sites it posted.
+
+  /** The partner's county: the parent of a partner organization's tenant. */
+  async function partnerScope(request: FastifyRequest) {
+    const s = account(request);
+    if (s.tenantKind !== 'partner_org') throw errors.forbidden();
+    const me = await request.tx((trx) =>
+      trx
+        .selectFrom('cg.tenant')
+        .select('parent_id')
+        .where('id', '=', s.tenantId)
+        .executeTakeFirst(),
+    );
+    if (!me?.parent_id) throw errors.forbidden();
+    return { s, countyId: me.parent_id, partnerId: s.tenantId };
+  }
+
+  /** A partner may file its service under one of its county's events only. */
+  async function checkCountyEvent(trx: Trx, countyId: string, eventId: string) {
+    const event = await trx
+      .selectFrom('cg.event')
+      .select('id')
+      .where('id', '=', eventId)
+      .where('tenant_id', '=', countyId)
+      .executeTakeFirst();
+    if (!event)
+      throw errors.validation([{ name: 'eventId', message: "not one of your county's events" }]);
+  }
+
+  async function loadPosted(
+    request: FastifyRequest,
+    countyId: string,
+    partnerId: string,
+    id: string,
+  ) {
+    const row = await request.txAs(countyId, (trx) =>
+      query(trx)
+        .where('s.id', '=', id)
+        .where('s.posted_by_tenant_id', '=', partnerId)
+        .executeTakeFirst(),
+    );
+    if (!row) throw errors.notFound();
+    return row as Joined;
+  }
+
+  /**
+   * What a partner's post needs before it goes public, beyond the fields every post has: a place
+   * people can find (an address or a point on the map), and no wording that reads like an
+   * emergency alert, since the name and notes reach the SHELTER text replies and carriers
+   * reject alert wording (docs/06).
+   */
+  function publishProblems(row: Joined) {
+    const problems: { name: string; message: string }[] = [];
+    if (!row.line1 && !row.city && (row.lat === null || row.lon === null))
+      problems.push({ name: 'address', message: 'an address or a map point is needed to publish' });
+    const alertWording = /emergency alert|alerta de emergencia/i;
+    for (const [name, text] of [
+      ['name', row.name],
+      ['notes', row.notes],
+      ['directions', row.directions],
+    ] as const)
+      if (typeof text === 'string' && alertWording.test(text))
+        problems.push({ name, message: 'reads like an emergency alert; reword it (docs/06)' });
+    return problems;
+  }
+
+  const partnerFields = {
+    kind: siteFields.kind,
+    name: siteFields.name,
+    eventId: siteFields.eventId.optional(),
+    status: siteFields.status.default('open'),
+    address: siteFields.address.optional(),
+    position: siteFields.position.optional(),
+    capacity: siteFields.capacity.optional(),
+    occupancy: siteFields.occupancy.optional(),
+    hours: siteFields.hours.default({}),
+    services: siteFields.services.default([]),
+    pets: siteFields.pets.default('unknown'),
+    accessibility: siteFields.accessibility.default({}),
+    medicalPower: siteFields.medicalPower.optional(),
+    languages: siteFields.languages.default(['en']),
+    transit: siteFields.transit.optional(),
+    directions: siteFields.directions.optional(),
+    notes: siteFields.notes.optional(),
+    confidential: siteFields.confidential.default(false),
+    confirmEveryHours: siteFields.confirmEveryHours.default(12),
+  };
+
+  /** What a partner may change on a service it posted (the county keeps lead contact and operator). */
+  const partnerPatchKeys = [
+    'kind',
+    'name',
+    'eventId',
+    'status',
+    'address',
+    'position',
+    'capacity',
+    'occupancy',
+    'hours',
+    'services',
+    'pets',
+    'accessibility',
+    'medicalPower',
+    'languages',
+    'transit',
+    'directions',
+    'notes',
+    'confidential',
+    'confirmEveryHours',
+  ] as const;
+
+  app.get(
+    '/partner/sites',
+    { schema: { tags: ['sites'], response: { 200: z.array(siteOut) } } },
+    async (request) => {
+      const { countyId, partnerId } = await partnerScope(request);
+      await request.authorize('site.read', { type: 'site', tenantId: partnerId });
+      const rows = await request.txAs(countyId, (trx) =>
+        query(trx).where('s.operator_tenant_id', '=', partnerId).orderBy('s.name').execute(),
+      );
+      return (rows as Joined[]).map(toOut);
+    },
+  );
+
+  app.post(
+    '/partner/sites',
+    { schema: { tags: ['sites'], body: z.object(partnerFields), response: { 201: siteOut } } },
+    async (request, reply) => {
+      const { s, countyId, partnerId } = await partnerScope(request);
+      await request.authorize('site.post', { type: 'site', tenantId: partnerId });
+      const b = request.body;
+      const row = await request.txAs(countyId, async (trx) => {
+        if (b.eventId) await checkCountyEvent(trx, countyId, b.eventId);
+        const locationId = await saveLocation(
+          trx,
+          countyId,
+          null,
+          b.address ?? null,
+          b.position ?? null,
+          s.accountId,
+        );
+        // A unique slug: the partner names the service, the county's page needs one address.
+        const base = slugify(b.name);
+        let slug = base;
+        for (let n = 2; ; n++) {
+          const taken = await trx
+            .selectFrom('cg.site')
+            .select('id')
+            .where('slug', '=', slug)
+            .executeTakeFirst();
+          if (!taken) break;
+          slug = `${base.slice(0, 56)}-${n}`;
+        }
+        const inserted = await trx
+          .insertInto('cg.site')
+          .values({
+            tenant_id: countyId,
+            ...columns(b),
+            kind: b.kind,
+            name: b.name,
+            slug,
+            location_id: locationId,
+            operator_tenant_id: partnerId,
+            posted_by_tenant_id: partnerId,
+            created_by: s.accountId,
+            updated_by: s.accountId,
+          } as never)
+          .returning('id')
+          .executeTakeFirstOrThrow();
+        const full = (await query(trx)
+          .where('s.id', '=', inserted.id)
+          .executeTakeFirstOrThrow()) as Joined;
+        await request.audit(trx, {
+          tenantId: countyId,
+          action: 'site.create',
+          targetType: 'site',
+          targetId: full.id,
+          targetVersion: full.version,
+          reason: 'posted by a partner organization',
+          changes: diffForAudit(
+            null,
+            full as unknown as Record<string, unknown>,
+            classifierFor('site'),
+          ),
+        });
+        return full;
+      });
+      return reply.code(201).send(toOut(row));
+    },
+  );
+
+  app.patch(
+    '/partner/sites/:id',
+    {
+      config: { requiresVersion: true },
+      schema: {
+        tags: ['sites'],
+        params: uuidParam,
+        body: z.object(
+          Object.fromEntries(partnerPatchKeys.map((k) => [k, siteFields[k].optional()])) as {
+            [K in (typeof partnerPatchKeys)[number]]: z.ZodOptional<(typeof siteFields)[K]>;
+          },
+        ),
+        response: { 200: siteOut },
+      },
+    },
+    async (request) => {
+      const { s, countyId, partnerId } = await partnerScope(request);
+      const expected = request.expectedVersion();
+      await request.authorize('site.post', { type: 'site', tenantId: partnerId });
+      const current = await loadPosted(request, countyId, partnerId, request.params.id);
+      const b = request.body;
+      const row = await request.txAs(countyId, async (trx) => {
+        if (b.eventId) await checkCountyEvent(trx, countyId, b.eventId);
+        const locationId = await saveLocation(
+          trx,
+          countyId,
+          current.location_id,
+          b.address,
+          b.position,
+          s.accountId,
+        );
+        const updated = assertUpdated(
+          await trx
+            .updateTable('cg.site')
+            .set({ ...columns(b), location_id: locationId, updated_by: s.accountId } as never)
+            .where('id', '=', current.id)
+            .where('posted_by_tenant_id', '=', partnerId)
+            .where('version', '=', expected)
+            .returning('id')
+            .executeTakeFirst(),
+          toOut(current),
+        );
+        const full = (await query(trx)
+          .where('s.id', '=', updated.id)
+          .executeTakeFirstOrThrow()) as Joined;
+        // A live post shows its changes at once, so it keeps meeting the publish checks.
+        if (full.published_at && !full.unpublished_at) {
+          const problems = publishProblems(full);
+          if (problems.length) throw errors.validation(problems);
+        }
+        await request.audit(trx, {
+          tenantId: countyId,
+          action: 'site.update',
+          targetType: 'site',
+          targetId: full.id,
+          targetVersion: full.version,
+          changes: diffForAudit(
+            current as unknown as Record<string, unknown>,
+            full as unknown as Record<string, unknown>,
+            classifierFor('site'),
+          ),
+        });
+        return full;
+      });
+      return toOut(row);
+    },
+  );
+
+  for (const op of ['publish', 'unpublish'] as const) {
+    app.post(
+      `/partner/sites/:id/${op}`,
+      { schema: { tags: ['sites'], params: uuidParam, response: { 200: siteOut } } },
+      async (request) => {
+        const { s, countyId, partnerId } = await partnerScope(request);
+        await request.authorize('site.post_publish', { type: 'site', tenantId: partnerId });
+        const current = await loadPosted(request, countyId, partnerId, request.params.id);
+        if (op === 'publish') {
+          if (current.confidential)
+            throw errors.validation([
+              { name: 'confidential', message: 'a confidential site is never published (PUB-05)' },
+            ]);
+          const problems = publishProblems(current);
+          if (problems.length) throw errors.validation(problems);
+        }
+        // PUB-06: the partner's approver is the named person; the reason is kept with it.
+        const { reason } = request.confirmation();
+        const poster = await request.tx(async (trx) => {
+          const org = await trx
+            .selectFrom('cg.tenant')
+            .select('name')
+            .where('id', '=', partnerId)
+            .executeTakeFirstOrThrow();
+          const me = await trx
+            .selectFrom('cg.account')
+            .select('display_name')
+            .where('id', '=', s.accountId)
+            .executeTakeFirst();
+          return {
+            tenantId: partnerId,
+            organization: org.name,
+            approver: me?.display_name ?? null,
+          };
+        });
+        const now = new Date();
+        const row = await request.txAs(countyId, async (trx) => {
+          await trx
+            .updateTable('cg.site')
+            .set(
+              op === 'publish'
+                ? {
+                    published_version: current.version + 1,
+                    published_at: now,
+                    unpublished_at: null,
+                    last_confirmed_at: now,
+                    last_confirmed_by: s.accountId,
+                    updated_by: s.accountId,
+                  }
+                : { unpublished_at: now, updated_by: s.accountId },
+            )
+            .where('id', '=', current.id)
+            .where('posted_by_tenant_id', '=', partnerId)
+            .execute();
+          const full = (await query(trx)
+            .where('s.id', '=', current.id)
+            .executeTakeFirstOrThrow()) as Joined;
+          if (op === 'publish') {
+            const snapshot = await publicSnapshot(trx, countyId, full.id);
+            await trx
+              .insertInto('cg.publication')
+              .values({
+                tenant_id: countyId,
+                subject_kind: 'site',
+                subject_id: full.id,
+                subject_version: full.version,
+                // The county's notices and log name the organization and its approver, whose
+                // account the county's context cannot read.
+                snapshot: JSON.stringify({ ...(snapshot ?? toOut(full)), postedBy: poster }),
+                approved_by: s.accountId,
+                reason: reason ?? 'published by a partner organization',
+              })
+              .execute();
+          } else {
+            await trx
+              .updateTable('cg.publication')
+              .set({ unpublished_at: now, unpublished_by: s.accountId })
+              .where('subject_kind', '=', 'site')
+              .where('subject_id', '=', current.id)
+              .where('unpublished_at', 'is', null)
+              .execute();
+          }
+          await request.audit(trx, {
+            tenantId: countyId,
+            action: 'site.publish',
+            targetType: 'site',
+            targetId: full.id,
+            targetVersion: full.version,
+            reason,
+            changes: {
+              fields: [
+                {
+                  name: 'published',
+                  from: Boolean(current.published_at && !current.unpublished_at),
+                  to: op === 'publish',
+                },
+                { name: 'posted_by', to: partnerId },
+              ],
+            },
+          });
+          return full;
+        });
+        return toOut(row);
+      },
+    );
+  }
 
   // ----------------------------------------------------------- publications
   app.get(

@@ -94,10 +94,11 @@ async function firstSignIn(page: Page, email: string, password: string) {
   await page.locator('#password-new').fill(NEW_PASSWORD);
   await page.locator('#password-confirm').fill(NEW_PASSWORD);
   await page.getByRole('button', { name: /submit/i }).click();
-  await page
+  const register = page
     .getByRole('button', { name: /register|sign in with (security key|passkey)/i })
-    .first()
-    .click({ timeout: 15_000 });
+    .first();
+  await register.click({ timeout: 15_000 });
+  let registerClicked = Date.now();
   const labelBox = page.getByRole('textbox', { name: /label|name/i });
   const back = page.getByRole('link', { name: /back to application/i });
   const atApp = () => new URL(page.url()).origin === CJIS_URL && !page.url().includes('/auth/');
@@ -113,8 +114,23 @@ async function firstSignIn(page: Page, email: string, password: string) {
         .click();
     } else if (await back.isVisible()) {
       await back.click();
+    } else if (!labelled && Date.now() - registerClicked > 5_000 && (await register.isVisible())) {
+      // A cold identity provider can take the first click before its passkey script is ready:
+      // the page stays as it was. Still on it after five seconds, the click is made again.
+      await register.click();
+      registerClicked = Date.now();
     }
     await page.waitForTimeout(500);
+  }
+  if (!atApp()) {
+    const heading = await page
+      .getByRole('heading')
+      .first()
+      .textContent()
+      .catch(() => null);
+    throw new Error(
+      `passkey registration did not return to the enclave: ${page.url()} (${heading})`,
+    );
   }
   // The registration session proved the password only; the enclave refuses it (fail closed,
   // ADR-0036) and asks for a sign-in with the passkey itself.

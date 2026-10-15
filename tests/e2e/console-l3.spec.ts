@@ -3,10 +3,12 @@
  * GATE-02/03): a mass care coordinator sees the key counts, claims and
  * finishes a need on the board, adds a site, confirms it, publishes it
  * through the approval dialog and sees it in the publication log, and opens
- * the contacts registry; every screen passes axe WCAG 2.2 AA.
+ * the contacts registry; a partner organization posts and publishes its own
+ * service and the county withdraws it (partner posting, 2026-10-15); every
+ * screen passes axe WCAG 2.2 AA.
  */
 import { expect, test } from '@playwright/test';
-import { BASE, expectNoViolations, onboard } from './support/console.ts';
+import { BASE, MAIL, expectNoViolations, onboard } from './support/console.ts';
 
 const tag = Date.now().toString(36);
 
@@ -193,5 +195,104 @@ test.describe('partner workspace (ADM-02, NED-04, FL-03, AC-17C)', () => {
       }),
     ).toBeVisible();
     await expectNoViolations(page);
+  });
+});
+
+test.describe('partner posting (2026-10-15; PUB-01, PUB-05, PUB-06, CON-16)', () => {
+  test('a partner posts and publishes its own service; it is public at once; the county is told, sees who posted it and withdraws it', async ({
+    page,
+    context,
+    browser,
+  }, testInfo) => {
+    test.setTimeout(300_000);
+    const name = `Canteen stop ${tag} ${testInfo.project.name}`;
+    await onboard(
+      page,
+      context,
+      'ngo_incident_commander',
+      `Canteen lead ${tag}`,
+      `post-${testInfo.project.name}`,
+      'canteen',
+    );
+
+    // The partner drafts its service under "Our services".
+    await page.getByRole('link', { name: 'Our services' }).click();
+    await expect(page.getByRole('heading', { name: 'Our services', level: 1 })).toBeVisible();
+    await expectNoViolations(page);
+    await page.getByLabel('Kind', { exact: true }).selectOption('feeding');
+    await page.getByLabel('Name', { exact: true }).fill(name);
+    await page.getByLabel('Street address', { exact: true }).fill('12 Exercise Square');
+    await page.getByLabel('City', { exact: true }).fill('Westwind');
+    await page.getByLabel('ZIP', { exact: true }).fill('63003');
+    await page.getByLabel('Latitude', { exact: true }).fill('38.796');
+    await page.getByLabel('Longitude', { exact: true }).fill('-90.871');
+    await page.getByLabel('Hours', { exact: true }).fill('11:00–19:00');
+    await page.getByLabel('What is offered', { exact: true }).fill('hot meals, water');
+    await page.getByLabel('Wheelchair accessible').check();
+    await page.getByLabel('Spanish').check();
+    await page.getByRole('button', { name: 'Post as draft' }).click();
+    await expect(page.getByRole('status')).toContainText('posted as a draft');
+    const row = page.getByRole('row').filter({ hasText: name });
+    await expect(row).toContainText('not published');
+
+    // Its approver publishes it with a reason (PUB-06); it is on the county's page at once (PUB-01).
+    await row.getByRole('button', { name: `Publish ${name}…` }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel(/reason/i).fill('Canteen opens at the square for the exercise');
+    await dialog.getByRole('button', { name: 'Confirm' }).click();
+    await expect(page.getByRole('status')).toContainText('published on every channel');
+    await expect(row).toContainText('published');
+    await expectNoViolations(page);
+    const onPage = async () =>
+      (
+        (await (await fetch(`${BASE}/api/public/help/county?lang=en`)).json()) as {
+          sites: { name: string }[];
+        }
+      ).sites.some((s) => s.name === name);
+    expect(await onPage()).toBe(true);
+
+    // The county's publishers are told, naming the organization (the publication notices).
+    await expect
+      .poll(
+        async () => {
+          const found = (await (
+            await fetch(`${MAIL}/api/v1/search?query=${encodeURIComponent(`subject:"${name}"`)}`)
+          ).json()) as { messages: { ID: string }[] };
+          const id = found.messages[0]?.ID;
+          if (!id) return '';
+          return ((await (await fetch(`${MAIL}/api/v1/message/${id}`)).json()) as { Text: string })
+            .Text;
+        },
+        { timeout: 120_000, intervals: [3_000] },
+      )
+      .toContain('Hope Canteen Services');
+
+    // The county sees who posted it and withdraws it.
+    const countyContext = await browser.newContext();
+    const county = await countyContext.newPage();
+    await onboard(
+      county,
+      countyContext,
+      'mass_care_coordinator',
+      `County care ${tag}`,
+      `post-county-${testInfo.project.name}`,
+    );
+    await county.getByRole('link', { name: 'Sites', exact: true }).click();
+    const siteRow = county.getByRole('row').filter({ hasText: name });
+    await expect(siteRow).toContainText('Hope Canteen Services');
+    await county.getByRole('link', { name: 'Publication log' }).click();
+    await expect(county.getByRole('row').filter({ hasText: name })).toContainText(
+      'Posted by Hope Canteen Services',
+    );
+    await expectNoViolations(county);
+    await county.getByRole('link', { name: 'Sites', exact: true }).click();
+    await siteRow.getByRole('button', { name: 'Unpublish' }).click();
+    const withdraw = county.getByRole('dialog');
+    await withdraw.getByLabel(/reason/i).fill('County withdraws the exercise post');
+    await withdraw.getByRole('button', { name: 'Confirm' }).click();
+    await expect(county.getByRole('status')).toContainText('taken off every channel');
+    expect(await onPage()).toBe(false);
+    await countyContext.close();
   });
 });

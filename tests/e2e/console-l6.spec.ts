@@ -738,9 +738,10 @@ test.describe('layer 6 console: reference data', () => {
     // The security administrator approves it; the feature service answers.
     const security = await token('county', 'security.admin@example.org');
     const listed = await api(security, '/api-keys');
-    const asked = (listed.body['keys'] as { id: string; version: number; name: string }[]).find(
-      (k) => k.name === name,
-    )!;
+    const { keys } = listed.body as unknown as {
+      keys: { id: string; version: number; name: string }[];
+    };
+    const asked = keys.find((k) => k.name === name)!;
     const approved = await api(security, `/api-keys/${asked.id}/approve`, {
       method: 'POST',
       version: asked.version,

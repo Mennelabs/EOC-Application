@@ -2128,6 +2128,23 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     },
     execution_id: { c: 'internal' },
   }),
+  damage_suggestion: table(
+    {
+      report_id: { c: 'internal' },
+      degree: {
+        c: 'internal',
+        d: 'The suggested FEMA degree or cannot_tell; reviewers only, never residents (PHO-10)',
+      },
+      confidence: { c: 'internal' },
+      visible_features: { c: 'internal', d: 'What in the photos the suggestion rests on' },
+      photo_ids: { c: 'internal' },
+      provider: { c: 'internal', d: 'The classifier provider (AIG-01)' },
+      model: { c: 'internal' },
+      template_version: { c: 'internal' },
+      ai_output_id: { c: 'internal' },
+    },
+    { omit: ['version', 'created_by', 'updated_at', 'updated_by'] },
+  ),
   shift_handover: table({
     event_id: { c: 'internal' },
     check_in_id: { c: 'internal' },

@@ -2294,6 +2294,22 @@ export interface RecommendationTable extends Stamped {
 }
 
 /** REC-13: a source the county names for resource discovery (its own feeds, or web search). */
+/** PHO-09–PHO-13: a severity suggestion for reviewers only (layer-7 task I). */
+export interface DamageSuggestionTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  report_id: Uuid;
+  degree: 'affected' | 'minor' | 'major' | 'destroyed' | 'cannot_tell';
+  confidence: ColumnType<string, number | string, number | string>;
+  visible_features: Generated<string[]>;
+  photo_ids: string[];
+  provider: string;
+  model: string;
+  template_version: string | null;
+  ai_output_id: Uuid | null;
+  created_at: TsGen;
+}
+
 /** FL-12: the note a worker leaves for the next shift (layer-7 task H). */
 export interface ShiftHandoverTable extends Stamped {
   id: Generated<Uuid>;
@@ -3205,6 +3221,7 @@ export interface Database {
   'cg.public_audio': PublicAudioTable;
   'cg.scribe_session': ScribeSessionTable;
   'cg.shift_handover': ShiftHandoverTable;
+  'cg.damage_suggestion': DamageSuggestionTable;
   'cg.discovery_source': DiscoverySourceTable;
   'cg.discovery_run': DiscoveryRunTable;
   'cg.discovery_candidate': DiscoveryCandidateTable;

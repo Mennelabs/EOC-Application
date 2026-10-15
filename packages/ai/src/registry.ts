@@ -100,11 +100,16 @@ export interface RegisterEntry {
   owner: string;
   /** Interface the feature needs on the provider. */
   needs: ProviderNeed;
-  /** Shipped switched off regardless of provider (PHO-12, Q-01). */
+  /** Can never be switched on (none at present; PHO-12's lock was lifted on 2026-10-15). */
   lockedOff?: boolean;
+  /** Provisioned off even when the evaluation passed: an administrator switches it on (AIG-08). */
+  startsOff?: boolean;
 }
 
-/** The product's AI features (AIG-01). The severity suggestion stays off until a validated classifier exists (PHO-12). */
+/**
+ * The product's AI features (AIG-01). The severity suggestion comes from the provider's
+ * classifier (OpenAI's vision model, decided 2026-10-15) and starts off for every tenant.
+ */
 export const AI_FEATURES: readonly RegisterEntry[] = [
   {
     feature: 'intake.extraction',
@@ -266,12 +271,13 @@ export const AI_FEATURES: readonly RegisterEntry[] = [
   },
   {
     feature: 'photo.severity',
-    needs: 'image',
-    dataSent: 'A resident photo and its hazard',
+    needs: 'classifier',
+    dataSent: "A report's photos (blurred review copies), its home type and hazard",
     decisionInformed:
-      'A suggested FEMA degree of damage shown only to reviewers, labelled as a suggestion (PHO-09/10)',
-    humanCheckpoint: 'A credentialed reviewer sets the degree (PHO-11)',
+      'A suggested FEMA degree of damage with its confidence and the features it rests on, shown only to reviewers, labelled "AI suggestion — not verified" (PHO-09/10)',
+    humanCheckpoint:
+      'A credentialed reviewer sets the degree (PHO-11); agreement is reported (PHO-13)',
     owner: 'Damage assessment lead',
-    lockedOff: true,
+    startsOff: true,
   },
 ];

@@ -157,12 +157,6 @@ export const aiRegisterRoutes: FastifyPluginAsync = async (raw) => {
       });
       const expected = request.expectedVersion();
       if (request.body.enabled) {
-        if (row.feature === 'photo.severity')
-          throw new ApiError(
-            409,
-            'feature_locked',
-            'The severity suggestion stays off until a validated model exists (PHO-12).',
-          );
         const provider = providerByName(row.provider);
         const tenant = await request.tx((trx) =>
           trx

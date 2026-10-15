@@ -4,13 +4,15 @@
  * metadata at all (EXIF, GPS, ICC stripped; orientation applied first); the
  * image interface is asked for sensitive regions to blur, and when the
  * provider has no detector (the fake one) the status says so and the
- * derivatives stay restricted. Nothing here rates damage: a person decides.
+ * derivatives stay restricted. Nothing here rates damage: once the photo is
+ * ready, `report.severity` (severity.ts) may suggest a degree for reviewers,
+ * and a person decides.
  */
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import { callAi, recordAiOutput, type Region } from '@cg/ai';
 import { sql } from 'kysely';
-import { asSystem, systemAudit } from '../system.ts';
+import { asSystem, enqueueOutbox, systemAudit } from '../system.ts';
 import type { TopicHandler } from './types.ts';
 
 export const DERIVATIVES = { review: 1600, thumb: 320 } as const;
@@ -238,6 +240,15 @@ export const photoProcess: TopicHandler = async (ctx, msg) => {
         .where('id', '=', row.report_id)
         .execute();
     }
+    // PHO-09: the severity suggestion looks at the report's photos once this one is ready.
+    if (row.report_id)
+      await enqueueOutbox(
+        trx,
+        row.tenant_id,
+        'report.severity',
+        { reportId: row.report_id },
+        row.execution_id,
+      );
     await systemAudit(trx, row.tenant_id, 'photo.process', {
       action: 'photo.processed',
       targetType: 'photo',

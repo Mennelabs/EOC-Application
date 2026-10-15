@@ -187,11 +187,16 @@ describe('fake provider and the evaluation harness (AIG-08, AIG-12)', () => {
     expect(canEnable(fakeProvider, ['en'], null).reasons).toContain('not_evaluated:en');
   });
 
-  it('the register lists every feature with a human checkpoint and keeps the severity suggestion off (AIG-01, PHO-12)', () => {
+  it('the register lists every feature with a human checkpoint and starts the severity suggestion off (AIG-01, PHO-12 as decided)', () => {
     for (const f of AI_FEATURES) {
       expect(f.humanCheckpoint.length).toBeGreaterThan(10);
       expect(f.owner.length).toBeGreaterThan(3);
     }
-    expect(AI_FEATURES.find((f) => f.feature === 'photo.severity')?.lockedOff).toBe(true);
+    // 2026-10-15: the severity suggestion comes from the provider's classifier and starts off.
+    expect(AI_FEATURES.find((f) => f.feature === 'photo.severity')).toMatchObject({
+      needs: 'classifier',
+      startsOff: true,
+    });
+    expect(AI_FEATURES.some((f) => f.lockedOff)).toBe(false);
   });
 });

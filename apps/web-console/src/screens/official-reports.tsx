@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, ApiFailure, describeFailure } from '../api/client.ts';
 import { DataTable, Field, Status, fmt } from '../ui/primitives.tsx';
 import { EventPicker, useOpenEvents } from './dispatch.tsx';
+import { ExportFile, useExports } from './fema-package.tsx';
 
 type State = 'draft' | 'reviewed' | 'issued' | 'superseded' | 'withdrawn';
 const STATE_TEXT: Record<State, string> = {
@@ -605,6 +606,7 @@ export function OfficialReportScreen({
           </p>
         </section>
       ) : null}
+      {r.snapshot && can('official_report.export') ? <ReportExports reportId={r.id} /> : null}
 
       <section aria-labelledby="steps-h">
         <h2 id="steps-h">Next steps</h2>
@@ -790,5 +792,56 @@ export function OfficialReportScreen({
       )}
       {open ? <ChangesPanel eventId={r.eventId} /> : null}
     </article>
+  );
+}
+
+/** F15: an issued report as PDF or CSV, always from its frozen copy (RULE-10). */
+function ReportExports({ reportId }: { reportId: string }) {
+  const { rows, error, reload } = useExports(`/official-reports/${reportId}/exports`);
+  const [msg, setMsg] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const ask = async (format: 'pdf' | 'csv') => {
+    setMsg(null);
+    try {
+      await api(`/official-reports/${reportId}/exports`, {
+        body: { clientUuid: crypto.randomUUID(), format },
+      });
+      setMsg({ kind: 'success', text: `The ${format.toUpperCase()} is being made.` });
+      reload();
+    } catch (err) {
+      setMsg({ kind: 'error', text: describeFailure(err) });
+    }
+  };
+  return (
+    <section aria-labelledby="exports-h">
+      <h2 id="exports-h">Exports</h2>
+      <p>Made from the issued copy, so the file always matches what was issued.</p>
+      <div className="toolbar">
+        <button type="button" onClick={() => void ask('pdf')}>
+          Export as PDF
+        </button>
+        <button type="button" onClick={() => void ask('csv')}>
+          Export as CSV
+        </button>
+      </div>
+      {msg ? <Status kind={msg.kind}>{msg.text}</Status> : null}
+      {error ? <Status kind="error">{error}</Status> : null}
+      {rows ? (
+        <DataTable
+          caption="Exports of this report"
+          rows={rows}
+          rowKey={(x) => x.id}
+          empty="No export yet."
+          columns={[
+            { key: 'at', header: 'Asked for', render: (x) => fmt(x.createdAt) },
+            { key: 'format', header: 'Format', render: (x) => x.format.toUpperCase() },
+            {
+              key: 'file',
+              header: 'File',
+              render: (x) => <ExportFile row={x} label={x.format.toUpperCase()} />,
+            },
+          ]}
+        />
+      ) : null}
+    </section>
   );
 }

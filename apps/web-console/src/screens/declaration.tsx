@@ -14,6 +14,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, ApiFailure, describeFailure } from '../api/client.ts';
 import { DataTable, Field, Status, fmt } from '../ui/primitives.tsx';
 import { EventPicker, useOpenEvents } from './dispatch.tsx';
+import { PackageExports, PackagePhotos } from './fema-package.tsx';
 
 const DEGREES = ['affected', 'minor', 'major', 'destroyed'] as const;
 type Degree = (typeof DEGREES)[number];
@@ -334,6 +335,8 @@ export function DeclarationScreen() {
           <Casualties view={view} editable={can('casualty.record')} run={run} />
           <PublicDamage view={view} sites={sites} editable={can('pa_site.write')} run={run} />
           <Donated view={view} />
+          <PackagePhotos eventId={view.eventId} canChoose={can('declaration.export')} />
+          <PackageExports eventId={view.eventId} canExport={can('declaration.export')} />
         </>
       ) : null}
     </section>

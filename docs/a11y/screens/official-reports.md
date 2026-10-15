@@ -18,4 +18,8 @@ Screens: the console's **Official reports** list (`/console/official-reports`: t
 | 12  | Shared-device privacy        | pass: reports hold counts and staff text, no resident names, phone numbers or addresses                                                                                                                                                                                                                          | screen source                                                  |
 | 13  | Non-map alternative          | pass: tables only                                                                                                                                                                                                                                                                                                | —                                                              |
 
+## Added with task F (2026-10-15): exports of an issued report
+
+"Export as PDF" and "Export as CSV" (native buttons) on an issued report; the exports table (caption "Exports of this report") shows "Being made…", the failure reason, or "Download PDF/CSV" with the file name and size, and checks again every few seconds while a file is being made. The PDF is tagged PDF/UA-1 and checked by veraPDF in CI (ADR-0040). Automated in the director's part of the reports journey (PDF exported and downloaded).
+
 Open: check 2 (screen reader). PDF exports of issued reports come with task F (ADR-0040, veraPDF).

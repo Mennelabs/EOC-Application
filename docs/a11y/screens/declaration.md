@@ -1,6 +1,6 @@
 # Console declaration data screen — accessibility record
 
-Screen: the console's **Declaration data** workspace (`/console/declaration`, `apps/web-console/src/screens/declaration.tsx`): the event picker, the filing deadline, the incident period form (type, dates, requested areas with programs, Box 8 and 9 drafts with character counts), verified damage (by degree; by occupancy, insurance, home type and verification; shown apart; by tract), people in the affected area, the outage log with its form, casualty counts with their form, public damage by category and by site with the site form, and donated volunteer hours. Layer 6, task D, 2026-10-14.
+Screen: the console's **Declaration data** workspace (`/console/declaration`, `apps/web-console/src/screens/declaration.tsx`): the event picker, the filing deadline, the incident period form (type, dates, requested areas with programs, Box 8 and 9 drafts with character counts), verified damage (by degree; by occupancy, insurance, home type and verification; shown apart; by tract), people in the affected area, the outage log with its form, casualty counts with their form, public damage by category and by site with the site form, donated volunteer hours, representative photos (task F) and the damage assessment package (task F). Layer 6, tasks D and F, 2026-10-14 and 2026-10-15.
 
 | #   | Check                        | Result                                                                                                                                                                                                                                                  | Evidence                                                         |
 | --- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
@@ -18,4 +18,13 @@ Screen: the console's **Declaration data** workspace (`/console/declaration`, `a
 | 12  | Shared-device privacy        | pass: no names, phone numbers or home addresses on this screen; counts only, outage areas without home addresses, casualty notes "No names"                                                                                                             | screen source                                                    |
 | 13  | Non-map alternative          | pass: this screen is tables only; the tract table carries what a damage map would show                                                                                                                                                                  | —                                                                |
 
-Open: check 2 (screen reader).
+## Added with task F (2026-10-15): representative photos and the damage assessment package
+
+- **Keyboard:** the photo chooser is one form per cleared photo (caption, a confirmation checkbox with its own label, "Add photo n to the package"); chosen photos have "Take photo n out"; the package form is a select, a text field and "Make the package"; each ready package has "Download package for …". Automated in the EM director journey (package made and downloaded).
+- **Images:** a chosen photo's text alternative is its caption; a cleared candidate is described by number, subject and place until a caption is written. Only blurred images are shown (PHO-07).
+- **Errors:** a short caption and a missing confirmation are named next to their field; a caption the server refuses (an address, unit, email or phone number) is shown with the reason.
+- **Status:** "being made" is shown in the table and the list checks again every few seconds while a package is being made; results are `role="status"`, failures `role="alert"`; nothing moves or flashes.
+- **Privacy:** the package section names what leaves (counts, 100 m cells) and what never does; photos show the generalized place only.
+- **320 px:** the package table scrolls inside its labelled region; the photo grid becomes one column; reflow checked on the phone project.
+
+Open: check 2 (screen reader), including the photo chooser.

@@ -16,7 +16,9 @@
  * the outlook, and cannot review it; the EM director, in their own browser,
  * approves it and issues it through the confirmation dialog; the issued copy
  * shows its hash and, once the worker has written it, its object lock; an
- * amendment is drafted from it. Axe runs on each state, and each layer-6
+ * amendment is drafted from it; the issued report is exported as a PDF.
+ * The director also makes the IDA package and downloads it, and sees why no
+ * photo can be chosen yet (no detector). Axe runs on each state, and each layer-6
  * screen is checked for reflow: no sideways scrolling at phone width
  * (WCAG 1.4.10, ACC-07).
  */
@@ -216,6 +218,26 @@ test.describe('layer 6 console: reference data', () => {
     await expect(row).toContainText('Withdrawn');
     await expectNoViolations(page);
     await expectReflow(page);
+
+    // PHO-07: a photo can be chosen only once a detector has blurred it; none is enabled here.
+    await expect(page.getByRole('heading', { name: 'Representative photos' })).toBeVisible();
+    await expect(page.getByText(/No photo is cleared for sharing yet/)).toBeVisible();
+    // DEC-11, SEC-18: the worker makes the package; the download is the ZIP.
+    await page.getByLabel('Package for').selectOption({ label: 'Whole event' });
+    await page.getByLabel('Reason (optional)').fill(`Exercise: state asked, run ${run}`);
+    await page.getByRole('button', { name: 'Make the package' }).click();
+    await expect(page.getByText(/The package is being made/)).toBeVisible();
+    const newest = page
+      .getByRole('table', { name: 'Packages made for this event' })
+      .getByRole('row')
+      .nth(1);
+    const zip = newest.getByRole('button', { name: 'Download package for Whole event' });
+    await expect(zip).toBeVisible({ timeout: 120_000 });
+    await expect(newest).toContainText('housing units counted');
+    const [file] = await Promise.all([page.waitForEvent('download'), zip.click()]);
+    expect(file.suggestedFilename()).toMatch(/^ida-package-.+\.zip$/);
+    await expectNoViolations(page);
+    await expectReflow(page);
   });
 
   test('a reporting officer drafts a situation report; the EM director approves and issues it', async ({
@@ -299,6 +321,14 @@ test.describe('layer 6 console: reference data', () => {
       }).toPass({ timeout: 90_000 });
       await expectNoViolations(director);
       await expectReflow(director);
+      // F15, RULE-10: exported from the frozen copy.
+      await director.getByRole('button', { name: 'Export as PDF' }).click();
+      await expect(director.getByText('The PDF is being made.')).toBeVisible();
+      const pdf = director.getByRole('button', { name: 'Download PDF' });
+      await expect(pdf).toBeVisible({ timeout: 90_000 });
+      const [file] = await Promise.all([director.waitForEvent('download'), pdf.click()]);
+      expect(file.suggestedFilename()).toMatch(/\.pdf$/);
+      await expectNoViolations(director);
       await director.getByRole('button', { name: 'Draft an amendment' }).click();
       await expect(
         director.getByRole('heading', { level: 1, name: /^Situation report \d+, amendment 1$/ }),

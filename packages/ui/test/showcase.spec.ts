@@ -10,7 +10,14 @@ const WCAG = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
 async function noViolations(page: Page) {
   const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
-  expect(results.violations.map((v) => `${v.id}: ${v.help} (${v.nodes.length})`)).toEqual([]);
+  // Each failing node with its reason, so a failure in CI names the element and the colours.
+  const found = results.violations.flatMap((v) =>
+    v.nodes.map(
+      (n) =>
+        `${v.id}: ${n.target.join(' ')} ${n.html.slice(0, 160)} :: ${n.failureSummary?.replace(/\s+/g, ' ')}`,
+    ),
+  );
+  expect(found).toEqual([]);
 }
 async function noSidewaysScroll(page: Page) {
   const { scroll, client } = await page.evaluate(() => ({

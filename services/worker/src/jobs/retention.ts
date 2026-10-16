@@ -48,6 +48,8 @@ export interface Sweep {
   keptBy?: { table: string; column: string }[];
   /** Records a row belongs to: a legal hold on one of them keeps the row (SQL over its columns). */
   heldWith?: { type: string; id: string }[];
+  /** A row naming its related record by type and id columns: a hold on that record keeps it. */
+  heldVia?: { typeColumn: string; idColumn: string };
 }
 
 /** When the event a field record belongs to closed; null (never expires) while it is open. */
@@ -212,6 +214,15 @@ export const SWEEPS: readonly Sweep[] = [
       { table: 'shift_handover', column: 'check_in_id' },
     ],
   }),
+  // FL-04: a conversation note has no event; it is kept for the period after it was confirmed
+  // (or the session was discarded or expired), never while audio is still stored.
+  {
+    category: 'field_records',
+    table: 'scribe_session',
+    clock: 'coalesce(t.confirmed_at, t.updated_at)',
+    finished: "t.state in ('confirmed', 'discarded', 'expired') and t.audio_object_key is null",
+    heldVia: { typeColumn: 'related_type', idColumn: 'related_id' },
+  },
   {
     category: 'field_records',
     table: 'site_walkthrough',
@@ -294,6 +305,12 @@ export async function sweepOne(
       (k) =>
         sql`not exists (select 1 from ${sql.raw(`cg.${k.table}`)} r where r.${sql.raw(k.column)} = t.id)`,
     ),
+    ...(sweep.heldVia
+      ? [...holds.records.entries()].map(
+          ([type, held]) =>
+            sql`not (${sql.ref(`t.${sweep.heldVia!.typeColumn}`)} is not distinct from ${type} and ${sql.ref(`t.${sweep.heldVia!.idColumn}`)} = any(${[...held]}::uuid[]))`,
+        )
+      : []),
     ...(sweep.heldWith ?? []).flatMap((p) => {
       const held = [...(holds.records.get(p.type) ?? [])];
       return held.length

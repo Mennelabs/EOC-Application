@@ -2610,6 +2610,9 @@ export interface AiOutputTable {
   human_action: 'accepted' | 'edited' | 'rejected' | null;
   acted_by: Uuid | null;
   acted_at: TsNullable;
+  /** AIG-09, migration 0087: a resident's complaint about this help, by a fixed reason. */
+  complaint: 'wrong' | 'not_my_language' | 'hard_to_understand' | 'other' | null;
+  complained_at: TsNullable;
   created_at: Generated<Date>;
 }
 
@@ -2619,7 +2622,7 @@ export interface AiHealthAlertTable extends Stamped {
   tenant_id: Uuid;
   feature: string;
   language: Generated<string>;
-  kind: 'corrections' | 'failures' | 'fairness';
+  kind: 'corrections' | 'failures' | 'fairness' | 'complaints';
   window_size: number;
   counted: number;
   flagged: number;

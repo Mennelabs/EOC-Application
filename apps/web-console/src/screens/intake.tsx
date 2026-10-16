@@ -331,7 +331,7 @@ interface HealthAlert {
   id: string;
   feature: string;
   scope: string;
-  kind: 'corrections' | 'failures' | 'fairness';
+  kind: 'corrections' | 'failures' | 'fairness' | 'complaints';
   counted: number;
   flagged: number;
   rate: number;
@@ -371,6 +371,8 @@ const alertWhat = (a: HealthAlert) => {
     const [dimension, group] = a.scope.split(':');
     return `Reviewers agreed with it on ${pct(1 - a.rate)} of ${a.counted} decisions for ${(DIMENSION[dimension ?? ''] ?? dimension ?? '').toLowerCase()} ${group ?? ''}, more than the margin under the model's overall agreement`;
   }
+  if (a.kind === 'complaints')
+    return `Residents said ${a.flagged} of the last ${a.counted} outputs${a.scope ? ` in ${a.scope}` : ''} went wrong (${pct(a.rate)}; the line is ${pct(a.threshold)})`;
   const what = a.kind === 'corrections' ? 'corrected or rejected' : 'failed';
   return `${a.flagged} of the last ${a.counted} outputs${a.scope ? ` in ${a.scope}` : ''} were ${what} (${pct(a.rate)}; the line is ${pct(a.threshold)})`;
 };

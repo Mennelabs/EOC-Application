@@ -170,6 +170,12 @@ export const actions = {
     'Spoken words written down by the provider, kept nowhere (INT-12)',
     { public: true },
   ),
+  'intake.ai_complaint': a(
+    'write',
+    'ai_output',
+    'Say that computer help went wrong, by a fixed reason with no words (AIG-09)',
+    { public: true },
+  ),
   'intake.lookup': a('read', 'report', 'Start and verify a reference-code lookup (one-time code)', {
     public: true,
   }),

@@ -2398,6 +2398,11 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
       },
       acted_by: { c: 'internal' },
       acted_at: { c: 'internal' },
+      complaint: {
+        c: 'internal',
+        d: 'AIG-09: a resident said this help went wrong, by a fixed reason; no words kept',
+      },
+      complained_at: { c: 'internal' },
       created_at: { c: 'internal' },
     },
     { standard: false },

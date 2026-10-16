@@ -30,7 +30,9 @@ import {
   saveDraft,
   type ExtractionCandidate,
   type IntakeInfo,
+  aiComplaint,
   dictate,
+  type ComplaintReason,
 } from '../api/public.ts';
 import { preparePhoto } from '../intake/photos.ts';
 import { recordingSupported, startRecording, type Recording } from '../intake/speech.ts';
@@ -809,6 +811,7 @@ function OwnWords({
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<Record<string, boolean>>({});
+  const [dictated, setDictated] = useState(false);
   const recording = useRef<Recording | null>(null);
 
   // Leaving the step throws away a clip still recording; nothing is sent.
@@ -824,8 +827,10 @@ function OwnWords({
     setWriting(true);
     try {
       const heard = await dictate(state.tenant, state.executionId, locale, clip);
-      if (heard.text)
+      if (heard.text) {
         setWords((before) => `${before}${before && heard.text ? ' ' : ''}${heard.text}`);
+        setDictated(true);
+      }
     } catch {
       setNote(t('ownWords.dictateFailed'));
     } finally {
@@ -942,6 +947,13 @@ function OwnWords({
         {listening ? t('ownWords.listening') : writing ? t('ownWords.writing') : ''}
       </p>
       {note ? <Status kind="info">{note}</Status> : null}
+      {dictated && online ? (
+        <AiComplaint
+          tenant={state.tenant}
+          executionId={state.executionId}
+          feature="intake.transcription"
+        />
+      ) : null}
       {state.aiOff ? <p className="hint">{t('ownWords.offNote')}</p> : null}
       {candidates && candidates.items.length > 0 ? (
         <section aria-labelledby="cand-heading">
@@ -987,6 +999,13 @@ function OwnWords({
               {t('ownWords.off')}
             </button>
           </ButtonRow>
+          {online ? (
+            <AiComplaint
+              tenant={state.tenant}
+              executionId={state.executionId}
+              feature="intake.extraction"
+            />
+          ) : null}
         </section>
       ) : (
         <ButtonRow>
@@ -1387,5 +1406,71 @@ function Review({
         </button>
       </ButtonRow>
     </>
+  );
+}
+
+/**
+ * AIG-09: the resident can tell the county that computer help went wrong, by
+ * a fixed reason; no words are sent. Their report is not changed by it.
+ */
+function AiComplaint({
+  tenant,
+  executionId,
+  feature,
+}: {
+  tenant: string;
+  executionId: string;
+  feature: 'intake.extraction' | 'intake.transcription';
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState<string[]>([]);
+  const [sent, setSent] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  if (sent) return <Status kind="info">{t('complain.thanks')}</Status>;
+  if (!open)
+    return (
+      <p>
+        <button type="button" className="link" onClick={() => setOpen(true)}>
+          {t('complain.open')}
+        </button>
+      </p>
+    );
+  const send = async () => {
+    const r = reason[0] as ComplaintReason | undefined;
+    if (!r) return;
+    setBusy(true);
+    setFailed(false);
+    try {
+      await aiComplaint(tenant, { executionId, feature, reason: r });
+      setSent(true);
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div>
+      <ChoiceGroup
+        legend={t('complain.legend')}
+        multiple={false}
+        choices={(['wrong', 'not_my_language', 'hard_to_understand', 'other'] as const).map(
+          (k) => ({ value: k, label: t(`complain.${k}`) }),
+        )}
+        value={reason}
+        onChange={setReason}
+      />
+      <ButtonRow>
+        <button type="button" disabled={busy || reason.length === 0} onClick={() => void send()}>
+          {t('complain.send')}
+        </button>
+        <button type="button" className="quiet" onClick={() => setOpen(false)}>
+          {t('complain.cancel')}
+        </button>
+      </ButtonRow>
+      {failed ? <Status kind="info">{t('complain.failed')}</Status> : null}
+    </div>
   );
 }

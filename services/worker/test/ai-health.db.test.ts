@@ -28,7 +28,13 @@ describe.skipIf(!workerUrl)('AI feature health (database-backed)', () => {
   /** Outputs in order, a second apart, so "the latest" is well defined. */
   const outputs = (
     n: number,
-    o: { feature?: string; language?: string; outcome?: string; action?: string | null },
+    o: {
+      feature?: string;
+      language?: string;
+      outcome?: string;
+      action?: string | null;
+      complaint?: string;
+    },
   ) =>
     withTenant(db, { tenantId }, async (trx) => {
       for (let i = 0; i < n; i++)
@@ -44,6 +50,7 @@ describe.skipIf(!workerUrl)('AI feature health (database-backed)', () => {
             outcome: (o.outcome ?? 'ok') as 'ok',
             latency_ms: 900,
             human_action: (o.action === undefined ? 'accepted' : o.action) as 'accepted' | null,
+            ...(o.complaint ? { complaint: o.complaint, complained_at: new Date(clock) } : {}),
             created_at: new Date((clock += 1000)),
           } as never)
           .execute();
@@ -166,5 +173,19 @@ describe.skipIf(!workerUrl)('AI feature health (database-backed)', () => {
       .where('action', '=', 'ai.health_alert_cleared')
       .execute();
     expect(audited).toHaveLength(1);
+  });
+
+  it('AIG-09: residents saying the help went wrong on more than 10% of the last outputs raises a complaints alert for that feature and language, and it clears when they stop', async () => {
+    const feature = 'intake.transcription';
+    await outputs(18, { feature, language: 'es', action: null });
+    await outputs(3, { feature, language: 'es', action: null, complaint: 'not_my_language' });
+    const r = await evaluateAiHealthFor(ctx, tenantId);
+    expect(r.raised).toHaveLength(1);
+    const raised = (await alerts()).find((a) => a.feature === feature);
+    expect(raised).toMatchObject({ language: 'es', kind: 'complaints', counted: 21, flagged: 3 });
+    // Ten more without a complaint: 3 of 31 is under the line, and the alert clears.
+    await outputs(10, { feature, language: 'es', action: null });
+    const later = await evaluateAiHealthFor(ctx, tenantId);
+    expect(later.cleared).toContain(raised!.id);
   });
 });

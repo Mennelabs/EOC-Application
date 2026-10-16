@@ -43,10 +43,10 @@
     "Field-level validation errors, generic denials, no internals on 5xx."
   ],
   "BRD:FR-00.08": [
-    "partial",
-    "timestamptz columns (all migrations), cg.tenant.timezone",
-    "",
-    "Stored in UTC with the tenant's zone recorded; display in the tenant zone is wired into views in layer 2 (console currently shows the browser zone)."
+    "pass",
+    "timestamptz columns (all migrations), cg.tenant.timezone; the subject carries the tenant's zone and `/me` returns it (auth/subject.ts, routes/me.ts); the console shows every time on that clock with the zone named and reads typed dates and times on it (apps/web-console/src/ui/time.ts: fmt, the command window, emergency access, badges, find a survivor; reminders, metrics, board replay, official reports with their 07:00/19:00 operational period, declaration data); official reports and metrics name their zone; unknown values stay \"Unknown\", never 0",
+    "services/api/test/app.test.ts (BRD:FR-00.08: /me carries the tenant's zone), apps/web-console/test/time.test.ts (BRD:FR-00.08: shown and typed on the county clock whatever the machine's zone, daylight-saving changes, unknown zone names; run under UTC and Asia/Tokyo), tests/e2e/console-screens.spec.ts (a reminder's due time reads in Central time with the zone named in a browser running on UTC)",
+    "Plan reading 22."
   ],
   "BRD:FR-00.09": [
     "partial",
@@ -55,19 +55,19 @@
     "Automated checks pass on released screens; manual assistive-technology passes pending (docs/a11y)."
   ],
   "BRD:FR-00.10": [
-    "partial",
-    "cg.governed_definition (0008), services/api/src/routes/definitions.ts",
-    "",
-    "Versioned definitions implemented; route not yet covered by the integration suite."
+    "pass",
+    "cg.governed_definition (0008), services/api/src/routes/definitions.ts (publish a version with a confirmed reason, history newest first, current view honours a later start date; retention policies read in days from the stored interval)",
+    "services/api/test/definitions.db.test.ts (BRD:FR-00.10: numbered versions with a reason and audited, a later version waits for its start, history newest first, versions never edited or removed by the application role, a reader cannot publish, a role without the grant cannot read, another county sees nothing; SEC-13: audit floor of 7 years, CJIS retention refused, policy versions and audit, defaults read back in days; legal hold placed and released once, audited, invisible to another county)",
+    "Test found and fixed: retention days were always reported empty (the driver reads an interval as an object), so the console showed \"0 years (null days)\"."
   ],
   "AC-00A": ["pass", "", "layer1.int.test.ts (denied generically, denial audited)", ""],
   "AC-00B": ["pass", "", "layer1.int.test.ts (stale If-Match → 409 with current record)", ""],
   "AC-00C": ["pass", "", "layer1.int.test.ts (Idempotency-Key replay)", ""],
   "AC-00D": [
-    "partial",
-    "services/api/src/errors.ts, apps/web-console/src/ui/primitives.tsx (Status)",
-    "errors.test.ts",
-    "No success shown on failure; input kept in console forms. Resident-side recovery with the intake outbox (layer 2)."
+    "pass",
+    "services/api/src/errors.ts, apps/web-console/src/ui/primitives.tsx (Status); resident intake outbox (apps/web-resident/src/intake/outbox.ts); console command window keeps the line",
+    "errors.test.ts; apps/web-resident/test/outbox.test.ts (AC-00D: an offline save keeps the report as not sent, with no receipt and the answers on the device, and is restored after a restart); tests/e2e/console-l7.spec.ts (CMD-34: offline, \"Not sent … Nothing changed\" and the line stays in the box)",
+    "No success shown on failure; input kept in console forms and on the resident's device."
   ],
   "BRD:FR-01.01": [
     "pass",
@@ -154,10 +154,10 @@
     "Restricted values are hashed at write time, so exports carry no restricted data."
   ],
   "AC-08A": [
-    "partial",
-    "cg.audit_chain() sets recorded_at; occurred_at is caller-supplied",
-    "",
-    "Verified by SQL during development; an automated assertion joins the integration suite with layer-2 delayed entries."
+    "pass",
+    "cg.audit_chain() sets recorded_at; occurred_at is caller-supplied; entries made after the fact (mission narratives, activity notes, significant events, service counts from a phone that was offline) keep occurred_at beside the server's created_at, and the API returns both as occurredAt and recordedAt (routes/missions.ts, routes/field-ops.ts, routes/field-assessments.ts; helpers.ts occurredAtOf: dated back, never more than 5 minutes ahead); a count's activity log entry takes the count's own time; the console timeline says \"(recorded …)\" for an entry recorded more than a minute late",
+    "services/api/test/fieldwork.db.test.ts (AC-08A: a count made offline three hours earlier keeps that time in the counter and the activity log, with the time recorded; an hour ahead refused), services/api/test/missions.db.test.ts (AC-08A: a narrative written two hours later keeps both times on the timeline; ahead refused)",
+    "Test found and fixed: the activity log entry made from an offline count was stamped with the time the phone synced."
   ],
   "AC-08B": [
     "pass",

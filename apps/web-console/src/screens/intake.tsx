@@ -12,6 +12,8 @@ import QRCode from 'qrcode';
 import { api, describeFailure } from '../api/client.ts';
 import { DataTable, Field, Status, Toolbar, fmt } from '../ui/primitives.tsx';
 import { useList } from './admin.tsx';
+import { QrImage } from '../ui/qr.tsx';
+import { loadRuntimeConfig } from '../runtime-config.ts';
 
 interface EventRow {
   id: string;
@@ -57,6 +59,101 @@ function Qr({ url }: { url: string }) {
   return src ? <img src={src} alt={`Code that opens ${url}`} width={160} height={160} /> : null;
 }
 
+/** The report link opened in one language (CHN-08: a code opens the flow pre-set to it). */
+function inLanguage(url: string, lang: 'en' | 'es'): string {
+  const u = new URL(url);
+  u.searchParams.set('lang', lang);
+  return u.toString();
+}
+
+/**
+ * FL:FR-28, CHN-08, docs/06: a door hanger a canvasser leaves when no one is
+ * home. One side in English, one in Spanish, each with a code that opens the
+ * report in that language, the text keyword and number (a code that starts the
+ * text when the county has a number), and the 911 line. The county's name, never
+ * the product's (ADM-03); no alert wording (docs/06).
+ */
+function DoorHanger({ facts }: { facts: IntakeFacts }) {
+  const [open, setOpen] = useState(false);
+  const [county, setCounty] = useState('');
+  useEffect(() => {
+    void loadRuntimeConfig().then((c) => setCounty(c.countyName));
+  }, []);
+  if (!facts.url) return null;
+  const english = facts.keywords.find((k) => !/[ÁÉÍÓÚÑ]/.test(k)) ?? facts.keywords[0] ?? null;
+  const spanish = facts.keywords.find((k) => /[ÁÉÍÓÚÑ]/.test(k)) ?? english;
+  const side = (lang: 'en' | 'es') => {
+    const keyword = lang === 'en' ? english : spanish;
+    const en = lang === 'en';
+    return (
+      <div className="door-hanger-side" lang={lang}>
+        <p className="door-hanger-county">
+          {county
+            ? en
+              ? `${county} Emergency Management`
+              : `Manejo de Emergencias de ${county}`
+            : ''}
+        </p>
+        <p className="door-hanger-title">
+          {en ? 'We stopped by to check on you.' : 'Pasamos para ver cómo está.'}
+        </p>
+        <p>{en ? 'Report damage or ask for help:' : 'Reporte daños o pida ayuda:'}</p>
+        <QrImage
+          text={inLanguage(facts.url!, lang)}
+          alt={
+            en
+              ? 'Code that opens the report form in English'
+              : 'Código que abre el formulario en español'
+          }
+          size={140}
+        />
+        <p className="door-hanger-url">{inLanguage(facts.url!, lang)}</p>
+        {keyword && facts.smsNumber ? (
+          <>
+            <p>
+              {en
+                ? `Or text ${keyword} to ${facts.smsNumber}.`
+                : `O envíe ${keyword} al ${facts.smsNumber}.`}
+            </p>
+            <QrImage
+              text={`SMSTO:${facts.smsNumber}:${keyword}`}
+              alt={
+                en
+                  ? `Code that starts a text with ${keyword}`
+                  : `Código que empieza un mensaje con ${keyword}`
+              }
+              size={100}
+            />
+          </>
+        ) : null}
+        <p className="door-hanger-911">
+          {en ? 'If this is an emergency, call 911.' : 'Si es una emergencia, llame al 911.'}
+        </p>
+      </div>
+    );
+  };
+  return (
+    <div>
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {open ? 'Hide the door hanger' : 'Door hanger'}
+      </button>
+      {open ? (
+        <section className="panel door-hanger-print" aria-label="Door hanger">
+          <div className="door-hanger">
+            {side('en')}
+            {side('es')}
+          </div>
+          <div className="actions" style={{ justifyContent: 'flex-start' }}>
+            <button type="button" onClick={() => window.print()}>
+              Print door hangers
+            </button>
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
 export function IntakeSetupScreen() {
   const events = useList<EventRow>('/events');
   const facts = useFacts(events.rows);
@@ -78,40 +175,43 @@ export function IntakeSetupScreen() {
           <section key={ev.id} className="panel" aria-labelledby={`ev-${ev.id}`}>
             <h2 id={`ev-${ev.id}`}>{ev.name}</h2>
             {f ? (
-              <div className="layout" style={{ gap: '1rem', alignItems: 'flex-start' }}>
-                <dl className="meta">
-                  <dt>Resident link</dt>
-                  <dd>
-                    {f.url ? (
-                      <a href={f.url} target="_blank" rel="noopener noreferrer">
-                        {f.url}
-                      </a>
-                    ) : (
-                      '—'
-                    )}
-                  </dd>
-                  <dt>Kiosk / assisted link</dt>
-                  <dd>
-                    {f.kioskUrl ? (
-                      <a href={f.kioskUrl} target="_blank" rel="noopener noreferrer">
-                        {f.kioskUrl}
-                      </a>
-                    ) : (
-                      '—'
-                    )}
-                  </dd>
-                  <dt>Text keywords</dt>
-                  <dd>
-                    {f.keywords.join(' / ') || '—'}
-                    {f.smsNumber ? ` to ${f.smsNumber}` : ' (no number on file yet)'}
-                  </dd>
-                  <dt>Questions</dt>
-                  <dd>
-                    {f.graph ? `${f.graph.key} version ${f.graph.version}` : 'shipped default'}
-                  </dd>
-                </dl>
-                {f.url ? <Qr url={f.url} /> : null}
-              </div>
+              <>
+                <div className="layout" style={{ gap: '1rem', alignItems: 'flex-start' }}>
+                  <dl className="meta">
+                    <dt>Resident link</dt>
+                    <dd>
+                      {f.url ? (
+                        <a href={f.url} target="_blank" rel="noopener noreferrer">
+                          {f.url}
+                        </a>
+                      ) : (
+                        '—'
+                      )}
+                    </dd>
+                    <dt>Kiosk / assisted link</dt>
+                    <dd>
+                      {f.kioskUrl ? (
+                        <a href={f.kioskUrl} target="_blank" rel="noopener noreferrer">
+                          {f.kioskUrl}
+                        </a>
+                      ) : (
+                        '—'
+                      )}
+                    </dd>
+                    <dt>Text keywords</dt>
+                    <dd>
+                      {f.keywords.join(' / ') || '—'}
+                      {f.smsNumber ? ` to ${f.smsNumber}` : ' (no number on file yet)'}
+                    </dd>
+                    <dt>Questions</dt>
+                    <dd>
+                      {f.graph ? `${f.graph.key} version ${f.graph.version}` : 'shipped default'}
+                    </dd>
+                  </dl>
+                  {f.url ? <Qr url={f.url} /> : null}
+                </div>
+                <DoorHanger facts={f} />
+              </>
             ) : (
               <p role="status">Loading…</p>
             )}

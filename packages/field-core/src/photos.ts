@@ -33,7 +33,8 @@ export type PhotoRecordType =
   | 'debris_ticket'
   | 'inspection'
   | 'road_status'
-  | 'canvass_visit';
+  | 'canvass_visit'
+  | 'field_report';
 
 export interface PhotoDoc extends StoredDoc {
   id: string;
@@ -89,6 +90,7 @@ const RECORD_KINDS: readonly PhotoRecordType[] = [
   'inspection',
   'road_status',
   'canvass_visit',
+  'field_report',
 ];
 
 export function recordTypeForCommand(kind: string): PhotoRecordType | null {

@@ -1,5 +1,5 @@
 /**
- * Layer 4 console journeys (layer-4 plan §9; CALL-01, DSP-01/02/03/04/07,
+ * Layer 4 console journeys (layer-4 plan §9; CALL-01, DSP-01/02/03/04/07, FLD-11,
  * AC-06C, CON-03, PER-01, DSP-10, BDG-01, ACC-07): a field coordinator takes
  * a phone request as a mission, assigns it from the dispatch board with the
  * keyboard only (a conflict needs a recorded reason and the confirmation dialog), acknowledges any open
@@ -7,7 +7,15 @@
  * badges; every screen passes axe WCAG 2.2 AA.
  */
 import { expect, test } from '@playwright/test';
-import { appears, expectNoViolations, onboard } from './support/console.ts';
+import {
+  BASE,
+  administrators,
+  api,
+  appears,
+  expectNoViolations,
+  onboard,
+  token,
+} from './support/console.ts';
 
 const tag = Date.now().toString(36);
 
@@ -98,6 +106,121 @@ test.describe('layer 4 console', () => {
     }
     await expect(done).toBeVisible({ timeout: 30_000 });
     await expectNoViolations(page);
+
+    // DSP-03, MIS-01: a resident's need waits on the board until it is made a mission.
+    const intake = (await (await fetch(`${BASE}/api/public/intake/county/westwind`)).json()) as {
+      graph: { key: string; version: number };
+    };
+    const needExecution = crypto.randomUUID();
+    const n = Date.now() % 9000;
+    const filed = await fetch(`${BASE}/api/public/intake/county/westwind/submissions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'idempotency-key': needExecution },
+      body: JSON.stringify({
+        executionId: needExecution,
+        channel: 'web',
+        language: 'en',
+        graphKey: intake.graph.key,
+        graphVersion: intake.graph.version,
+        relationship: 'own_home',
+        answers: {
+          danger_now: { kind: 'value', value: 'no' },
+          relationship: { kind: 'value', value: 'own_home' },
+          address: {
+            kind: 'value',
+            value: { line1: `${n} Board Need Ct`, city: 'Westwind', postal: '63001' },
+          },
+          home_type: { kind: 'value', value: 'house' },
+          cause: { kind: 'value', value: 'wind_tornado' },
+          damage_types: { kind: 'value', value: ['roof'] },
+          roof_state: { kind: 'value', value: 'large_hole' },
+          habitable: { kind: 'value', value: 'no' },
+          tonight: { kind: 'value', value: 'yes' },
+          insurance: { kind: 'unknown' },
+          contact_name: { kind: 'value', value: 'Exercise Resident Board' },
+          contact: { kind: 'value', value: { phone: `314555${1000 + n}`, preferred: 'text' } },
+        },
+        needs: ['food_water'],
+        consent: {},
+      }),
+    });
+    expect(filed.status).toBe(202);
+    const needsTable = page.getByRole('table', {
+      name: 'Open needs nobody has made a mission for, oldest first',
+    });
+    const westwind = async () => {
+      const picker = page.getByLabel('Event', { exact: true });
+      if (await picker.count()) await picker.selectOption({ label: 'Exercise WESTWIND tornado' });
+    };
+    await westwind();
+    // The worker files the report and its need in the background.
+    for (let i = 0; i < 20 && !(await appears(needsTable, 3000)); i++) {
+      await page.reload();
+      await westwind();
+    }
+    await expect(needsTable).toBeVisible();
+    await expectNoViolations(page);
+    await needsTable
+      .getByRole('button', { name: /^Make a mission for/ })
+      .first()
+      .click();
+    await expect(page.getByText(/^Mission M-\d+ made for the need\.$/)).toBeVisible({
+      timeout: 30_000,
+    });
+    await expectNoViolations(page);
+
+    // FLD-11: a resource a field lead came across reaches the board; dispatch marks it noted.
+    const admin = await token('county', administrators('county').admin);
+    const events = (await api(admin, '/events')).body as unknown as { id: string; name: string }[];
+    const ww = events.find((e) => e.name === 'Exercise WESTWIND tornado')!;
+    const place = `Exercise water tank ${tag}`;
+    const seen = await api(
+      await token('county', 'rowan.field@example.org'),
+      '/field-records/field_report',
+      {
+        body: {
+          clientUuid: crypto.randomUUID(),
+          eventId: ww.id,
+          category: 'resource_seen',
+          resourceKind: 'water',
+          place,
+          position: { lat: 38.79, lon: -90.86 },
+        },
+      },
+    );
+    expect(seen.status, JSON.stringify(seen.body)).toBe(201);
+    await page.reload();
+    await westwind();
+    const fieldReports = page.getByRole('table', {
+      name: 'Site status and resources seen, newest first',
+    });
+    await expect(fieldReports.getByRole('row', { name: new RegExp(place) })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expectNoViolations(page);
+    // DSP-01: needs, closures and field reports are map layers too, each with its own toggle.
+    await page.getByRole('button', { name: 'Show map' }).click();
+    await expect(
+      page.getByRole('region', {
+        name: 'Map of teams, work, needs, hazards, road closures, sites and field reports. The lists below show the same.',
+      }),
+    ).toBeVisible();
+    const mapLayers = page.getByRole('group', { name: 'Map layers' });
+    for (const name of ['Needs', 'Road closures', 'Field reports'])
+      await expect(mapLayers.getByRole('button', { name })).toHaveAttribute('aria-pressed', 'true');
+    await mapLayers.getByRole('button', { name: 'Needs' }).click();
+    await expect(mapLayers.getByRole('button', { name: 'Needs' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    await expectNoViolations(page, { mapMarkers: true });
+    await page.getByRole('button', { name: 'Hide map' }).click();
+    await fieldReports
+      .getByRole('row', { name: new RegExp(place) })
+      .getByRole('button', { name: 'Mark noted: water' })
+      .click();
+    await expect(page.getByText('Report marked noted.')).toBeVisible();
+    await expect(fieldReports.getByRole('row', { name: new RegExp(place) })).toHaveCount(0);
 
     for (const [path, name] of [
       ['/console/roster', 'Roster and check-in'],

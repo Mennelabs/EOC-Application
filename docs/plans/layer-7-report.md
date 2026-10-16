@@ -37,7 +37,7 @@ Everything in the stack is synthetic or the WESTWIND exercise (SCL-12).
 
 ## What passed
 
-- **Traceability:** of the 105 requirement IDs assigned to layer 7, 76 pass, 23 are partial and 6 are deferred (`docs/traceability.md`, evidence in `trace-layer7.json`). Earlier IDs this layer extends are updated in place: INT-12, PHO-03, PHO-07, AIG-05, the GATE rows and others.
+- **Traceability:** of the 105 requirement IDs assigned to layer 7, 92 pass and 13 are partial as of 2026-10-16, after the follow-up work (76, 23 and 6 deferred when the report was first written; `docs/traceability.md`, evidence in `trace-layer7.json`). Across every layer so far, 464 of 663 IDs pass, 163 are partial, 33 deferred, 2 designed and 1 not started. Earlier IDs this layer extends are updated in place: INT-12, PHO-03, PHO-07, AIG-05, the GATE rows and others.
 - **Launch gates:** GATE-02, GATE-04 and GATE-05 pass for layer 7. GATE-03 and GATE-08 are partial; see `layer-7-gates.md`.
 - **Permission sweep:** every staff route (364) refuses a caller with no token and an account with no role, and none fails with a server error (`authz-sweep.db.test.ts`, in CI).
 - **CI:** each merged PR was green end to end (lint, typecheck, unit tests, scans, Semgrep, the Android build, and the compose stack with integration, database and browser suites). Locally the full database list, the console, resident, field and help journeys, and the a11y spec pass.
@@ -97,7 +97,7 @@ Everything in the stack is synthetic or the WESTWIND exercise (SCL-12).
 
 ## Readings taken in favour of privacy and safety (flagged for you)
 
-The plan's §12 lists all 23. The newest:
+The plan's §12 lists all 24. The newest:
 
 - a legal aid organization's referral responses share only the status;
 - resident dictation goes through the county's provider or not at all;
@@ -111,6 +111,7 @@ The plan's §12 lists all 23. The newest:
 - the approved time zone is the county's own: the console shows and reads times on the county's clock with the zone named, and an entry can be dated back but not ahead (BRD:FR-00.08, AC-08A);
 - a worker's request for peer support is seen only by the peer-support role, holds no words, and is deleted 30 days after it closes (FL-16);
 - the roster is swept the records period after a person was archived, and every record that still names them keeps them (SEC-13).
+- a field report of how a site looks, or of a resource seen, is an observation for dispatch to note; it never changes the site's status, which stays with the site's lead (FLD-11).
 
 ## Questions for you (defaults in force)
 

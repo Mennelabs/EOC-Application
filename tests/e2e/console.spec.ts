@@ -143,9 +143,22 @@ test.describe('console review (CON-02, CON-05, BRD:FR-12, DCL:DEC-02/03, AIG-01,
       if (name === 'Intake setup') {
         // The event's links, keywords and a code to print (CHN-08).
         await expect(page.getByText(/Kiosk \/ assisted link/)).toBeVisible();
-        await expect(page.getByRole('img', { name: /Code that opens/ })).toBeVisible({
+        await expect(page.getByRole('img', { name: /Code that opens/ }).first()).toBeVisible({
           timeout: 15_000,
         });
+        // FL:FR-28, CHN-08: a door hanger in English and Spanish, each code opening its language.
+        await page.getByRole('button', { name: 'Door hanger' }).first().click();
+        const hanger = page.getByRole('region', { name: 'Door hanger' }).first();
+        await expect(
+          hanger.getByRole('img', { name: 'Code that opens the report form in English' }),
+        ).toBeVisible();
+        await expect(
+          hanger.getByRole('img', { name: 'Código que abre el formulario en español' }),
+        ).toBeVisible();
+        await expect(hanger.getByText('If this is an emergency, call 911.')).toBeVisible();
+        await expect(hanger.getByText('Si es una emergencia, llame al 911.')).toBeVisible();
+        await expect(hanger.getByText(/lang=es/)).toBeVisible();
+        await expectNoViolations(page);
       }
       if (name === 'AI use register') {
         // AIG-09 alerts and PHO-13 agreement sit under the register.

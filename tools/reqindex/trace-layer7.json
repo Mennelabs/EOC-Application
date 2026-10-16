@@ -31,10 +31,10 @@
     ""
   ],
   "CMD-06": [
-    "partial",
-    "apps/web-console/src/ui/screen-record.ts: the mission detail screen and the needs board's open panel offer their record; the window names it in a checkbox the person can clear; \"this\" (esta, este) in shorthand, or in plain words read by the model (told only the kind on screen, prompt command-interpret-2), resolves it through GET /missions/:id or /needs/:id with the person's own credentials (routes/commands.ts resolveOnScreen), so a record they cannot see is not found; otherwise targets come from identifiers named in the command (resolveTarget); the plan shows the one record it affects",
-    "services/api/test/commands.db.test.ts (CMD-06: this with and without context, another kind, a record not visible, a planned change, plain words), services/api/test/commands.test.ts (CMD-06 parse), tests/e2e/console-l7.spec.ts (CMD-06, CMD-29, AC-C09 journey), packages/ai evaluation cases cmd-en-this-mission and cmd-es-this-need",
-    "The field app's current job is not yet offered as context; on the phone the person names the mission. Nothing on a screen is used unless the command says \"this\"."
+    "pass",
+    "apps/web-console/src/ui/screen-record.ts: the mission detail screen and the needs board's open panel offer their record; the window names it in a checkbox the person can clear; \"this\" (esta, este) in shorthand, or in plain words read by the model (told only the kind on screen, prompt command-interpret-2), resolves it through GET /missions/:id or /needs/:id with the person's own credentials (routes/commands.ts resolveOnScreen), so a record they cannot see is not found; otherwise targets come from identifiers named in the command (resolveTarget); the plan shows the one record it affects; in the field app, a job's screen opens the command screen with that job's mission as \"this\" and says so (apps/field/app/work/[id].tsx, apps/field/app/command.tsx), read again by the server under the lead's own event and held-record scope",
+    "services/api/test/commands.db.test.ts (CMD-06: this with and without context, another kind, a record not visible, a planned change, plain words), services/api/test/commands.test.ts (CMD-06 parse), tests/e2e/console-l7.spec.ts (CMD-06, CMD-29, AC-C09 journey), packages/ai evaluation cases cmd-en-this-mission and cmd-es-this-need, tests/e2e/field.spec.ts (CMD-06: a job assigned to the lead's team, opened on the phone, /mission this answers that job)",
+    "Nothing on a screen is used unless the command says \"this\"."
   ],
   "CMD-07": [
     "pass",
@@ -46,7 +46,7 @@
     "pass",
     "routes/commands.ts resolveTarget: names become ids among records the person may see; several matches answer \"clarify\" with the options (radio group \"Which one?\" in command-window.tsx); none answers not_found; several open events ask which; parse.ts asks rather than guess \"tomorrow morning\"",
     "services/api/test/commands.db.test.ts (CMD-08, AC-C02: two matching reminders ask which; another person's are never matched), services/api/test/commands.test.ts (CMD-10: \"tomorrow morning\" is not guessed)",
-    "Persons and properties are not command targets yet (no personnel or assessment commands, CMD-14, CMD-15)."
+    "Properties are not command targets (assessments are drafted on the phone, CMD-15); a person on the roster is (CMD-14)."
   ],
   "CMD-09": [
     "pass",
@@ -74,39 +74,39 @@
   ],
   "CMD-13": [
     "partial",
-    "catalog.ts: missions.find and mission.show (phase 1), mission.note (phase 2, narrative entry), mission.status (phase 3: open, en route, on scene, cleared through /missions/:id/transitions with If-Match); locks and the transition graph are the console route's own (RULE-05, AC-02C); mission.priority (consequential, full review with a reason), mission.assign (the named person resolved among those the caller may see, the dispatch board's conflict checks), mission.close (disposition, releases everyone), mission.reopen, all phase 3",
-    "services/api/test/commands.db.test.ts (lookups; CMD-27 mission note; Section 30.2 phase 3 and AC-02C: a locked mission refuses the command as it refuses the screen; Spanish /mision estado en_sitio); services/api/test/commands.db.test.ts (CMD-13, AC-C01, CMD-08: priority, assignment of a named person, closure and reopening)",
-    "Mission drafts and field updates of other fields stay on the dispatch screens; release of a person is on the board."
+    "catalog.ts: missions.find and mission.show (phase 1), mission.note (phase 2, narrative entry), mission.status (phase 3: open, en route, on scene, cleared through /missions/:id/transitions with If-Match); locks and the transition graph are the console route's own (RULE-05, AC-02C); mission.priority (consequential, full review with a reason), mission.assign (the named person resolved among those the caller may see, the dispatch board's conflict checks), mission.release (/mission <number> release <person>: the person's one open assignment on the mission found through the engine's `within` lookup, released after a full review whose reason becomes the release reason; none or several open is answered, not guessed), mission.close (disposition, releases everyone), mission.reopen, all phase 3; mission.draft (/mission new <kind> <what is needed>, Spanish /mision nueva: phase 1, a draft in the open event, nothing dispatched, the words kept only in the mission)",
+    "services/api/test/commands.db.test.ts (CMD-13: a Spanish draft runs at once as a draft, its words out of the execution record; CMD-13, Section 30.2 phase 3: a release after a full review keeps the reason, none open is answered, a role without the release refused) (lookups; CMD-27 mission note; Section 30.2 phase 3 and AC-02C: a locked mission refuses the command as it refuses the screen; Spanish /mision estado en_sitio); services/api/test/commands.db.test.ts (CMD-13, AC-C01, CMD-08: priority, assignment of a named person, closure and reopening)",
+    "Updates of other mission fields stay on the dispatch screens; releasing a team is on the board."
   ],
   "CMD-14": [
     "partial",
-    "catalog.ts people.find (phase 1, personnel.read): GET /personnel gains q, skill, department, availability and onDuty filters; the answer lists only recorded skills (\"no skills recorded\" otherwise), never contact details; mission.assign requests an assignment through the dispatch board's own rules (conflicts stop it)",
-    "services/api/test/commands.db.test.ts (CMD-14, CMD-15, CMD-17: people by recorded skill and availability …; CMD-13, AC-C01: assignment), services/api/test/commands.test.ts",
-    "Updating profile and status fields from the window is not catalogued; assignment conflicts are shown by the board, and an override stays there."
+    "catalog.ts people.find (phase 1, personnel.read): GET /personnel gains q, skill, department, availability and onDuty filters; the answer lists only recorded skills (\"no skills recorded\" otherwise), never contact details; mission.assign requests an assignment through the dispatch board's own rules (conflicts stop it); person.status (/person <name> available/unavailable/on duty/off duty, Spanish too; phase 3, personnel.update, one tap, undo for 15 minutes puts back what the plan saw): routes/commands.ts personnel target by name among the people the caller may see, read through the list (GET /personnel gains an id filter), so neither the plan nor its re-check decrypts or audits a contact; \"assigned\" is never set from the window",
+    "services/api/test/commands.db.test.ts (CMD-14, CMD-15, CMD-17: people by recorded skill and availability …; CMD-13, AC-C01: assignment; CMD-14, Section 30.2 phase 3: status set, undone, two matches ask, stale plan, no contact read, a role without the update refused), services/api/test/commands.test.ts",
+    "Profile fields (name, agency, department, skills, contact) stay on the Personnel screen, where skills become credentials with their evidence; assignment conflicts are shown by the board, and an override stays there."
   ],
   "CMD-15": [
     "partial",
-    "catalog.ts reports.find (phase 1, report.read): the review queue by state, flags, danger and reference, the verification level kept apart from the review state and possible duplicates named",
-    "services/api/test/commands.db.test.ts (CMD-14, CMD-15, CMD-17 …), services/api/test/commands.test.ts",
-    "Creating or updating assessment drafts, recording evidence and requesting review from the window are not catalogued; they stay on the review and field screens."
+    "catalog.ts reports.find (phase 1, report.read): the review queue by state, flags, danger and reference, the verification level kept apart from the review state and possible duplicates named; report.claim (/report <code> review: phase 3, one tap, POST /reports/:id/claim), report.approve and report.reject (phase 4, report.review, full review with a reason; the decision's own reason and evidence references go to the review decision, the verification level is untouched and the plan says so), report.ask (phase 4: the resident is sent the question through the county's number; reviewed with a reason), report.duplicate (/report <code> duplicate <other code> <why>, phase 4, full review: the other report is found by its code among those the reviewer may see, through the engine's `also` resolution; itself or an unknown code is refused; the other is not changed); the author never reviews (A7, the route's guardrail); routes/commands.ts report target by reference code",
+    "services/api/test/commands.db.test.ts (CMD-14, CMD-15, CMD-17 lookups; CMD-15: claim, phase 4 off, a role without the review refused, approval refused without a reason then saved with its evidence, the verification level unchanged, the reason kept out of the execution record, a question to the resident in Spanish; CMD-15, CMD-08: a duplicate names the other report, which stays unchanged; itself or an unknown code refused), services/api/test/commands.test.ts (CMD-15 shorthand, phases and confirmations)",
+    "Assessment drafts are created and updated on the phone (with voice drafting, FLD-09), not from the window."
   ],
   "CMD-16": [
-    "partial",
-    "catalog.ts sitrep.draft (a draft through POST /official-reports, never issued, RULE-10), reminders.list, reminder.create, reminder.snooze, reminder.complete (the note of what was done saves before the reminder completes), service.log and shift.end (FL-07); AI summary drafting from the facts (routes/official-reports.ts, routes/drafting.ts, task G)",
-    "services/api/test/commands.db.test.ts (Section 30.2: /sitrep drafted, not issued; reminders set, completed, ambiguous titles asked), services/api/test/commands.test.ts (CMD-16: done only with what was done), services/api/test/drafting.db.test.ts (CMD-16, AI-04: drafted from the facts)",
-    "Exports and changing a reminder's text are not catalogued; they stay on their screens."
+    "pass",
+    "catalog.ts sitrep.draft (a draft through POST /official-reports, never issued, RULE-10), reminders.list, reminder.create, reminder.snooze, reminder.complete (the note of what was done saves before the reminder completes), service.log and shift.end (FL-07); AI summary drafting from the facts (routes/official-reports.ts, routes/drafting.ts, task G); exports with their scope and period in the plan: ida.export (/export ida: every jurisdiction, the whole event, phase 3, one tap), report.export (/export sitrep or briefing by number or latest, PDF or CSV: only issued reports are found, read from the frozen copy, phase 3, one tap; routes/commands.ts official_report target) and public_records.export (/export records with the request, kinds and dates: phase 4, full review with a reason, the request reference kept only as a digest once run); each answers queued and names the screen that lists the file",
+    "services/api/test/commands.db.test.ts (Section 30.2: /sitrep drafted, not issued; reminders set, completed, ambiguous titles asked; CMD-16: a draft is not found for export, an issued sitrep exported as CSV by number and as the latest in Spanish, the IDA package, a records release refused without a reason and for a role without the action, the export files and their scope), services/api/test/commands.test.ts (CMD-16: done only with what was done; export shorthand, phases and confirmations), services/api/test/drafting.db.test.ts (CMD-16, AI-04: drafted from the facts)",
+    "Modifying a reminder means moving its time (snooze); no screen changes a reminder's text, so a new reminder replaces it. Exports for one jurisdiction stay on the declaration screen."
   ],
   "CMD-17": [
     "partial",
-    "catalog.ts resources.find (published resources) and contacts.find (active partner contacts by type and agency; restricted reads audited), phase 1; GET /contacts gains an agency filter",
-    "services/api/test/commands.db.test.ts (CMD-14, CMD-15, CMD-17 …), services/api/test/commands.test.ts",
-    "Drafting or updating resources and badge requests are not catalogued; badge printing (Brother, decided 2026-10-15) is a later task."
+    "catalog.ts resources.find (published resources) and contacts.find (active partner contacts by type and agency; restricted reads audited), phase 1; GET /contacts gains an agency filter ; resource.draft (/resource new <type> <title>, phase 1, resource.edit: an English draft whose text no person has reviewed yet, so nobody sees it; publishing stays on the Resources screen with its named approver), resource.review (review date, phase 2) and resource.expiry (phase 3: a future time on the county's clock, a date alone meaning the end of that day; a past time is refused because taking a page down now is Unpublish on the screen), each one tap with undo to what the plan saw; routes/commands.ts resource target by slug or English title; badge.print (/badge <person> printed/failed <why>/handed out, phase 3, badge.print, one tap, no undo: the person's one badge waiting for that outcome is found through the engine's `within` lookup; printed is never handed out, RULE-11, FR-13.06)",
+    "services/api/test/commands.db.test.ts (CMD-14, CMD-15, CMD-17 …; CMD-17, Section 30.2: drafted unpublished and unreviewed, review date and expiry set and undone, phase 3 off by default, a role without the edit refused; CMD-17, RULE-11: print outcomes recorded in order, none waiting answered, no undo, the badge's code never in the answer or the record), services/api/test/commands.test.ts (CMD-17 shorthand, the county's clock across the daylight-time change, a past expiry refused, badge outcomes)",
+    "Generating or reprinting a badge stays on the Badges screen: its code is shown once, to print, and the window never holds it. Printing on Brother printers (decided 2026-10-15) is a later task."
   ],
   "CMD-18": [
-    "deferred",
-    "",
-    "",
-    "Section 30.2 phase 4 (administration) has no catalog entries; organization aliases are managed on their own confirmed screen (CMD-04). A request to grant permissions runs nothing and is recorded as filtered (commands.db.test.ts)."
+    "pass",
+    "catalog.ts, Section 30.2 phase 4, each with the full review and a reason: account.suspend (/account <name or email> suspend, undo for 15 minutes reactivates), account.deactivate (no undo: a deactivated account cannot be activated again, the undo answer says so), account.activate, through the Accounts screen's own lifecycle routes (the account lifecycle row keeps the reason; the identity provider is told); role.request (/role request <role> to:<name or email>: a permission change request only, so nothing is granted until a second administrator approves it on the approvals screen, ADM-05); role.revoke (/role revoke <role> from:<name or email>: the one active assignment found through `within`, revoked with the reason); routes/commands.ts account target by exact email or name (the plan names the person, never the email) and role target by name or key",
+    "services/api/test/commands.db.test.ts (CMD-18, ADM-05: a role without the actions refused; suspend by email, 428 without a reason, the lifecycle reason kept, undone; deactivate in Spanish, no undo; a role requested stays pending with no assignment made; a held role revoked with its reason; one not held answered), services/api/test/commands.test.ts (CMD-18 shorthand); the injection case in commands.db.test.ts still runs nothing when plain words ask for permissions",
+    "Account invitations and role edits stay on their screens; destructive configuration is not catalogued."
   ],
   "CMD-19": [
     "pass",
@@ -183,8 +183,8 @@
   "CMD-31": [
     "partial",
     "command-window.tsx: native dialog named by its heading, focus to the command field and back to the opener, one polite atomic live region, choices as a labelled radio group, native buttons, errors tied by aria-describedby; reflows at 320 px; field screen with named controls (apps/field/app/command.tsx)",
-    "tests/e2e/console-l7.spec.ts (keyboard journey, axe on each state, reflow on the phone project), tests/e2e/field.spec.ts (axe on the field screen); docs/a11y/screens/command-window.md",
-    "Screen-reader and voice-control passes are pending a person (GATE-03); the browser journey does not walk the clarify and cancel steps."
+    "tests/e2e/console-l7.spec.ts (keyboard journey including the clarification and a cancel, axe on each state, reflow on the phone project), tests/e2e/field.spec.ts (axe on the field screen); docs/a11y/screens/command-window.md",
+    "Screen-reader and voice-control passes are pending a person (GATE-03)."
   ],
   "CMD-32": [
     "pass",
@@ -199,10 +199,10 @@
     "Section 29.1: dictation approved, always with review. A pass with the microphone on a real device is pending."
   ],
   "CMD-34": [
-    "partial",
+    "pass",
     "Console keeps unsent text in the tab only (sessionStorage), says \"Not sent: the connection dropped. Nothing changed.\" and retries nothing (command-window.tsx); the field screen needs a connection and keeps or sends nothing later (OfflineError); unconfirmed plans go stale after 15 minutes; shorthand works without AI",
-    "services/api/test/command-history.db.test.ts (stale after 15 minutes; a late confirm runs nothing), services/api/test/commands.db.test.ts (shorthand with the assistant off)",
-    "No automated test takes the console window or the field screen offline."
+    "services/api/test/command-history.db.test.ts (stale after 15 minutes; a late confirm runs nothing), services/api/test/commands.db.test.ts (shorthand with the assistant off), tests/e2e/console-l7.spec.ts (CMD-34: offline, the line is not sent, the window says so, the text stays, and back online nothing was created), tests/e2e/field.spec.ts (CMD-34: offline, the phone says nothing was sent and nothing will be later; back online nothing was created)",
+    ""
   ],
   "CMD-35": [
     "pass",
@@ -226,7 +226,7 @@
     "pass",
     "services/api/src/commands/timing.ts (TARGETS: shorthand 1 s, interpretation 2.5 s, execution 2 s at p95; DEADLINE_MS 15 s; within, p95); routes/commands.ts: the model's reading is given up at the deadline and recorded as timed out; an execution past it answers \"still running\" and finishes in the background, recording its own result (GET /commands/:id; the window's \"Check again\"); prepare_ms and execute_ms per execution (migration 0076); GET /commands/performance (ai_register.read) gives count, p95 and whether each target is met, separately, with timeouts and executions still running; the AI register screen shows it",
     "services/api/test/command-timing.test.ts, services/api/test/commands.db.test.ts (CMD-38: timed-out reading recorded, \"still running\" then succeeded with its timings, the report against the targets, refused to a field coordinator), tests/e2e/console.spec.ts (the section on the AI register screen)",
-    "Completion, clarification and duplicate rates are not reported yet (clarifications keep no execution record). The report table itself is shown in the browser only to the register's readers; the journey's reviewer sees the permission message."
+    "Completion, clarification and duplicate rates are reported from per-day counts by command and outcome (FR-C11, migration 0086). The report table itself is shown in the browser only to the register's readers; the journey's reviewer sees the permission message."
   ],
   "AC-C01": [
     "pass",
@@ -265,16 +265,16 @@
     ""
   ],
   "AC-C07": [
-    "partial",
-    "routes/commands.ts executeBatch: a batch reports each record it changed and each it did not, ends partially succeeded, and never claims a rollback; single commands record succeeded or failed from their own answer",
-    "services/api/test/commands.db.test.ts (CMD-30: 2 of 3 changed, the third named, state partially_succeeded)",
-    "No external multi-step workflow (message then record, for example) is catalogued yet, so the external case itself is not exercised."
+    "pass",
+    "routes/commands.ts executeBatch: a batch reports each record it changed and each it did not, ends partially succeeded, and never claims a rollback; single commands record succeeded or failed from their own answer; a command with a second step (`then`: /message <team> <text> mission:<number> sends, then notes it on the mission) runs it with its own derived idempotency key once the first succeeded; when it fails the execution is partially succeeded, the answer names the step done and the step not done with its reason, and says nothing was rolled back; a role without the second step's action is refused before anything is sent",
+    "services/api/test/commands.db.test.ts (CMD-30: 2 of 3 changed, the third named, state partially_succeeded; AC-C07, CMD-24: the message sent, the note refused by a lock placed after the plan, partially succeeded, the message's recipient count kept, no note written, nothing claimed rolled back; a safety officer refused before sending)",
+    ""
   ],
   "AC-C08": [
-    "partial",
-    "Undo only for undo_15_min commands, once, within 15 minutes, as a linked execution; anything else answers undo_unavailable, compensating ones with \"correct it on the screen with a new entry; the original stays\" (routes/commands.ts); the plan states the reversal terms (command-window.tsx)",
-    "services/api/test/commands.db.test.ts (AC-C08, CMD-28: undo once inside its window; a further undo refused with undo_unavailable)",
-    "No message-sending command is catalogued, so the delivered-communication case itself is not exercised; plain words \"undo that\" map to no command."
+    "pass",
+    "Undo only for undo_15_min commands, once, within 15 minutes, as a linked execution; anything else answers undo_unavailable, compensating ones with \"correct it on the screen with a new entry; the original stays\" (routes/commands.ts); team.message (/message <team> <text>, phase 4, full review with a reason) is answered as sent, never as delivered, and \"undo\" on it says a sent message cannot be recalled from people's phones and a correction is a new message (catalog.ts undoUnavailable); the plan states the reversal terms (command-window.tsx)",
+    "services/api/test/commands.db.test.ts (AC-C08, CMD-28: undo once inside its window; a further undo refused with undo_unavailable; AC-C08: a message to a team reviewed with a reason, answered \"Not yet delivered\", and undo refused as unrecallable)",
+    "Plain words \"undo that\" map to no command; the window's Undo button is the way."
   ],
   "AC-C09": [
     "pass",
@@ -291,8 +291,8 @@
   "AC-C11": [
     "partial",
     "command-window.tsx: shortcut and visible button, focus management, one polite live region for progress, questions and results, a labelled radio group for choices, native Confirm, Cancel and Undo buttons",
-    "tests/e2e/console-l7.spec.ts (keyboard: Control+K, Enter, Confirm, Undo, Escape back to the opener; axe on each state)",
-    "The journey does not walk clarify and cancel; the screen-reader pass is pending a person (docs/a11y/screens/command-window.md, GATE-03)."
+    "tests/e2e/console-l7.spec.ts (keyboard: Control+K, Enter, Confirm, Undo; two matching reminders answered in the \"Which one?\" radio group with Space and the arrow keys, Continue, then the plan cancelled with Cancel; Escape back to the opener; axe on each state)",
+    "The screen-reader pass is pending a person (docs/a11y/screens/command-window.md, GATE-03)."
   ],
   "AC-C12": [
     "pass",
@@ -307,10 +307,10 @@
     "Section 30.2's tab-completion is not built."
   ],
   "BRD:FR-C02": [
-    "partial",
-    "CMD-06–CMD-11: resolveTarget among authorized records with a question when several match, re-read at confirmation, the tenant's time zone, the request as data (routes/commands.ts, commands/parse.ts, packages/ai/src/prompt.ts)",
+    "pass",
+    "CMD-06–CMD-11: resolveTarget among authorized records with a question when several match, re-read at confirmation, the tenant's time zone, the request as data (routes/commands.ts, commands/parse.ts, packages/ai/src/prompt.ts); \"this\" is the record open in the console or the job open on the phone, read again under the person's own permissions (CMD-06); a second record or a person named in the command is resolved the same way (`also`, `person`, `within`)",
     "services/api/test/commands.db.test.ts (CMD-08, AC-C02, AC-C04, CMD-10, injection), services/api/test/commands.test.ts (CMD-10), packages/ai/test/openai.test.ts (CMD-11)",
-    "The selected record and the current task are not used as context (CMD-06)."
+    ""
   ],
   "BRD:FR-C03": [
     "pass",
@@ -319,10 +319,10 @@
     "Idempotency is declared once for every entry by the engine (the execution id is the operation's idempotency key), not per entry."
   ],
   "BRD:FR-C04": [
-    "partial",
+    "pass",
     "catalog.ts: missions (find, show, note, status), needs (find, claim, release), reminders (list, create, snooze, complete), situation-report draft, each through the console's validated route; public coverage through /api/public/help/:tenant/ask; people, reports, resources and contacts lookups; mission priority, assignment, closure and reopening",
     "services/api/test/commands.db.test.ts, services/api/test/help.db.test.ts (CMD-19)",
-    "Assessment drafts, resource drafts, badges and administration commands are not catalogued (CMD-15, CMD-17, CMD-18)."
+    "By design: assessment drafts stay on the phone (FLD-09); badge generation stays on the Badges screen because its code is shown once; invitations and role edits stay on their screens. Administration is account suspension, deactivation and activation, and role requests and revocations (CMD-18)."
   ],
   "BRD:FR-C05": [
     "pass",
@@ -343,16 +343,16 @@
     ""
   ],
   "BRD:FR-C08": [
-    "partial",
-    "Rate limit of 30 a minute (routes/commands.ts); one record per command; an alias expands to one governed command; versions and stale plans stop writes over newer records",
+    "pass",
+    "Rate limit of 30 a minute (routes/commands.ts); one record per command; an alias expands to one governed command; versions and stale plans stop writes over newer records; a change planned for a record with unsaved text on its screen names that form and offers keep, or discard and confirm, never a plain Confirm (CMD-29, AC-C09); bulk commands state their scope, confirm over 50 by the typed count and refuse over 500, each record its own governed operation (CMD-30)",
     "services/api/test/commands.db.test.ts (CMD-04 alias re-check; AC-C04 stale)",
-    "No open-draft registry (CMD-29, AC-C09) and no bulk command with batch limits (CMD-30)."
+    "Batches cover need claims and releases (CMD-30)."
   ],
   "BRD:FR-C09": [
     "partial",
     "command-window.tsx (keyboard, focus, live region, labelled controls, reflow); field screen (dictation through the keyboard with review, typed equivalent, EN/ES); no replay after reconnect; shorthand in English and Spanish",
-    "tests/e2e/console-l7.spec.ts (axe, keyboard, reflow), tests/e2e/field.spec.ts, services/api/test/commands.test.ts (Spanish), services/api/test/command-history.db.test.ts (stale plans)",
-    "Screen-reader pass pending a person; no automated offline test (CMD-31, CMD-34)."
+    "tests/e2e/console-l7.spec.ts (axe, keyboard including clarify and cancel, reflow, offline), tests/e2e/field.spec.ts (offline), services/api/test/commands.test.ts (Spanish), services/api/test/command-history.db.test.ts (stale plans)",
+    "Screen-reader pass pending a person (CMD-31, GATE-03)."
   ],
   "BRD:FR-C10": [
     "pass",
@@ -361,10 +361,10 @@
     ""
   ],
   "BRD:FR-C11": [
-    "partial",
-    "Progress announced in the live region; outcome and latency of each interpretation in cg.ai_output; execution states in cg.command_execution; verified results (CMD-26)",
-    "services/api/test/commands.db.test.ts (interpretation outcomes recorded; results from the operation)",
-    "Latency targets are not enforced or measured; no quality metric for completion, clarification or duplicates (CMD-38)."
+    "pass",
+    "Progress announced in the live region; outcome and latency of each interpretation in cg.ai_output; execution states in cg.command_execution; verified results (CMD-26); response times against the Section 30.2 targets with the 15-second deadline (CMD-38); every answer counted per day by command and outcome only, with no account, words or record (migration 0086, cg.command_outcome), so GET /commands/performance reports the completion, clarification and duplicate rates and the AI register screen shows them",
+    "services/api/test/commands.db.test.ts (interpretation outcomes recorded; results from the operation; FR-C11, CMD-38: a run, a repeat, an unsupported line, a confirmation sent twice and a clarification counted; the rates reported)",
+    ""
   ],
   "BRD:FR-C12": [
     "pass",
@@ -530,9 +530,9 @@
   ],
   "AIG-09": [
     "partial",
-    "worker jobs/ai-health.ts every 10 minutes: per tenant, feature and language, corrections (incl. what residents did with extraction suggestions, worker intake.ts) and failures in the last 50 outputs; severity agreement by group (reporting agreement.ts); alerts in cg.ai_health_alert (0055, 0073), emailed once, audited; GET /ai-register/alerts",
-    "services/worker/test/ai-health.db.test.ts (AIG-09: one alert, told once, audited, the feature stays on; AI-10; clears), services/worker/test/intake.db.test.ts (AIG-09), services/api/test/severity.db.test.ts (PHO-13, AIG-09), tests/e2e/console.spec.ts (open alerts)",
-    "Alerts only, no automatic switch-off (Adam, 2026-10-15): a person switches a feature off in the register and the manual path runs. Resident complaints are not yet counted as a signal."
+    "worker jobs/ai-health.ts every 10 minutes: per tenant, feature and language, corrections (incl. what residents did with extraction suggestions, worker intake.ts) and failures in the last 50 outputs; severity agreement by group (reporting agreement.ts); alerts in cg.ai_health_alert (0055, 0073), emailed once, audited; GET /ai-register/alerts; complaints (migration 0087): residents say the help went wrong by a fixed reason with no words (POST /api/public/intake/:tenant/ai-complaint, the same answer whether or not there was such help; \"This computer help got something wrong\" on the own-words step, English and Spanish), kept on that output once and counted as a third measure (default line 10%)",
+    "services/worker/test/ai-health.db.test.ts (AIG-09: one alert, told once, audited, the feature stays on; AI-10; clears), services/worker/test/intake.db.test.ts (AIG-09), services/api/test/severity.db.test.ts (PHO-13, AIG-09), tests/e2e/console.spec.ts (open alerts), services/api/test/public.db.test.ts (AIG-09: a fixed reason kept once, no words, the same answer for no such help, other reasons and staff features refused), services/worker/test/ai-health.db.test.ts (AIG-09 complaints: raised over 10%, cleared under it), tests/e2e/resident.spec.ts (AIG-09: the resident sends a reason by keyboard and is told the report is not changed; axe)",
+    "Alerts only, no automatic switch-off (Adam, 2026-10-15): a person switches a feature off in the register and the manual path runs."
   ],
   "AIG-10": [
     "pass",
@@ -782,9 +782,9 @@
   ],
   "SEC-13": [
     "partial",
-    "position_trail retention with daily partitions dropped whole and logged (worker dropPositionTrails, 0029); categories field_records, badges (3 years), safety, comms, child_records (1 year); phone purge (field-core purge.ts); enclave retention per agency and category with floors in the schema (records at least 1 year, audit at least 7 years), default 7 years, legal holds, deletion log, hourly sweep (services/cjis-api/src/jobs.ts sweepRetention); layer 7: scribe audio deleted on confirming the note, logged as scribe_audio (routes/scribe.ts); unconfirmed conversations expire after 30 days, holds respected (worker scribe-expiry); command history 30 days, clearable, kept under a hold (0058, worker command-history); category sweeps (worker retention.ts, daily, migration 0077 worker-only delete policies): one-time codes, intake drafts, abuse signals, SMS and voice sessions, device commands, finished reminders and notices with their history, checked-out child records (1 year), badges no longer valid (3 years), inactive partner contacts not referenced (3 years) and resolved safety alerts; holds on category, record or event respected; deletion log and audit; public-records release (export kind public_records, migration 0078; packages/reporting public-records.ts): per event, period and kinds of record, column by column from the data dictionary, restricted, sensitive and criminal-justice columns, security values, residents' reference codes, links to people and places, free-form detail and household needs withheld and listed in REDACTIONS.csv; confidential sites left out; only issued reports; explicit action public_records.export (EM director, PIO), confirmed with a reason, only kinds the person may read; no webhook; console Records requests; 7-year sweeps (migration 0080 worker-only delete policies): field messages with their receipts and the communications log, finished referrals, revoked share grants not used by an open referral, superseded or withdrawn publications",
-    "services/api/test/field.db.test.ts (SEC-13 / DSP-08), services/api/test/roster.db.test.ts (a 40-day-old day dropped); packages/cjis-db/test/enclave.db.test.ts (floors, holds), services/cjis-api/test/api.db.test.ts (retention sweep honours holds); layer 7: services/api/test/scribe.db.test.ts (FL-04, SEC-13: confirming deletes the audio; never confirmed expires after 30 days), services/api/test/command-history.db.test.ts (sweep past 30 days, not under a hold; a hold stops clearing); services/worker/test/retention.db.test.ts (expired and finished rows go with their history, the 7-year communications, referrals, grants and publications included; fresh, open, referenced and held rows stay; logged and audited; the API role still cannot delete a badge); packages/reporting/test/public-records.test.ts (no restricted, sensitive or CJI column of any kind released; the ZIP's files), services/api/test/exports.db.test.ts (SEC-13: 428 without a reason, 403 for a kind the PIO cannot read, no address, reference code or confidential site in any file, audited), tests/e2e/console-l7.spec.ts (SEC-13 journey)",
-    "Not yet swept: the core records (reports, needs, missions, photos and their free text) and the field records, whose deletion runs across many linked tables and object storage; cg.change_feed is never pruned (the field app would first need to re-download its area package when its cursor falls behind the oldest kept change). The public-records release withholds sensitive columns as well as restricted ones (plan reading, for Adam to confirm)."
+    "position_trail retention with daily partitions dropped whole and logged (worker dropPositionTrails, 0029); categories field_records, badges (3 years), safety, comms, child_records (1 year); phone purge (field-core purge.ts); enclave retention per agency and category with floors in the schema (records at least 1 year, audit at least 7 years), default 7 years, legal holds, deletion log, hourly sweep (services/cjis-api/src/jobs.ts sweepRetention); layer 7: scribe audio deleted on confirming the note, logged as scribe_audio (routes/scribe.ts); unconfirmed conversations expire after 30 days, holds respected (worker scribe-expiry); command history 30 days, clearable, kept under a hold (0058, worker command-history); category sweeps (worker retention.ts, daily, migration 0077 worker-only delete policies): one-time codes, intake drafts, abuse signals, SMS and voice sessions, device commands, finished reminders and notices with their history, checked-out child records (1 year), badges no longer valid (3 years), inactive partner contacts not referenced (3 years) and resolved safety alerts; holds on category, record or event respected; deletion log and audit; public-records release (export kind public_records, migration 0078; packages/reporting public-records.ts): per event, period and kinds of record, column by column from the data dictionary, restricted, sensitive and criminal-justice columns, security values, residents' reference codes, links to people and places, free-form detail and household needs withheld and listed in REDACTIONS.csv; confidential sites left out; only issued reports; explicit action public_records.export (EM director, PIO), confirmed with a reason, only kinds the person may read; no webhook; console Records requests; 7-year sweeps (migration 0080 worker-only delete policies): field messages with their receipts and the communications log, finished referrals, revoked share grants not used by an open referral, superseded or withdrawn publications; field records 7 years after their event closes (migration 0081 worker-only delete policies): hand-overs, service logs, search marks, placards, road reports, debris tickets, inspections, pet intakes, interpreter requests, canvass visits, field assessments, assignments with their history, check-ins with the team status reports made under them and site walk-throughs; records of an open event never expire; a hold on the event, or on the mission, report or site a field record belongs to, keeps it; a check-in a log entry or alert still names stays; the field change feed is pruned after the sessions period (migration 0083: a per-tenant mark of the highest sequence removed, worker-only delete); a phone whose cursor is below the mark gets 410 cursor_expired, downloads its area package again and resumes from the package's cursor, once a round (routes/field-sync.ts, field-core sync.ts onResync, apps/field loadArea); conversation notes (scribe sessions) kept for the field-records period after confirmation, never while audio is stored, a hold on the related record keeping them (migration 0084); the roster (migration 0085): a person the records period after they were archived, with their credentials and team memberships, an archived team (a standing one from then, an event's from its close) and a lapsed credential; every record pointing at them keeps them, read from the database's foreign keys at each run; stored files (badge photo, certificate scan) deleted from object storage first, rows kept when storage cannot delete; a status report a communications entry names keeps its check-in or team",
+    "services/api/test/field.db.test.ts (SEC-13 / DSP-08), services/api/test/roster.db.test.ts (a 40-day-old day dropped); packages/cjis-db/test/enclave.db.test.ts (floors, holds), services/cjis-api/test/api.db.test.ts (retention sweep honours holds); layer 7: services/api/test/scribe.db.test.ts (FL-04, SEC-13: confirming deletes the audio; never confirmed expires after 30 days), services/api/test/command-history.db.test.ts (sweep past 30 days, not under a hold; a hold stops clearing); services/worker/test/retention.db.test.ts (also: old feed entries pruned and the mark set; the roster: an archived person, a lapsed credential and an archived team go with their stored files first, while a lead, a held, a recent and an active person, a valid credential, an open event's team and a team a communications entry names stay; without a store that can delete, files and rows stay), services/api/test/dispatch-sync.db.test.ts (SEC-13: below the mark 410, at it 200), packages/field-core/test/sync.test.ts (SEC-13: resync once a round, a failed resync keeps the cursor) (expired and finished rows go with their history, the 7-year communications, referrals, grants and publications included; fresh, open, referenced and held rows stay; logged and audited; the API role still cannot delete a badge); packages/reporting/test/public-records.test.ts (no restricted, sensitive or CJI column of any kind released; the ZIP's files), services/api/test/exports.db.test.ts (SEC-13: 428 without a reason, 403 for a kind the PIO cannot read, no address, reference code or confidential site in any file, audited), tests/e2e/console-l7.spec.ts (SEC-13 journey)",
+    "Not yet swept: the core records (reports, needs, missions, photos and their free text), whose deletion runs across many linked tables and object storage; the plan for them waits on four questions (docs/plans/sec-13-core-records.md). Devices and stock are equipment, not personal data, and follow the core records they serve; The public-records release withholds sensitive columns as well as restricted ones (plan reading, for Adam to confirm)."
   ],
   "INT-12": [
     "pass",
@@ -807,7 +807,7 @@
   "GATE-03": [
     "partial",
     "",
-    "axe on every released screen, including the enclave screens and the console's CJIS panel (tests/e2e/cjis.spec.ts, tests/e2e/console-l5.spec.ts); layer 7: axe on every layer-7 screen state the journeys reach, with reflow on the phone; records docs/a11y/screens/command-window.md, facilities.md, recommendations.md, discovery.md and the layer-7 notes on earlier records",
+    "axe on every released screen, including the enclave screens and the console's CJIS panel (tests/e2e/cjis.spec.ts, tests/e2e/console-l5.spec.ts); layer 7: axe on every layer-7 screen state the journeys reach, with reflow on the phone; records docs/a11y/screens/command-window.md, facilities.md, recommendations.md, discovery.md and the layer-7 notes on earlier records; every console screen no task journey opens (layer-1 administration, layer-3 resources and partner agreements, layer-4 replay, shelters, reception, net control, messages, badges, reminders, devices) opened one by one with axe on desktop and phone (tests/e2e/console-screens.spec.ts)",
     "Manual screen-reader passes pending a person, as before; the field app also needs a device pass."
   ],
   "GATE-04": [

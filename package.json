@@ -16,6 +16,7 @@
     "test:integration": "vitest run --project integration",
     "test:e2e": "playwright test",
     "check:product-name": "node tools/checks/product-name.mjs",
+    "check:traceability": "python3 tools/reqindex/traceability.py --check",
     "reqindex": "python3 tools/reqindex/extract.py && python3 tools/reqindex/build_index.py",
     "seed": "pnpm --filter @cg/seed run generate"
   },

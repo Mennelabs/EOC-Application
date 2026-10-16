@@ -1,9 +1,10 @@
 /**
  * The field app's web build on a phone viewport (layer-4 plan §9; FLD-01,
- * FLD-03, FLD-08, FLD-13, FLD-14, FLD-16, DCL:DEC-17, ADR-0014): the seeded
+ * FLD-03, FLD-08, FLD-11, FLD-13, FLD-14, FLD-16, DCL:DEC-17, ADR-0014): the seeded
  * field lead of the Field Exercise Team sets a PIN, checks in by the event
  * code, saves a quick report while offline ("On this phone") that is
- * received once the signal returns, records a damage assessment with the
+ * received once the signal returns, reports how a site looks for dispatch
+ * (FLD-11), records a damage assessment with the
  * details FEMA asks for, asks the command window for its reminders, opens
  * the conversation note-taker (consent in Spanish; AI off here), uses live
  * translation (medical refused; off here) and asks for an interpreter, presses
@@ -216,6 +217,35 @@ test.describe('field app (web build)', () => {
     await expect(page.getByText(/Received|Nothing waiting/).first()).toBeVisible({
       timeout: 60_000,
     });
+
+    // FLD-11: how a site looks, from the same quick report: an observation with the phone's
+    // position that reaches dispatch, not the site's status of record.
+    const siteNote = `Exercise: line out the door (${Date.now()})`;
+    await page.getByRole('link', { name: 'Home' }).click();
+    await page.getByRole('button', { name: 'Quick report' }).click();
+    await page.getByRole('radio', { name: 'How a site looks' }).click();
+    await page.getByRole('radiogroup', { name: 'Which site?' }).getByRole('radio').first().click();
+    await page.getByRole('radio', { name: 'Full', exact: true }).click();
+    await page.getByLabel('Note (optional)').fill(siteNote);
+    await expectNoViolations(page);
+    await page.getByRole('button', { name: 'Send report' }).click();
+    await expect(page.getByText(/a site's lead still confirms its status/)).toBeVisible();
+    await page.getByRole('button', { name: 'Home' }).click();
+    await page.getByRole('link', { name: 'On this phone' }).click();
+    await page.getByRole('button', { name: 'Sync now' }).click();
+    await expect
+      .poll(
+        async () => {
+          const board = await api(dispatcher, `/dispatch/board?eventId=${westwind.id}`);
+          const reports = (board.body['fieldReports'] ?? []) as {
+            note: string | null;
+            siteStatus: string | null;
+          }[];
+          return reports.find((r) => r.note === siteNote)?.siteStatus ?? null;
+        },
+        { timeout: 60_000 },
+      )
+      .toBe('full');
 
     // FLD-08, DCL:DEC-17: an assessment with the damage seen and the details FEMA asks for
     // (depth in feet and inches, renter, flood insurance, utilities out) is received as entered;

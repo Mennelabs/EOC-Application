@@ -56,6 +56,7 @@ function frontline(
         { action: 'assignment.status', records: 'own' },
         g('hazard.read'),
         g('hazard.report'),
+        g('field_report.write'), // FLD-11
         g('field_message.read'),
         g('field_message.receipt'),
         g('safety_alert.raise'),
@@ -445,10 +446,13 @@ const templates: readonly RoleTemplate[] = [
       g('mission.person.edit'),
       g('hazard.read'),
       g('hazard.report'),
+      g('field_report.write'), // FLD-11
       g('reminder.*'),
       g('interpreter.request'),
       g('assignment.read'),
       g('dispatch.read'),
+      g('field_report.read'), // FLD-11
+      g('field_report.note'),
       g('stream.read'),
     ],
   },
@@ -558,6 +562,7 @@ const templates: readonly RoleTemplate[] = [
       { action: 'assignment.status', records: 'own' },
       g('hazard.read'),
       g('hazard.report'),
+      g('field_report.write'), // FLD-11
       g('field_message.read'),
       g('field_message.receipt'),
       g('safety_alert.raise'),
@@ -602,6 +607,7 @@ const templates: readonly RoleTemplate[] = [
       { action: 'assignment.status', records: 'own' },
       g('hazard.read'),
       g('hazard.report'),
+      g('field_report.write'), // FLD-11
       g('field_message.read'),
       g('field_message.receipt'),
       g('safety_alert.raise'),
@@ -657,6 +663,7 @@ const templates: readonly RoleTemplate[] = [
       { action: 'assignment.status', records: 'own' },
       g('hazard.read'),
       g('hazard.report'),
+      g('field_report.write'), // FLD-11
       g('field_message.read'),
       g('field_message.receipt'),
       g('safety_alert.raise'),
@@ -692,6 +699,7 @@ const templates: readonly RoleTemplate[] = [
       { action: 'assignment.status', records: 'own' },
       g('hazard.read'),
       g('hazard.report'),
+      g('field_report.write'), // FLD-11
       g('field_message.read'),
       g('field_message.receipt'),
       g('safety_alert.raise'),
@@ -733,6 +741,7 @@ const templates: readonly RoleTemplate[] = [
       { action: 'assignment.status', records: 'own' },
       g('hazard.read'),
       g('hazard.report'),
+      g('field_report.write'), // FLD-11
       g('field_message.read'),
       g('field_message.receipt'),
       g('safety_alert.raise'),
@@ -853,8 +862,11 @@ const templates: readonly RoleTemplate[] = [
       g('mission.*', ['contact', 'location_exact']),
       g('assignment.*'),
       g('dispatch.read'),
+      g('field_report.read'), // FLD-11
+      g('field_report.note'),
       g('stream.read'),
       g('hazard.*'),
+      g('field_report.write'), // FLD-11
       g('field_message.*'),
       g('safety_alert.*'),
       g('comms_log.read'),
@@ -906,9 +918,12 @@ const templates: readonly RoleTemplate[] = [
       g('mission.close'),
       g('assignment.*'),
       g('dispatch.read'),
+      g('field_report.read'), // FLD-11
+      g('field_report.note'),
       g('stream.read'),
       g('hazard.read'),
       g('hazard.report'),
+      g('field_report.write'), // FLD-11
       g('hazard.confirm'),
       g('field_message.*'),
       g('safety_alert.*'),
@@ -940,8 +955,11 @@ const templates: readonly RoleTemplate[] = [
       g('mission.read', ['location_exact']),
       g('assignment.read'),
       g('dispatch.read'),
+      g('field_report.read'), // FLD-11
+      g('field_report.note'),
       g('stream.read'),
       g('hazard.*'),
+      g('field_report.write'), // FLD-11
       g('field_message.send'),
       g('field_message.read'),
       g('safety_alert.*'),
@@ -1010,6 +1028,7 @@ const templates: readonly RoleTemplate[] = [
       { action: 'assignment.status', records: 'own' },
       g('hazard.read'),
       g('hazard.report'),
+      g('field_report.write'), // FLD-11
       g('field_message.read'),
       g('field_message.receipt'),
       g('safety_alert.raise'),
@@ -1050,6 +1069,7 @@ const templates: readonly RoleTemplate[] = [
       { action: 'assignment.status', records: 'own' },
       g('hazard.read'),
       g('hazard.report'),
+      g('field_report.write'), // FLD-11
       g('field_message.read'),
       g('field_message.receipt'),
       g('safety_alert.raise'),

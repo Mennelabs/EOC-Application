@@ -57,6 +57,21 @@ const kinds = [
   'other',
 ] as const;
 const states = ['draft', 'open', 'en_route', 'on_scene', 'cleared', 'closed', 'canceled'] as const;
+
+/**
+ * MIS-01, DSP-03: the kind of work a need usually becomes; the dispatcher may choose another.
+ * Categories are the intake graph's (packages/intake/src/graphs); anything else is `other`.
+ */
+export const NEED_KIND: Record<string, (typeof kinds)[number]> = {
+  shelter_tonight: 'welfare_check',
+  food_water: 'delivery',
+  cleanup_tarp: 'cleanup_work_order',
+  volunteer_cleanup: 'cleanup_work_order',
+  medical_power: 'welfare_check',
+  transportation: 'delivery',
+  pets: 'welfare_check',
+  someone_to_talk: 'welfare_check',
+};
 const priorities = ['low', 'normal', 'high', 'urgent'] as const;
 const urgencies = ['routine', 'soon', 'now'] as const;
 const sources = ['need', 'report', 'call', 'walk_in', 'field', 'staff', 'board'] as const;
@@ -1216,6 +1231,128 @@ export const missionRoutesWith =
             },
           );
         return reply.code(201).send(await toOut(row.saved, { caller: true }));
+      },
+    );
+
+    /**
+     * MIS-01, DSP-03: an open need becomes a mission. The mission is made by the create
+     * route itself (same validation, reference, timeline, audit and idempotency), linked to
+     * the need and its report, at the need's place, of the kind the need usually becomes
+     * unless the dispatcher picks another. A need that already has a live mission answers
+     * with that mission's reference; the same request sent again returns the same mission.
+     */
+    app.post(
+      '/needs/:id/mission',
+      {
+        schema: {
+          tags: ['missions'],
+          params: uuidParam,
+          body: z.object({
+            kind: z.enum(kinds).optional(),
+            priority: z.enum(priorities).default('normal'),
+            urgency: z.enum(urgencies).default('soon'),
+          }),
+        },
+      },
+      async (request, reply) => {
+        account(request);
+        const need = await request.tx((trx) =>
+          trx
+            .selectFrom('cg.need as n')
+            .leftJoin('cg.location as l', 'l.id', 'n.location_id')
+            .select([
+              'n.id',
+              'n.tenant_id',
+              'n.event_id',
+              'n.report_id',
+              'n.category',
+              'n.status',
+              'n.reference_code',
+              'l.line1',
+              'l.unit',
+              'l.city',
+              'l.postal',
+              'l.precision',
+              sql<number | null>`ST_Y(l.geom)`.as('lat'),
+              sql<number | null>`ST_X(l.geom)`.as('lon'),
+            ])
+            .where('n.id', '=', request.params.id)
+            .executeTakeFirst(),
+        );
+        if (!need) throw errors.notFound();
+        await request.authorize(
+          'need.read',
+          {
+            type: 'need',
+            id: need.id,
+            tenantId: need.tenant_id,
+            ...(need.event_id ? { eventId: need.event_id } : {}),
+          },
+          { asNotFound: true },
+        );
+        if (!need.event_id)
+          throw errors.validation([{ name: 'id', message: 'this need belongs to no event' }]);
+        if (!['open', 'claimed'].includes(need.status))
+          throw new ApiError(409, 'need_not_open', 'Only an open need can become a mission.');
+        const live = await request.tx((trx) =>
+          trx
+            .selectFrom('cg.mission')
+            .select(['id', 'reference', 'execution_id'])
+            .where('need_id', '=', need.id)
+            .where('state', 'not in', ['closed', 'canceled'])
+            .executeTakeFirst(),
+        );
+        // The same request again goes through to the create route, which replays its answer.
+        if (live && live.execution_id !== request.executionId)
+          throw new ApiError(
+            409,
+            'need_has_mission',
+            `This need is already mission ${live.reference}.`,
+            { details: { missionId: live.id, reference: live.reference } },
+          );
+        const exact = need.precision === 'exact';
+        const hasPlace = need.lat !== null || need.line1;
+        const res = await app.inject({
+          method: 'POST',
+          url: '/api/v1/missions',
+          headers: {
+            ...(request.headers.authorization
+              ? { authorization: request.headers.authorization }
+              : {}),
+            ...(request.headers['idempotency-key']
+              ? { 'idempotency-key': String(request.headers['idempotency-key']) }
+              : {}),
+          },
+          payload: {
+            eventId: need.event_id,
+            kind: request.body.kind ?? NEED_KIND[need.category] ?? 'other',
+            source: 'need',
+            priority: request.body.priority,
+            urgency: request.body.urgency,
+            summary: `Need: ${need.category.replace(/_/g, ' ')}${need.reference_code ? ` (${need.reference_code})` : ''}`,
+            needId: need.id,
+            ...(need.report_id ? { reportId: need.report_id } : {}),
+            ...(hasPlace
+              ? {
+                  location: {
+                    ...(need.line1 ? { line1: need.line1 } : {}),
+                    ...(need.unit ? { unit: need.unit } : {}),
+                    ...(need.city ? { city: need.city } : {}),
+                    ...(need.postal ? { postal: need.postal } : {}),
+                    ...(need.lat !== null && need.lon !== null
+                      ? { position: { lat: need.lat, lon: need.lon } }
+                      : {}),
+                    state: exact ? 'verified' : need.lat !== null ? 'approximate' : 'manual',
+                  },
+                }
+              : {}),
+            save: 'intake',
+          },
+        });
+        return reply
+          .code(res.statusCode)
+          .header('content-type', 'application/json; charset=utf-8')
+          .send(res.body);
       },
     );
 

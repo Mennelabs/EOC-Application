@@ -154,12 +154,58 @@ const boardOut = z.object({
       position: point.nullable(),
     }),
   ),
+  /**
+   * DSP-01, DSP-03, MIS-01: open needs that are no mission yet, oldest first, at about a
+   * block's precision (the exact place stays on the need); only for roles that read needs.
+   */
+  needs: z.array(
+    z.object({
+      id: z.uuid(),
+      category: z.string(),
+      referenceCode: z.string().nullable(),
+      createdAt: z.string(),
+      position: point.nullable(),
+    }),
+  ),
+  /** DSP-01: roads reported closed, impassable or down to one lane, the latest report per road. */
+  closures: z.array(
+    z.object({
+      id: z.uuid(),
+      name: z.string(),
+      status: z.string(),
+      reason: z.string().nullable(),
+      position: point.nullable(),
+      reportedAt: z.string(),
+    }),
+  ),
+  /**
+   * FLD-11: quick reports from the field that dispatch has not marked noted: what a
+   * worker saw at a site, or a resource they came across. Observations, newest first;
+   * only for roles that read them.
+   */
+  fieldReports: z.array(
+    z.object({
+      id: z.uuid(),
+      category: z.enum(['site_status', 'resource_seen']),
+      siteId: z.uuid().nullable(),
+      siteName: z.string().nullable(),
+      siteStatus: z.string().nullable(),
+      resourceKind: z.string().nullable(),
+      place: z.string().nullable(),
+      note: z.string().nullable(),
+      position: point.nullable(),
+      reportedAt: z.string(),
+    }),
+  ),
   counts: z.object({
     teamsByStatus: z.record(z.string(), z.number().int()),
     queue: z.number().int(),
     active: z.number().int(),
     hazards: z.number().int(),
     openAlerts: z.number().int(),
+    needs: z.number().int(),
+    closures: z.number().int(),
+    fieldReports: z.number().int(),
   }),
 });
 
@@ -574,6 +620,22 @@ export const dispatchRoutes =
             () => true,
             () => false,
           );
+        // DSP-03: open needs show only to roles that read needs; a partner works its own queue.
+        const mayReadNeeds =
+          !scope.partnerId &&
+          (await request.authorize('need.read', { type: 'need', tenantId: s.tenantId }).then(
+            () => true,
+            () => false,
+          ));
+        // FLD-11: quick reports show to the roles that read them; a partner works its own teams.
+        const mayReadFieldReports =
+          !scope.partnerId &&
+          (await request
+            .authorize('field_report.read', { type: 'field_report', tenantId: s.tenantId })
+            .then(
+              () => true,
+              () => false,
+            ));
         const q = request.query;
         return run(request, scope, async (trx) => {
           const eventId = await eventFor(trx, q.eventId);
@@ -725,6 +787,80 @@ export const dispatchRoutes =
               teamIds.length ? teamIds : [scope.partnerId],
             );
           const alerts = await alertQuery.execute();
+          const needRows = mayReadNeeds
+            ? await trx
+                .selectFrom('cg.need as n')
+                .leftJoin('cg.location as l', 'l.id', 'n.location_id')
+                .select([
+                  'n.id',
+                  'n.category',
+                  'n.reference_code',
+                  'n.created_at',
+                  // About a block (three decimals): the exact place stays on the need.
+                  sql<number | null>`round(ST_Y(l.geom)::numeric, 3)`.as('lat'),
+                  sql<number | null>`round(ST_X(l.geom)::numeric, 3)`.as('lon'),
+                ])
+                .where('n.event_id', '=', eventId)
+                .where('n.status', '=', 'open')
+                .where(({ not, exists, selectFrom }) =>
+                  not(
+                    exists(
+                      selectFrom('cg.mission as m')
+                        .select('m.id')
+                        .whereRef('m.need_id', '=', 'n.id')
+                        .where('m.state', 'not in', ['closed', 'canceled']),
+                    ),
+                  ),
+                )
+                .orderBy('n.created_at')
+                .limit(200)
+                .execute()
+            : [];
+          const roadRows = scope.partnerId
+            ? []
+            : await trx
+                .selectFrom('cg.road_status')
+                .select([
+                  'id',
+                  'name',
+                  'status',
+                  'reason',
+                  'reported_at',
+                  'cleared_at',
+                  sql<number | null>`ST_Y(ST_PointOnSurface(geom))`.as('lat'),
+                  sql<number | null>`ST_X(ST_PointOnSurface(geom))`.as('lon'),
+                ])
+                .distinctOn('name')
+                .where('event_id', '=', eventId)
+                .orderBy('name')
+                .orderBy('reported_at', 'desc')
+                .execute();
+          const closures = roadRows.filter(
+            (r) => ['closed', 'impassable', 'one_lane'].includes(r.status) && !r.cleared_at,
+          );
+          const reportRows = mayReadFieldReports
+            ? await trx
+                .selectFrom('cg.field_report as f')
+                .leftJoin('cg.site as s', 's.id', 'f.site_id')
+                .select([
+                  'f.id',
+                  'f.category',
+                  'f.site_id',
+                  's.name as site_name',
+                  'f.site_status',
+                  'f.resource_kind',
+                  'f.place',
+                  'f.note',
+                  'f.reported_at',
+                  sql<number | null>`ST_Y(f.geom)`.as('lat'),
+                  sql<number | null>`ST_X(f.geom)`.as('lon'),
+                ])
+                .where('f.event_id', '=', eventId)
+                .where('f.noted_at', 'is', null)
+                .orderBy('f.reported_at', 'desc')
+                .limit(200)
+                .execute()
+            : [];
 
           const teamsOut = teams.map((t): z.infer<typeof boardTeam> => {
             const st = statuses.get(t.id) ?? null;
@@ -775,6 +911,42 @@ export const dispatchRoutes =
             teams: teamsOut,
             queue,
             active,
+            needs: needRows.map((n) => ({
+              id: n.id,
+              category: n.category,
+              referenceCode: n.reference_code,
+              createdAt: iso(n.created_at)!,
+              position:
+                n.lat !== null && n.lon !== null
+                  ? { lat: Number(n.lat), lon: Number(n.lon) }
+                  : null,
+            })),
+            closures: closures.map((r) => ({
+              id: r.id,
+              name: r.name,
+              status: r.status,
+              reason: r.reason,
+              position:
+                r.lat !== null && r.lon !== null
+                  ? { lat: Number(r.lat), lon: Number(r.lon) }
+                  : null,
+              reportedAt: iso(r.reported_at)!,
+            })),
+            fieldReports: reportRows.map((r) => ({
+              id: r.id,
+              category: r.category,
+              siteId: r.site_id,
+              siteName: r.site_name,
+              siteStatus: r.site_status,
+              resourceKind: r.resource_kind,
+              place: r.place,
+              note: r.note,
+              position:
+                r.lat !== null && r.lon !== null
+                  ? { lat: Number(r.lat), lon: Number(r.lon) }
+                  : null,
+              reportedAt: iso(r.reported_at)!,
+            })),
             hazards: hazards.map((h) => ({
               id: h.id,
               version: h.version,
@@ -820,6 +992,9 @@ export const dispatchRoutes =
               active: active.length,
               hazards: hazards.length,
               openAlerts: alerts.length,
+              needs: needRows.length,
+              closures: closures.length,
+              fieldReports: reportRows.length,
             },
           };
         });

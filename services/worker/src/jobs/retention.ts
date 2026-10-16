@@ -214,6 +214,7 @@ export const SWEEPS: readonly Sweep[] = [
   fieldRecord('search_mark', { heldWith: [{ type: 'mission', id: 't.mission_id' }] }),
   fieldRecord('placard', { heldWith: [{ type: 'report', id: 't.report_id' }] }),
   fieldRecord('road_status'),
+  fieldRecord('field_report'), // FLD-11
   fieldRecord('debris_ticket'),
   fieldRecord('inspection'),
   fieldRecord('pet_intake'),

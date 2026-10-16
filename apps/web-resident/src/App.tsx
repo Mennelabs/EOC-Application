@@ -179,6 +179,9 @@ export function App({ config }: { config: RuntimeConfig }) {
   const { path, navigate } = usePath();
   const route = useMemo(() => parseRoute(path), [path]);
   const [locale, setLocale] = useState<Locale>(() => {
+    // CHN-08: a QR code or short link on a flyer or door hanger opens the flow in its language.
+    const fromLink = new URLSearchParams(location.search).get('lang');
+    if (fromLink && (locales as readonly string[]).includes(fromLink)) return fromLink as Locale;
     const saved = (() => {
       try {
         return localStorage.getItem('cg.locale');

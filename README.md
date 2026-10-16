@@ -242,6 +242,7 @@ pnpm install
 pnpm lint              # eslint + prettier
 pnpm typecheck
 pnpm check:product-name   # ADM-03: product name never hardcoded
+pnpm check:traceability   # docs/traceability.md is what tools/reqindex/trace-*.json generate
 pnpm test              # unit tests (vitest)
 pnpm test:integration  # against the running stack (STACK_URL, COMPOSE_FILES to override): layer 1 to 6 acceptance cases
 pnpm test:e2e          # Playwright + axe: resident flow, kiosk, console onboarding, review, needs board, sites, dispatch and missions journeys, the field app's web build, the public help page, the CJIS enclave and the console's enclave link (npx playwright install chromium first)

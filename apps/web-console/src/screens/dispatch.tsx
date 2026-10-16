@@ -80,12 +80,45 @@ interface Board {
     raisedAt: string;
     position: Point | null;
   }[];
+  /** DSP-03, MIS-01: open needs that are no mission yet (absent for roles that cannot read needs). */
+  needs?: {
+    id: string;
+    category: string;
+    referenceCode: string | null;
+    createdAt: string;
+    position: Point | null;
+  }[];
+  /** DSP-01: roads reported closed, impassable or down to one lane. */
+  closures?: {
+    id: string;
+    name: string;
+    status: string;
+    reason: string | null;
+    position: Point | null;
+    reportedAt: string;
+  }[];
+  /** FLD-11: what workers saw at sites and resources they came across, not yet noted. */
+  fieldReports?: {
+    id: string;
+    category: 'site_status' | 'resource_seen';
+    siteId: string | null;
+    siteName: string | null;
+    siteStatus: string | null;
+    resourceKind: string | null;
+    place: string | null;
+    note: string | null;
+    position: Point | null;
+    reportedAt: string;
+  }[];
   counts: {
     teamsByStatus: Record<string, number>;
     queue: number;
     active: number;
     hazards: number;
     openAlerts: number;
+    needs?: number;
+    closures?: number;
+    fieldReports?: number;
   };
 }
 interface Suggestion {
@@ -401,7 +434,9 @@ function AlertTakeover({
 function BoardMap({ board }: { board: Board }) {
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<ConsoleMap | null>(null);
-  const [layers, setLayers] = useState<Set<string>>(new Set(['teams', 'work', 'hazards', 'sites']));
+  const [layers, setLayers] = useState<Set<string>>(
+    new Set(['teams', 'work', 'needs', 'hazards', 'closures', 'sites', 'reports']),
+  );
   const [picked, setPicked] = useState<string | null>(null);
   const points = useMemo<MapPoint[]>(() => {
     const out: MapPoint[] = [];
@@ -459,6 +494,46 @@ function BoardMap({ board }: { board: Board }) {
           tone: 'info',
           layer: 'sites',
         });
+    // DSP-01: open needs (at about a block), road closures and field reports, each also a list.
+    for (const n of board.needs ?? [])
+      if (n.position)
+        out.push({
+          id: n.id,
+          lat: n.position.lat,
+          lon: n.position.lon,
+          label: `Need: ${label(n.category)}${n.referenceCode ? ` (${n.referenceCode})` : ''}, no mission yet`,
+          mark: 'N',
+          shape: 'diamond',
+          tone: 'warn',
+          layer: 'needs',
+        });
+    for (const c of board.closures ?? [])
+      if (c.position)
+        out.push({
+          id: c.id,
+          lat: c.position.lat,
+          lon: c.position.lon,
+          label: `Road ${c.name}: ${label(c.status)}`,
+          mark: 'X',
+          shape: 'square',
+          tone: 'danger',
+          layer: 'closures',
+        });
+    for (const r of board.fieldReports ?? [])
+      if (r.position)
+        out.push({
+          id: r.id,
+          lat: r.position.lat,
+          lon: r.position.lon,
+          label:
+            r.category === 'site_status'
+              ? `Field report: ${r.siteName ?? 'a site'} seen ${label(r.siteStatus ?? 'other')}`
+              : `Field report: ${label(r.resourceKind ?? 'resource')} seen${r.place ? ` at ${r.place}` : ''}`,
+          mark: 'R',
+          shape: 'diamond',
+          tone: 'info',
+          layer: 'reports',
+        });
     return out;
   }, [board]);
   useEffect(() => {
@@ -493,8 +568,11 @@ function BoardMap({ board }: { board: Board }) {
         {[
           ['teams', 'Teams'],
           ['work', 'Work'],
+          ['needs', 'Needs'],
           ['hazards', 'Hazards'],
+          ['closures', 'Road closures'],
           ['sites', 'Sites'],
+          ['reports', 'Field reports'],
         ].map(([k, l]) => (
           <button key={k} type="button" aria-pressed={layers.has(k!)} onClick={() => toggle(k!)}>
             {l}
@@ -506,7 +584,7 @@ function BoardMap({ board }: { board: Board }) {
         ref={box}
         className="map"
         role="region"
-        aria-label="Map of teams, work, hazards and sites. The lists below show the same."
+        aria-label="Map of teams, work, needs, hazards, road closures, sites and field reports. The lists below show the same."
       />
     </section>
   );
@@ -632,6 +710,12 @@ export function DispatchScreen() {
             <dd>{board.counts.active}</dd>
             <dt>Open alerts</dt>
             <dd>{board.counts.openAlerts}</dd>
+            <dt>Needs with no mission</dt>
+            <dd>{board.counts.needs ?? 0}</dd>
+            <dt>Road closures</dt>
+            <dd>{board.counts.closures ?? 0}</dd>
+            <dt>Reports from the field not yet noted</dt>
+            <dd>{board.counts.fieldReports ?? 0}</dd>
           </dl>
           {showMap ? <BoardMap board={board} /> : null}
           {assigning ? (
@@ -684,6 +768,116 @@ export function DispatchScreen() {
               },
             ]}
           />
+          {board.needs?.length ? (
+            <>
+              <h2>Needs with no mission yet</h2>
+              <p className="hint">
+                Making a mission links it to the need and its report, at the need&rsquo;s place;
+                then assign it like any other.
+              </p>
+              <DataTable
+                caption="Open needs nobody has made a mission for, oldest first"
+                rows={board.needs}
+                rowKey={(n) => n.id}
+                columns={[
+                  {
+                    key: 'need',
+                    header: 'Need',
+                    render: (n) =>
+                      `${label(n.category)}${n.referenceCode ? ` (${n.referenceCode})` : ''}`,
+                  },
+                  { key: 'age', header: 'Waiting since', render: (n) => fmt(n.createdAt) },
+                  {
+                    key: 'act',
+                    header: 'Action',
+                    render: (n) => (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void api<{ reference: string }>(`/needs/${n.id}/mission`, { body: {} })
+                            .then((m) => setNotice(`Mission ${m.reference} made for the need.`))
+                            .catch((e: unknown) => setNotice(describeFailure(e)))
+                            .finally(reload)
+                        }
+                      >
+                        Make a mission for {n.referenceCode ?? label(n.category)}
+                      </button>
+                    ),
+                  },
+                ]}
+              />
+            </>
+          ) : null}
+          {board.closures?.length ? (
+            <>
+              <h2>Road closures</h2>
+              <DataTable
+                caption="Roads reported closed, impassable or down to one lane"
+                rows={board.closures}
+                rowKey={(c) => c.id}
+                columns={[
+                  { key: 'road', header: 'Road', render: (c) => c.name },
+                  { key: 'st', header: 'Status', render: (c) => label(c.status) },
+                  { key: 'why', header: 'Reason', render: (c) => c.reason ?? '—' },
+                  { key: 'at', header: 'Reported', render: (c) => fmt(c.reportedAt) },
+                ]}
+              />
+            </>
+          ) : null}
+          {board.fieldReports?.length ? (
+            <>
+              <h2>Reports from the field</h2>
+              <p className="hint">
+                What workers saw at a site or a resource they came across. A site report is not the
+                site&rsquo;s status: the site&rsquo;s lead confirms that.
+              </p>
+              <DataTable
+                caption="Site status and resources seen, newest first"
+                rows={board.fieldReports}
+                rowKey={(r) => r.id}
+                columns={[
+                  {
+                    key: 'what',
+                    header: 'Report',
+                    render: (r) =>
+                      r.category === 'site_status'
+                        ? `${r.siteName ?? 'A site'}: seen ${label(r.siteStatus ?? 'other')}`
+                        : `Resource seen: ${label(r.resourceKind ?? 'other')}${r.place ? ` at ${r.place}` : ''}`,
+                  },
+                  { key: 'note', header: 'Note', render: (r) => r.note ?? '—' },
+                  {
+                    key: 'where',
+                    header: 'Where',
+                    render: (r) =>
+                      r.position
+                        ? `${r.position.lat.toFixed(4)}, ${r.position.lon.toFixed(4)}`
+                        : 'No pin',
+                  },
+                  { key: 'at', header: 'Reported', render: (r) => fmt(r.reportedAt) },
+                  {
+                    key: 'act',
+                    header: 'Action',
+                    render: (r) => (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void api(`/field-records/field_report/${r.id}/note`, { body: {} })
+                            .then(() => setNotice('Report marked noted.'))
+                            .catch((e: unknown) => setNotice(describeFailure(e)))
+                            .finally(reload)
+                        }
+                      >
+                        Mark noted:{' '}
+                        {r.category === 'site_status'
+                          ? (r.siteName ?? 'site report')
+                          : label(r.resourceKind ?? 'resource')}
+                      </button>
+                    ),
+                  },
+                ]}
+              />
+            </>
+          ) : null}
           <h2>Teams</h2>
           <div className="filters">
             <label>

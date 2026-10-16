@@ -91,6 +91,7 @@ import * as m0089 from './0089_field_report.ts';
 import * as m0090 from './0090_supply_request.ts';
 import * as m0091 from './0091_pet_match.ts';
 import * as m0092 from './0092_equipment_use.ts';
+import * as m0093 from './0093_canteen_stop.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -186,4 +187,5 @@ export const migrations: Record<string, Migration> = {
   '0090_supply_request': m0090,
   '0091_pet_match': m0091,
   '0092_equipment_use': m0092,
+  '0093_canteen_stop': m0093,
 };

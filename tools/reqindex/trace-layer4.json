@@ -829,10 +829,10 @@
     ""
   ],
   "FL:FR-17": [
-    "partial",
-    "meal counter per site or route (apps/field/app/counters.tsx, service logs)",
-    "services/api/test/fieldwork.db.test.ts (FL-06 counters)",
-    "Stop check-in and check-out, supplies left, allergen notes and the route to the next stop are not built."
+    "pass",
+    "meal counter per site or route (apps/field/app/counters.tsx, service logs); canteen stops: check-in at a stop on the route and check-out with the meals served there, the supplies left on the truck and an allergen note about the food, the check-out naming the check-in by the phone's id so both work offline (0093 cg.canteen_stop, routes/field-records.ts canteen_stop and /canteen_stop/check-out, record.canteen_stop.check_out); the field canteen screen counts meals at the stop and shows the next stop of the route with directions (apps/field/app/canteen.tsx, apps/field/src/canteen.ts)",
+    "services/api/test/fieldwork.db.test.ts (FL-06 counters), services/api/test/fieldrecords.db.test.ts (FL:FR-17: check-in and check-out in one offline batch, a resend changes nothing, an unknown stop not found, only the crew checks out, a PIO refused), apps/field/test/canteen.test.ts (next stop of the route), tests/e2e/field.spec.ts (canteen stop worked on the phone, the check-out naming its check-in, with axe; upload stubbed for the lead's role)",
+    "Plan reading 27: the allergen note is about the food, never who has an allergy."
   ],
   "FL:FR-19": [
     "pass",

@@ -201,6 +201,11 @@ interface FieldActions {
   ): Promise<string>;
   /** A next step on a record the server already has (a road reopens, an interpreter accepts). */
   recordStep(kind: string, targetId: string, body?: Record<string, unknown>): Promise<void>;
+  /** FL:FR-17: leave a canteen stop, named by the phone's id for its check-in (works offline). */
+  canteenCheckOut(
+    stopId: string,
+    body: { mealsServed: number; suppliesLeft?: string; allergenNote?: string },
+  ): Promise<void>;
 }
 
 export interface AssessmentInput {
@@ -892,6 +897,12 @@ export function FieldProvider({ children }: { children: ReactNode }) {
     },
     async recordStep(kind, targetId, body) {
       await enqueue({ kind: `record.${kind}`, targetId, body: body ?? {} });
+    },
+    async canteenCheckOut(stopId, body) {
+      await enqueue({
+        kind: 'record.canteen_stop.check_out',
+        body: { stopClientUuid: stopId, departedAt: new Date().toISOString(), ...body },
+      });
     },
   };
 

@@ -206,6 +206,13 @@ export default function Home() {
               onPress={() => router.push('/stock')}
             />
           ) : null}
+          {f.can('canteen_stop.write') ? (
+            <Button
+              kind="secondary"
+              label={t('canteen.heading')}
+              onPress={() => router.push('/canteen')}
+            />
+          ) : null}
           {f.can('pet_intake.read') ? (
             <Button
               kind="secondary"

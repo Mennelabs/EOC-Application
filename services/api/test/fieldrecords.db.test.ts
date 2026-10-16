@@ -112,6 +112,7 @@ describe.skipIf(!appUrl || !workerUrl)('frontline role records (database-backed)
       ['host', 'facility_host'],
       ['volunteer', 'field_volunteer'],
       ['coordinator', 'field_coordinator'],
+      ['canteen', 'canteen_crew'],
     ] as const) {
       const email = `${who}.fieldrecords@example.org`;
       const existing = await dbWorker
@@ -984,6 +985,74 @@ describe.skipIf(!appUrl || !workerUrl)('frontline role records (database-backed)
     // A role that reads neither sees the layer as not available, with nothing in it.
     const health = await situation('health');
     expect(health.layers['searched']).toEqual({ available: false, items: [] });
+  });
+
+  it('FL:FR-17: a canteen crew checks in at a stop and out with meals, supplies left and an allergen note, both sent in one batch from a phone that had no signal', async () => {
+    const stopId = randomUUID();
+    const batch = await call('canteen', 'POST', '/api/v1/field/commands', {
+      commands: [
+        {
+          id: stopId,
+          kind: 'record.canteen_stop',
+          body: {
+            eventId,
+            stopName: 'Exercise Pine Park lot',
+            position: { lat: 38.792, lon: -90.866 },
+            arrivedAt: new Date(Date.now() - 45 * 60_000).toISOString(),
+          },
+        },
+        {
+          id: randomUUID(),
+          kind: 'record.canteen_stop.check_out',
+          body: {
+            stopClientUuid: stopId,
+            mealsServed: 140,
+            suppliesLeft: '40 meals, 3 cases of water',
+            allergenNote: 'Chili contains peanuts; 6 asked for gluten-free',
+          },
+        },
+      ],
+    });
+    expect(batch.status, batch.body).toBe(200);
+    expect(batch.json<{ results: { result: string }[] }>().results.map((r) => r.result)).toEqual([
+      'applied',
+      'applied',
+    ]);
+    const listed = (
+      await call('coordinator', 'GET', `/api/v1/field-records/canteen_stop?eventId=${eventId}`)
+    ).json<Json[]>();
+    const stop = listed.find(
+      (r) => r['stopName'] === 'Exercise Pine Park lot' && r['mealsServed'] === 140,
+    );
+    expect(stop).toMatchObject({ suppliesLeft: '40 meals, 3 cases of water' });
+    expect(stop!['departedAt']).toBeTruthy();
+    expect(Date.parse(String(stop!['departedAt']))).toBeGreaterThan(
+      Date.parse(String(stop!['arrivedAt'])),
+    );
+    // A resend changes nothing; an unknown stop is not found; only the crew checks out.
+    const again = await call('canteen', 'POST', '/api/v1/field-records/canteen_stop/check-out', {
+      stopClientUuid: stopId,
+      mealsServed: 999,
+    });
+    expect(again.status, again.body).toBe(200);
+    expect(again.json()['mealsServed']).toBe(140);
+    expect(
+      (
+        await call('canteen', 'POST', '/api/v1/field-records/canteen_stop/check-out', {
+          stopClientUuid: randomUUID(),
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await call('coordinator', 'POST', '/api/v1/field-records/canteen_stop/check-out', {
+          stopClientUuid: stopId,
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (await call('pio', 'GET', `/api/v1/field-records/canteen_stop?eventId=${eventId}`)).status,
+    ).toBe(403);
   });
 
   it('FL:FR-19: equipment that ran on a work order is logged with its hours, once per phone id; the coordinator reads it; other roles cannot log it', async () => {

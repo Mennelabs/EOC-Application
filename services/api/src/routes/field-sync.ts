@@ -97,6 +97,7 @@ export const FIELD_COMMANDS: Record<
       'health_note',
       'field_report',
       'equipment_use',
+      'canteen_stop',
     ].map((k) => [
       `record.${k}`,
       { method: 'POST' as const, path: () => `/api/v1/field-records/${k}`, needsTarget: false },
@@ -105,6 +106,12 @@ export const FIELD_COMMANDS: Record<
   'record.stock_movement': {
     method: 'POST',
     path: () => '/api/v1/field-records/stock_movement',
+    needsTarget: false,
+  },
+  // FL:FR-17: the check-out names its check-in by the phone's id, not the server's.
+  'record.canteen_stop.check_out': {
+    method: 'POST',
+    path: () => '/api/v1/field-records/canteen_stop/check-out',
     needsTarget: false,
   },
   'record.road_status.clear': {

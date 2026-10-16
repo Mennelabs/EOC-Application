@@ -552,6 +552,9 @@ export const actions = {
   'placard.write': a('write', 'placard', 'Record a posted placard'),
   'road_status.read': a('read', 'road_status', 'Read road status'),
   'road_status.write': a('write', 'road_status', 'Set road status'),
+  // FL:FR-17: a canteen crew's stops: check-in, check-out, meals, supplies left, allergen notes.
+  'canteen_stop.read': a('read', 'canteen_stop', 'Read canteen stops on routes'),
+  'canteen_stop.write': a('write', 'canteen_stop', 'Check in and out at a canteen stop'),
   // FL:FR-19: equipment hours per work order (FEMA PA equipment hours).
   'equipment_use.read': a('read', 'equipment_use', 'Read equipment used on work orders'),
   'equipment_use.write': a(

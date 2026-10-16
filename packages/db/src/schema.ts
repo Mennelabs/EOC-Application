@@ -323,6 +323,24 @@ export interface PeerSupportRequestTable extends Stamped {
   closed_by_requester: Generated<boolean>;
 }
 
+/** FL:FR-17: a canteen crew's stop on its route, from check-in to check-out. */
+export interface CanteenStopTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  mission_id: Uuid | null;
+  client_uuid: Uuid;
+  stop_name: string;
+  geom: ColumnType<unknown, unknown, unknown> | null;
+  arrived_at: TsGen;
+  departed_at: TsNullable;
+  meals_served: number | null;
+  supplies_left: string | null;
+  allergen_note: string | null;
+  reported_by: Uuid | null;
+  reported_personnel_id: Uuid | null;
+}
+
 /** FL:FR-19: equipment that ran on a work order, with its hours. */
 export interface EquipmentUseTable extends Stamped {
   id: Generated<Uuid>;
@@ -3299,6 +3317,7 @@ export interface Database {
   'cg.field_report': FieldReportTable;
   'cg.supply_request': SupplyRequestTable;
   'cg.equipment_use': EquipmentUseTable;
+  'cg.canteen_stop': CanteenStopTable;
   'cg.legal_hold': LegalHoldTable;
   'cg.deletion_log': DeletionLogTable;
   'cg.idempotency_key': IdempotencyKeyTable;

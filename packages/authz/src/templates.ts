@@ -863,6 +863,7 @@ const templates: readonly RoleTemplate[] = [
       g('mission.*', ['contact', 'location_exact']),
       g('assignment.*'),
       g('dispatch.read'),
+      g('canteen_stop.read'), // FL:FR-17
       g('equipment_use.read'), // FL:FR-19
       g('field_report.read'), // FLD-11
       g('field_report.note'),
@@ -1159,7 +1160,7 @@ const templates: readonly RoleTemplate[] = [
     'canteen_crew',
     'Feeding and canteen crew',
     'Meal counter, stop check-in and check-out, supplies left, allergen notes (FL:FR-17).',
-    ['service_log.read', 'site.read', 'site.confirm', 'stock.read'],
+    ['service_log.read', 'site.read', 'site.confirm', 'stock.read', 'canteen_stop.*'],
   ),
   ...frontline(
     'distribution_staff',

@@ -203,10 +203,13 @@ describe.skipIf(!appUrl || !workerUrl)('Waze closure feed (database-backed)', ()
     expect(res.statusCode, res.body).toBe(200);
     expect(res.headers['cache-control']).toContain('max-age=60');
     const incidents = res.json<Feed>().incidents;
-    expect(incidents.map((i) => [i.id, i.type, i.street]).sort()).toEqual([
-      [`cg-${roads['closed']}`, 'ROAD_CLOSED', 'Exercise River Rd'],
-      [`cg-${roads['lane']}`, 'HAZARD', 'Exercise Main St'],
-    ]);
+    // Both sides sorted: the ids are random, so their order is too.
+    expect(incidents.map((i) => [i.id, i.type, i.street]).sort()).toEqual(
+      [
+        [`cg-${roads['closed']}`, 'ROAD_CLOSED', 'Exercise River Rd'],
+        [`cg-${roads['lane']}`, 'HAZARD', 'Exercise Main St'],
+      ].sort(),
+    );
     expect(incidents[0]!.polyline.split(' ')).toHaveLength(4);
     const view = (await staff('admin')).json<{
       enabled: boolean;

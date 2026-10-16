@@ -4,7 +4,9 @@
  * field lead of the Field Exercise Team sets a PIN, checks in by the event
  * code, saves a quick report while offline ("On this phone") that is
  * received once the signal returns, reports how a site looks for dispatch
- * (FLD-11), records a damage assessment with the
+ * (FLD-11), checks stock and sends the resupply draft (FL:FR-21, FL:FR-22),
+ * matches a lost pet and reads the shelter census (FL:FR-08; both with
+ * answers stubbed), records a damage assessment with the
  * details FEMA asks for, asks the command window for its reminders, opens
  * the conversation note-taker (consent in Spanish; AI off here), uses live
  * translation (medical refused; off here) and asks for an interpreter, presses
@@ -106,7 +108,16 @@ test.describe('field app (web build)', () => {
         response: res,
         json: {
           ...me,
-          actions: [...me.actions, 'survivor.find', 'document.capture', 'report.read'],
+          actions: [
+            ...me.actions,
+            'survivor.find',
+            'document.capture',
+            'report.read',
+            'stock.read',
+            'stock.write',
+            'pet_intake.read',
+            'pet_intake.write',
+          ],
         },
       });
     });
@@ -181,6 +192,122 @@ test.describe('field app (web build)', () => {
       return route.fulfill({ json: { documentId, status: 'uploaded' } });
     });
 
+    // FL:FR-21, FL:FR-22: the lead's role holds no stock, so the stock screen's answers are
+    // stubbed here; the API itself runs against the database in fieldrecords.db.test.ts.
+    const water = {
+      id: crypto.randomUUID(),
+      sku: 'EX-WATER',
+      name: 'Exercise water',
+      unit: 'case',
+      quantity: 6,
+      barcode: '0123456789012',
+      reorderAt: 10,
+      runningLow: true,
+      usedLastDay: 24,
+      hoursLeft: 6,
+    };
+    const tarps = {
+      ...water,
+      id: crypto.randomUUID(),
+      sku: 'EX-TARP',
+      name: 'Exercise tarps',
+      unit: 'each',
+      barcode: null,
+      runningLow: false,
+      usedLastDay: 0,
+      hoursLeft: null,
+    };
+    const draftLine = {
+      stockItemId: water.id,
+      name: water.name,
+      unit: 'case',
+      quantity: 26,
+      suggested: 26,
+    };
+    const supply = (status: string, id = crypto.randomUUID(), siteName = 'Exercise site') => ({
+      id,
+      version: 1,
+      siteId: crypto.randomUUID(),
+      siteName,
+      status,
+      draftedAutomatically: status === 'draft',
+      lines: [draftLine],
+      note: null,
+      sentAt: null,
+      filledAt: null,
+      missionId: null,
+      canceledAt: null,
+    });
+    const draftId = crypto.randomUUID();
+    const supplySteps: { url: string; ifMatch: string | undefined; body: unknown }[] = [];
+    await page.route('**/api/v1/field-records/stock_item**', (route) =>
+      route.fulfill({ json: [water, tarps] }),
+    );
+    await page.route('**/api/v1/supply-requests**', (route) => {
+      const req = route.request();
+      if (req.method() === 'POST') {
+        supplySteps.push({
+          url: req.url(),
+          ifMatch: req.headers()['if-match'],
+          body: req.postDataJSON(),
+        });
+        return route.fulfill({ json: supply(req.url().endsWith('/send') ? 'sent' : 'filled') });
+      }
+      return route.fulfill({
+        json: req.url().includes('status=sent')
+          ? [supply('sent', crypto.randomUUID(), 'Exercise north pantry')]
+          : [supply('draft', draftId)],
+      });
+    });
+
+    // FL:FR-08: the same for the pets screen; matching runs against the database in
+    // fieldrecords.db.test.ts.
+    const lostDog = {
+      id: crypto.randomUUID(),
+      species: 'dog',
+      description: 'Brown terrier, red collar',
+      ownerReferenceCode: 'WW7M2P',
+      status: 'lost_report',
+      matchedWith: null,
+    };
+    const shelteredDog = {
+      ...lostDog,
+      id: crypto.randomUUID(),
+      description: 'Small brown terrier',
+      ownerReferenceCode: null,
+      status: 'sheltered',
+    };
+    const homeward = {
+      ...lostDog,
+      id: crypto.randomUUID(),
+      species: 'cat',
+      description: 'Grey tabby',
+      matchedWith: crypto.randomUUID(),
+    };
+    const petSteps: { url: string; body: unknown }[] = [];
+    await page.route('**/api/v1/field-records/pet_intake**', (route) => {
+      const req = route.request();
+      const url = req.url();
+      if (req.method() === 'POST') {
+        petSteps.push({ url, body: req.postDataJSON() });
+        return route.fulfill({ json: lostDog });
+      }
+      if (url.includes('/census'))
+        return route.fulfill({
+          json: [
+            {
+              siteId: crypto.randomUUID(),
+              siteName: 'Exercise shelter',
+              total: 3,
+              bySpecies: { dog: 2, cat: 1 },
+            },
+          ],
+        });
+      if (url.includes('/candidates'))
+        return route.fulfill({ json: [{ record: shelteredDog, shared: ['brown', 'terrier'] }] });
+      return route.fulfill({ json: [lostDog, homeward] });
+    });
+
     await page.goto('/field/');
     await expect(page.getByRole('heading', { name: 'Choose a PIN for this phone' })).toBeVisible({
       timeout: 30_000,
@@ -246,6 +373,61 @@ test.describe('field app (web build)', () => {
         { timeout: 60_000 },
       )
       .toBe('full');
+
+    // FL:FR-21, FL:FR-22: stock shows how fast it runs down; the resupply draft started at the
+    // reorder point is checked and sent by a person; the warehouse marks a site's request filled.
+    await page.getByRole('link', { name: 'Home' }).click();
+    await page.getByRole('button', { name: 'Stock' }).click();
+    await expect(page.getByRole('heading', { name: 'Stock', level: 1 })).toBeVisible();
+    await page.getByRole('radiogroup', { name: 'Site' }).getByRole('radio').first().click();
+    await expect(
+      page.getByText('Handed out in the last day: 24 case · lasts about 6 hours at that rate'),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Resupply request (not sent yet)' }),
+    ).toBeVisible();
+    await expect(page.getByText(/nothing is sent until you send it/)).toBeVisible();
+    await expectNoViolations(page);
+    await page.getByRole('button', { name: 'Send request to the warehouse' }).click();
+    await expect(page.getByText('Request sent to the warehouse.')).toBeVisible();
+    expect(supplySteps[0]).toMatchObject({
+      ifMatch: '"1"',
+      body: { lines: [{ stockItemId: water.id, quantity: 26 }] },
+    });
+    expect(supplySteps[0]!.url).toContain(`/supply-requests/${draftId}/send`);
+    await page.getByRole('button', { name: 'Mark filled: Exercise north pantry' }).click();
+    await expect(page.getByText('Request marked filled.')).toBeVisible();
+    expect(supplySteps[1]!.url).toMatch(/\/fill$/);
+    // An item found by its barcode, typed when there is no camera.
+    await page.getByRole('textbox', { name: 'Barcode', exact: true }).first().fill('0123456789012');
+    await page.getByRole('button', { name: 'Look up' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Exercise water', level: 3, exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Exercise tarps', level: 3, exact: true }),
+    ).toHaveCount(0);
+    await expectNoViolations(page);
+
+    // FL:FR-08: the shelter census, a lost report matched by a person from a suggestion that
+    // says which words the descriptions share, and a matched pet marked gone home.
+    await page.getByRole('link', { name: 'Home' }).click();
+    await page.getByRole('button', { name: 'Pets: shelters, lost and found' }).click();
+    await expect(page.getByText('Exercise shelter: 3 (Dog 2, Cat 1)')).toBeVisible();
+    await expect(
+      page.getByText('Dog: Brown terrier, red collar · owner’s code WW7M2P'),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Possible matches for this Dog' }).click();
+    await expect(page.getByText('Words in common: brown, terrier')).toBeVisible();
+    await expectNoViolations(page);
+    await page.getByRole('button', { name: 'This is the same pet' }).click();
+    await expect(page.getByText('Match confirmed.')).toBeVisible();
+    expect(petSteps[0]).toMatchObject({ body: { otherId: shelteredDog.id } });
+    expect(petSteps[0]!.url).toContain(`/pet_intake/${lostDog.id}/match`);
+    await page.getByRole('button', { name: 'This Cat went home' }).click();
+    await expect(page.getByText('Marked as gone home.')).toBeVisible();
+    expect(petSteps[1]!.url).toContain(`/pet_intake/${homeward.id}/reunite`);
+    await expectNoViolations(page);
 
     // FLD-08, DCL:DEC-17: an assessment with the damage seen and the details FEMA asks for
     // (depth in feet and inches, renter, flood insurance, utilities out) is received as entered;

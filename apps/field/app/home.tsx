@@ -206,6 +206,13 @@ export default function Home() {
               onPress={() => router.push('/stock')}
             />
           ) : null}
+          {f.can('pet_intake.read') ? (
+            <Button
+              kind="secondary"
+              label={t('pets.heading')}
+              onPress={() => router.push('/pets')}
+            />
+          ) : null}
           {f.can('scribe.use') ? (
             <Button
               kind="secondary"

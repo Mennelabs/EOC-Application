@@ -73,7 +73,16 @@ const commandKinds: Vocab = {
   'reminder.complete': { en: 'Reminder done', es: 'Recordatorio terminado' },
 };
 
-const groups = { missionKinds, assignmentStates, hazardKinds, commandKinds };
+// FL:FR-08: the kinds of animal on the pet intake form.
+const species: Vocab = {
+  dog: { en: 'Dog', es: 'Perro' },
+  cat: { en: 'Cat', es: 'Gato' },
+  bird: { en: 'Bird', es: 'Ave' },
+  livestock: { en: 'Livestock', es: 'Ganado' },
+  other: { en: 'Other animal', es: 'Otro animal' },
+};
+
+const groups = { missionKinds, assignmentStates, hazardKinds, commandKinds, species };
 
 export function label(
   locale: Locale,

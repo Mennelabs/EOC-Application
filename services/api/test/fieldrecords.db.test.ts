@@ -500,6 +500,126 @@ describe.skipIf(!appUrl || !workerUrl)('frontline role records (database-backed)
     ).toBe(403);
   });
 
+  it('FL:FR-21, FL:FR-22: at the reorder point a resupply draft is started with a suggested quantity; a person sends it; the warehouse fills it; a site asks by hand', async () => {
+    type Req = {
+      id: string;
+      version: number;
+      status: string;
+      draftedAutomatically: boolean;
+      lines: { stockItemId: string; quantity: number; suggested: number | null }[];
+    };
+    const stepCall = async (id: string, to: string, version: number, payload: Json = {}) => {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/supply-requests/${id}/${to}`,
+        headers: { authorization: 'Bearer stock', 'if-match': `"${version}"` },
+        payload,
+      });
+      return { status: res.statusCode, body: res.body, json: () => res.json() as Req };
+    };
+    const drafts = async () =>
+      (await call('stock', 'GET', `/api/v1/supply-requests?siteId=${siteId}&status=draft`)).json<
+        Req[]
+      >();
+    // Start from no draft at this site (other tests and earlier runs leave one).
+    for (const d of await drafts())
+      expect((await stepCall(d.id, 'cancel', d.version)).status).toBe(200);
+
+    const move = (body: Json) =>
+      call('stock', 'POST', '/api/v1/field-records/stock_movement', body);
+    const sku = `WATER-${randomUUID().slice(0, 6)}`;
+    const received = await move({
+      clientUuid: randomUUID(),
+      item: { siteId, sku, name: 'Exercise water, cases', unit: 'case', reorderAt: 10 },
+      kind: 'received',
+      quantity: 30,
+    });
+    const itemId = received.json()['stockItemId'] as string;
+    const issue = async (quantity: number) =>
+      (
+        await move({ clientUuid: randomUUID(), stockItemId: itemId, kind: 'issued', quantity })
+      ).json();
+    expect(await issue(15)).toMatchObject({
+      quantity: 15,
+      runningLow: false,
+      resupplyDrafted: false,
+    });
+    expect(await issue(8)).toMatchObject({ quantity: 7, runningLow: true, resupplyDrafted: true });
+    // Asked for once: a second low movement does not add the item again.
+    expect(await issue(1)).toMatchObject({ quantity: 6, resupplyDrafted: false });
+
+    // A day's use (23 so far when drafted) plus back to the reorder point (10), less the 7 left.
+    const [draft] = await drafts();
+    expect(draft).toMatchObject({ status: 'draft', draftedAutomatically: true });
+    expect(draft!.lines).toEqual([
+      {
+        stockItemId: itemId,
+        name: 'Exercise water, cases',
+        unit: 'case',
+        quantity: 26,
+        suggested: 26,
+      },
+    ]);
+
+    // How fast it runs down: 24 handed out in the last day, 6 left, about 6 hours.
+    const listed = (
+      await call('stock', 'GET', `/api/v1/field-records/stock_item?siteId=${siteId}`)
+    ).json<{ id: string; usedLastDay: number; hoursLeft: number | null }[]>();
+    expect(listed.find((i) => i.id === itemId)).toMatchObject({ usedLastDay: 24, hoursLeft: 6 });
+
+    // Nothing is sent on its own: a person changes the quantity and sends it.
+    const sent = await stepCall(draft!.id, 'send', draft!.version, {
+      lines: [{ stockItemId: itemId, quantity: 30 }],
+    });
+    expect(sent.status, sent.body).toBe(200);
+    expect(sent.json()).toMatchObject({ status: 'sent', lines: [{ quantity: 30, suggested: 26 }] });
+    expect((await stepCall(draft!.id, 'send', sent.json().version)).status).toBe(409);
+    // On a sent request that is not filled: not drafted again.
+    expect(await issue(1)).toMatchObject({ resupplyDrafted: false });
+    const filled = await stepCall(draft!.id, 'fill', sent.json().version);
+    expect(filled.status, filled.body).toBe(200);
+    expect(filled.json().status).toBe('filled');
+    expect((await stepCall(draft!.id, 'fill', filled.json().version)).status).toBe(409);
+    // Once filled, a new shortage starts a new draft.
+    expect(await issue(1)).toMatchObject({ resupplyDrafted: true });
+    const [next] = await drafts();
+    expect(next!.id).not.toBe(draft!.id);
+    expect((await stepCall(next!.id, 'cancel', next!.version)).json().status).toBe('canceled');
+
+    // FL:FR-21: a site asks by hand, sent at once, once per phone id; only its own items.
+    const clientUuid = randomUUID();
+    const ask = (lines: Json[]) =>
+      call('stock', 'POST', '/api/v1/supply-requests', {
+        clientUuid,
+        siteId,
+        lines,
+        note: 'Exercise: for tomorrow',
+      });
+    const otherSite = await dbWorker
+      .selectFrom('cg.stock_item')
+      .select('id')
+      .where('tenant_id', '=', county)
+      .where('site_id', '<>', siteId)
+      .executeTakeFirst();
+    if (otherSite)
+      expect(
+        (
+          await call('stock', 'POST', '/api/v1/supply-requests', {
+            clientUuid: randomUUID(),
+            siteId,
+            lines: [{ stockItemId: otherSite.id, quantity: 3 }],
+          })
+        ).status,
+      ).toBe(400);
+    const asked = await ask([{ stockItemId: itemId, quantity: 12 }]);
+    expect(asked.status, asked.body).toBe(201);
+    expect(asked.json()).toMatchObject({ status: 'sent', draftedAutomatically: false });
+    const again = await ask([{ stockItemId: itemId, quantity: 12 }]);
+    expect(again.status).toBe(200);
+    expect(again.json()['id']).toBe(asked.json()['id']);
+    expect((await call('pio', 'GET', '/api/v1/supply-requests')).status).toBe(403);
+  });
+
   it('FL:FR-24: an interpreter accepts and finishes a request; the order of steps is enforced', async () => {
     const req = await create('shelter', 'interpreter_request', {
       clientUuid: randomUUID(),
@@ -542,6 +662,84 @@ describe.skipIf(!appUrl || !workerUrl)('frontline role records (database-backed)
       recordId: pet['id'],
     });
     expect(ticket.status, ticket.body).toBe(201);
+  });
+
+  it('FL:FR-08: a lost report is matched to a sheltered animal by a person, from suggestions with shared words; the pet goes home; the shelter census counts what is there', async () => {
+    type Census = { siteId: string | null; total: number; bySpecies: Record<string, number> }[];
+    const census = async () =>
+      (await call('pets', 'GET', `/api/v1/field-records/pet_intake/census?eventId=${eventId}`))
+        .json<Census>()
+        .find((c) => c.siteId === siteId) ?? { siteId, total: 0, bySpecies: {} };
+    const before = await census();
+    // A word only this run's descriptions carry, so animals from earlier runs rank below.
+    const tag = `spot${randomUUID().slice(0, 6)}`;
+    const pet = (body: Json) =>
+      create('pets', 'pet_intake', { clientUuid: randomUUID(), eventId, ...body });
+    const lost = await pet({
+      species: 'dog',
+      status: 'lost_report',
+      ownerReferenceCode: 'ww-7m2p',
+      description: `Brown terrier, red collar, ${tag}, answers to Biscuit`,
+    });
+    const terrier = await pet({
+      siteId,
+      species: 'dog',
+      description: `Small brown terrier with a red collar, ${tag}, very friendly`,
+    });
+    const lab = await pet({ siteId, species: 'dog', description: 'Large black lab' });
+    const cat = await pet({ siteId, species: 'cat', description: 'Brown tabby, red collar' });
+    const after = await census();
+    expect(after.bySpecies['dog'] ?? 0).toBe((before.bySpecies['dog'] ?? 0) + 2);
+    expect(after.bySpecies['cat'] ?? 0).toBe((before.bySpecies['cat'] ?? 0) + 1);
+    expect(after.total).toBe(before.total + 3);
+
+    // Suggestions only: the same kind of animal, most shared words first.
+    const candidates = (
+      await call('pets', 'GET', `/api/v1/field-records/pet_intake/${lost['id']}/candidates`)
+    ).json<{ record: Json; shared: string[] }[]>();
+    expect(candidates[0]!.record['id']).toBe(terrier['id']);
+    expect(candidates[0]!.shared).toEqual(
+      expect.arrayContaining(['brown', 'terrier', 'red', 'collar', tag]),
+    );
+    expect(candidates.map((c) => c.record['id'])).not.toContain(cat['id']);
+
+    const step = (id: unknown, to: string, payload?: Json) =>
+      call('pets', 'POST', `/api/v1/field-records/pet_intake/${String(id)}/${to}`, payload ?? {});
+    expect((await step(lost['id'], 'reunite')).status).toBe(409);
+    const lost2 = await pet({ species: 'dog', status: 'lost_report', description: 'Grey husky' });
+    expect((await step(lost['id'], 'match', { otherId: lost2['id'] })).status).toBe(409);
+    expect(
+      (
+        await call('pio', 'POST', `/api/v1/field-records/pet_intake/${String(lost['id'])}/match`, {
+          otherId: terrier['id'],
+        })
+      ).status,
+    ).toBe(403);
+    const matched = await step(lost['id'], 'match', { otherId: terrier['id'] });
+    expect(matched.status, matched.body).toBe(200);
+    expect(matched.json()['matchedWith']).toBe(terrier['id']);
+    expect((await step(lab['id'], 'match', { otherId: lost['id'] })).status).toBe(409);
+    // A matched animal is no longer suggested for another lost report.
+    const forLost2 = (
+      await call(
+        'pets',
+        'GET',
+        `/api/v1/field-records/pet_intake/${String(lost2['id'])}/candidates`,
+      )
+    ).json<{ record: Json }[]>();
+    expect(forLost2.map((c) => c.record['id'])).not.toContain(terrier['id']);
+
+    const home = await step(terrier['id'], 'reunite');
+    expect(home.status, home.body).toBe(200);
+    expect(home.json()).toMatchObject({ status: 'reunited' });
+    const both = await dbWorker
+      .selectFrom('cg.pet_intake')
+      .select(['id', 'status', 'released_at'])
+      .where('id', 'in', [lost['id'] as string, terrier['id'] as string])
+      .execute();
+    expect(both.every((p) => p.status === 'reunited' && p.released_at)).toBe(true);
+    expect((await step(terrier['id'], 'reunite')).status).toBe(409);
+    expect((await census()).bySpecies['dog'] ?? 0).toBe((before.bySpecies['dog'] ?? 0) + 1);
   });
 
   it('FL:FR-20, PER-01, BDG-01: a walk-up volunteer is registered in one step, once; skills stay unverified; the badge code is shown once', async () => {

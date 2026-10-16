@@ -38,6 +38,7 @@ import { referralRoutes } from './referrals.ts';
 import { survivorLookupRoutes } from './survivor-lookup.ts';
 import { sharedDocumentRoutes } from './shared-documents.ts';
 import { peerSupportRoutes } from './peer-support.ts';
+import { supplyRequestRoutes } from './supply-requests.ts';
 import { refdataRoutes, type RefdataDeps } from './refdata.ts';
 import { reportRoutes } from './reports.ts';
 import { resourceRoutes } from './resources.ts';
@@ -105,6 +106,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   survivorLookupRoutes,
   sharedDocumentRoutes,
   peerSupportRoutes,
+  supplyRequestRoutes,
   refdataRoutes(deps.refdata),
   declarationRoutesWith(deps.drafting),
   officialReportRoutesWith(deps.drafting),

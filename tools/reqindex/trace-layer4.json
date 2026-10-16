@@ -811,10 +811,10 @@
     "Targeted boil-water and safety notices are not built."
   ],
   "FL:FR-08": [
-    "partial",
-    "pet_intake keyed to the owner's code with a field photo (0033, 0038, routes/field-records.ts)",
-    "services/api/test/fieldrecords.db.test.ts (FL:FR-08)",
-    "Lost-and-found matching and a shelter pet census are not built."
+    "pass",
+    "pet_intake keyed to the owner's code with a field photo (0033, 0038, routes/field-records.ts); lost and found: lost reports and animals found or sheltered, candidate matches of the same kind of animal in the same event with the words their descriptions share, a match confirmed by a person and linked both ways, and both marked when the pet goes home (0091, /field-records/pet_intake/:id/candidates, /match, /reunite); shelter pet census by site and kind of animal (/field-records/pet_intake/census); field app pets screen (apps/field/app/pets.tsx)",
+    "services/api/test/fieldrecords.db.test.ts (FL:FR-08: pet intake with a photo; FL:FR-08: suggestions by shared words, no other kinds of animal, a person matches, a lost report cannot match a lost report, a matched animal is not suggested again, reunite only after a match, both records marked, census counts before and after, a PIO refused), tests/e2e/field.spec.ts (pets screen: census, suggestion with its words, match, gone home, with axe; answers stubbed for the lead's role)",
+    "Plan reading 26: a match is a person's decision; suggestions only rank."
   ],
   "FL:FR-09": [
     "pass",
@@ -847,16 +847,16 @@
     "Staff register the walk-up at the desk; self-registration by QR is not built."
   ],
   "FL:FR-21": [
-    "partial",
-    "stock_item and stock_movement by the phone's id, typed barcode, running low (0033, routes/field-records.ts, apps/field/app/stock.tsx)",
-    "services/api/test/fieldrecords.db.test.ts (FL:FR-21, FR-22)",
-    "No camera barcode scan on the stock screen; requests from sites are not modelled (delivery runs are delivery missions)."
+    "pass",
+    "stock_item and stock_movement by the phone's id, running low (0033, routes/field-records.ts); items found by scanning (Scanner with retail barcodes) or typing a barcode, and new items keep theirs (apps/field/app/stock.tsx); requests from sites: cg.supply_request (0090) asked by hand and sent at once, or drafted at the reorder point and sent by a person; warehouse staff see requests sent by sites and mark them filled, naming the delivery mission when there is one (routes/supply-requests.ts)",
+    "services/api/test/fieldrecords.db.test.ts (FL:FR-21, FR-22: stock once per phone id; FL:FR-21, FL:FR-22: draft at the reorder point, sent by a person, filled, asked by hand once per phone id, only the site's own items, refusals), tests/e2e/field.spec.ts (stock screen: barcode lookup, send, mark filled, with axe; answers stubbed for the lead's role)",
+    "Delivery runs are delivery missions; the mission is named when the request is filled."
   ],
   "FL:FR-22": [
-    "partial",
-    "car and person counters and supplies per car (service logs), stock running low (routes/field-records.ts)",
-    "services/api/test/fieldrecords.db.test.ts (FL:FR-21, FR-22), services/api/test/fieldwork.db.test.ts (counters)",
-    "The resupply request is not drafted automatically."
+    "pass",
+    "car and person counters and supplies per car (service logs); how fast stock runs down: handed out or sent on in the last 24 hours and the hours what is left lasts at that rate (GET /field-records/stock_item usedLastDay, hoursLeft; apps/field/app/stock.tsx); at the reorder point the site's resupply request is drafted with a suggested quantity (a day's use plus back to the reorder point), never sent on its own (routes/supply-requests.ts draftResupply, 0090); no ID asked of anyone receiving help",
+    "services/api/test/fieldrecords.db.test.ts (FL:FR-21, FL:FR-22: suggested 26 from 23 used, 10 reorder and 7 left; asked once; 24 used and about 6 hours left; a new draft after filling), services/api/test/fieldwork.db.test.ts (counters), tests/e2e/field.spec.ts (rate and draft shown, sent by a person, with axe)",
+    "Plan reading 25: a person always sends the draft."
   ],
   "FL:FR-24": [
     "partial",

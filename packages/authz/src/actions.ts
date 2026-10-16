@@ -192,6 +192,19 @@ export const actions = {
     "Record a report on a resident's behalf (assisted intake)",
   ),
   'report.update': a('write', 'report', "Update a report's location or answers as a reviewer"),
+  // FL-09: documents a survivor chooses to share, photographed into their record with consent.
+  'document.capture': a(
+    'write',
+    'report',
+    'Photograph a document a survivor chooses to share (lease, ID, insurance letter) into their report, with their consent',
+    { explicit: true },
+  ),
+  'document.read': a(
+    'read',
+    'report',
+    'See the documents survivors shared with their reports; every view is audited',
+    { explicit: true },
+  ),
   // FL-02: find a resident's report without their code, once they show it is them.
   'survivor.find': a(
     'read',

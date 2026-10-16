@@ -593,6 +593,7 @@ export interface PhotoTable extends Stamped {
     | 'road_status'
     | 'canvass_visit'
     | 'pa_site'
+    | 'shared_document'
     | null;
   field_record_id: Uuid | null;
 }
@@ -2476,6 +2477,21 @@ export interface FacilityTable extends Stamped {
 }
 
 /** REC-01: the single-use link in an owner's yearly re-check email; only its hash is kept. */
+/** FL-09: a document a survivor chose to share, photographed with their consent. */
+export interface SharedDocumentTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  report_id: Uuid;
+  client_uuid: Uuid;
+  kind: 'lease' | 'id' | 'insurance' | 'other';
+  consent_method: 'spoken' | 'tapped';
+  consent_language: string;
+  consent_text: string;
+  consented_at: TsGen;
+  taken_by: Uuid;
+  photo_id: Uuid | null;
+}
+
 export interface FacilityUpdateLinkTable {
   id: Generated<Uuid>;
   tenant_id: Uuid;
@@ -3248,6 +3264,7 @@ export interface Database {
   'cg.facility': FacilityTable;
   'cg.facility_change': FacilityChangeTable;
   'cg.facility_update_link': FacilityUpdateLinkTable;
+  'cg.shared_document': SharedDocumentTable;
   'cg.recommendation': RecommendationTable;
   'cg.public_audio': PublicAudioTable;
   'cg.scribe_session': ScribeSessionTable;

@@ -2306,6 +2306,18 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     },
     { omit: ['version', 'created_by', 'updated_at', 'updated_by'] },
   ),
+  // FL-09: a document a survivor chose to share, photographed with their consent.
+  shared_document: table({
+    report_id: { c: 'internal', r: 'photos' },
+    client_uuid: { c: 'internal', r: 'photos', d: 'Idempotency key from the phone' },
+    kind: { c: 'sensitive', r: 'photos', d: 'lease, id, insurance or other' },
+    consent_method: { c: 'internal', r: 'photos', d: 'spoken or tapped (FL-09)' },
+    consent_language: { c: 'internal', r: 'photos' },
+    consent_text: { c: 'internal', r: 'photos', d: 'The words the survivor agreed to' },
+    consented_at: { c: 'internal', r: 'photos' },
+    taken_by: { c: 'internal', r: 'photos' },
+    photo_id: { c: 'internal', r: 'photos' },
+  }),
   facility_change: table({
     facility_id: { c: 'internal' },
     change: { c: 'internal', d: 'create, update or retire' },

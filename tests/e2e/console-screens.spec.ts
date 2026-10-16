@@ -773,4 +773,79 @@ test.describe('every console screen, one by one', () => {
     await dialog.getByRole('button', { name: 'Confirm' }).click();
     await expect(row.getByRole('button', { name: 'Publish…' })).toBeVisible();
   });
+
+  test('ADM-01, CON-02: a director edits an event template’s map layers and saves it; a wrong keyword is named; axe finds nothing', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'county_em_director',
+      `Templates ${tag}`,
+      `scr-tpl-${testInfo.project.name}`,
+    );
+    await open(page, 'event-templates', 'Event templates');
+    const winter = page.getByRole('row').filter({ hasText: 'Winter storm' });
+    await expect(winter).toBeVisible();
+    await winter.getByRole('button', { name: 'Edit Winter storm' }).click();
+    const form = page.getByRole('form', { name: 'Edit Winter storm' });
+    const keywords = form.getByLabel('Text keywords');
+    await expect(keywords).toHaveValue(/DAMAGE/);
+    const before = await keywords.inputValue();
+    await keywords.fill(`${before}, AYUDA1`);
+    await expect(form.getByText('"AYUDA1" is not one word of capital letters.')).toBeVisible();
+    await expect(form.getByRole('button', { name: 'Save Winter storm' })).toBeDisabled();
+    await keywords.fill(before);
+    const searched = form.getByRole('checkbox', { name: 'Searched' });
+    await expect(searched).not.toBeChecked();
+    await searched.check();
+    await expectNoViolations(page);
+    await form.getByRole('button', { name: 'Save Winter storm' }).click();
+    await expect(page.getByText('Winter storm saved.')).toBeVisible();
+    await winter.getByRole('button', { name: 'Edit Winter storm' }).click();
+    await expect(form.getByRole('checkbox', { name: 'Searched' })).toBeChecked();
+    // As it was, for the other journeys.
+    await form.getByRole('checkbox', { name: 'Searched' }).uncheck();
+    await form.getByRole('button', { name: 'Save Winter storm' }).click();
+    await expect(page.getByText('Winter storm saved.')).toBeVisible();
+    await expectReflow(page);
+  });
+
+  test('ADM-01, REC-12: an administrator changes a planning factor with a reason and puts it back; axe finds nothing', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'tenant_admin',
+      `Factors ${tag}`,
+      `scr-factors-${testInfo.project.name}`,
+    );
+    await open(page, 'planning-factors', 'Planning factors');
+    const household = page.getByLabel('People per household');
+    await expect(household).toHaveAttribute('placeholder', 'Default 2.5');
+    await household.fill('0');
+    await expect(page.getByText('Enter a number above zero, or leave it blank.')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Save planning factors' })).toBeDisabled();
+    await household.fill('2.7');
+    await expectNoViolations(page);
+    const save = async (reason: string) => {
+      await page.getByRole('button', { name: 'Save planning factors' }).click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toBeVisible();
+      await dialog.getByLabel('Reason').fill(reason);
+      await dialog.getByRole('button', { name: 'Confirm' }).click();
+      await expect(page.getByText('Planning factors saved.')).toBeVisible();
+    };
+    await save('Exercise: the county census shows larger households');
+    await expect(household).toHaveValue('2.7');
+    await household.fill('');
+    await save('Exercise over: back to the default');
+    await expect(household).toHaveValue('');
+    await expectReflow(page);
+  });
 });

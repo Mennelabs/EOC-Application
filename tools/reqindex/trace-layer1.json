@@ -363,9 +363,9 @@
   "SCL-15": ["pass", "docs/adr/0001–0023", "", ""],
   "ADM-01": [
     "partial",
-    "routes/tenants.ts, accounts.ts, roles.ts; console administration workspaces",
-    "layer1.int.test.ts, console.spec.ts",
-    "Event templates, question graphs, planning factors and language/branding editors arrive with their layers; all are audited through the same path."
+    "routes/tenants.ts, accounts.ts, roles.ts; console administration workspaces; question graphs (routes/intake-graphs.ts, screens/intake.tsx); layer 7: the Event templates editor (screens/settings.tsx EventTemplatesScreen over PUT /event-templates/:id, version-checked) and the Planning factors editor (PlanningFactorsScreen: GET /recommendations/planning-factors, saved with a reason through PUT /tenants/:id/config/recommendation.planning_factors)",
+    "layer1.int.test.ts, console.spec.ts; services/api/test/event-templates.db.test.ts, services/api/test/recommendations.db.test.ts (ADM-01: defaults and county values in force, nonsense not in force, refused without configuration access), tests/e2e/console-screens.spec.ts (ADM-01: a template's layers saved and put back, a wrong keyword named; a planning factor changed with a reason and put back; axe and reflow)",
+    "Languages and branding have no editor yet (a county's branding is set through the tenant API, its languages through configuration); everything is audited through the same path (layer-7 plan reading 41)."
   ],
   "ADM-03": [
     "pass",

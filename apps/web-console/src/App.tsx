@@ -3,6 +3,7 @@ import { api, describeFailure, setConfirmHandler, type Confirmation } from './ap
 import { beginLogin, completeLogin, loadSession, rememberedRealm, signOut } from './auth/oidc.ts';
 import type { RuntimeConfig } from './runtime-config.ts';
 import { AccountsScreen, EventsScreen, PersonnelScreen, TenantsScreen } from './screens/admin.tsx';
+import { EventTemplatesScreen, PlanningFactorsScreen } from './screens/settings.tsx';
 import {
   ApprovalsScreen,
   AuditScreen,
@@ -102,6 +103,8 @@ const routes = [
   { path: '/console/recommendations', label: 'Recommendations', layer: 7 },
   { path: '/console/discovery', label: 'Resource discovery', layer: 7 },
   { path: '/console/events', label: 'Events', layer: 1 },
+  { path: '/console/event-templates', label: 'Event templates', layer: 7 },
+  { path: '/console/planning-factors', label: 'Planning factors', layer: 7 },
   { path: '/console/tenants', label: 'Organizations', layer: 1 },
   { path: '/console/accounts', label: 'Staff accounts', layer: 1 },
   { path: '/console/personnel', label: 'Personnel', layer: 1 },
@@ -347,6 +350,10 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <PartnersScreen me={me} />;
       case '/console/events':
         return <EventsScreen />;
+      case '/console/event-templates':
+        return <EventTemplatesScreen />;
+      case '/console/planning-factors':
+        return <PlanningFactorsScreen />;
       case '/console/tenants':
         return <TenantsScreen />;
       case '/console/accounts':

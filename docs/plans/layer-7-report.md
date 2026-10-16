@@ -97,7 +97,7 @@ Everything in the stack is synthetic or the WESTWIND exercise (SCL-12).
 
 ## Readings taken in favour of privacy and safety (flagged for you)
 
-The plan's §12 lists all 40. The newest:
+The plan's §12 lists all 41. The newest:
 
 - a legal aid organization's referral responses share only the status;
 - resident dictation goes through the county's provider or not at all;
@@ -128,6 +128,7 @@ The plan's §12 lists all 40. The newest:
 - "send the nearest team" from the command window plans the dispatch board's best suggestion with its reasons and cautions for the dispatcher to confirm; finding a mission by its place needs the right to read mission locations (DSP-04).
 - a photo a resident adds from My report after sending puts a reviewed report back in review, its reviewed version kept (CHN-09, RULE-09).
 - "Is this the property?" draws the lot from its outline with the pin, named in words for screen readers, with no tile map (FLD-04).
+- event templates and planning factors are edited on their own screens, version-checked and audited; a planning factor change needs a reason and a blank field means the default (ADM-01).
 
 ## Questions for you (defaults in force)
 

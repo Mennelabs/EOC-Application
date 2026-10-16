@@ -43,6 +43,12 @@ export interface Sweep {
 /** The sweeps, in an order that lets children go before what they point at. */
 export const SWEEPS: readonly Sweep[] = [
   { category: 'otp', table: 'otp_challenge', clock: 'created_at' },
+  {
+    category: 'otp',
+    table: 'facility_update_link',
+    clock: 'coalesce(used_at, expires_at)',
+    finished: 'used_at is not null or expires_at < now()',
+  },
   { category: 'drafts', table: 'draft', clock: 'created_at' },
   { category: 'abuse_signals', table: 'abuse_signal', clock: 'created_at' },
   {

@@ -20,9 +20,14 @@ export const redactPaths = [
   '*.address',
 ];
 
-/** A URL with the values of credential parameters removed (GIS clients send `token=`; SCL-09). */
+/**
+ * A URL with the values of credential parameters removed (GIS clients send `token=`; SCL-09),
+ * and the single-use token in a facility owner's re-check link (REC-01).
+ */
 export function redactUrl(url: string): string {
-  return url.replace(/([?&](?:token|key|api_key)=)[^&#]*/gi, '$1[redacted]');
+  return url
+    .replace(/([?&](?:token|key|api_key|update)=)[^&#]*/gi, '$1[redacted]')
+    .replace(/(\/facilities\/[^/?#]+\/update\/)[^/?#]+/gi, '$1[redacted]');
 }
 
 /** Request serializer: the default fields, with credential parameters removed from the URL. */

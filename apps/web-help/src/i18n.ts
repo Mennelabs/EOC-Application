@@ -60,6 +60,19 @@ export const STRINGS = {
       thanks: 'Thank you. The county will review the offer and contact you.',
       failed: 'The offer was not sent. Check the fields marked and try again.',
       back: 'Back to Find help',
+      // REC-01: an owner's yearly re-check link.
+      updateTitle: 'Check your place in the facility registry',
+      updateIntro:
+        'This is what the county has for your place. Correct anything that changed and send it, or say that nothing has changed. The county reviews what you send before the registry changes.',
+      unchanged: 'Nothing has changed',
+      submitUpdate: 'Send the changes',
+      authorizedUpdate: 'I am allowed to update the details of this place.',
+      thanksUnchanged: 'Thank you. The county will mark the entry as checked.',
+      thanksUpdate:
+        'Thank you. The county will review the changes and contact you if it has questions.',
+      linkGone:
+        'This link has expired or was already used. Contact the county to update the entry.',
+      loading: 'Loading…',
     },
     askLabel: 'Ask a question',
     askHint:
@@ -202,6 +215,18 @@ export const STRINGS = {
       thanks: 'Gracias. El condado revisará la oferta y se comunicará con usted.',
       failed: 'La oferta no se envió. Revise los campos marcados e intente de nuevo.',
       back: 'Volver a Encuentre ayuda',
+      updateTitle: 'Revise su lugar en el registro de instalaciones',
+      updateIntro:
+        'Esto es lo que el condado tiene de su lugar. Corrija lo que haya cambiado y envíelo, o diga que nada cambió. El condado revisa lo que envíe antes de cambiar el registro.',
+      unchanged: 'Nada ha cambiado',
+      submitUpdate: 'Enviar los cambios',
+      authorizedUpdate: 'Tengo permiso para actualizar los datos de este lugar.',
+      thanksUnchanged: 'Gracias. El condado marcará el registro como revisado.',
+      thanksUpdate:
+        'Gracias. El condado revisará los cambios y se comunicará con usted si tiene preguntas.',
+      linkGone:
+        'Este enlace venció o ya se usó. Comuníquese con el condado para actualizar el registro.',
+      loading: 'Cargando…',
     },
     askLabel: 'Haga una pregunta',
     askHint:

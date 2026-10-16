@@ -4,7 +4,15 @@
  * encrypted contacts, audited) and the people who approve the registry hear
  * once for that cycle. A stale entry is marked as such where it is listed;
  * nothing is removed. Confirming the entry starts the next cycle.
+ *
+ * The facility's own contacts get a single-use link to look over the entry
+ * and send what changed, or say nothing has (REC-01: "facility owners update
+ * their own details"). Only the link's SHA-256 is stored; the link itself
+ * travels encrypted to the message job. What they send is a proposal for
+ * the county's approval queue.
  */
+import { createHash, randomBytes } from 'node:crypto';
+import { enqueueOutbox } from '../system.ts';
 import { allTenantIds, asSystem, systemAudit } from '../system.ts';
 import { claimReminder, sendReminder } from './reminders.ts';
 import { staffRecipients } from './recipients.ts';
@@ -15,6 +23,8 @@ const DAY = 86_400_000;
 export const RECHECK_DAYS = 365;
 /** The notice goes this long before the re-check falls due. */
 export const NOTICE_DAYS = 30;
+/** An owner's link works this long after the re-check falls due. */
+export const LINK_GRACE_DAYS = 30;
 
 const nowOf = (ctx: JobContext): Date => ctx.now?.() ?? new Date();
 const day = (d: Date) => d.toISOString().slice(0, 10);
@@ -58,15 +68,57 @@ export async function remindFacilityRechecks(ctx: JobContext): Promise<number> {
           });
         }
         const staff = await staffRecipients(trx, tenantId, ['facility.approve']);
-        const n = await sendReminder(
-          ctx,
-          trx,
-          tenantId,
-          id,
-          [...own, ...staff.emails],
-          'facility_recheck',
-          { county: staff.tenantName, site: f.name, dueAt: day(dueAt) },
-        );
+        // The owners' single-use link (one for this cycle, shared by the facility's contacts).
+        const owners = [...new Set(own.map((e) => e.trim().toLowerCase()).filter(Boolean))];
+        if (owners.length) {
+          const token = randomBytes(32).toString('base64url');
+          await trx
+            .insertInto('cg.facility_update_link')
+            .values({
+              tenant_id: tenantId,
+              facility_id: f.id,
+              token_hash: createHash('sha256').update(token).digest(),
+              expires_at: new Date(dueAt.getTime() + LINK_GRACE_DAYS * DAY),
+            })
+            .execute();
+          const slug = (
+            await trx
+              .selectFrom('cg.tenant')
+              .select('slug')
+              .where('id', '=', tenantId)
+              .executeTakeFirstOrThrow()
+          ).slug;
+          const url = `${ctx.urls.gatewayPublic}/${slug}/help?view=offer&update=${token}`;
+          const secretVariablesEnc = (
+            await ctx.crypto.encrypt(tenantId, JSON.stringify({ url }))
+          ).toString('base64');
+          for (const email of owners)
+            await enqueueOutbox(trx, tenantId, 'message.send', {
+              template: 'facility_recheck_owner',
+              channel: 'email',
+              toEnc: (await ctx.crypto.encrypt(tenantId, email)).toString('base64'),
+              language: 'en',
+              variables: { county: staff.tenantName, site: f.name, dueAt: day(dueAt) },
+              secretVariablesEnc,
+            });
+        }
+        const n =
+          owners.length +
+          (await sendReminder(
+            ctx,
+            trx,
+            tenantId,
+            id,
+            staff.emails.filter((e) => !owners.includes(e.trim().toLowerCase())),
+            'facility_recheck',
+            { county: staff.tenantName, site: f.name, dueAt: day(dueAt) },
+          ));
+        if (owners.length)
+          await trx
+            .updateTable('cg.notice_log')
+            .set({ recipient_count: n })
+            .where('id', '=', id)
+            .execute();
         await systemAudit(trx, tenantId, 'facility.recheck', {
           action: 'facility.recheck_reminded',
           targetType: 'facility',

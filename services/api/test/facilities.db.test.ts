@@ -9,7 +9,7 @@
  * registry sees nothing; the seed's WESTWIND facilities are there. Runs on a
  * county of its own, only with API_DB_TEST_APP_URL and API_DB_TEST_WORKER_URL.
  */
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Kysely } from 'kysely';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
@@ -56,6 +56,8 @@ describe.skipIf(!appUrl || !workerUrl)('the facility registry (database-backed)'
   let county = '';
   let seededCounty = '';
   let slug = '';
+  // REC-01: the owner's link from the yearly re-check email, used by the tests after it.
+  let ownerToken = '';
   const crypto = new FieldCrypto(new InMemoryKeyService(), new MemoryKeyStore());
   const run = randomUUID().slice(0, 8);
   const subjects: Record<string, AccountSubject> = {};
@@ -442,6 +444,7 @@ describe.skipIf(!appUrl || !workerUrl)('the facility registry (database-backed)'
       db: dbWorker,
       crypto,
       log: { info() {}, warn() {}, error() {}, debug() {} },
+      urls: { gatewayPublic: 'https://cg.example.org' },
     } as unknown as JobContext;
     expect(await remindFacilityRechecks(ctx)).toBeGreaterThanOrEqual(2);
     expect(await remindFacilityRechecks(ctx)).toBe(0);
@@ -462,10 +465,22 @@ describe.skipIf(!appUrl || !workerUrl)('the facility registry (database-backed)'
       .where('tenant_id', '=', county)
       .where('topic', '=', 'message.send')
       .execute();
-    expect(sent.map((m) => (m.payload as { template: string }).template)).toEqual([
+    // The owner's email carries a single-use link, encrypted in the outbox; the approvers' does not.
+    expect(sent.map((m) => (m.payload as { template: string }).template).sort()).toEqual([
       'facility_recheck',
-      'facility_recheck',
+      'facility_recheck_owner',
     ]);
+    const ownerMail = sent.find(
+      (m) => (m.payload as { template: string }).template === 'facility_recheck_owner',
+    )!.payload as { secretVariablesEnc: string; variables: Record<string, string> };
+    expect(JSON.stringify(ownerMail)).not.toContain('update=');
+    const { url } = JSON.parse(
+      await crypto.decrypt(county, Buffer.from(ownerMail.secretVariablesEnc, 'base64')),
+    ) as { url: string };
+    expect(url).toMatch(
+      new RegExp(`^https://cg\\.example\\.org/${slug}/help\\?view=offer&update=`),
+    );
+    ownerToken = new URL(url).searchParams.get('update')!;
     const read = await dbWorker
       .selectFrom('cg.audit_event')
       .select(['actor_kind'])
@@ -474,5 +489,126 @@ describe.skipIf(!appUrl || !workerUrl)('the facility registry (database-backed)'
       .where('actor_kind', '=', 'system')
       .execute();
     expect(read).toHaveLength(1);
+  });
+
+  it('REC-01: the owner opens the link, sees the entry without its contacts, and says nothing changed; the link is spent; approved, the entry is re-checked', async () => {
+    const at = (token: string) => `/api/public/facilities/${slug}/update/${token}`;
+    const shown = await app.inject({ method: 'GET', url: at(ownerToken) });
+    expect(shown.statusCode, shown.body).toBe(200);
+    expect(shown.json()).toMatchObject({
+      name: 'Exercise Lakeside Lodge',
+      address: { line1: '9 Lake Rd' },
+      kitchen: true,
+    });
+    expect(shown.body).not.toContain('example.org');
+    // A made-up, malformed or spent link is simply not there.
+    expect((await app.inject({ method: 'GET', url: at('A'.repeat(43)) })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: at('short') })).statusCode).toBe(400);
+    const submitter = { name: 'Exercise Owner', email: `lodge-${run}@example.org` };
+    const sent = await app.inject({
+      method: 'POST',
+      url: at(ownerToken),
+      payload: { executionId: randomUUID(), unchanged: true, submitter },
+    });
+    expect(sent.statusCode, sent.body).toBe(202);
+    expect((await app.inject({ method: 'GET', url: at(ownerToken) })).statusCode).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: at(ownerToken),
+          payload: { executionId: randomUUID(), unchanged: true, submitter },
+        })
+      ).statusCode,
+    ).toBe(404);
+
+    const change = await dbWorker
+      .selectFrom('cg.facility_change')
+      .select(['id', 'version', 'proposed', 'change', 'facility_id'])
+      .where('tenant_id', '=', county)
+      .where('source', '=', 'owner_link')
+      .executeTakeFirstOrThrow();
+    expect(change).toMatchObject({ change: 'update', proposed: {} });
+    const before = await dbWorker
+      .selectFrom('cg.facility')
+      .select('last_confirmed_at')
+      .where('id', '=', change.facility_id!)
+      .executeTakeFirstOrThrow();
+    const decided = await call(
+      'em',
+      'POST',
+      `/facility-changes/${change.id}/decision`,
+      { decision: 'approve', reason: 'Exercise: the owner checked it' },
+      { 'if-match': `"${change.version}"` },
+    );
+    expect(decided.status, JSON.stringify(decided.body)).toBe(200);
+    const after = await dbWorker
+      .selectFrom('cg.facility')
+      .select('last_confirmed_at')
+      .where('id', '=', change.facility_id!)
+      .executeTakeFirstOrThrow();
+    expect(after.last_confirmed_at.getTime()).toBeGreaterThan(before.last_confirmed_at.getTime());
+    expect(
+      await dbWorker
+        .selectFrom('cg.audit_event')
+        .select('action')
+        .where('tenant_id', '=', county)
+        .where('action', '=', 'facility.owner_rechecked')
+        .execute(),
+    ).toHaveLength(1);
+  });
+
+  it('REC-01: a correction through a fresh link waits for approval; nothing changes before it', async () => {
+    const lodge = await dbWorker
+      .selectFrom('cg.facility')
+      .select(['id', 'sqft'])
+      .where('tenant_id', '=', county)
+      .where('name', '=', 'Exercise Lakeside Lodge')
+      .executeTakeFirstOrThrow();
+    const token = randomUUID().replace(/-/g, '') + 'abcdefghijk';
+    await withTenant(dbWorker, { tenantId: county }, (trx) =>
+      trx
+        .insertInto('cg.facility_update_link')
+        .values({
+          tenant_id: county,
+          facility_id: lodge.id,
+          token_hash: createHash('sha256').update(token).digest(),
+          expires_at: new Date(Date.now() + 86_400_000),
+        })
+        .execute(),
+    );
+    const sent = await app.inject({
+      method: 'POST',
+      url: `/api/public/facilities/${slug}/update/${token}`,
+      payload: {
+        executionId: randomUUID(),
+        unchanged: false,
+        facility: {
+          name: 'Exercise Lakeside Lodge',
+          kind: 'commercial',
+          address: { line1: '9 Lake Rd', city: 'Westwind', postal: '63003' },
+          sqft: 6200,
+        },
+        submitter: { name: 'Exercise Owner', phone: '+13145550142' },
+      },
+    });
+    expect(sent.statusCode, sent.body).toBe(202);
+    const pending = await dbWorker
+      .selectFrom('cg.facility_change')
+      .select(['proposed', 'state'])
+      .where('tenant_id', '=', county)
+      .where('source', '=', 'owner_link')
+      .where('state', '=', 'pending')
+      .executeTakeFirstOrThrow();
+    expect(pending.proposed).toMatchObject({ sqft: 6200 });
+    expect(
+      (
+        await dbWorker
+          .selectFrom('cg.facility')
+          .select('sqft')
+          .where('id', '=', lodge.id)
+          .executeTakeFirstOrThrow()
+      ).sqft,
+    ).toBe(lodge.sqft);
   });
 });

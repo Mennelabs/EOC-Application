@@ -25,6 +25,7 @@ export type TemplateName =
   | 'reminder_overdue'
   | 'ai_quality_notice'
   | 'facility_recheck'
+  | 'facility_recheck_owner'
   | 'discovery_digest'
   | 'discovery_alert';
 
@@ -48,6 +49,7 @@ export const TEMPLATE_NAMES: readonly TemplateName[] = [
   'reminder_overdue',
   'ai_quality_notice',
   'facility_recheck',
+  'facility_recheck_owner',
   'discovery_digest',
   'discovery_alert',
 ];
@@ -125,6 +127,8 @@ const EN = {
       `${v.county} Emergency Mgmt: the AI feature "${v.title ?? ''}" needs a look: ${v.what ?? ''} It keeps running. Open the AI use register.`,
     facility_recheck: (v: TemplateVars) =>
       `${v.county} Emergency Mgmt: please check that the details of ${v.site ?? 'your facility'} in the facility registry are still right by ${v.dueAt ?? 'its re-check date'}.`,
+    facility_recheck_owner: (v: TemplateVars) =>
+      `${v.county} Emergency Mgmt: please check the details of ${v.site ?? 'your facility'} by ${v.dueAt ?? 'its re-check date'}: ${v.url ?? ''}`,
     discovery_digest: (v: TemplateVars) =>
       `${v.county} Emergency Mgmt: resource discovery found ${v.count ?? 'some'} place(s) for the registry. Review them in the console's discovery queue.`,
     discovery_alert: (v: TemplateVars) =>
@@ -236,6 +240,13 @@ const EN = {
         `${v.site ?? 'A place'} (${v.kind ?? 'place'}) was found by ${v.county}'s resource discovery (${v.what ?? 'a source'}). It is within 3 km of open requests for food or a place to stay in the active event.\n\n` +
         `It is not in the facility registry. Review it now in the console's discovery queue and qualify it in or out. Nothing is added until someone decides.\n`,
     }),
+    facility_recheck_owner: (v: TemplateVars) => ({
+      subject: `${v.county}: please re-check ${v.site ?? 'your facility'} in the facility registry`,
+      body:
+        `${v.site ?? 'Your facility'} is in ${v.county}'s facility registry, which the county uses to plan shelters, supply points and recovery centers.\n\n` +
+        `Each entry is re-checked once a year. By ${v.dueAt ?? 'its re-check date'}, please open this link, look over the details (space, access, power, kitchen, showers, parking) and either say nothing has changed or correct what has:\n\n${v.url ?? ''}\n\n` +
+        `The link works once and expires. What you send goes to the county for review before the registry changes. If you did not expect this email, you can ignore it.\n`,
+    }),
     facility_recheck: (v: TemplateVars) => ({
       subject: `${v.county}: please re-check ${v.site ?? 'a facility'} in the facility registry`,
       body:
@@ -313,6 +324,8 @@ const ES: typeof EN = {
       `Gestión de Emergencias de ${v.county}: la función de IA "${v.title ?? ''}" necesita revisión: ${v.what ?? ''} Sigue funcionando. Abra el registro de uso de IA.`,
     facility_recheck: (v) =>
       `Manejo de Emergencias de ${v.county}: revise que los datos de ${v.site ?? 'su instalación'} en el registro de instalaciones sigan correctos antes de ${v.dueAt ?? 'su fecha de revisión'}.`,
+    facility_recheck_owner: (v) =>
+      `Manejo de Emergencias de ${v.county}: revise los datos de ${v.site ?? 'su instalación'} antes de ${v.dueAt ?? 'su fecha de revisión'}: ${v.url ?? ''}`,
     discovery_digest: (v) =>
       `Manejo de Emergencias de ${v.county}: la búsqueda de recursos encontró ${v.count ?? 'algunos'} lugar(es) para el registro. Revíselos en la cola de búsqueda de la consola.`,
     discovery_alert: (v) =>
@@ -423,6 +436,13 @@ const ES: typeof EN = {
       body:
         `${v.site ?? 'Un lugar'} (${v.kind ?? 'lugar'}) fue encontrado por la búsqueda de recursos de ${v.county} (${v.what ?? 'una fuente'}). Está a menos de 3 km de solicitudes abiertas de comida o de un lugar donde quedarse en el evento activo.\n\n` +
         `No está en el registro de instalaciones. Revíselo ahora en la cola de búsqueda de la consola y acéptelo o descártelo. Nada se agrega hasta que alguien decida.\n`,
+    }),
+    facility_recheck_owner: (v) => ({
+      subject: `${v.county}: revise ${v.site ?? 'su instalación'} en el registro de instalaciones`,
+      body:
+        `${v.site ?? 'Su instalación'} está en el registro de instalaciones de ${v.county}, que el condado usa para planear refugios, puntos de distribución y centros de recuperación.\n\n` +
+        `Cada registro se revisa una vez al año. Antes de ${v.dueAt ?? 'su fecha de revisión'}, abra este enlace, revise los datos (espacio, acceso, energía, cocina, duchas, estacionamiento) y diga que nada cambió o corrija lo que cambió:\n\n${v.url ?? ''}\n\n` +
+        `El enlace funciona una sola vez y vence. Lo que envíe lo revisa el condado antes de cambiar el registro. Si no esperaba este correo, puede ignorarlo.\n`,
     }),
     facility_recheck: (v) => ({
       subject: `${v.county}: revise ${v.site ?? 'una instalación'} en el registro de instalaciones`,

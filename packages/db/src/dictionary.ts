@@ -2293,6 +2293,19 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     approved_at: { c: 'internal' },
     last_confirmed_at: { c: 'internal', d: 'Re-checked every 12 months; stale after (REC-01)' },
   }),
+  facility_update_link: table(
+    {
+      facility_id: { c: 'internal' },
+      token_hash: {
+        c: 'restricted',
+        r: 'otp',
+        d: 'SHA-256 of the owner re-check link token; the token itself is never stored (REC-01)',
+      },
+      expires_at: { c: 'internal', r: 'otp' },
+      used_at: { c: 'internal', r: 'otp' },
+    },
+    { omit: ['version', 'created_by', 'updated_at', 'updated_by'] },
+  ),
   facility_change: table({
     facility_id: { c: 'internal' },
     change: { c: 'internal', d: 'create, update or retire' },

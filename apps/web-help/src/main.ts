@@ -531,20 +531,23 @@ window.addEventListener('afterprint', () => {
 function renderOffer(tenant: string): void {
   const t = strings(lang);
   document.documentElement.lang = lang;
-  document.title = `${t.offer.title} · ${config.countyName ?? ''}`.trim();
+  // REC-01: an owner's re-check link opens the same form, filled in.
+  const update = url.searchParams.get('update');
+  const title = update ? t.offer.updateTitle : t.offer.title;
+  document.title = `${title} · ${config.countyName ?? ''}`.trim();
   const otherLang: Lang = lang === 'en' ? 'es' : 'en';
   const main = el('main', { id: 'main', tabindex: '-1' });
   main.append(
     el('p', { class: 'danger', role: 'note' }, t.danger),
-    el('p', { class: 'intro' }, t.offer.intro),
-    offerForm(el, tenant, lang, t, pageUrl({ view: null })),
+    el('p', { class: 'intro' }, update ? t.offer.updateIntro : t.offer.intro),
+    offerForm(el, tenant, lang, t, pageUrl({ view: null, update: null }), update),
   );
   app.replaceChildren(
     el(
       'header',
       {},
       el('p', { class: 'county' }, config.countyName ?? ''),
-      el('h1', {}, t.offer.title),
+      el('h1', {}, title),
       el(
         'nav',
         { 'aria-label': t.language },

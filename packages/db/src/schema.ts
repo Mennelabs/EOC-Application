@@ -2475,6 +2475,17 @@ export interface FacilityTable extends Stamped {
   last_confirmed_at: TsGen;
 }
 
+/** REC-01: the single-use link in an owner's yearly re-check email; only its hash is kept. */
+export interface FacilityUpdateLinkTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  facility_id: Uuid;
+  token_hash: Buffer;
+  expires_at: Date;
+  used_at: TsNullable;
+  created_at: TsGen;
+}
+
 export interface FacilityChangeTable extends Stamped {
   id: Generated<Uuid>;
   tenant_id: Uuid;
@@ -2482,7 +2493,7 @@ export interface FacilityChangeTable extends Stamped {
   change: 'create' | 'update' | 'retire';
   proposed: JsonGen<Record<string, unknown>>;
   contacts_enc: Buffer | null;
-  source: 'coad' | 'owner' | 'self_registration' | 'discovery' | 'county';
+  source: 'coad' | 'owner' | 'self_registration' | 'discovery' | 'county' | 'owner_link';
   proposed_by: Uuid | null;
   proposed_by_tenant_id: Uuid | null;
   submitter_enc: Buffer | null;
@@ -3236,6 +3247,7 @@ export interface Database {
   'cg.command_alias': CommandAliasTable;
   'cg.facility': FacilityTable;
   'cg.facility_change': FacilityChangeTable;
+  'cg.facility_update_link': FacilityUpdateLinkTable;
   'cg.recommendation': RecommendationTable;
   'cg.public_audio': PublicAudioTable;
   'cg.scribe_session': ScribeSessionTable;

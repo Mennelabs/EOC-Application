@@ -1707,4 +1707,63 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
     expect((await command('field', `/mission ${ref2} release ${name}`)).status).toBe('not_found');
     expect((await command('pio', `/mission ${ref2} release ${name}`)).status).toBe('denied');
   });
+
+  it("CMD-17, RULE-11: a print outcome is recorded for the person's one badge waiting for it; printed is not handed out; it cannot be undone from the window; generating stays on the screen", async () => {
+    await phases([1, 2, 3]);
+    subjects['badges'] = person('personnel_coordinator');
+    const name = `Exercise Rae Lindqvist ${run}`;
+    const rae = await withTenant(dbWorker, { tenantId: county }, (trx) =>
+      trx
+        .insertInto('cg.personnel')
+        .values({ tenant_id: county, name, availability: 'available', duty_status: 'on_duty' })
+        .returning('id')
+        .executeTakeFirstOrThrow(),
+    );
+    const made = await call('badges', 'POST', '/badges', { personnelId: rae.id });
+    expect(made.status, JSON.stringify(made.body)).toBe(201);
+    const badgeId = made.body['id'] as string;
+    const code = made.body['code'] as string;
+    expect(code.length).toBeGreaterThan(5);
+    const badge = () =>
+      dbWorker
+        .selectFrom('cg.badge')
+        .select(['state', 'print_confirmed_at', 'handed_out_at', 'version'])
+        .where('id', '=', badgeId)
+        .executeTakeFirstOrThrow();
+    // Generated but never sent to a printer: nothing to confirm.
+    const early = await command('badges', `/badge ${name} printed`);
+    expect(early.status).toBe('not_found');
+    expect(early.message).toContain('Badges screen');
+    const requested = await call(
+      'badges',
+      'POST',
+      `/badges/${badgeId}/print`,
+      { outcome: 'requested' },
+      { 'if-match': `"${(await badge()).version}"` },
+    );
+    expect(requested.status, JSON.stringify(requested.body)).toBe(200);
+
+    const printed = await command('badges', `/badge ${name} printed`);
+    expect(printed.status, printed.message).toBe('awaiting_confirmation');
+    expect(printed.command).toMatchObject({ confirmation: 'one_tap', reversal: 'none' });
+    expect(printed.plan?.description).toContain('It is not handed out yet.');
+    const done = await confirm('badges', printed);
+    expect(done.body['status'], JSON.stringify(done.body)).toBe('succeeded');
+    expect(await badge()).toMatchObject({ state: 'print_confirmed', handed_out_at: null });
+    // The answer and the record never carry the badge's code.
+    expect(JSON.stringify(done.body)).not.toContain(code);
+    expect(JSON.stringify(await stored(printed.id!))).not.toContain(code);
+
+    const undo = await call('badges', 'POST', `/commands/${printed.id}/undo`, {
+      executionId: randomUUID(),
+    });
+    expect(undo.status).toBe(409);
+    expect(undo.body['message']).toContain("stays in the badge's history");
+
+    const handed = await command('badges', `/gafete ${name} entregado`);
+    expect((await confirm('badges', handed)).body['status']).toBe('succeeded');
+    expect((await badge()).state).toBe('handed_out');
+    expect((await command('badges', `/badge ${name} handed out`)).status).toBe('not_found');
+    expect((await command('mc', `/badge ${name} printed`)).status).toBe('denied');
+  });
 });

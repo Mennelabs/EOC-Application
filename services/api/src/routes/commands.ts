@@ -1531,13 +1531,13 @@ export const commandRoutesWith =
 
         // CMD-13: the one record of the target the arguments name (an open assignment of the
         // named person); none or several is answered, never guessed.
-        if (spec.within && target) {
+        if (spec.within && (target || !spec.target)) {
           const res = await op(request, {
             method: 'GET',
             path: spec.within.path(planArgs, target),
           });
-          const found =
-            res.status === 200 && Array.isArray(res.body) ? (res.body as ListRow[]) : [];
+          let found = res.status === 200 && Array.isArray(res.body) ? (res.body as ListRow[]) : [];
+          if (spec.within.pick) found = spec.within.pick(found, planArgs);
           if (found.length !== 1)
             return {
               ...head,

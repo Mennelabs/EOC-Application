@@ -114,7 +114,9 @@ export interface CommandSpec<A = Record<string, unknown>> {
    * answered in these words.
    */
   within?: {
-    path(args: A, target: Target): string;
+    path(args: A, target: Target | null): string;
+    /** Narrows the listed rows to the ones the command can act on. */
+    pick?(rows: Record<string, unknown>[], args: A): Record<string, unknown>[];
     idArg: string;
     versionArg: string;
     none(args: A): string;
@@ -162,6 +164,14 @@ const PERSON_FIELD: Record<(typeof PERSON_SETTINGS)[number], 'availability' | 'd
   unavailable: 'availability',
   on_duty: 'dutyStatus',
   off_duty: 'dutyStatus',
+};
+
+/** RULE-11: a print outcome a person saw, and the badge states each one follows. */
+const BADGE_OUTCOMES = ['confirmed', 'failed', 'handed_out'] as const;
+const BADGE_FROM: Record<(typeof BADGE_OUTCOMES)[number], string[]> = {
+  confirmed: ['print_requested', 'print_failed'],
+  failed: ['print_requested'],
+  handed_out: ['print_confirmed'],
 };
 
 const RESOURCE_TYPES = ['hotline', 'program', 'deadline', 'guidance', 'link', 'document'] as const;
@@ -1069,7 +1079,7 @@ export const CATALOG = [
     person: true,
     within: {
       path: (a, t) =>
-        `/assignments?limit=10&open=true&missionId=${t.id}&personnelId=${a.personId ?? ''}`,
+        `/assignments?limit=10&open=true&missionId=${t!.id}&personnelId=${a.personId ?? ''}`,
       idArg: 'assignmentId',
       versionArg: 'assignmentVersion',
       none: (a) => `${a.person} has no open assignment on this mission.`,
@@ -1304,6 +1314,72 @@ export const CATALOG = [
             version: ver(d['version']),
           },
         ],
+      };
+    },
+  }),
+
+  // CMD-17, RULE-11, FR-13.06: what happened to a person's badge at the printer, recorded by
+  // the person who saw it. Generating or replacing a badge stays on the Badges screen: its
+  // code is shown once, to print, and the window never holds it.
+  define<{
+    person: string;
+    personId?: string | undefined;
+    outcome: (typeof BADGE_OUTCOMES)[number];
+    reason?: string | undefined;
+    badgeId?: string | undefined;
+    badgeVersion?: number | undefined;
+  }>({
+    name: 'badge.print',
+    version: 1,
+    phase: 3,
+    action: 'badge.print',
+    kind: 'change',
+    title: "Record what happened to a person's badge at the printer",
+    usage: '/badge <person> <printed|failed <why>|handed out>',
+    args: z.object({
+      person: z.string().min(1).max(120),
+      personId: z.uuid().optional(),
+      outcome: z.enum(BADGE_OUTCOMES),
+      reason: z.string().trim().max(300).optional(),
+      badgeId: z.uuid().optional(),
+      badgeVersion: z.number().int().optional(),
+    }),
+    person: true,
+    within: {
+      path: (a) => `/badges?limit=20&personnelId=${a.personId ?? ''}`,
+      pick: (list, a) => list.filter((b) => BADGE_FROM[a.outcome].includes(str(b['state']))),
+      idArg: 'badgeId',
+      versionArg: 'badgeVersion',
+      none: (a) =>
+        `${a.person} has no badge waiting for that. Generate or reprint it on the Badges screen.`,
+      many: (a) => `${a.person} has more than one badge waiting. Record it on the Badges screen.`,
+    },
+    confirmation: 'one_tap',
+    reversal: 'none',
+    undoUnavailable:
+      "A print outcome stays in the badge's history. If it was wrong, record what happened next on the Badges screen.",
+    sideEffects:
+      'Adds the outcome to the badge history. A printed badge is not handed out until someone records that too.',
+    freeText: ['person', 'reason'],
+    request: (a) => ({
+      method: 'POST',
+      path: `/badges/${a.badgeId ?? ''}/print`,
+      version: a.badgeVersion,
+      body: { outcome: a.outcome, ...(a.reason ? { reason: a.reason } : {}) },
+    }),
+    describe: (a) =>
+      a.outcome === 'confirmed'
+        ? `Record that you saw ${a.person}'s badge come out of the printer. It is not handed out yet.`
+        : a.outcome === 'failed'
+          ? `Record that ${a.person}'s badge failed to print.`
+          : `Record that ${a.person}'s printed badge was handed to them.`,
+    // The answer never carries the badge's code: the print route does not return it.
+    verify: (r) => {
+      const b = (r ?? {}) as Row;
+      return {
+        state: 'saved',
+        summary: `${str(b['displayName'])}'s badge: ${str(b['state']).replace(/_/g, ' ')}.`,
+        records: [{ kind: 'badge', id: str(b['id']), version: ver(b['version']) }],
       };
     },
   }),

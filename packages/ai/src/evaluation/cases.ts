@@ -201,6 +201,10 @@ export const COMMAND_EVAL_CATALOG: { usage: string; title: string }[] = [
   },
   { usage: '/mission new <kind> <what is needed>', title: 'Draft a mission' },
   {
+    usage: '/badge <person> <printed|failed <why>|handed out>',
+    title: "Record what happened to a person's badge at the printer",
+  },
+  {
     usage: '/resource new <hotline|program|deadline|guidance|link|document> <title>',
     title: 'Draft a resource',
   },

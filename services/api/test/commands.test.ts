@@ -310,6 +310,25 @@ describe('shorthand', () => {
       ok: false,
       error: 'usage',
     });
+    // RULE-11: what a person saw at the printer; only a failure carries why.
+    expect(parse('/badge Dana Ruiz printed')).toEqual({
+      ok: true,
+      command: 'badge.print',
+      args: { person: 'Dana Ruiz', outcome: 'confirmed' },
+      ref: null,
+      refKind: null,
+    });
+    expect(parse('/badge Dana Ruiz failed printer out of labels')).toMatchObject({
+      args: { person: 'Dana Ruiz', outcome: 'failed', reason: 'printer out of labels' },
+    });
+    expect(parse('/gafete Dana Ruiz entregado')).toMatchObject({
+      args: { person: 'Dana Ruiz', outcome: 'handed_out' },
+    });
+    expect(parse('/badge Dana Ruiz handed out')).toMatchObject({
+      args: { person: 'Dana Ruiz', outcome: 'handed_out' },
+    });
+    expect(parse('/badge printed')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/badge Dana Ruiz generate')).toMatchObject({ ok: false, error: 'usage' });
     expect(parse('/resource flood-hotline expires next week')).toMatchObject({
       ok: false,
       error: 'usage',

@@ -79,6 +79,9 @@ const VERBS: Record<string, string> = {
   salida: 'checkout',
   export: 'export',
   exportar: 'export',
+  badge: 'badge',
+  credencial: 'badge',
+  gafete: 'badge',
   help: 'help',
   ayuda: 'help',
 };
@@ -235,6 +238,20 @@ const RESOURCE_DATES: Record<string, 'expiresAt' | 'reviewAt'> = {
 const NONE_WORDS = new Set(['none', 'ninguna', 'ninguno', 'clear', 'borrar']);
 const RESOURCE_USAGE =
   '/resource new <hotline|program|deadline|guidance|link|document> <title> | /resource <slug or title> <expires YYYY-MM-DD [HH:MM]|review YYYY-MM-DD|… none>';
+
+/** CMD-17, RULE-11: what a person saw happen to a badge, by the last words of the command. */
+const BADGE_OUTCOMES: Record<string, string> = {
+  printed: 'confirmed',
+  impreso: 'confirmed',
+  impresa: 'confirmed',
+  failed: 'failed',
+  fallo: 'failed',
+  handed_out: 'handed_out',
+  given: 'handed_out',
+  entregado: 'handed_out',
+  entregada: 'handed_out',
+};
+const BADGE_USAGE = '/badge <person> <printed|failed <why>|handed out>';
 
 /** CMD-15: the review queue's states and filters. */
 const REPORT_FILTERS: Record<string, [string, string | boolean]> = {
@@ -804,6 +821,30 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
         ref,
         'resource',
       );
+    }
+
+    // CMD-17, RULE-11: a print outcome somebody saw. "failed" may carry why, after it.
+    case 'badge': {
+      for (let i = words.length - 1; i > 0; i -= 1) {
+        const two =
+          i + 1 < words.length
+            ? BADGE_OUTCOMES[`${norm(words[i]!)}_${norm(words[i + 1]!)}`]
+            : undefined;
+        const outcome = two ?? BADGE_OUTCOMES[norm(words[i]!)];
+        if (!outcome) continue;
+        const after = words
+          .slice(i + (two ? 2 : 1))
+          .join(' ')
+          .trim();
+        if (after && outcome !== 'failed') continue;
+        const why = (pairs['reason'] ?? after).trim();
+        return ok('badge.print', {
+          person: words.slice(0, i).join(' '),
+          outcome,
+          ...(why ? { reason: why } : {}),
+        });
+      }
+      return usage('Whose badge, and what happened to it?', BADGE_USAGE);
     }
 
     case 'resources': {

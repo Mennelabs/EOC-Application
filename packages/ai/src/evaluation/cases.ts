@@ -181,6 +181,10 @@ export const COMMAND_EVAL_CATALOG: { usage: string; title: string }[] = [
   },
   { usage: '/mission <reference> assign <person>', title: 'Assign a person to a mission' },
   {
+    usage: '/mission <number or "place"> send nearest [<skill>] team',
+    title: 'Send the nearest qualified available team to a mission',
+  },
+  {
     usage: '/person <name> <available|unavailable|on duty|off duty>',
     title: "Change a person's duty status or availability",
   },
@@ -273,6 +277,12 @@ export const commandEvaluationCases: CommandEvalCase[] = [
     expect: ['/mission', 'm-00012', 'status', 'on_scene'],
   },
   {
+    id: 'cmd-en-nearest-team',
+    language: 'en',
+    text: 'send the nearest chainsaw team to mission M-00041',
+    expect: ['/mission', 'm-00041', 'send', 'nearest', 'chainsaw'],
+  },
+  {
     id: 'cmd-en-remind',
     language: 'en',
     text: 'remind me in 30 minutes to call the shelter',
@@ -289,6 +299,12 @@ export const commandEvaluationCases: CommandEvalCase[] = [
     language: 'es',
     text: 'Reclama la necesidad AGUA34 para nosotros',
     expect: ['/need', 'agua34', 'claim'],
+  },
+  {
+    id: 'cmd-es-nearest-team',
+    language: 'es',
+    text: 'manda el equipo de motosierra más cercano a la misión M-00041',
+    expect: ['/mission', 'm-00041', 'send', 'nearest', 'motosierra'],
   },
   {
     id: 'cmd-es-unassigned',

@@ -4,20 +4,28 @@
  * consent changes, corrections and withdrawal, and a PDF copy to keep or
  * send to an insurer (FL:FR-32). The server answers the same
  * whether or not the details matched; nothing is shown without the code.
+ * Photos can be added here to a report started by text, phone or a helper
+ * (CHN-09), prepared on the device like intake photos (metadata gone).
  */
 import { useEffect, useState } from 'react';
 import { useT, type Shell } from '../App.tsx';
 import {
   ApiFailure,
+  Offline,
+  completeUpload,
   correct,
   downloadMyCopy,
   lookupStart,
   lookupVerify,
   myReport,
+  putObject,
+  putObjectViaApi,
+  requestMyUpload,
   setConsent,
   withdraw,
   type MyReport as Report,
 } from '../api/public.ts';
+import { preparePhoto } from '../intake/photos.ts';
 import { ButtonRow, Card, Field, Status } from '../ui/primitives.tsx';
 import { useIntake } from './useIntake.ts';
 import { text } from '@cg/intake';
@@ -40,6 +48,10 @@ export function MyReport({ shell, tenant }: { shell: Shell; tenant: string }) {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [message, setMessage] = useState('');
+  const [photoNote, setPhotoNote] = useState<{
+    kind: 'success' | 'error' | 'info';
+    text: string;
+  } | null>(null);
   const intake = useIntake(tenant, shell.config.event ?? 'westwind', shell.locale);
 
   useEffect(() => {
@@ -195,6 +207,38 @@ export function MyReport({ shell, tenant }: { shell: Shell; tenant: string }) {
     myReport(tenant, token)
       .then(setReport)
       .catch(() => undefined);
+  const uploads = intake.data?.uploads;
+  // CHN-09: the same preparation and upload as during intake, to this report.
+  const addPhoto = async (file: File | undefined) => {
+    if (!file) return;
+    setPhotoNote({ kind: 'info', text: t('photos.uploading') });
+    try {
+      const maxBytes = Math.min(uploads?.maxBytes ?? 1_500_000, 1_500_000);
+      const p = await preparePhoto(file, maxBytes);
+      const ticket = await requestMyUpload(tenant, token, {
+        shot: 'other',
+        contentType: p.contentType,
+        bytes: p.blob.size,
+        ...(p.hints.takenAt ? { takenAt: new Date(p.hints.takenAt).toISOString() } : {}),
+        ...(p.hints.location ? { location: p.hints.location } : {}),
+      });
+      try {
+        await putObject(ticket, p.blob);
+      } catch (err) {
+        if (!(err instanceof Offline)) throw err;
+        await putObjectViaApi(tenant, ticket.photoId, ticket.executionId, p.blob, p.contentType);
+      }
+      await completeUpload(tenant, ticket.photoId, ticket.executionId);
+      setPhotoNote({ kind: 'success', text: t('my.photoAdded') });
+      await refresh();
+    } catch (err) {
+      setPhotoNote({
+        kind: 'error',
+        text:
+          err instanceof ApiFailure && err.status === 503 ? t('my.photosOff') : t('my.photoFailed'),
+      });
+    }
+  };
   return (
     <main id="main" tabIndex={-1}>
       <h1>{t('my.heading')}</h1>
@@ -280,6 +324,29 @@ export function MyReport({ shell, tenant }: { shell: Shell; tenant: string }) {
               </ul>
             </div>
             <p className="hint">{t('consent.note')}</p>
+          </section>
+          <section aria-labelledby="photos-heading">
+            <h2 id="photos-heading">{t('my.photos')}</h2>
+            <p>{t('my.photosHint')}</p>
+            <p>{t('my.photosCount', { n: report.photos })}</p>
+            {photoNote ? <Status kind={photoNote.kind}>{photoNote.text}</Status> : null}
+            {uploads && !uploads.enabled ? (
+              <p>{t('my.photosOff')}</p>
+            ) : (
+              <Field label={t('my.photosAdd')}>
+                {({ id }) => (
+                  <input
+                    id={id}
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      void addPhoto(e.target.files?.[0]);
+                      e.target.value = '';
+                    }}
+                  />
+                )}
+              </Field>
+            )}
           </section>
           <section aria-labelledby="correct-heading">
             <h2 id="correct-heading">{t('my.correct')}</h2>

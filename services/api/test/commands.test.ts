@@ -182,6 +182,23 @@ describe('shorthand', () => {
       args: { person: 'Ana Ruiz' },
     });
     expect(parse('/mision M-00012 asignar')).toMatchObject({ error: 'usage' });
+    // DSP-04: the suggested team, among those with a skill, rather than a named person.
+    expect(parse('/mission M-00012 send nearest chainsaw team')).toEqual({
+      ok: true,
+      command: 'mission.assign_nearest',
+      args: { skill: 'chainsaw' },
+      ref: 'M-00012',
+      refKind: 'mission',
+    });
+    expect(parse('/mission "Willow Bend lot 41" assign the closest team')).toMatchObject({
+      command: 'mission.assign_nearest',
+      args: {},
+      ref: 'Willow Bend lot 41',
+    });
+    expect(parse('/misión M-00012 enviar el equipo más cercano de motosierra')).toMatchObject({
+      command: 'mission.assign_nearest',
+      args: { skill: 'motosierra' },
+    });
     // The release reason is asked at confirmation, not typed with the command.
     expect(parse('/mision M-00012 liberar Ana Ruiz')).toMatchObject({
       command: 'mission.release',

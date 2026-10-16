@@ -6,7 +6,8 @@
  * received once the signal returns, reports how a site looks for dispatch
  * (FLD-11), checks stock and sends the resupply draft (FL:FR-21, FL:FR-22),
  * matches a lost pet and reads the shelter census (FL:FR-08), works a
- * canteen stop (FL:FR-17; all three with answers stubbed), records a damage assessment with the
+ * canteen stop (FL:FR-17; all three with answers stubbed), finds the property on its lot drawn
+ * from the outline with the pin (FLD-04), records a damage assessment with the
  * details FEMA asks for, asks the command window for its reminders, opens
  * the conversation note-taker (consent in Spanish; AI off here), uses live
  * translation (medical refused; off here) and asks for an interpreter, presses
@@ -494,15 +495,22 @@ test.describe('field app (web build)', () => {
     // a depth that is not one is named back and blocks saving.
     const tag = `e2e assessment ${Date.now()}`;
     await page.getByRole('link', { name: 'Home' }).click();
+    // Standing on a lot of the seeded Cedar Ridge grid (100 Hickory Way, SYN-CED-0001).
+    await context.setGeolocation({ latitude: 38.79527, longitude: -90.869654 });
     await page.getByRole('button', { name: 'New property' }).click();
     await expect(page.getByRole('heading', { name: 'Find the property' })).toBeVisible();
     const thisOne = page.getByRole('button', { name: 'Yes, this one' });
-    const landmarkInstead = page.getByRole('button', { name: 'Add a landmark note instead' });
-    await expect(thisOne.or(landmarkInstead).first()).toBeVisible({ timeout: 30_000 });
-    const atParcel = await thisOne.isVisible();
-    await (atParcel ? thisOne : landmarkInstead).click();
+    // FLD-04: on the lot, the question shows its address and the lot drawn from its outline with
+    // the pin, one image named in words.
+    await expect(thisOne).toBeVisible({ timeout: 30_000 });
+    await expect(
+      page.getByRole('img', {
+        name: 'Outline of the lot at 100 Hickory Way, Harmon City, with the lots around it. Your position is inside this lot.',
+      }),
+    ).toBeVisible();
+    await expectNoViolations(page);
+    await thisOne.click();
     await expect(page.getByRole('heading', { name: 'Damage at this property' })).toBeVisible();
-    if (!atParcel) await page.getByLabel('Landmark note').fill('Exercise: blue shed by the levee');
     await page.getByRole('radio', { name: /^Minor/ }).click();
     await page.getByRole('checkbox', { name: 'Roof', exact: true }).click();
     await page.getByLabel('Basement, feet').fill('5');

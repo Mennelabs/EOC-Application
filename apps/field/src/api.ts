@@ -206,7 +206,8 @@ export class Api implements FieldApi, PhotoApi {
   }
 
   area(eventId: string | null, lang: string): Promise<AreaPackage> {
-    const q = new URLSearchParams({ lang, ...(eventId ? { eventId } : {}) });
+    // FLD-04: with the lots' outlines, so "Is this the property?" can show the lot.
+    const q = new URLSearchParams({ lang, geometry: 'true', ...(eventId ? { eventId } : {}) });
     return this.call('GET', `/field/area?${q.toString()}`);
   }
 

@@ -9,6 +9,7 @@ export * from './conflicts.ts';
 export * from './sync.ts';
 export * from './purge.ts';
 export * from './geo.ts';
+export * from './sketch.ts';
 export * from './usng.ts';
 export * from './sweep.ts';
 export * from './timers.ts';

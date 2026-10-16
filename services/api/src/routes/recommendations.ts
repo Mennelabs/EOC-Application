@@ -171,6 +171,53 @@ export const recommendationRoutes: FastifyPluginAsync = async (base) => {
     return s;
   };
 
+  // ADM-01: the planning factors in force, for the county's editor. Changes are saved through
+  // the audited configuration route (recommendation.planning_factors), with a reason.
+  app.get(
+    '/recommendations/planning-factors',
+    {
+      schema: {
+        tags: ['recommendations'],
+        response: {
+          200: z.object({
+            defaults: z.record(z.string(), z.number()),
+            overrides: z.record(z.string(), z.number()),
+            inForce: z.record(z.string(), z.number()),
+            version: z.number().int().nullable(),
+          }),
+        },
+      },
+    },
+    async (request) => {
+      const s = account(request);
+      await request.authorize('tenant.config.read', {
+        type: 'tenant_config',
+        tenantId: s.tenantId,
+      });
+      const row = await request.tx((trx) =>
+        trx
+          .selectFrom('cg.tenant_config')
+          .select(['value', 'version'])
+          .where('tenant_id', '=', s.tenantId)
+          .where('key', '=', 'recommendation.planning_factors')
+          .executeTakeFirst(),
+      );
+      const inForce = merged<PlanningFactors>(PLANNING_DEFAULTS, row?.value, 0.01);
+      const defaults = PLANNING_DEFAULTS as unknown as Record<string, number>;
+      const overrides = Object.fromEntries(
+        Object.entries(inForce as unknown as Record<string, number>).filter(
+          ([k, v]) => v !== defaults[k],
+        ),
+      );
+      return {
+        defaults,
+        overrides,
+        inForce: inForce as unknown as Record<string, number>,
+        version: row?.version ?? null,
+      };
+    },
+  );
+
   app.post(
     '/recommendations',
     {

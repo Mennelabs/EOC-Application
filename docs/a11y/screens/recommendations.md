@@ -32,3 +32,7 @@ Screen: the console's **Recommendations** workspace (`/console/recommendations`,
 | 13  | Non-map alternative          | pass: every place is named in text with its distance and reasons; there is no map to replace                                                                                                                                                                         | screen source                                                    |
 
 Open: check 2 (screen reader).
+
+Planning factors (ADM-01, 2026-10-16): a table with a caption and column headers. Each row's header is the factor in plain words, with its unit, and is the label of that row's field. The default is in its own column and also in the field's placeholder, so it is never only a hint that disappears. A value that is not a number above zero is named next to the field, which is marked invalid; Save stays off until it is fixed. Saving opens the confirmation dialog for a reason. `tests/e2e/console-screens.spec.ts` (ADM-01, REC-12) runs axe and reflow on desktop and phone.
+
+Event templates (ADM-01, CON-02, 2026-10-16): each template's Edit button names the template. The form has a heading, labelled fields, the keyword rule as a hint tied to the field and a wrong keyword named in an alert, map layers as a checkbox group with a legend, and each message in its own fieldset with its English and Spanish fields marked with their language. `tests/e2e/console-screens.spec.ts` (ADM-01, CON-02) runs axe and reflow on desktop and phone.

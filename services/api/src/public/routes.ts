@@ -862,7 +862,7 @@ export const publicRoutes =
         const row = await request.tx((trx) =>
           trx
             .selectFrom('cg.photo')
-            .select(['id', 'object_key_original', 'status', 'bytes'])
+            .select(['id', 'object_key_original', 'status', 'bytes', 'report_id'])
             .where('id', '=', request.params.id)
             .where('execution_id', '=', request.body.executionId)
             .executeTakeFirst(),
@@ -904,10 +904,79 @@ export const publicRoutes =
             targetType: 'photo',
             targetId: row.id,
           });
+          // CHN-09: a photo added to an existing report from My report.
+          if (row.report_id) await photoAdded(request, trx, tenant.id, row.report_id, row.id);
         });
         return { photoId: row.id, status: 'uploaded' };
       },
     );
+
+    /**
+     * CHN-09, RULE-09: a photo the resident added after sending. The web joins the channels the
+     * report used; a report already reviewed (or waiting for the resident's answer) goes back
+     * to review with its version kept, so a finding never changes silently.
+     */
+    async function photoAdded(
+      request: FastifyRequest,
+      trx: Transaction<Database>,
+      tenantId: string,
+      reportId: string,
+      photoId: string,
+    ) {
+      const report = await trx
+        .selectFrom('cg.report')
+        .select([
+          'id',
+          'version',
+          'review_state',
+          'answers',
+          'verification_level',
+          'fema_degree',
+          'location_id',
+          'channels_used',
+        ])
+        .where('id', '=', reportId)
+        .executeTakeFirst();
+      if (!report) return;
+      const reopened =
+        report.review_state === 'approved' || report.review_state === 'needs_information';
+      if (reopened)
+        await trx
+          .insertInto('cg.report_version')
+          .values({
+            tenant_id: tenantId,
+            report_id: reportId,
+            report_version: report.version,
+            snapshot: JSON.stringify({
+              answers: report.answers,
+              review_state: report.review_state,
+              verification_level: report.verification_level,
+              fema_degree: report.fema_degree,
+              location_id: report.location_id,
+            }),
+            changed_by_kind: 'resident',
+            reason: 'photo added by the resident',
+          })
+          .onConflict((oc) => oc.doNothing())
+          .execute();
+      const channels = report.channels_used ?? [];
+      const change = {
+        ...(channels.includes('web') ? {} : { channels_used: [...channels, 'web'] }),
+        ...(reopened ? { review_state: 'submitted' as const } : {}),
+      };
+      if (Object.keys(change).length > 0)
+        await trx.updateTable('cg.report').set(change).where('id', '=', reportId).execute();
+      await request.audit(trx, {
+        action: 'report.self_update',
+        targetType: 'report',
+        targetId: reportId,
+        targetVersion: report.version,
+        changes: { fields: [{ name: 'photo', to: photoId }] },
+        reason: reopened
+          ? 'photo added after review: back to review (RULE-09)'
+          : 'photo added by the resident',
+      });
+    }
 
     // --------------------------------------------------------------- lookup
     app.post(
@@ -1135,6 +1204,13 @@ export const publicRoutes =
             .where('report_id', '=', reportId)
             .where('answered_at', 'is', null)
             .execute();
+          // CHN-09: how many photos the report holds, whichever channel brought them.
+          const photos = await trx
+            .selectFrom('cg.photo')
+            .select((eb) => eb.fn.countAll<string>().as('n'))
+            .where('report_id', '=', reportId)
+            .where('status', 'in', ['uploaded', 'processed'])
+            .executeTakeFirst();
           await request.audit(trx, {
             action: 'report.self_read',
             targetType: 'report',
@@ -1147,6 +1223,7 @@ export const publicRoutes =
             verification: report.verification_level,
             withdrawnAt: report.withdrawn_at?.toISOString() ?? null,
             version: report.version,
+            photos: Number(photos?.n ?? 0),
             needs: needs.map((n) => ({ id: n.id, category: n.category, status: n.status })),
             consent: Object.fromEntries(consent.map((c) => [c.org_type, c.granted])),
             openQuestions: corrections.map((c) => ({
@@ -1282,6 +1359,122 @@ export const publicRoutes =
           );
         });
         return { orgType: request.body.orgType, granted: request.body.granted };
+      },
+    );
+
+    // CHN-09: photos added from the web to a report that began elsewhere (a text, a call, a
+    // helper). The ticket is the same as during intake; the photo joins the report at once
+    // and is processed like the others. Completing it puts a reviewed report back in review
+    // (RULE-09). A withdrawn report takes none.
+    app.post(
+      '/intake/:tenant/me/photos',
+      {
+        schema: {
+          tags: ['public intake'],
+          params: tenantParam,
+          body: z.object({
+            shot: z.string().min(1).max(40).default('other'),
+            contentType: z.enum(['image/jpeg', 'image/png', 'image/webp', 'image/heic']),
+            bytes: z.number().int().positive(),
+            takenAt: z.iso.datetime().optional(),
+            location: z
+              .object({ lat: z.number().min(-90).max(90), lon: z.number().min(-180).max(180) })
+              .optional(),
+          }),
+        },
+      },
+      async (request, reply) => {
+        const tenant = tenantOf(request);
+        const reportId = residentOf(request, tenant.id);
+        await request.authorize('report.self_update', {
+          type: 'report',
+          id: reportId,
+          tenantId: tenant.id,
+        });
+        await request.authorize('intake.upload', { type: 'photo', tenantId: tenant.id });
+        const objects = deps.objects;
+        if (!objects)
+          throw new ApiError(
+            503,
+            'photos_unavailable',
+            'Photos cannot be uploaded right now. Try again later; your report is safe.',
+            { retryable: true },
+          );
+        if (request.body.bytes > objects.maxBytes)
+          throw new ApiError(
+            413,
+            'photo_too_large',
+            `Photos must be under ${Math.round(objects.maxBytes / 1_048_576)} MB.`,
+          );
+        const photo = await request.tx(async (trx) => {
+          const report = await trx
+            .selectFrom('cg.report')
+            .select(['id', 'execution_id', 'withdrawn_at'])
+            .where('id', '=', reportId)
+            .executeTakeFirst();
+          if (!report) throw errors.notFound();
+          if (report.withdrawn_at)
+            throw new ApiError(409, 'report_withdrawn', 'This report was withdrawn.');
+          const count = await trx
+            .selectFrom('cg.photo')
+            .select((eb) => eb.fn.countAll<string>().as('n'))
+            .where('report_id', '=', report.id)
+            .executeTakeFirst();
+          if (Number(count?.n ?? 0) >= 30)
+            throw new ApiError(
+              429,
+              'too_many_photos',
+              'That is as many photos as one report can take.',
+            );
+          // The report's own submission, so its photos are never compared with each other as
+          // if they were another report's (PHO-15).
+          const row = await trx
+            .insertInto('cg.photo')
+            .values({
+              tenant_id: tenant.id,
+              execution_id: report.execution_id,
+              report_id: report.id,
+              shot: request.body.shot,
+              source: 'web',
+              object_key_original: '',
+              content_type: request.body.contentType,
+              bytes: request.body.bytes,
+              suggested_taken_at: request.body.takenAt ? new Date(request.body.takenAt) : null,
+              suggested_geom: request.body.location
+                ? sql`ST_SetSRID(ST_MakePoint(${request.body.location.lon}, ${request.body.location.lat}), 4326)`
+                : null,
+            })
+            .returning('id')
+            .executeTakeFirstOrThrow();
+          const key = `tenants/${tenant.id}/originals/${report.execution_id}/${row.id}`;
+          await trx
+            .updateTable('cg.photo')
+            .set({ object_key_original: key })
+            .where('id', '=', row.id)
+            .execute();
+          return { id: row.id, key, executionId: report.execution_id };
+        });
+        const expiresIn = 900;
+        const uploadUrl = await getSignedUrl(
+          (objects.presignClient ?? objects.client) as unknown as Parameters<
+            typeof getSignedUrl
+          >[0],
+          new PutObjectCommand({
+            Bucket: objects.bucket,
+            Key: photo.key,
+            ContentType: request.body.contentType,
+            ContentLength: request.body.bytes,
+          }),
+          { expiresIn },
+        );
+        return reply.code(201).send({
+          photoId: photo.id,
+          executionId: photo.executionId,
+          method: 'PUT',
+          uploadUrl,
+          headers: { 'Content-Type': request.body.contentType },
+          expiresAt: new Date(now().getTime() + expiresIn * 1000).toISOString(),
+        });
       },
     );
 

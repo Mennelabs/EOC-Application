@@ -377,6 +377,29 @@ export const MEDIA_LINK_SECONDS = 60;
 export const missionMediaPrefix = (tenantId: string, missionId: string): string =>
   `missions/${tenantId}/${missionId}/`;
 
+/** Words that do not name a place ("lot 41 at the park"); letters and digits only, so no LIKE wildcard. */
+const PLACE_FILLER = new Set([
+  'lot',
+  'lote',
+  'the',
+  'at',
+  'on',
+  'in',
+  'near',
+  'by',
+  'de',
+  'la',
+  'el',
+  'del',
+  'en',
+]);
+export const placeWords = (text: string): string[] =>
+  text
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w && !PLACE_FILLER.has(w))
+    .slice(0, 8);
+
 /** A random 256-bit opaque reference, 43 base64url characters (migration 0041). */
 export const newCjiRef = (): string => randomBytes(32).toString('base64url');
 
@@ -848,6 +871,8 @@ export const missionRoutesWith =
             unassigned: z.coerce.boolean().optional(),
             /** The mission number, any letter case (the command window resolves it here, CMD-08). */
             reference: z.string().trim().min(3).max(40).optional(),
+            /** DSP-04: words of the mission's place (address, landmark, cross streets), every one. */
+            place: z.string().trim().min(3).max(120).optional(),
           }),
           response: { 200: z.array(missionOut) },
         },
@@ -862,12 +887,24 @@ export const missionRoutesWith =
           fields: MISSION_FIELDS,
         });
         const q = request.query;
+        // DSP-04: searching by place reads the exact location, so it needs that field.
+        if (q.place && !decision.fields.includes('location')) throw errors.forbidden();
         const rows = await run(request, scope, async (trx) => {
           let x = query(trx)
             .orderBy('m.priority', 'desc')
             .orderBy('m.created_at', 'desc')
             .limit(q.limit)
             .offset(q.offset);
+          if (q.place) {
+            const words = placeWords(q.place);
+            if (!words.length) x = x.where(sql<boolean>`false`);
+            for (const w of words)
+              x = x.where(
+                sql<string>`concat_ws(' ', l.line1, l.unit, l.city, l.postal, l.landmark, l.cross_streets)`,
+                'ilike',
+                `%${w}%`,
+              );
+          }
           if (q.eventId) x = x.where('m.event_id', '=', q.eventId);
           if (q.state) x = x.where('m.state', '=', q.state);
           if (q.kind) x = x.where('m.kind', '=', q.kind);

@@ -37,7 +37,7 @@ Everything in the stack is synthetic or the WESTWIND exercise (SCL-12).
 
 ## What passed
 
-- **Traceability:** of the 105 requirement IDs assigned to layer 7, 92 pass and 13 are partial as of 2026-10-16, after the follow-up work (76, 23 and 6 deferred when the report was first written; `docs/traceability.md`, evidence in `trace-layer7.json`). Across every layer so far, 486 of 663 IDs pass, 141 are partial, 33 deferred, 2 designed and 1 not started. Earlier IDs this layer extends are updated in place: INT-12, PHO-03, PHO-07, AIG-05, the GATE rows and others.
+- **Traceability:** of the 105 requirement IDs assigned to layer 7, 92 pass and 13 are partial as of 2026-10-16, after the follow-up work (76, 23 and 6 deferred when the report was first written; `docs/traceability.md`, evidence in `trace-layer7.json`). Across every layer so far, 489 of 663 IDs pass, 138 are partial, 33 deferred, 2 designed and 1 not started. Earlier IDs this layer extends are updated in place: INT-12, PHO-03, PHO-07, AIG-05, the GATE rows and others.
 - **Launch gates:** GATE-02, GATE-04 and GATE-05 pass for layer 7. GATE-03 and GATE-08 are partial; see `layer-7-gates.md`.
 - **Permission sweep:** every staff route (364) refuses a caller with no token and an account with no role, and none fails with a server error (`authz-sweep.db.test.ts`, in CI).
 - **CI:** each merged PR was green end to end (lint, typecheck, unit tests, scans, Semgrep, the Android build, and the compose stack with integration, database and browser suites). Locally the full database list, the console, resident, field and help journeys, and the a11y spec pass.
@@ -97,7 +97,7 @@ Everything in the stack is synthetic or the WESTWIND exercise (SCL-12).
 
 ## Readings taken in favour of privacy and safety (flagged for you)
 
-The plan's §12 lists all 37. The newest:
+The plan's §12 lists all 42. The newest:
 
 - a legal aid organization's referral responses share only the status;
 - resident dictation goes through the county's provider or not at all;
@@ -125,6 +125,11 @@ The plan's §12 lists all 37. The newest:
 - a re-entry pass shows the checkpoint the zone and the people, and who and which home only for a valid pass and to a role that checks passes; every scan is logged without naming anyone (FL:FR-03).
 - Waze reads the county's current road closures from a feed the county switches on; a road drawn only as a point is left out, never guessed (FL:FR-05).
 - a resource's picture is decorative (empty alternative text), stripped of camera details, and reaches the public only with the publish that approves it; removed, it leaves at once (BRD:FR-16.01).
+- "send the nearest team" from the command window plans the dispatch board's best suggestion with its reasons and cautions for the dispatcher to confirm; finding a mission by its place needs the right to read mission locations (DSP-04).
+- a photo a resident adds from My report after sending puts a reviewed report back in review, its reviewed version kept (CHN-09, RULE-09).
+- "Is this the property?" draws the lot from its outline with the pin, named in words for screen readers, with no tile map (FLD-04).
+- event templates and planning factors are edited on their own screens, version-checked and audited; a planning factor change needs a reason and a blank field means the default (ADM-01).
+- a staff route refuses a caller without an account before reading or validating anything, so it describes nothing to an outsider; dynamic security checks run on every push and each feature has a threat model (SEC-15).
 
 ## Questions for you (defaults in force)
 

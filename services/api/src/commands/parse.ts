@@ -114,6 +114,10 @@ const SUBVERBS: Record<string, string> = {
   prioridad: 'priority',
   assign: 'assign',
   asignar: 'assign',
+  // DSP-04: "send the nearest chainsaw team".
+  send: 'assign',
+  enviar: 'assign',
+  mandar: 'assign',
   close: 'close',
   cerrar: 'close',
   reopen: 'reopen',
@@ -489,6 +493,23 @@ function split(tokens: string[]): { words: string[]; pairs: Record<string, strin
  */
 export const ON_SCREEN = '@screen';
 const THIS_WORDS = new Set(['this', 'esta', 'este', 'esto']);
+/** DSP-04: words that ask for the suggested team rather than name one. */
+const NEAREST_WORDS = new Set(['nearest', 'closest', 'cercano', 'cercana', 'proximo', 'proxima']);
+const TEAM_FILLER = new Set([
+  'the',
+  'a',
+  'team',
+  'teams',
+  'crew',
+  'el',
+  'la',
+  'de',
+  'del',
+  'mas',
+  'equipo',
+  'cuadrilla',
+]);
+
 const onScreen = (ref: string | undefined) =>
   ref !== undefined && THIS_WORDS.has(norm(ref)) ? ON_SCREEN : ref;
 
@@ -586,6 +607,14 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
         return ok('mission.priority', { priority: p }, ref, 'mission');
       }
       if (s === 'assign') {
+        // DSP-04: "send nearest chainsaw team": the best suggestion, among teams with that skill.
+        if (rest.some((w) => NEAREST_WORDS.has(norm(w)))) {
+          const skill = rest
+            .filter((w) => !NEAREST_WORDS.has(norm(w)) && !TEAM_FILLER.has(norm(w)))
+            .join(' ')
+            .trim();
+          return ok('mission.assign_nearest', skill ? { skill } : {}, ref, 'mission');
+        }
         const person = rest.join(' ').trim();
         if (!person) return usage('Assign whom?', '/mission <number> assign <person>');
         return ok('mission.assign', { person }, ref, 'mission');
@@ -603,7 +632,7 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
       if (s === 'reopen') return ok('mission.reopen', {}, ref, 'mission');
       return usage(
         `"${sub}" is not something the command window can do to a mission yet.`,
-        '/mission <number> [status <state> | note <text> | priority <level> | assign <person> | close | reopen]',
+        '/mission <number> [status <state> | note <text> | priority <level> | assign <person> | send nearest [<skill>] team | close | reopen]',
       );
     }
 

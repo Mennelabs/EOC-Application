@@ -27,6 +27,7 @@ export const FREE_TEXT_ARGS = [
   'requestReference',
   'message',
   'summary',
+  'skill',
 ] as const;
 
 /** Section 30.2 and the API's plan lifetime: unconfirmed for this long, a plan is prepared again. */

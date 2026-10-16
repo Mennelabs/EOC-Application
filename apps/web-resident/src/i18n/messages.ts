@@ -241,6 +241,15 @@ const en = {
   'my.copyReady': 'Your copy was downloaded.',
   'my.copyFailed': 'We could not make your copy just now. Try again in a few minutes.',
   'my.signOut': 'Close my report',
+  'my.photos': 'Add photos',
+  'my.photosHint':
+    'Photos of the damage help the county see what happened. Take them only when it is safe.',
+  'my.photosCount':
+    '{n, plural, =0 {No photos on your report yet.} one {1 photo on your report.} other {# photos on your report.}}',
+  'my.photosAdd': 'Add a photo',
+  'my.photoAdded': 'Photo added. The county will look at it with your report.',
+  'my.photosOff': 'Photos cannot be added right now. Try again later; your report is safe.',
+  'my.photoFailed': 'The photo did not save. Try again; your report is safe.',
   'help.heading': 'Help near you',
   'help.body':
     'Open shelters, food and water sites will be listed here. Until then, call or text {phone} for help near you.',
@@ -489,6 +498,15 @@ const es: Record<MessageId, string> = {
   'my.copyReady': 'Su copia se descargó.',
   'my.copyFailed': 'No pudimos hacer su copia ahora. Intente de nuevo en unos minutos.',
   'my.signOut': 'Cerrar mi reporte',
+  'my.photos': 'Añadir fotos',
+  'my.photosHint':
+    'Las fotos del daño ayudan al condado a ver qué pasó. Tómelas solo cuando sea seguro.',
+  'my.photosCount':
+    '{n, plural, =0 {Su reporte todavía no tiene fotos.} one {Su reporte tiene 1 foto.} other {Su reporte tiene # fotos.}}',
+  'my.photosAdd': 'Añadir una foto',
+  'my.photoAdded': 'Foto añadida. El condado la verá con su reporte.',
+  'my.photosOff': 'No se pueden añadir fotos ahora. Intente más tarde; su reporte está a salvo.',
+  'my.photoFailed': 'La foto no se guardó. Intente de nuevo; su reporte está a salvo.',
   'help.heading': 'Ayuda cerca de usted',
   'help.body':
     'Aquí se listarán albergues y sitios de comida y agua abiertos. Por ahora, llame o envíe un mensaje al {phone} para ayuda cerca de usted.',

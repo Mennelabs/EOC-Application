@@ -383,7 +383,7 @@
     "partial",
     "MapLibre + self-hosted PMTiles on the public page, loaded only on request (ADR-0029); ZIP centroids; Esri/FEMA by import and export only; layer 6: as amended 2026-10-14 (ADR-0039): public reference data pulled from free federal services with file import for every dataset (packages/refdata; ADR-0041); the situation map's area layers on MapLibre; counties' parcel data loaded per tenant from their GIS (routes/parcels.ts)",
     "tests/e2e/help.spec.ts (map toggle), apps/web-help/src/map.ts, packages/refdata/test, services/worker/test/refdata.db.test.ts, services/api/test/refdata.db.test.ts, services/api/test/parcels.db.test.ts",
-    "The field app has no map yet (no MapLibre in apps/field) and no job cuts offline map packages: /field/area only says whether one exists (FLD-04, FLD-13). Live pulls were not verified against the federal hosts from this environment (blocked); Adam runs the live check in production (decision 2026-10-15)."
+    "The field app has no tile map (no MapLibre in apps/field; it draws a lot from its outline, FLD-04) and no job cuts offline map packages: /field/area only says whether one exists (FLD-04, FLD-13). Live pulls were not verified against the federal hosts from this environment (blocked); Adam runs the live check in production (decision 2026-10-15)."
   ],
   "SCL-03": [
     "partial",

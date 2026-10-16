@@ -347,6 +347,47 @@ describe.skipIf(!appUrl || !workerUrl)('shelter recommendations (database-backed
     );
   });
 
+  it('ADM-01, REC-12: the planning factors editor reads the defaults and the county values in force; nonsense is not in force; roles without configuration access are refused', async () => {
+    type Factors = {
+      defaults: Record<string, number>;
+      overrides: Record<string, number>;
+      inForce: Record<string, number>;
+      version: number | null;
+    };
+    const none = await call('em', 'GET', '/recommendations/planning-factors');
+    expect(none.status).toBe(200);
+    const blank = none.body as Factors;
+    expect(blank.version).toBeNull();
+    expect(blank.overrides).toEqual({});
+    expect(blank.defaults['personsPerHousehold']).toBe(2.5);
+    expect(blank.inForce).toEqual(blank.defaults);
+    await withTenant(dbWorker, { tenantId: county }, (trx) =>
+      trx
+        .insertInto('cg.tenant_config')
+        .values({
+          tenant_id: county,
+          key: 'recommendation.planning_factors',
+          value: JSON.stringify({ personsPerHousehold: 2.7, staleDays: -4, unknown: 9 }),
+          created_by: ACTOR,
+          updated_by: ACTOR,
+        })
+        .execute(),
+    );
+    const set = (await call('em', 'GET', '/recommendations/planning-factors')).body as Factors;
+    expect(set.overrides).toEqual({ personsPerHousehold: 2.7 });
+    expect(set.inForce['staleDays']).toBe(365);
+    expect(set.inForce).not.toHaveProperty('unknown');
+    expect(set.version).toBe(1);
+    expect((await call('coad', 'GET', '/recommendations/planning-factors')).status).toBe(403);
+    await withTenant(dbWorker, { tenantId: county }, (trx) =>
+      trx
+        .deleteFrom('cg.tenant_config')
+        .where('tenant_id', '=', county)
+        .where('key', 'like', 'recommendation.%')
+        .execute(),
+    );
+  });
+
   it('REC-04: a named person accepts, edits or rejects with a reason; once decided it stays decided; the COAD may ask but not decide', async () => {
     const rec = await request();
     const decide = (who: string, body: unknown, version = rec.version) =>

@@ -265,6 +265,23 @@ export async function putObjectViaApi(
     });
 }
 
+/** CHN-09: a ticket to add a photo to one's own report from My report. */
+export const requestMyUpload = (
+  tenant: string,
+  token: string,
+  body: {
+    shot: string;
+    contentType: string;
+    bytes: number;
+    takenAt?: string;
+    location?: { lat: number; lon: number };
+  },
+) =>
+  call<UploadTicket & { executionId: string }>(`/intake/${tenant}/me/photos`, {
+    body,
+    headers: { 'x-resident-token': token },
+  });
+
 export const completeUpload = (tenant: string, photoId: string, executionId: string) =>
   call<{ photoId: string; status: string }>(`/intake/${tenant}/photos/${photoId}/complete`, {
     body: { executionId },
@@ -287,6 +304,8 @@ export interface MyReport {
   verification: string;
   withdrawnAt: string | null;
   version: number;
+  /** CHN-09: photos on the report, whichever channel brought them. */
+  photos: number;
   needs: { id: string; category: string; status: string }[];
   consent: Record<string, boolean>;
   openQuestions: { id: string; questions: unknown; message: string | null; askedAt: string }[];

@@ -3,8 +3,8 @@
  * GATE-06, RES-01/02, EQ-06, ACC-07, CHN-08): keyboard only from the deep
  * link to a reference number with an axe scan on every screen, the optional
  * questions, then "my report" through the one-time code from the mail sink
- * (with the resident's own PDF copy, FL:FR-32),
- * a consent change and a withdrawal. A Spanish run and a 320 px reflow check.
+ * (with the resident's own PDF copy, FL:FR-32, and a photo added afterwards,
+ * CHN-09), a consent change and a withdrawal. A Spanish run and a 320 px reflow check.
  */
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
@@ -202,6 +202,20 @@ test.describe('resident report', () => {
     const file = await download;
     expect(file.suggestedFilename()).toBe(`damage-report-${code!}.pdf`);
     await expect(page.getByText('Your copy was downloaded.')).toBeVisible();
+    // CHN-09: a photo added afterwards from the web joins the same report.
+    await page.getByLabel('Add a photo').setInputFiles({
+      name: 'later.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        'base64',
+      ),
+    });
+    await expect(
+      page.getByText('Photo added. The county will look at it with your report.'),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/^\d+ photos? on your report\.$/)).toBeVisible();
+    await expectNoViolations(page);
     page.once('dialog', (d) => void d.accept());
     await pressButton(page, 'Withdraw my report');
     await expect(page.getByText('Your report was withdrawn.')).toBeVisible({ timeout: 10_000 });

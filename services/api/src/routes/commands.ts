@@ -362,6 +362,36 @@ type Resolution =
 type ListRow = Record<string, unknown>;
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
 
+/** FR-C11: requests answered with an earlier execution again (CMD-25), counted as duplicates. */
+const replays = new WeakSet<FastifyRequest>();
+
+/**
+ * FR-C11, CMD-38: one more of this outcome today. Only the catalogued command's name, the
+ * kind of input and the outcome are counted: no account, words or record. Counting never
+ * fails the request it counts.
+ */
+async function countOutcome(
+  request: FastifyRequest,
+  command: string,
+  inputKind: string,
+  outcome: string,
+): Promise<void> {
+  const s = request.subject;
+  if (s.kind !== 'account') return;
+  const kind = inputKind === 'natural' ? 'natural' : 'shorthand';
+  try {
+    await request.tx((trx) =>
+      sql`
+        insert into cg.command_outcome (tenant_id, day, command, input_kind, outcome, n)
+        values (${s.tenantId}, (now() at time zone 'utc')::date, ${command}, ${kind}, ${outcome}, 1)
+        on conflict (tenant_id, day, command, input_kind, outcome)
+        do update set n = cg.command_outcome.n + 1`.execute(trx),
+    );
+  } catch (err) {
+    request.log.warn({ err }, 'command outcome not counted');
+  }
+}
+
 /** Where the console lists and reads each kind of record the catalog targets. */
 const RECORDS: Record<
   TargetKind,
@@ -1001,6 +1031,16 @@ export const commandRoutesWith =
               shorthand: measured,
               interpretation: measured.extend({ timedOut: z.number().int() }),
               execution: measured.extend({ stillRunning: z.number().int() }),
+              /** FR-C11: how often the window completed, asked, or was sent the same request again. */
+              quality: z.object({
+                answers: z.number().int(),
+                outcomes: z.record(z.string(), z.number().int()),
+                clarificationRate: z.number().nullable(),
+                finished: z.number().int(),
+                completionRate: z.number().nullable(),
+                duplicates: z.number().int(),
+                duplicateRate: z.number().nullable(),
+              }),
             }),
           },
         },
@@ -1012,7 +1052,13 @@ export const commandRoutesWith =
           tenantId: s.tenantId,
         });
         const since = new Date(Date.now() - request.query.days * 86_400_000);
-        const { runs, reads } = await request.tx(async (trx) => ({
+        const { runs, reads, counted } = await request.tx(async (trx) => ({
+          counted: await trx
+            .selectFrom('cg.command_outcome')
+            .select(['outcome', (eb) => eb.fn.sum<string>('n').as('n')])
+            .where('day', '>=', since.toISOString().slice(0, 10))
+            .groupBy('outcome')
+            .execute(),
           runs: await trx
             .selectFrom('cg.command_execution')
             .select(['input_kind', 'state', 'prepare_ms', 'execute_ms', 'updated_at'])
@@ -1036,9 +1082,32 @@ export const commandRoutesWith =
           };
         };
         const now = Date.now();
+        const outcomes: Record<string, number> = {};
+        for (const c of counted) outcomes[c.outcome] = Number(c.n);
+        const duplicates = (outcomes['replayed'] ?? 0) + (outcomes['confirm_replayed'] ?? 0);
+        const answers = Object.entries(outcomes)
+          .filter(([k]) => k !== 'replayed' && k !== 'confirm_replayed')
+          .reduce((n, [, v]) => n + v, 0);
+        const rate = (part: number, whole: number) =>
+          whole ? Math.round((part / whole) * 1000) / 1000 : null;
+        const finished = runs.filter((r) =>
+          ['succeeded', 'partially_succeeded', 'failed', 'canceled', 'stale'].includes(r.state),
+        );
         return {
           days: request.query.days,
           deadlineMs,
+          quality: {
+            answers,
+            outcomes,
+            clarificationRate: rate(outcomes['clarify'] ?? 0, answers),
+            finished: finished.length,
+            completionRate: rate(
+              finished.filter((r) => r.state === 'succeeded').length,
+              finished.length,
+            ),
+            duplicates,
+            duplicateRate: rate(duplicates, answers + duplicates),
+          },
           // Shorthand and aliases are read without a model; their preparation is the target.
           shorthand: score(
             runs
@@ -1285,6 +1354,14 @@ export const commandRoutesWith =
           const body = request.body as { input?: string; remember?: boolean } | undefined;
           if (body?.remember === true && typeof body.input === 'string')
             await remember(request, payload, body.input);
+          const out = payload as Partial<ExecutionOut> | null;
+          if (out?.status)
+            await countOutcome(
+              request,
+              out.command?.name ?? 'unknown',
+              body?.input?.startsWith('/') ? 'shorthand' : 'natural',
+              replays.has(request) ? 'replayed' : out.status,
+            );
           return payload;
         },
         schema: {
@@ -1322,6 +1399,7 @@ export const commandRoutesWith =
         );
         if (prior) {
           if (prior.account_id !== s.accountId) throw errors.idempotencyMismatch();
+          replays.add(request);
           return view(prior, now);
         }
 
@@ -1657,7 +1735,10 @@ export const commandRoutesWith =
         const row = await request.tx((trx) => loadOwn(trx, request.params.id, s.accountId));
         if (!row) throw errors.notFound();
         // AC-C06: confirming again returns what happened the first time.
-        if (row.state !== 'awaiting_confirmation') return view(row, now);
+        if (row.state !== 'awaiting_confirmation') {
+          await countOutcome(request, row.command, row.input_kind, 'confirm_replayed');
+          return view(row, now);
+        }
         if (request.body.planHash !== row.plan_hash)
           throw new ApiError(
             409,
@@ -1775,6 +1856,7 @@ export const commandRoutesWith =
         });
         // Two confirmations racing: the second sees the first one's execution.
         if (!claimed) {
+          await countOutcome(request, row.command, row.input_kind, 'confirm_replayed');
           const cur = await request.tx((trx) => loadOwn(trx, row.id, s.accountId));
           return view(cur!, now);
         }

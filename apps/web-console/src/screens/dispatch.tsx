@@ -14,7 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, describeFailure } from '../api/client.ts';
 import { openStream, type StreamState } from '../api/stream.ts';
 import { DataTable, Status, Toolbar, fmt } from '../ui/primitives.tsx';
-import type { ConsoleMap, MapPoint } from '../ui/map.ts';
+import type { ConsoleMap, MapOutline, MapPoint } from '../ui/map.ts';
 import { fromZoneInput, toZoneInput } from '../ui/time.ts';
 
 interface Point {
@@ -112,6 +112,8 @@ interface Board {
     position: Point | null;
     reportedAt: string;
   }[];
+  /** DSP-01: each open field route's parcel area, outlined. */
+  routeAreas?: RouteArea[];
   counts: {
     teamsByStatus: Record<string, number>;
     queue: number;
@@ -121,8 +123,20 @@ interface Board {
     needs?: number;
     closures?: number;
     fieldReports?: number;
+    routeAreas?: number;
   };
 }
+interface RouteArea {
+  areaKey: string;
+  parcels: number;
+  outline: unknown;
+  missions: { id: string; reference: string; assigned: boolean }[];
+}
+/** A route area in words: its name, its parcels and its missions. */
+const routeAreaText = (a: RouteArea) =>
+  `Route area ${a.areaKey.replace(/-/g, ' ')}: ${a.parcels} ${a.parcels === 1 ? 'parcel' : 'parcels'}, ${a.missions
+    .map((m) => `${m.reference} ${m.assigned ? 'assigned' : 'not assigned'}`)
+    .join(', ')}`;
 interface Suggestion {
   teamId: string;
   name: string;
@@ -437,7 +451,7 @@ function BoardMap({ board }: { board: Board }) {
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<ConsoleMap | null>(null);
   const [layers, setLayers] = useState<Set<string>>(
-    new Set(['teams', 'work', 'needs', 'hazards', 'closures', 'sites', 'reports']),
+    new Set(['teams', 'work', 'routes', 'needs', 'hazards', 'closures', 'sites', 'reports']),
   );
   const [picked, setPicked] = useState<string | null>(null);
   const points = useMemo<MapPoint[]>(() => {
@@ -538,12 +552,21 @@ function BoardMap({ board }: { board: Board }) {
         });
     return out;
   }, [board]);
+  // DSP-01: field routes' parcel areas as outlines; clicking inside one names it.
+  const outlines = useMemo<MapOutline[]>(
+    () =>
+      (board.routeAreas ?? [])
+        .filter((a) => a.outline)
+        .map((a) => ({ id: a.areaKey, geometry: a.outline, label: routeAreaText(a) })),
+    [board],
+  );
   useEffect(() => {
     let alive = true;
     void import('../ui/map.ts').then(({ openMap }) => {
       if (!alive || !box.current) return;
       map.current = openMap(box.current, (p) => setPicked(p.label));
       map.current.setPoints(points, layers);
+      map.current.setOutlines(layers.has('routes') ? outlines : null, setPicked);
     });
     return () => {
       alive = false;
@@ -556,6 +579,9 @@ function BoardMap({ board }: { board: Board }) {
   useEffect(() => {
     map.current?.setPoints(points, layers);
   }, [points, layers]);
+  useEffect(() => {
+    map.current?.setOutlines(layers.has('routes') ? outlines : null, setPicked);
+  }, [outlines, layers]);
   const toggle = (l: string) =>
     setLayers((cur) => {
       const next = new Set(cur);
@@ -570,6 +596,7 @@ function BoardMap({ board }: { board: Board }) {
         {[
           ['teams', 'Teams'],
           ['work', 'Work'],
+          ['routes', 'Route areas'],
           ['needs', 'Needs'],
           ['hazards', 'Hazards'],
           ['closures', 'Road closures'],
@@ -586,7 +613,7 @@ function BoardMap({ board }: { board: Board }) {
         ref={box}
         className="map"
         role="region"
-        aria-label="Map of teams, work, needs, hazards, road closures, sites and field reports. The lists below show the same."
+        aria-label="Map of teams, work, route areas, needs, hazards, road closures, sites and field reports. The lists below show the same."
       />
     </section>
   );
@@ -1015,6 +1042,36 @@ export function DispatchScreen() {
               { key: 'sum', header: 'Summary', render: (m) => m.summary ?? '—' },
             ]}
           />
+          {board.routeAreas?.length ? (
+            <>
+              <h2>Route areas</h2>
+              <DataTable
+                caption="The parcel area each open field route covers (outlined on the map)"
+                rows={board.routeAreas}
+                rowKey={(a) => a.areaKey}
+                columns={[
+                  { key: 'area', header: 'Area', render: (a) => a.areaKey.replace(/-/g, ' ') },
+                  {
+                    key: 'parcels',
+                    header: 'Parcels',
+                    render: (a) => (a.parcels ? a.parcels : 'No parcels loaded for this area'),
+                  },
+                  {
+                    key: 'missions',
+                    header: 'Routes',
+                    render: (a) =>
+                      a.missions.map((m, i) => (
+                        <span key={m.id}>
+                          {i ? ', ' : ''}
+                          <a href={`/console/missions/${m.id}`}>{m.reference}</a> (
+                          {m.assigned ? 'assigned' : 'not assigned'})
+                        </span>
+                      )),
+                  },
+                ]}
+              />
+            </>
+          ) : null}
           <h2>Hazards</h2>
           <DataTable
             caption="Hazards on this event"

@@ -528,7 +528,8 @@ export type ReviewDecisionKind =
   | 'supersede'
   | 'reopen'
   | 'verify'
-  | 'set_degree';
+  | 'set_degree'
+  | 'field_visit';
 export type MessageState = 'queued' | 'sent' | 'delivered' | 'acknowledged' | 'failed';
 
 export interface IntakeGraphTable extends Stamped {
@@ -647,6 +648,9 @@ export interface ReportTable extends Stamped {
   told_to_call_911_at: TsNullable;
   submitted_at: TsGen;
   withdrawn_at: TsNullable;
+  /** CON-05: a reviewer sent the report to the field; it waits for a team's visit. */
+  field_visit_requested_at: TsNullable;
+  field_visit_requested_by: Uuid | null;
 }
 
 export interface ReportVersionTable {

@@ -667,10 +667,10 @@
     ""
   ],
   "DSP-01": [
-    "partial",
-    "GET /dispatch/board (teams by status with positions, queue, active work, hazards, open sites, alerts; routes/dispatch.ts); screens/dispatch.tsx list, filters and optional map; open needs (at about a block), road closures and field reports are lists and map layers too, each layer with its own toggle and words on every marker",
-    "services/api/test/dispatch-sync.db.test.ts (DSP-01/02/03), tests/e2e/console-l4.spec.ts (board with axe); services/api/test/dispatch-sync.db.test.ts (DSP-01, DSP-03, MIS-01: an open need waits at about a block, becomes a mission and leaves the needs; a second mission refused, a replay not; closures by the latest report per road; a partner sees no county needs), tests/e2e/console-l4.spec.ts (a resident need on the board, made a mission, with axe), tests/e2e/console-l4.spec.ts (DSP-01: the map's needs, road closures and field reports layers, toggled, with axe)",
-    "Field routes show as their mission's point on the work layer; the outline of a route's parcel area is not drawn."
+    "pass",
+    "GET /dispatch/board (teams by status with positions, queue, active work, hazards, open sites, alerts; routes/dispatch.ts); screens/dispatch.tsx list, filters and optional map; open needs (at about a block), road closures and field reports are lists and map layers too, each layer with its own toggle and words on every marker; each open field route's parcel area (`routeAreas`: a concave hull of the area's parcels, its parcel count and its missions) is outlined on a 'Route areas' layer, named when picked, and listed in a table",
+    "services/api/test/dispatch-sync.db.test.ts (DSP-01/02/03: route areas outlined with their parcels and missions; a partner sees only the areas of its own work), tests/e2e/console-l4.spec.ts (board with axe); services/api/test/dispatch-sync.db.test.ts (DSP-01, DSP-03, MIS-01: an open need waits at about a block, becomes a mission and leaves the needs; a second mission refused, a replay not; closures by the latest report per road; a partner sees no county needs), tests/e2e/console-l4.spec.ts (a resident need on the board, made a mission, with axe), tests/e2e/console-l4.spec.ts (DSP-01: the route areas table and the map's route areas, needs, road closures and field reports layers, toggled, with axe)",
+    "Route areas come from the parcels' area (seeded, or loaded from the county's GIS, CON-17); an area with no parcels is listed as such and has no outline."
   ],
   "DSP-02": [
     "pass",

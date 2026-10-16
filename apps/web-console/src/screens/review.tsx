@@ -51,6 +51,8 @@ interface Summary {
   city: string | null;
   postal: string | null;
   aiAssisted: boolean;
+  /** CON-05: sent to the field; waits for a team's visit. */
+  fieldVisitRequestedAt?: string | null;
 }
 
 interface Detail extends Summary {
@@ -340,7 +342,12 @@ export function ReviewQueueScreen({ navigate }: { navigate: (to: string) => void
           {
             key: 'state',
             header: 'State',
-            render: (r) => STATE_LABEL[r.reviewState] ?? r.reviewState,
+            render: (r) =>
+              `${STATE_LABEL[r.reviewState] ?? r.reviewState}${
+                r.fieldVisitRequestedAt && r.verificationLevel !== 'field_verified'
+                  ? ', waiting for a field visit'
+                  : ''
+              }`,
           },
           {
             key: 'verification',
@@ -363,9 +370,134 @@ export function ReviewQueueScreen({ navigate }: { navigate: (to: string) => void
           { key: 'submitted', header: 'Submitted', render: (r) => fmt(r.submittedAt) },
         ]}
       />
+      {filters.eventId ? (
+        <FieldVisits eventId={filters.eventId} />
+      ) : (
+        <p className="hint">Choose an event to see the reports waiting for a field visit.</p>
+      )}
     </section>
   );
 }
+
+interface FieldVisitGroup {
+  areaKey: string | null;
+  postal: string | null;
+  reports: {
+    id: string;
+    referenceCode: string;
+    parcelId: string | null;
+    photos: number;
+    requestedAt: string;
+    routeMissionId: string | null;
+  }[];
+  waiting: number;
+  routes: { missionId: string; reference: string; state: string }[];
+}
+
+const areaName = (g: FieldVisitGroup) =>
+  g.areaKey
+    ? g.areaKey.replace(/-/g, ' ')
+    : g.postal
+      ? `ZIP ${g.postal}, no route area`
+      : 'No route area';
+
+/**
+ * CON-05: reports a reviewer sent to the field, grouped by the route area of their parcel,
+ * with any open route covering them; a route opens for the ones not yet on one.
+ */
+function FieldVisits({ eventId }: { eventId: string }) {
+  const [groups, setGroups] = useState<FieldVisitGroup[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    let live = true;
+    api<{ groups: FieldVisitGroup[] }>(`/reports/field-visits?eventId=${eventId}`)
+      .then((r) => {
+        if (!live) return;
+        setGroups(r.groups);
+        setError(null);
+      })
+      .catch((e: unknown) => live && setError(describeFailure(e)));
+    return () => {
+      live = false;
+    };
+  }, [eventId, tick]);
+  const open = (g: FieldVisitGroup) =>
+    api<{ reference: string; reports: number }>('/reports/field-visits/routes', {
+      body: { eventId, areaKey: g.areaKey },
+    })
+      .then((r) =>
+        setNotice(
+          `Route ${r.reference} opened for ${r.reports} ${r.reports === 1 ? 'report' : 'reports'} in ${areaName(g)}; it waits on the dispatch board.`,
+        ),
+      )
+      .catch((e: unknown) => setNotice(describeFailure(e)))
+      .finally(() => setTick((n) => n + 1));
+  return (
+    <section aria-labelledby="visits-h">
+      <h2 id="visits-h">Waiting for a field visit</h2>
+      <p className="hint">
+        Reports sent to the field, by the route area of their parcel. A route opened here walks
+        their parcels only, reports with no photo first, and goes to the dispatch board for a team.
+        A report with no parcel in a route area needs its place fixed first.
+      </p>
+      {error ? <Status kind="error">{error}</Status> : null}
+      {notice ? <Status kind="info">{notice}</Status> : null}
+      <DataTable
+        caption="Reports waiting for a field visit, by route area"
+        rows={groups ?? []}
+        rowKey={(g) => g.areaKey ?? `zip:${g.postal ?? ''}`}
+        empty="No report is waiting for a field visit."
+        columns={[
+          { key: 'area', header: 'Area', render: (g) => areaName(g) },
+          {
+            key: 'reports',
+            header: 'Reports',
+            render: (g) =>
+              g.reports.map((r) => `${r.referenceCode}${r.photos ? '' : ' (no photo)'}`).join(', '),
+          },
+          { key: 'waiting', header: 'Not on a route', render: (g) => g.waiting },
+          {
+            key: 'routes',
+            header: 'Open routes',
+            render: (g) =>
+              g.routes.length
+                ? g.routes.map((m, i) => (
+                    <span key={m.missionId}>
+                      {i ? ', ' : ''}
+                      <a href={`/console/missions/${m.missionId}`}>{m.reference}</a> (
+                      {STATE_TEXT[m.state] ?? m.state})
+                    </span>
+                  ))
+                : 'None',
+          },
+          {
+            key: 'act',
+            header: 'Action',
+            render: (g) =>
+              g.areaKey && g.waiting > 0 ? (
+                <button type="button" onClick={() => void open(g)}>
+                  Open a route for {areaName(g)}
+                </button>
+              ) : g.areaKey ? (
+                'All on a route'
+              ) : (
+                'No parcels to walk'
+              ),
+          },
+        ]}
+      />
+    </section>
+  );
+}
+
+const STATE_TEXT: Record<string, string> = {
+  draft: 'draft',
+  open: 'waiting for a team',
+  en_route: 'on the way',
+  on_scene: 'on site',
+};
 
 // ----------------------------------------------------------------- detail
 
@@ -910,7 +1042,9 @@ function Decisions({
                       : {}),
                   },
                 }),
-              `Done: ${decision}.`,
+              decision === 'field_visit'
+                ? 'Done: sent to the field. It waits for a visit under the review queue.'
+                : `Done: ${decision}.`,
             ).then(() => {
               setReason('');
               setQuestion('');
@@ -927,6 +1061,9 @@ function Decisions({
                 <option value="duplicate">Link as duplicate of another report</option>
                 <option value="supersede">This report replaces an older one</option>
                 <option value="reopen">Reopen for review</option>
+                <option value="field_visit">
+                  Send to the field (a team visits; it stays in review)
+                </option>
               </select>
             )}
           </Field>

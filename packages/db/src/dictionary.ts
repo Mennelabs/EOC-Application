@@ -514,6 +514,11 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     told_to_call_911_at: { c: 'internal' },
     submitted_at: { c: 'internal' },
     withdrawn_at: { c: 'internal' },
+    field_visit_requested_at: {
+      c: 'internal',
+      d: 'CON-05: when a reviewer sent the report to the field for a visit',
+    },
+    field_visit_requested_by: { c: 'internal' },
   }),
   report_version: table(
     {

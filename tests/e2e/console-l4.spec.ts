@@ -214,21 +214,28 @@ test.describe('layer 4 console', () => {
       timeout: 30_000,
     });
     await expectNoViolations(page);
-    // DSP-01: needs, closures and field reports are map layers too, each with its own toggle.
+    // DSP-01: each open field route's parcel area is listed and outlined on the map.
+    const routeAreas = page.getByRole('table', {
+      name: 'The parcel area each open field route covers (outlined on the map)',
+    });
+    await expect(routeAreas.getByRole('row', { name: /willow bend/ })).toBeVisible();
+    // DSP-01: route areas, needs, closures and field reports are map layers too, each with its own toggle.
     await page.getByRole('button', { name: 'Show map' }).click();
     await expect(
       page.getByRole('region', {
-        name: 'Map of teams, work, needs, hazards, road closures, sites and field reports. The lists below show the same.',
+        name: 'Map of teams, work, route areas, needs, hazards, road closures, sites and field reports. The lists below show the same.',
       }),
     ).toBeVisible();
     const mapLayers = page.getByRole('group', { name: 'Map layers' });
-    for (const name of ['Needs', 'Road closures', 'Field reports'])
+    for (const name of ['Route areas', 'Needs', 'Road closures', 'Field reports'])
       await expect(mapLayers.getByRole('button', { name })).toHaveAttribute('aria-pressed', 'true');
-    await mapLayers.getByRole('button', { name: 'Needs' }).click();
-    await expect(mapLayers.getByRole('button', { name: 'Needs' })).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    );
+    for (const name of ['Needs', 'Route areas']) {
+      await mapLayers.getByRole('button', { name }).click();
+      await expect(mapLayers.getByRole('button', { name })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+    }
     await expectNoViolations(page, { mapMarkers: true });
     await page.getByRole('button', { name: 'Hide map' }).click();
     await fieldReports

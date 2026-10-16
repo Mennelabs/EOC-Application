@@ -60,7 +60,13 @@ interface Board {
     position: { lat: number; lon: number } | null;
   }[];
   closures: { id: string; name: string; status: string }[];
-  counts: { queue: number; active: number; needs: number; closures: number };
+  routeAreas: {
+    areaKey: string;
+    parcels: number;
+    outline: { type: string; coordinates: unknown } | null;
+    missions: { id: string; reference: string; assigned: boolean }[];
+  }[];
+  counts: { queue: number; active: number; needs: number; closures: number; routeAreas: number };
 }
 interface Suggestion {
   suggestions: {
@@ -359,6 +365,15 @@ describe.skipIf(!appUrl || !workerUrl)(
         );
       expect(board.counts.queue).toBe(board.queue.length);
       expect(board.counts.active).toBe(board.active.length);
+      // DSP-01: each open field route's parcel area is outlined, with its parcels and missions.
+      const willow = board.routeAreas.find((a) => a.areaKey === 'willow-bend');
+      expect(willow, JSON.stringify(board.routeAreas.map((a) => a.areaKey))).toBeDefined();
+      expect(willow!.parcels).toBeGreaterThan(10);
+      expect(willow!.outline?.type).toBe('Polygon');
+      const route = board.active.find((m) => m.id === willow!.missions[0]!.id) as
+        { routeArea?: string | null } | undefined;
+      expect(route?.routeArea).toBe('willow-bend');
+      expect(board.counts.routeAreas).toBe(board.routeAreas.length);
       // The partner's dispatcher: its teams only, and only the work it owns or holds (DSP-09).
       const partner = await call('saw', 'GET', `/api/v1/dispatch/board?eventId=${eventId}`);
       expect(partner.status, partner.body).toBe(200);
@@ -373,6 +388,10 @@ describe.skipIf(!appUrl || !workerUrl)(
             partnerTeamIds.size > 0,
         ).toBe(true);
       expect(pb.sites).toEqual([]);
+      // Route outlines only for the work the partner's board shows.
+      const partnerWork = new Set([...pb.queue, ...pb.active].map((m) => m.id));
+      for (const a of pb.routeAreas)
+        expect(a.missions.every((m) => partnerWork.has(m.id))).toBe(true);
       expect((await call('pio', 'GET', `/api/v1/dispatch/board?eventId=${eventId}`)).status).toBe(
         403,
       );

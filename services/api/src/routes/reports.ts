@@ -84,6 +84,8 @@ const summaryOut = z.object({
   city: z.string().nullable(),
   postal: z.string().nullable(),
   aiAssisted: z.boolean(),
+  /** CON-05: a reviewer sent it to the field; it waits for a team's visit. */
+  fieldVisitRequestedAt: z.iso.datetime().nullable(),
 });
 
 const detailOut = summaryOut.extend({
@@ -192,6 +194,7 @@ function toSummary(
     city: r.city ?? null,
     postal: r.postal ?? null,
     aiAssisted: flags.some((f) => f.kind === 'ai_assisted'),
+    fieldVisitRequestedAt: iso(r.field_visit_requested_at),
   };
 }
 
@@ -726,6 +729,8 @@ export const reportRoutes: FastifyPluginAsync = async (raw) => {
       'duplicate',
       'supersede',
       'reopen',
+      // CON-05: the report waits in review for a field team's visit.
+      'field_visit',
     ]),
     reason: z.string().min(3).max(2000),
     duplicateOf: z.uuid().optional(),
@@ -802,7 +807,12 @@ export const reportRoutes: FastifyPluginAsync = async (raw) => {
 
       const from = current.review_state;
       let to: ReportRow['review_state'];
-      const patch: { duplicate_of?: string | null; supersedes?: string | null } = {};
+      const patch: {
+        duplicate_of?: string | null;
+        supersedes?: string | null;
+        field_visit_requested_at?: Date;
+        field_visit_requested_by?: string;
+      } = {};
       switch (body.decision) {
         case 'approve':
           if (!['submitted', 'under_review', 'needs_information'].includes(from))
@@ -862,6 +872,17 @@ export const reportRoutes: FastifyPluginAsync = async (raw) => {
             throw errors.conflict(toSummary(current));
           to = 'under_review';
           patch.duplicate_of = null;
+          break;
+        case 'field_visit':
+          // CON-05: still in review, now waiting for a team; a verified report needs no visit.
+          if (
+            !['submitted', 'under_review', 'needs_information'].includes(from) ||
+            current.verification_level === 'field_verified'
+          )
+            throw errors.conflict(toSummary(current));
+          to = from === 'submitted' ? 'under_review' : from;
+          patch.field_visit_requested_at = new Date();
+          patch.field_visit_requested_by = s.accountId;
           break;
       }
 
@@ -940,6 +961,9 @@ export const reportRoutes: FastifyPluginAsync = async (raw) => {
                 ? [{ name: 'duplicate_of', to: patch.duplicate_of }]
                 : []),
               ...(patch.supersedes ? [{ name: 'supersedes', to: patch.supersedes }] : []),
+              ...(patch.field_visit_requested_at
+                ? [{ name: 'field_visit_requested_at', to: patch.field_visit_requested_at }]
+                : []),
             ],
           },
         });

@@ -152,6 +152,7 @@ Controls that every feature relies on are described once, in "Shared controls" b
 - TRACE requests and path traversal;
 - the identity provider refusing to redirect a sign-in to an unknown address.
 - the services' metrics never served through the gateway.
+- Keycloak's administration and master realm never served through the gateway, including case, double-slash and encoded variants. The platform gateway now refuses them as the enclave's gateway always has. Before this, `/auth/admin/` and the master realm's sign-in were reachable on the public address.
 
 The first run found that a staff route with a required query parameter answered a request with no token with a validation error. That error described the route to an outsider. Such requests are now refused at the start of the request (B).
 

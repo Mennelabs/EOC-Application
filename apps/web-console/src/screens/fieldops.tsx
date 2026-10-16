@@ -21,7 +21,7 @@ import { QuietHoursPanel } from './settings.tsx';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, describeFailure } from '../api/client.ts';
 import { DataTable, Field, Status, Toolbar, fmt } from '../ui/primitives.tsx';
-import { STATUS_TEXT } from './dispatch.tsx';
+import { STATUS_TEXT } from './team-status.ts';
 import { EventPicker, useOpenEvents } from './dispatch.tsx';
 import { formatDate, fromZoneInput } from '../ui/time.ts';
 import { useImage } from '../ui/badge-photo.tsx';

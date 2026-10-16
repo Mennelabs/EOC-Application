@@ -10,7 +10,7 @@
     "partial",
     "packages/reporting/src/metrics.ts: fifteen shipped metric definitions (damage, reports, missions, personnel, badges, needs, accountability) with county versions through the governed definitions; /console/metrics",
     "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts",
-    "MET-01, MET-03, MET-08 and MET-09 are not measured by the platform (see their rows)."
+    "MET-01 and MET-03 come from moderated testing; MET-08 (reliability) is measured by the service monitor and the restore drill (NFR-10), not in the county report; MET-09 lacks omissions and manual-fallback success."
   ],
   "MET-01": [
     "deferred",
@@ -55,17 +55,22 @@
     ""
   ],
   "MET-08": [
-    "deferred",
-    "",
-    "",
-    "Reliability (failed saves, duplicate effects, availability, restore, recovery times) comes from operations monitoring (ADR-0023, OpenTelemetry later) and the restore drills, not the metrics engine."
-  ],
-  "MET-09": ["deferred", "", "", "AI metrics arrive with the AI features (layer 7)."],
-  "MET-10": [
     "partial",
-    "metric accountability.denied (refused attempts from the audit chain by action and reason)",
-    "services/api/test/metrics.db.test.ts, packages/reporting/test/metrics.test.ts",
-    "Audit completeness is proven by the audit chain verifier (layer 1) rather than reported as a metric."
+    "service metrics (NFR-10): failed saves (cg_http_requests_total 5xx on writes), duplicate effects prevented (cg_idempotent_replays_total, field command duplicates), availability (up, ServiceDown alert); restore success and recovery time from the restore drill (tests/drills/restore-drill.sh: chains verify with the same heads, restore timed)",
+    "services/api/test/metrics.test.ts, infra/prometheus/alerts.test.yml, tests/drills/restore-drill.sh",
+    "Operational, not a county report: the figures live in the platform's monitor (docs/operations/alerts.md); the restore drill is run by hand before a release, not in CI (it destroys the schema)."
+  ],
+  "MET-09": [
+    "partial",
+    "metric ai.outcomes (packages/reporting/src/metrics.ts): AI calls, failures and time-outs (the manual path ran), held back by the safety filters, taken as they were, corrected, rejected, residents saying it was wrong, and the command window's clarifications and failed commands; counts only (cg.ai_output, cg.command_outcome); the AI health alerts (AIG-09)",
+    "services/api/test/metrics.db.test.ts (MET-09 case), services/worker/test/ai-health.db.test.ts",
+    "Omissions are not detected by the platform, and whether the manual path then succeeded is not linked to the failed call; both come from reviewing outputs in moderated testing."
+  ],
+  "MET-10": [
+    "pass",
+    "metric accountability.denied (refused attempts from the audit chain by action and reason); metric accountability.audit_complete (share of audit records that name who acted and carry the reason a confirmed decision needs, with hours since the chain was last verified and anchored; packages/reporting/src/metrics.ts, confirmed decisions taken from the authz catalog); worker cg_audit_chains_broken and the AuditChainBroken alert (NFR-10)",
+    "services/api/test/metrics.db.test.ts (MET-10 cases: refusals counted; a decision without its reason and a record without its actor counted), packages/reporting/test/metrics.test.ts, services/worker/test/alerts.test.ts",
+    ""
   ],
   "BRD:FR-14.01": [
     "pass",

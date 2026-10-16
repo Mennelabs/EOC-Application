@@ -21,8 +21,8 @@
   "INT-04": [
     "partial",
     "graphs/westwind.ts (shortest paths), engine.ts",
-    "packages/intake/test/graph.test.ts (at most 12 required questions on every relationship's shortest path; 7 for an own home)",
-    "The 5-minute median on a mid-range phone over 3G is measured by hand in the pilot; not automated."
+    "packages/intake/test/graph.test.ts (at most 12 required questions on every relationship's shortest path; 7 for an own home); tests/e2e/slow-network.spec.ts (the platform's share of a report on a mid-range phone over 3G: 8 s locally, held to 90 s)",
+    "The median completion time includes a person reading and typing, so it is measured with people in the pilot; the platform's share is automated."
   ],
   "INT-05": [
     "pass",
@@ -601,10 +601,10 @@
     ""
   ],
   "NFR-06": [
-    "partial",
-    "targets from SCL-03; k6 profiles",
-    "tests/load",
-    "Slow-network and older-device profiles are measured by hand."
+    "pass",
+    "targets from SCL-03 (50,000 submissions an hour, 10,000 SMS sessions) in the k6 profiles; evidence size capped at 1.5 MB a photo (ADR-0028); the slow-network and older-device profile defined in tests/e2e/slow-network.spec.ts: 3G at 300 ms round trip, 1.6 Mbps down and 750 kbps up, with the processor slowed four times",
+    "tests/load (k6 profiles, smoke in CI); tests/e2e/slow-network.spec.ts (a resident report under the profile: first load at most 15 s, no step over 5 s, the platform share at most 90 s; locally 2.4 s, 1.1 s and 8 s)",
+    "The full load profiles need a sized host (SCL-03)."
   ],
   "PHO-01": [
     "pass",

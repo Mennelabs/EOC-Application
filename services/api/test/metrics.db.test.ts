@@ -499,4 +499,96 @@ describe.skipIf(!appUrl || !workerUrl)('metrics (database-backed)', () => {
     const r = (await get('director', `/events/${eventId}/metrics?${q}`)).json();
     expect(metric(r, 'accountability.denied').value).toBeGreaterThanOrEqual(1);
   });
+
+  it('MET-10: audit completeness counts a decision recorded without its reason and a record without its actor', async () => {
+    const part = (r: MetricsResult, key: string) =>
+      metric(r, 'accountability.audit_complete').parts.find((p) => p.key === key)?.value ?? 0;
+    const before = (
+      await get('director', `/events/${eventId}/metrics?${q}`)
+    ).json() as MetricsResult;
+    expect(metric(before, 'accountability.audit_complete').value).not.toBeNull();
+    // Synthetic gaps written straight to the log: a confirmed decision with no reason, and an
+    // account action that does not name the account. The platform itself never writes either.
+    await tx(async (trx) => {
+      await trx
+        .insertInto('cg.audit_event')
+        .values([
+          {
+            tenant_id: county,
+            actor_kind: 'account',
+            actor_account_id: randomUUID(),
+            action: 'webhook.manage',
+            target_type: 'webhook',
+            target_id: randomUUID(),
+            reason: null,
+          },
+          {
+            tenant_id: county,
+            actor_kind: 'account',
+            actor_account_id: null,
+            action: 'report.read',
+            target_type: 'report',
+            target_id: randomUUID(),
+          },
+        ])
+        .execute();
+    });
+    const after = (
+      await get('director', `/events/${eventId}/metrics?${q}`)
+    ).json() as MetricsResult;
+    expect(part(after, 'no_reason') - part(before, 'no_reason')).toBe(1);
+    expect(part(after, 'no_actor') - part(before, 'no_actor')).toBe(1);
+    expect(part(after, 'decisions') - part(before, 'decisions')).toBe(1);
+    expect(metric(after, 'accountability.audit_complete').value!).toBeLessThan(100);
+  });
+
+  it('MET-09: AI help counted by what people did with it and how often it failed, with no words', async () => {
+    const before = (
+      await get('director', `/events/${eventId}/metrics?${q}`)
+    ).json() as MetricsResult;
+    const part = (r: MetricsResult, key: string) =>
+      metric(r, 'ai.outcomes').parts.find((p) => p.key === key)?.value ?? 0;
+    const row = (outcome: 'ok' | 'timeout', human: 'accepted' | 'edited' | 'rejected' | null) => ({
+      tenant_id: county,
+      feature: 'drafting.sitrep',
+      provider: 'openai',
+      model: 'exercise-model',
+      outcome,
+      latency_ms: 900,
+      human_action: human,
+    });
+    await tx((trx) =>
+      trx
+        .insertInto('cg.ai_output')
+        .values([
+          row('ok', 'accepted'),
+          row('ok', 'accepted'),
+          row('ok', 'edited'),
+          row('ok', 'rejected'),
+          row('timeout', null),
+        ])
+        .execute(),
+    );
+    const after = (
+      await get('director', `/events/${eventId}/metrics?${q}`)
+    ).json() as MetricsResult;
+    expect(part(after, 'calls') - part(before, 'calls')).toBe(5);
+    expect(part(after, 'failed') - part(before, 'failed')).toBe(1);
+    expect(part(after, 'accepted') - part(before, 'accepted')).toBe(2);
+    expect(part(after, 'edited') - part(before, 'edited')).toBe(1);
+    expect(part(after, 'rejected') - part(before, 'rejected')).toBe(1);
+    const ai = metric(after, 'ai.outcomes');
+    expect(ai.group).toBe('ai');
+    expect(ai.value).toBe(
+      Math.round(
+        (part(after, 'accepted') /
+          (part(after, 'accepted') + part(after, 'edited') + part(after, 'rejected'))) *
+          1000,
+      ) / 10,
+    );
+    // The CSV carries the new figures, with nothing but counts.
+    const csv = await get('director', `/events/${eventId}/metrics.csv?${q}`);
+    expect(csv.text).toContain('AI drafts and suggestions taken as they were');
+    expect(csv.text).not.toContain('exercise-model');
+  });
 });

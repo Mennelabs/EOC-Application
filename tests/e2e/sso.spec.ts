@@ -31,7 +31,14 @@ const BUTTON = `Westwind County account (exercise ${tag})`;
 const invitee = `sso-${tag}@example.org`;
 const stranger = `stranger-${tag}@example.org`;
 
-/** Development stack only: the Keycloak administrator from the environment or the generated .env. */
+/**
+ * Development stack only: Keycloak's administration is not routed by the gateway (SEC-15), so
+ * the test reaches it on the laptop's published port, with the administrator from the
+ * environment or the generated .env.
+ */
+const IDP_ADMIN =
+  process.env['IDP_ADMIN_URL'] ?? `http://127.0.0.1:${process.env['IDP_PORT'] ?? '8081'}/auth`;
+
 function keycloakAdminPassword(): string {
   const fromEnv = process.env['KEYCLOAK_ADMIN_PASSWORD'];
   if (fromEnv) return fromEnv;
@@ -41,7 +48,7 @@ function keycloakAdminPassword(): string {
 }
 
 async function kc(method: string, path: string, body?: unknown): Promise<Response> {
-  const t = await fetch(`${BASE}/auth/realms/master/protocol/openid-connect/token`, {
+  const t = await fetch(`${IDP_ADMIN}/realms/master/protocol/openid-connect/token`, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -52,7 +59,7 @@ async function kc(method: string, path: string, body?: unknown): Promise<Respons
     }),
   });
   const { access_token } = (await t.json()) as { access_token: string };
-  return fetch(`${BASE}/auth/admin/realms${path}`, {
+  return fetch(`${IDP_ADMIN}/admin/realms${path}`, {
     method,
     headers: {
       authorization: `Bearer ${access_token}`,

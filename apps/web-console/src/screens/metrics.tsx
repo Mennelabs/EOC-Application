@@ -42,6 +42,7 @@ const GROUPS: [string, string][] = [
   ['badges', 'Badges'],
   ['needs', 'Help for residents'],
   ['information', 'Recovery information'],
+  ['ai', 'Computer help (AI)'],
   ['accountability', 'Privacy and accountability'],
 ];
 const KINDS = [

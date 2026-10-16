@@ -19,6 +19,7 @@ import type { Block, PdfDocumentModel } from '@cg/pdf';
 import { DEGREES, countDamage, type Degree } from './counting.ts';
 import { toCsv } from './csv.ts';
 import { loadDamageRecords } from './load.ts';
+import { actions, type ActionMeta } from '@cg/authz';
 
 type Trx = Transaction<Database>;
 
@@ -30,6 +31,7 @@ export type MetricGroup =
   | 'badges'
   | 'needs'
   | 'information'
+  | 'ai'
   | 'accountability';
 
 export interface MetricDefinition {
@@ -51,10 +53,19 @@ export const GROUP_TITLE: Record<MetricGroup, string> = {
   badges: 'Badges',
   needs: 'Help for residents',
   information: 'Recovery information',
+  ai: 'Computer help (AI)',
   accountability: 'Privacy and accountability',
 };
 
 const d = (def: MetricDefinition) => def;
+
+/**
+ * MET-10: the audit actions that are confirmed decisions. The platform demands a reason for each
+ * before it acts (ADM-05), so a record of one without a reason is an incomplete record.
+ */
+const CONFIRMED_DECISIONS: string[] = Object.entries(actions as Record<string, ActionMeta>)
+  .filter(([, meta]) => meta.consequential === true)
+  .map(([key]) => key);
 
 /** Shipped version 1 of each metric. */
 export const METRICS = {
@@ -237,6 +248,24 @@ export const METRICS = {
     text: 'Requests the platform refused for lack of permission or a guardrail in the period, from the audit log.',
     params: {},
     requirements: ['MET-10'],
+  }),
+  'accountability.audit_complete': d({
+    key: 'accountability.audit_complete',
+    group: 'accountability',
+    title: 'Audit records that name who acted and why',
+    unit: 'percent',
+    text: 'Of the audit records written in the period, the share that name the person who acted (or the system job, or the resident) and give a reason wherever a decision needed one. Also shows how long ago the audit chain was last verified and anchored.',
+    params: {},
+    requirements: ['MET-10', 'SEC-11'],
+  }),
+  'ai.outcomes': d({
+    key: 'ai.outcomes',
+    group: 'ai',
+    title: 'AI drafts and suggestions taken as they were',
+    unit: 'percent',
+    text: 'Of the AI drafts and suggestions people acted on in the period, the share taken without change. Also counts calls that failed or timed out (the manual path ran instead), those the safety filters held back, corrections and rejections, residents saying the help was wrong, and the command window asking to clarify or failing to carry a command out. Counts only: no words, no people.',
+    params: {},
+    requirements: ['MET-09', 'AIG-09'],
   }),
 } as const satisfies Record<string, MetricDefinition>;
 
@@ -858,6 +887,97 @@ export async function computeMetrics(
       denied.rows.reduce((n, r) => n + Number(r.n), 0),
       parts(denied.rows),
     ),
+  );
+
+  // MET-10: an account's record must name the account; a confirmed decision must carry its reason.
+  const audit = (
+    await sql<{ total: string; no_actor: string; decisions: string; no_reason: string }>`
+      select count(*) as total,
+        count(*) filter (where a.actor_kind in ('account', 'break_glass')
+          and a.actor_account_id is null) as no_actor,
+        count(*) filter (where a.action = any(${CONFIRMED_DECISIONS}::text[])) as decisions,
+        count(*) filter (where a.action = any(${CONFIRMED_DECISIONS}::text[])
+          and coalesce(btrim(a.reason), '') = '') as no_reason
+      from cg.audit_event a
+      where a.tenant_id = ${tenantId}::uuid and a.occurred_at >= ${from} and a.occurred_at < ${to}`.execute(
+      trx,
+    )
+  ).rows[0]!;
+  const anchor = (
+    await sql<{ at: Date | null }>`
+      select max(anchored_at) as at from cg.audit_anchor where tenant_id = ${tenantId}::uuid`.execute(
+      trx,
+    )
+  ).rows[0]!;
+  const auditRecords = Number(audit.total);
+  const lacking = Number(audit.no_actor) + Number(audit.no_reason);
+  out.push(
+    value('accountability.audit_complete', share(auditRecords - lacking, auditRecords), [
+      { key: 'records', label: 'Audit records', value: auditRecords },
+      { key: 'no_actor', label: 'Without the person who acted', value: Number(audit.no_actor) },
+      { key: 'decisions', label: 'Confirmed decisions', value: Number(audit.decisions) },
+      { key: 'no_reason', label: 'Decisions without a reason', value: Number(audit.no_reason) },
+      {
+        key: 'hours_since_anchor',
+        label: 'Hours since the chain was last verified and anchored',
+        value: anchor.at
+          ? Math.round((now.getTime() - new Date(anchor.at).getTime()) / 360_000) / 10
+          : null,
+      },
+    ]),
+  );
+
+  // MET-09: what people did with the AI's help, and how often it was not there.
+  const ai = (
+    await sql<{
+      calls: string;
+      failed: string;
+      held: string;
+      accepted: string;
+      edited: string;
+      rejected: string;
+      wrong: string;
+    }>`
+      select count(*) as calls,
+        count(*) filter (where outcome in ('timeout', 'error', 'invalid')) as failed,
+        count(*) filter (where outcome in ('filtered', 'refused')) as held,
+        count(*) filter (where human_action = 'accepted') as accepted,
+        count(*) filter (where human_action = 'edited') as edited,
+        count(*) filter (where human_action = 'rejected') as rejected,
+        count(*) filter (where complaint = 'wrong') as wrong
+      from cg.ai_output
+      where tenant_id = ${tenantId}::uuid and created_at >= ${from} and created_at < ${to}`.execute(
+      trx,
+    )
+  ).rows[0]!;
+  const commands = (
+    await sql<{ answers: string; clarify: string; failed: string }>`
+      select coalesce(sum(n), 0) as answers,
+        coalesce(sum(n) filter (where outcome = 'clarify'), 0) as clarify,
+        coalesce(sum(n) filter (where outcome = 'failed'), 0) as failed
+      from cg.command_outcome
+      where tenant_id = ${tenantId}::uuid
+        and day >= (${from}::timestamptz at time zone 'utc')::date
+        and day <= (${to}::timestamptz at time zone 'utc')::date`.execute(trx)
+  ).rows[0]!;
+  const actedOn = Number(ai.accepted) + Number(ai.edited) + Number(ai.rejected);
+  out.push(
+    value('ai.outcomes', share(Number(ai.accepted), actedOn), [
+      { key: 'calls', label: 'AI calls', value: Number(ai.calls) },
+      { key: 'failed', label: 'Failed or timed out (manual path used)', value: Number(ai.failed) },
+      { key: 'held', label: 'Held back by the safety filters', value: Number(ai.held) },
+      { key: 'accepted', label: 'Taken as they were', value: Number(ai.accepted) },
+      { key: 'edited', label: 'Corrected by a person', value: Number(ai.edited) },
+      { key: 'rejected', label: 'Rejected by a person', value: Number(ai.rejected) },
+      { key: 'wrong', label: 'Residents who said it was wrong', value: Number(ai.wrong) },
+      { key: 'commands', label: 'Command window answers', value: Number(commands.answers) },
+      { key: 'clarify', label: 'Command window asked to clarify', value: Number(commands.clarify) },
+      {
+        key: 'command_failed',
+        label: 'Commands that failed to carry out',
+        value: Number(commands.failed),
+      },
+    ]),
   );
 
   // ---------------------------------------------------------------- trends (FR-14.04)

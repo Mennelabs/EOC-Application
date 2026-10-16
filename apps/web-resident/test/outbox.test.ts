@@ -79,6 +79,9 @@ describe('outbox', () => {
     expect(off.state).toBe('failed');
     expect(off.final).toBeFalsy();
     expect(off.lastError).toBe('offline');
+    // AC-00D: no receipt (no reference code) for a save that failed; the answers stay on the device.
+    expect(off.receipt).toBeUndefined();
+    expect(off.body).toEqual(body('off'));
     expect(off.nextTryAt).toBeGreaterThan(Date.now());
     const bad = outbox.find('bad')!;
     expect(bad.final).toBe(true);

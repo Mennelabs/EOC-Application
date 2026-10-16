@@ -294,10 +294,22 @@ export interface TenantKeyTable {
   retired_at: TsNullable;
 }
 
+/** A Postgres interval as the driver reads it (postgres-interval): only the non-zero parts are present. */
+export interface PgInterval {
+  years?: number;
+  months?: number;
+  days?: number;
+  hours?: number;
+  minutes?: number;
+  seconds?: number;
+  milliseconds?: number;
+}
+
 export interface RetentionPolicyTable extends Stamped {
   tenant_id: Uuid;
   data_category: string;
-  keep_for: ColumnType<string | null, string | null, string | null>;
+  /** Written as interval text ('2555 days'); read back as a PgInterval object. */
+  keep_for: ColumnType<PgInterval | null, string | null, string | null>;
   rule: Generated<'duration' | 'on_confirm' | 'external'>;
   note: string | null;
 }

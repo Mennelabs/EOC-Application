@@ -547,10 +547,10 @@
     ""
   ],
   "CHN-09": [
-    "partial",
-    "reference code binds a report across channels (lookup, my report)",
-    "",
-    "Adding photos on the web to a report started by SMS is not built; my report allows corrections, not photos."
+    "pass",
+    "reference code binds a report across channels (lookup, my report); POST /intake/:tenant/me/photos (services/api/src/public/routes.ts) gives a code-verified resident an upload ticket for their own report, the photo joining the report's own submission and processed like intake photos; completing it adds the web to the report's channels and puts a reviewed report back in review (RULE-09); apps/web-resident/src/screens/MyReport.tsx \"Add photos\"",
+    "services/api/test/my-photos.db.test.ts (no token, withdrawn, started by text, already on the web, back to review after approval), tests/e2e/resident.spec.ts (a photo added from my report, axe on desktop and phone)",
+    "The phone line's promise \"you can add photos later from the website with your reference number\" is kept; photos sent by text during the conversation still arrive by MMS (layer-7 plan reading 39)."
   ],
   "SCL-03": [
     "partial",

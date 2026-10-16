@@ -21,7 +21,7 @@ import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
 import { createDb, type Database } from '@cg/db';
 import { westwindGraph } from '@cg/intake';
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import { loadSeed } from '../../../tools/seed/src/load.ts';
 import { relayChangesOnce, type ChangeRelayState } from '../../worker/src/jobs/changes.ts';
 import { buildApp, type App } from '../src/app.ts';
@@ -53,7 +53,14 @@ interface Board {
   hazards: unknown[];
   sites: unknown[];
   alerts: { id: string }[];
-  counts: { queue: number; active: number };
+  needs: {
+    id: string;
+    category: string;
+    referenceCode: string | null;
+    position: { lat: number; lon: number } | null;
+  }[];
+  closures: { id: string; name: string; status: string }[];
+  counts: { queue: number; active: number; needs: number; closures: number };
 }
 interface Suggestion {
   suggestions: {
@@ -369,6 +376,135 @@ describe.skipIf(!appUrl || !workerUrl)(
       expect((await call('pio', 'GET', `/api/v1/dispatch/board?eventId=${eventId}`)).status).toBe(
         403,
       );
+    });
+
+    it('DSP-01, DSP-03, MIS-01: an open need with no mission waits on the board at about a block, becomes a mission in one step and leaves the needs; a second mission is refused, a replay is not; closed roads show until cleared', async () => {
+      const county = tenants['county']!;
+      const tag = randomUUID().slice(0, 8);
+      const place = await dbWorker
+        .insertInto('cg.location')
+        .values({
+          tenant_id: county,
+          line1: '212 Exercise Ave',
+          city: 'Harmon City',
+          postal: '63002',
+          precision: 'exact',
+          source: 'resident',
+          geom: sql`ST_SetSRID(ST_MakePoint(-90.87654, 38.79123), 4326)`,
+        } as never)
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      const need = await dbWorker
+        .insertInto('cg.need')
+        .values({
+          tenant_id: county,
+          event_id: eventId,
+          category: 'food_water',
+          status: 'open',
+          source: 'staff',
+          location_id: place.id,
+          reference_code: `NEED-${tag}`,
+        } as never)
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      const roads = [
+        ['Exercise Bridge Rd ' + tag, 'closed', 'Exercise: washed out'],
+        ['Exercise Mill St ' + tag, 'closed', 'Exercise: tree down'],
+        ['Exercise Mill St ' + tag, 'open', null],
+      ] as const;
+      let minutes = 30;
+      for (const [name, status, reason] of roads) {
+        await dbWorker
+          .insertInto('cg.road_status')
+          .values({
+            tenant_id: county,
+            event_id: eventId,
+            name,
+            status,
+            reason,
+            reported_at: new Date(Date.now() - (minutes -= 10) * 60_000),
+            geom: sql`ST_SetSRID(ST_MakeLine(ST_MakePoint(-90.88, 38.79), ST_MakePoint(-90.87, 38.79)), 4326)`,
+          } as never)
+          .execute();
+      }
+
+      const before = (
+        await call('priya', 'GET', `/api/v1/dispatch/board?eventId=${eventId}`)
+      ).json<Board>();
+      const waiting = before.needs.find((n) => n.id === need.id);
+      expect(waiting).toMatchObject({ category: 'food_water', referenceCode: `NEED-${tag}` });
+      // About a block: three decimals, never the exact place.
+      expect(waiting!.position).toEqual({ lat: 38.791, lon: -90.877 });
+      expect(before.counts.needs).toBe(before.needs.length);
+      // The latest report per road: the bridge is closed, Mill St reopened.
+      const closed = before.closures.map((c) => c.name);
+      expect(closed).toContain(`Exercise Bridge Rd ${tag}`);
+      expect(closed).not.toContain(`Exercise Mill St ${tag}`);
+      // A partner works its own queue: no county needs; the PIO has no board at all.
+      const partner = (
+        await call('saw', 'GET', `/api/v1/dispatch/board?eventId=${eventId}`)
+      ).json<Board>();
+      expect(partner.needs).toEqual([]);
+
+      const key = randomUUID();
+      const made = await call(
+        'priya',
+        'POST',
+        `/api/v1/needs/${need.id}/mission`,
+        { urgency: 'now' },
+        { 'idempotency-key': key },
+      );
+      expect(made.status, made.body).toBe(201);
+      const mission = made.json<{
+        id: string;
+        reference: string;
+        kind: string;
+        source: string;
+        needId: string;
+        state: string;
+        urgency: string;
+        summary: string;
+      }>();
+      expect(mission).toMatchObject({
+        kind: 'delivery',
+        source: 'need',
+        needId: need.id,
+        state: 'open',
+        urgency: 'now',
+      });
+      expect(mission.summary).toContain(`NEED-${tag}`);
+      const after = (
+        await call('priya', 'GET', `/api/v1/dispatch/board?eventId=${eventId}`)
+      ).json<Board>();
+      expect(after.needs.some((n) => n.id === need.id)).toBe(false);
+      expect(after.queue.some((m) => m.id === mission.id)).toBe(true);
+      // The same request again returns the same mission; a new one is refused with its reference.
+      const replay = await call(
+        'priya',
+        'POST',
+        `/api/v1/needs/${need.id}/mission`,
+        { urgency: 'now' },
+        { 'idempotency-key': key },
+      );
+      expect(replay.json<{ id: string }>().id).toBe(mission.id);
+      const again = await call(
+        'priya',
+        'POST',
+        `/api/v1/needs/${need.id}/mission`,
+        {},
+        { 'idempotency-key': randomUUID() },
+      );
+      expect(again.status).toBe(409);
+      expect(again.body).toContain(mission.reference);
+      // A role that cannot read needs cannot make one into a mission either.
+      const pio = await call(
+        'pio',
+        'POST',
+        `/api/v1/needs/${need.id}/mission`,
+        {},
+        { 'idempotency-key': randomUUID() },
+      );
+      expect([403, 404]).toContain(pio.status);
     });
 
     it('DSP-03: the suggestion names the nearest qualified team with its reasons and changes no record', async () => {

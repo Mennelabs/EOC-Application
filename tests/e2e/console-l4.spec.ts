@@ -7,7 +7,7 @@
  * badges; every screen passes axe WCAG 2.2 AA.
  */
 import { expect, test } from '@playwright/test';
-import { appears, expectNoViolations, onboard } from './support/console.ts';
+import { BASE, appears, expectNoViolations, onboard } from './support/console.ts';
 
 const tag = Date.now().toString(36);
 
@@ -97,6 +97,68 @@ test.describe('layer 4 console', () => {
       }
     }
     await expect(done).toBeVisible({ timeout: 30_000 });
+    await expectNoViolations(page);
+
+    // DSP-03, MIS-01: a resident's need waits on the board until it is made a mission.
+    const intake = (await (await fetch(`${BASE}/api/public/intake/county/westwind`)).json()) as {
+      graph: { key: string; version: number };
+    };
+    const needExecution = crypto.randomUUID();
+    const n = Date.now() % 9000;
+    const filed = await fetch(`${BASE}/api/public/intake/county/westwind/submissions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'idempotency-key': needExecution },
+      body: JSON.stringify({
+        executionId: needExecution,
+        channel: 'web',
+        language: 'en',
+        graphKey: intake.graph.key,
+        graphVersion: intake.graph.version,
+        relationship: 'own_home',
+        answers: {
+          danger_now: { kind: 'value', value: 'no' },
+          relationship: { kind: 'value', value: 'own_home' },
+          address: {
+            kind: 'value',
+            value: { line1: `${n} Board Need Ct`, city: 'Westwind', postal: '63001' },
+          },
+          home_type: { kind: 'value', value: 'house' },
+          cause: { kind: 'value', value: 'wind_tornado' },
+          damage_types: { kind: 'value', value: ['roof'] },
+          roof_state: { kind: 'value', value: 'large_hole' },
+          habitable: { kind: 'value', value: 'no' },
+          tonight: { kind: 'value', value: 'yes' },
+          insurance: { kind: 'unknown' },
+          contact_name: { kind: 'value', value: 'Exercise Resident Board' },
+          contact: { kind: 'value', value: { phone: `314555${1000 + n}`, preferred: 'text' } },
+        },
+        needs: ['food_water'],
+        consent: {},
+      }),
+    });
+    expect(filed.status).toBe(202);
+    const needsTable = page.getByRole('table', {
+      name: 'Open needs nobody has made a mission for, oldest first',
+    });
+    const westwind = async () => {
+      const picker = page.getByLabel('Event', { exact: true });
+      if (await picker.count()) await picker.selectOption({ label: 'Exercise WESTWIND tornado' });
+    };
+    await westwind();
+    // The worker files the report and its need in the background.
+    for (let i = 0; i < 20 && !(await appears(needsTable, 3000)); i++) {
+      await page.reload();
+      await westwind();
+    }
+    await expect(needsTable).toBeVisible();
+    await expectNoViolations(page);
+    await needsTable
+      .getByRole('button', { name: /^Make a mission for/ })
+      .first()
+      .click();
+    await expect(page.getByText(/^Mission M-\d+ made for the need\.$/)).toBeVisible({
+      timeout: 30_000,
+    });
     await expectNoViolations(page);
 
     for (const [path, name] of [

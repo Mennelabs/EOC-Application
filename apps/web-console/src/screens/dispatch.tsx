@@ -80,12 +80,31 @@ interface Board {
     raisedAt: string;
     position: Point | null;
   }[];
+  /** DSP-03, MIS-01: open needs that are no mission yet (absent for roles that cannot read needs). */
+  needs?: {
+    id: string;
+    category: string;
+    referenceCode: string | null;
+    createdAt: string;
+    position: Point | null;
+  }[];
+  /** DSP-01: roads reported closed, impassable or down to one lane. */
+  closures?: {
+    id: string;
+    name: string;
+    status: string;
+    reason: string | null;
+    position: Point | null;
+    reportedAt: string;
+  }[];
   counts: {
     teamsByStatus: Record<string, number>;
     queue: number;
     active: number;
     hazards: number;
     openAlerts: number;
+    needs?: number;
+    closures?: number;
   };
 }
 interface Suggestion {
@@ -632,6 +651,10 @@ export function DispatchScreen() {
             <dd>{board.counts.active}</dd>
             <dt>Open alerts</dt>
             <dd>{board.counts.openAlerts}</dd>
+            <dt>Needs with no mission</dt>
+            <dd>{board.counts.needs ?? 0}</dd>
+            <dt>Road closures</dt>
+            <dd>{board.counts.closures ?? 0}</dd>
           </dl>
           {showMap ? <BoardMap board={board} /> : null}
           {assigning ? (
@@ -684,6 +707,62 @@ export function DispatchScreen() {
               },
             ]}
           />
+          {board.needs?.length ? (
+            <>
+              <h2>Needs with no mission yet</h2>
+              <p className="hint">
+                Making a mission links it to the need and its report, at the need&rsquo;s place;
+                then assign it like any other.
+              </p>
+              <DataTable
+                caption="Open needs nobody has made a mission for, oldest first"
+                rows={board.needs}
+                rowKey={(n) => n.id}
+                columns={[
+                  {
+                    key: 'need',
+                    header: 'Need',
+                    render: (n) =>
+                      `${label(n.category)}${n.referenceCode ? ` (${n.referenceCode})` : ''}`,
+                  },
+                  { key: 'age', header: 'Waiting since', render: (n) => fmt(n.createdAt) },
+                  {
+                    key: 'act',
+                    header: 'Action',
+                    render: (n) => (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void api<{ reference: string }>(`/needs/${n.id}/mission`, { body: {} })
+                            .then((m) => setNotice(`Mission ${m.reference} made for the need.`))
+                            .catch((e: unknown) => setNotice(describeFailure(e)))
+                            .finally(reload)
+                        }
+                      >
+                        Make a mission for {n.referenceCode ?? label(n.category)}
+                      </button>
+                    ),
+                  },
+                ]}
+              />
+            </>
+          ) : null}
+          {board.closures?.length ? (
+            <>
+              <h2>Road closures</h2>
+              <DataTable
+                caption="Roads reported closed, impassable or down to one lane"
+                rows={board.closures}
+                rowKey={(c) => c.id}
+                columns={[
+                  { key: 'road', header: 'Road', render: (c) => c.name },
+                  { key: 'st', header: 'Status', render: (c) => label(c.status) },
+                  { key: 'why', header: 'Reason', render: (c) => c.reason ?? '—' },
+                  { key: 'at', header: 'Reported', render: (c) => fmt(c.reportedAt) },
+                ]}
+              />
+            </>
+          ) : null}
           <h2>Teams</h2>
           <div className="filters">
             <label>

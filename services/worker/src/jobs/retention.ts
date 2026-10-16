@@ -16,6 +16,9 @@
  *
  * Position trails, command conversations, scribe audio and reference data
  * have their own sweeps; CJIS data stays in the enclave under its own rules.
+ * Not swept here yet: the core records (reports, needs, missions, photos and
+ * their free text) and the field records, whose deletion runs across many
+ * linked tables and object storage.
  */
 import { randomUUID } from 'node:crypto';
 import { sql, type Transaction } from 'kysely';
@@ -101,6 +104,40 @@ export const SWEEPS: readonly Sweep[] = [
       { table: 'site', column: 'lead_contact_id' },
       { table: 'partner_contact', column: 'backup_of' },
     ],
+  },
+  // The 7-year categories (SEC-13 default) with records that stand alone.
+  {
+    category: 'comms',
+    table: 'field_message',
+    clock: 'coalesce(sent_at, created_at)',
+    eventOf: 'event_id',
+    children: [{ table: 'field_message_receipt', column: 'message_id' }],
+  },
+  { category: 'comms', table: 'comms_log', clock: 'entry_at', eventOf: 'event_id' },
+  {
+    category: 'referrals',
+    table: 'referral',
+    clock: 'coalesce(closed_at, updated_at)',
+    finished: "status in ('declined', 'done')",
+    eventOf:
+      'coalesce((select n.event_id from cg.need n where n.id = need_id), (select r.event_id from cg.report r where r.id = report_id))',
+  },
+  {
+    category: 'sharing',
+    table: 'share_grant',
+    clock: 'revoked_at',
+    finished: 'revoked_at is not null',
+    eventOf:
+      'coalesce((select n.event_id from cg.need n where n.id = need_id), (select r.event_id from cg.report r where r.id = report_id))',
+    keptBy: [{ table: 'referral', column: 'share_grant_id' }],
+  },
+  {
+    category: 'publications',
+    table: 'publication',
+    clock: 'coalesce(unpublished_at, approved_at)',
+    // A publication still in force (not withdrawn, nothing newer for its subject) stays.
+    finished:
+      'unpublished_at is not null or exists (select 1 from cg.publication p2 where p2.subject_kind = t.subject_kind and p2.subject_id = t.subject_id and p2.approved_at > t.approved_at)',
   },
   {
     category: 'safety',

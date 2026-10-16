@@ -69,6 +69,10 @@ describe.skipIf(!workerUrl)('retention sweeps by category (database-backed)', ()
         ['badges', '3 years'],
         ['contacts', '3 years'],
         ['safety', '7 years'],
+        ['comms', '7 years'],
+        ['referrals', '7 years'],
+        ['sharing', '7 years'],
+        ['publications', '7 years'],
       ])
         await trx
           .insertInto('cg.retention_policy')
@@ -249,6 +253,94 @@ describe.skipIf(!workerUrl)('retention sweeps by category (database-backed)', ()
           .executeTakeFirstOrThrow()
       ).id;
 
+      // The 7-year categories: communications, referrals, sharing, publications.
+      const message = await trx
+        .insertInto('cg.field_message')
+        .values({
+          tenant_id: tenantId,
+          event_id: eventId,
+          body: 'Exercise: road closed at the bridge',
+          audience_kind: 'event',
+          sent_at: ago(3000),
+          created_at: ago(3000),
+        })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      ids['messageOld'] = message.id;
+      await trx
+        .insertInto('cg.field_message_receipt')
+        .values({ tenant_id: tenantId, message_id: message.id, personnel_id: personnelId })
+        .execute();
+      ids['commsOld'] = (
+        await trx
+          .insertInto('cg.comms_log')
+          .values({
+            tenant_id: tenantId,
+            event_id: eventId,
+            net: 'Exercise net',
+            kind: 'message',
+            entry_at: ago(3000),
+          })
+          .returning('id')
+          .executeTakeFirstOrThrow()
+      ).id;
+      const grant = async (k: string) =>
+        (ids[k] = (
+          await trx
+            .insertInto('cg.share_grant')
+            .values({
+              tenant_id: tenantId,
+              to_tenant_id: tenantId,
+              org_type: 'voad',
+              revoked_at: ago(3000),
+            })
+            .returning('id')
+            .executeTakeFirstOrThrow()
+        ).id);
+      await grant('grantGone');
+      await grant('grantReferred');
+      for (const [k, status, g] of [
+        ['referralDone', 'done', null],
+        ['referralOpen', 'open', ids['grantReferred']],
+      ] as const)
+        ids[k] = (
+          await trx
+            .insertInto('cg.referral')
+            .values({
+              tenant_id: tenantId,
+              from_tenant_id: tenantId,
+              to_org_type: 'voad',
+              purpose: 'Exercise: food',
+              opened_by: adminId,
+              status,
+              share_grant_id: g,
+              ...(status === 'done' ? { closed_at: ago(3000) } : {}),
+              updated_at: ago(3000),
+            })
+            .returning('id')
+            .executeTakeFirstOrThrow()
+        ).id;
+      for (const [k, at] of [
+        ['publicationOld', ago(3001)],
+        ['publicationCurrent', ago(3000)],
+      ] as const)
+        ids[k] = (
+          await trx
+            .insertInto('cg.publication')
+            .values({
+              tenant_id: tenantId,
+              subject_kind: 'site',
+              subject_id: siteId,
+              subject_version: 1,
+              snapshot: JSON.stringify({ name: 'Exercise' }),
+              approved_by: adminId,
+              approved_at: at,
+              reason: 'Exercise: published',
+            })
+            .returning('id')
+            .executeTakeFirstOrThrow()
+        ).id;
+
       // Legal holds: one badge, one event, and the safety category.
       for (const scope of [
         { targetType: 'badge', targetId: ids['badgeHeld'] },
@@ -328,6 +420,25 @@ describe.skipIf(!workerUrl)('retention sweeps by category (database-backed)', ()
     expect(await exists('cg.partner_contact', ids['contactActive']!)).toBe(true);
 
     expect(await exists('cg.safety_alert', ids['safetyOld']!)).toBe(true);
+
+    // 7-year categories: old communications go with their receipts; a finished referral and a
+    // revoked grant go, but a grant an open referral still uses stays; a superseded publication
+    // goes and the one still in force stays.
+    expect(await exists('cg.field_message', ids['messageOld']!)).toBe(false);
+    expect(
+      await db
+        .selectFrom('cg.field_message_receipt')
+        .select('id')
+        .where('message_id', '=', ids['messageOld']!)
+        .execute(),
+    ).toEqual([]);
+    expect(await exists('cg.comms_log', ids['commsOld']!)).toBe(false);
+    expect(await exists('cg.referral', ids['referralDone']!)).toBe(false);
+    expect(await exists('cg.referral', ids['referralOpen']!)).toBe(true);
+    expect(await exists('cg.share_grant', ids['grantGone']!)).toBe(false);
+    expect(await exists('cg.share_grant', ids['grantReferred']!)).toBe(true);
+    expect(await exists('cg.publication', ids['publicationOld']!)).toBe(false);
+    expect(await exists('cg.publication', ids['publicationCurrent']!)).toBe(true);
 
     const log = await db
       .selectFrom('cg.deletion_log')

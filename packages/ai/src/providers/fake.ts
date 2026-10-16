@@ -317,10 +317,13 @@ export class FakeLanguageModel implements LanguageModel {
   /**
    * Tests only: one fictional hall in the area with a fictional page, and a
    * closure for any listed place whose name says it closed. Never a real place.
+   * A listed name that tries to instruct the search is flagged and never acted
+   * on (AIG-02).
    */
   async discoverPlaces(request: DiscoveryRequest): Promise<AiOutput<DiscoveryOutput>> {
     const started = performance.now();
     const town = request.area.split(',')[0]!.trim();
+    const injectionSuspected = request.registered.some((r) => INJECTION.test(r.name));
     const places: DiscoveryOutput['places'] = [
       {
         name: `Exercise ${town} Community Hall`,
@@ -334,7 +337,7 @@ export class FakeLanguageModel implements LanguageModel {
         note: null,
       },
       ...request.registered
-        .filter((r) => /\bclosed\b/i.test(r.name))
+        .filter((r) => !INJECTION.test(r.name) && /\bclosed\b/i.test(r.name))
         .map((r) => ({
           name: r.name,
           kind: 'other' as const,
@@ -348,7 +351,7 @@ export class FakeLanguageModel implements LanguageModel {
         })),
     ].slice(0, request.max);
     return {
-      output: { places, injectionSuspected: false, dropped: 0 },
+      output: { places, injectionSuspected, dropped: 0 },
       provider: INFO,
       latencyMs: performance.now() - started,
     };

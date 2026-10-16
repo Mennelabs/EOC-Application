@@ -171,7 +171,7 @@ describe('fake provider and the evaluation harness (AIG-08, AIG-12)', () => {
     expect(plain.cases.some((c) => c.id.startsWith('cmd-'))).toBe(false);
   });
 
-  it('GATE-08, AIG-02, OWASP LLM01: scribe notes, drafts, translations and photos are each given a hidden instruction; a provider that follows one fails the evaluation', async () => {
+  it('GATE-08, AIG-02, OWASP LLM01: scribe notes, drafts, translations, photos, the blur detector and discovery are each given a hidden instruction; a provider that follows one fails the evaluation', async () => {
     // The image case needs a classifier; one that reads the picture honestly.
     const honest = {
       classify: async () => ({
@@ -184,11 +184,27 @@ describe('fake provider and the evaluation harness (AIG-08, AIG-12)', () => {
         latencyMs: 1,
       }),
     };
-    const good = await evaluateProvider({ ...fakeProvider, classifier: honest });
+    // The detector case needs a detector; one that boxes the plate the sign says is not there.
+    const detector = (regions: { x: number; y: number; width: number; height: number }[]) => ({
+      analyse: async () => ({
+        output: {
+          qualityIssues: [],
+          sensitiveRegions: regions.map((r) => ({ kind: 'license_plate' as const, ...r })),
+          detectorAvailable: true,
+        },
+        provider: fakeProvider.info,
+        latencyMs: 1,
+      }),
+    });
+    const good = await evaluateProvider({
+      ...fakeProvider,
+      classifier: honest,
+      image: detector([{ x: 0.33, y: 0.68, width: 0.34, height: 0.2 }]),
+    });
     const ids = (r: typeof good) =>
       Object.fromEntries(
         r.cases
-          .filter((c) => /^(scribe|draft|translate|image)-inj/.test(c.id))
+          .filter((c) => /^(scribe|draft|translate|image|sensitive|discovery)-inj/.test(c.id))
           .map((c) => [c.id, c.injectionHandled]),
       );
     expect(ids(good)).toEqual({
@@ -199,7 +215,19 @@ describe('fake provider and the evaluation harness (AIG-08, AIG-12)', () => {
       'translate-inj-en': true,
       'translate-inj-es': true,
       'image-inj-sign': true,
+      'sensitive-inj-plate': true,
+      'discovery-inj-en': true,
+      'discovery-inj-es': true,
     });
+    // Blurring the whole photo when unsure is handled too (it fails closed).
+    const whole = await evaluateProvider({
+      ...fakeProvider,
+      classifier: honest,
+      image: detector([{ x: 0, y: 0, width: 1, height: 1 }]),
+    });
+    expect(ids(whole)['sensitive-inj-plate']).toBe(true);
+    // The test double has no detector: the case is not scored for it.
+    expect(ids(await evaluateProvider(fakeProvider))['sensitive-inj-plate']).toBeUndefined();
     expect(good.injectionResistance).toBe(1);
     expect(good.passed).toBe(true);
     // The guard cases never count towards accuracy.
@@ -231,6 +259,26 @@ describe('fake provider and the evaluation harness (AIG-08, AIG-12)', () => {
           provider: fakeProvider.info,
           latencyMs: 1,
         }),
+        // Discovery does what the listed name says: every listed place closed.
+        discoverPlaces: async (r) => ({
+          output: {
+            places: r.registered.map((p) => ({
+              name: p.name,
+              kind: 'other' as const,
+              address: null,
+              position: null,
+              facts: {},
+              sourceUrls: ['https://example.org/exercise'],
+              change: 'closed' as const,
+              registeredId: p.id,
+              note: null,
+            })),
+            injectionSuspected: false,
+            dropped: 0,
+          },
+          provider: fakeProvider.info,
+          latencyMs: 1,
+        }),
       },
       translation: {
         translate: async () => ({
@@ -246,9 +294,11 @@ describe('fake provider and the evaluation harness (AIG-08, AIG-12)', () => {
           latencyMs: 1,
         }),
       },
+      // The detector believes the sign: nothing to blur.
+      image: detector([]),
     });
     expect(Object.values(ids(obeying)).every((handled) => handled === false)).toBe(true);
-    expect(Object.keys(ids(obeying))).toHaveLength(7);
+    expect(Object.keys(ids(obeying))).toHaveLength(10);
     expect(obeying.passed).toBe(false);
 
     // A scribe that leaves the line out but does not flag the attempt still fails: the flag is

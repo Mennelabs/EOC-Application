@@ -29,7 +29,9 @@ import { ReferenceCodeLeaser } from '../src/public/reference-codes.ts';
 import { publicRoutes } from '../src/public/routes.ts';
 import { submitIntake } from '../src/public/submit.ts';
 import { TenantResolver } from '../src/public/tenant-resolver.ts';
-import { routes } from '../src/routes/index.ts';
+import { S3Client } from '@aws-sdk/client-s3';
+import { routesWith } from '../src/routes/index.ts';
+import { MEDIA_LINK_SECONDS, missionMediaPrefix } from '../src/routes/missions.ts';
 
 const appUrl = process.env['API_DB_TEST_APP_URL'];
 const workerUrl = process.env['API_DB_TEST_WORKER_URL'];
@@ -71,6 +73,12 @@ interface ErrorBody {
 }
 
 describe.skipIf(!appUrl || !workerUrl)('missions and assignments (database-backed)', () => {
+  const objectStore = new S3Client({
+    region: 'us-east-1',
+    endpoint: 'http://objects.test',
+    forcePathStyle: true,
+    credentials: { accessKeyId: 'exercise', secretAccessKey: 'exercise' },
+  });
   let app: App;
   let dbApp: Kysely<Database>;
   let dbWorker: Kysely<Database>;
@@ -175,6 +183,25 @@ describe.skipIf(!appUrl || !workerUrl)('missions and assignments (database-backe
       ),
       counselor: subjectFor('county', 'crisis_counselor', randomUUID()),
       admin: subjectFor('county', 'tenant_admin', randomUUID()),
+      // AC-07B: a county role editor can add the evidence category to a coordinator's media grant.
+      evidence: (() => {
+        const base = subjectFor('county', 'field_coordinator', randomUUID());
+        const role = base.roles[0]!;
+        return {
+          ...base,
+          roles: [
+            {
+              ...role,
+              key: 'evidence_coordinator',
+              templateKey: null,
+              grants: [
+                ...role.grants,
+                { action: 'mission.media.read', dataCategories: ['evidence' as const] },
+              ],
+            },
+          ],
+        };
+      })(),
       ems: subjectFor('county', 'ems_medical_assist', emsAccount),
       saw: subjectFor(
         'cleanup',
@@ -215,7 +242,16 @@ describe.skipIf(!appUrl || !workerUrl)('missions and assignments (database-backe
       db: dbApp,
       fieldCrypto: crypto,
       subjects: loader,
-      routes,
+      // AC-07B: signing needs no network; the link is checked, never followed.
+      routes: routesWith({
+        missions: {
+          objects: {
+            client: objectStore,
+            presignClient: objectStore,
+            bucket: 'exercise-media',
+          },
+        },
+      }),
       reportDeps: { ai, submit: (req, input) => submitIntake(submitDeps, req, input) },
       publicRoutes: [
         publicRoutes({
@@ -996,5 +1032,123 @@ describe.skipIf(!appUrl || !workerUrl)('missions and assignments (database-backe
     }>();
     const shown = [...b.queue, ...b.active].find((x) => x.id === m.id);
     expect(shown).toMatchObject({ position: null, locationState: 'unknown' });
+  });
+
+  it('AC-07B: a stored file leaves only through the authorized route, as a one-minute link; a direct reference, another mission, an unblurred photo or restricted evidence without the category answers as not found', async () => {
+    const county = tenants['county']!;
+    const created = await call(
+      'calltaker',
+      'POST',
+      '/api/v1/missions',
+      {
+        eventId,
+        kind: 'other',
+        source: 'staff',
+        summary: 'Exercise: media for AC-07B',
+        save: 'draft',
+      },
+      { 'idempotency-key': randomUUID() },
+    );
+    expect(created.status, created.body).toBe(201);
+    const m = created.json<{ id: string }>();
+    const photo = async (tenantId: string, blurred: boolean) =>
+      await dbWorker
+        .insertInto('cg.photo')
+        .values({
+          tenant_id: tenantId,
+          execution_id: randomUUID(),
+          object_key_original: `photos/${tenantId}/${randomUUID()}/original.jpg`,
+          derivative_keys: JSON.stringify({
+            review: `photos/${tenantId}/${randomUUID()}/review.jpg`,
+          }),
+          status: 'processed',
+          exif_stripped: true,
+          blur_status: blurred ? 'applied' : 'pending',
+          source: 'field',
+        } as never)
+        .returning(['id', 'derivative_keys', 'object_key_original'])
+        .executeTakeFirstOrThrow();
+    const blurred = await photo(county, true);
+    const unblurred = await photo(county, false);
+    const foreign = await photo(tenants['cleanup']!, true);
+    const add = (body: Record<string, unknown>) =>
+      call('priya', 'POST', `/api/v1/missions/${m.id}/media`, body);
+
+    // A key the caller names, or another county's photo, is never stored as a reference.
+    const named = await add({ kind: 'document', objectKey: unblurred.object_key_original });
+    expect(named.status).toBe(400);
+    expect(named.body).toContain('objectKey');
+    const otherCounty = await add({ kind: 'photo', photoId: foreign.id });
+    expect(otherCounty.status).toBe(400);
+
+    const clear = (await add({ kind: 'photo', photoId: blurred.id })).json<{ id: string }>();
+    const raw = (await add({ kind: 'photo', photoId: unblurred.id })).json<{ id: string }>();
+    const docKey = `${missionMediaPrefix(county, m.id)}${randomUUID()}/statement.pdf`;
+    const doc = await add({
+      kind: 'document',
+      objectKey: docKey,
+      accessClass: 'restricted',
+      description: 'Exercise: witness statement',
+    });
+    expect(doc.status, doc.body).toBe(201);
+    const restricted = doc.json<{ id: string }>();
+    // The list never carries a key, and restricted media only to the evidence category.
+    const listed = await call('priya', 'GET', `/api/v1/missions/${m.id}/media`);
+    expect(listed.body).not.toContain('photos/');
+    expect(listed.body).not.toContain(docKey);
+    expect(listed.json<{ id: string }[]>().map((x) => x.id)).not.toContain(restricted.id);
+    const listedForEvidence = await call('evidence', 'GET', `/api/v1/missions/${m.id}/media`);
+    expect(listedForEvidence.json<{ id: string }[]>().map((x) => x.id)).toContain(restricted.id);
+
+    const download = (who: string, missionId: string, mediaId: string) =>
+      call(who, 'GET', `/api/v1/missions/${missionId}/media/${mediaId}/download`);
+
+    // The blurred photo: a link to its review image only, signed for a minute.
+    const ok = await download('priya', m.id, clear.id);
+    expect(ok.status, ok.body).toBe(200);
+    const link = ok.json<{ url: string; expiresAt: string }>();
+    const reviewKey = (blurred.derivative_keys as Record<string, string>)['review']!;
+    expect(link.url).toContain(reviewKey);
+    expect(link.url).not.toContain('original');
+    expect(link.url).toContain(`X-Amz-Expires=${MEDIA_LINK_SECONDS}`);
+    expect(new Date(link.expiresAt).getTime() - Date.now()).toBeLessThanOrEqual(
+      MEDIA_LINK_SECONDS * 1000,
+    );
+
+    // Not blurred yet, or restricted: not found without the evidence category, a link with it.
+    expect((await download('priya', m.id, raw.id)).status).toBe(404);
+    expect((await download('priya', m.id, restricted.id)).status).toBe(404);
+    const evidenceRaw = await download('evidence', m.id, raw.id);
+    expect(evidenceRaw.status, evidenceRaw.body).toBe(200);
+    const evidenceDoc = await download('evidence', m.id, restricted.id);
+    expect(evidenceDoc.status).toBe(200);
+    expect(evidenceDoc.json<{ url: string }>().url).toContain(docKey);
+
+    // The same media id under another mission, an unknown id, a role without the grant: not found.
+    expect((await download('priya', mission.id, clear.id)).status).toBe(404);
+    expect((await download('priya', m.id, randomUUID())).status).toBe(404);
+    expect((await download('tomas', m.id, clear.id)).status).toBe(404);
+
+    // Removed media can no longer be fetched.
+    const removed = await call('priya', 'DELETE', `/api/v1/missions/${m.id}/media/${clear.id}`, {
+      reason: 'Exercise: attached by mistake',
+    });
+    expect(removed.status, removed.body).toBe(200);
+    expect((await download('priya', m.id, clear.id)).status).toBe(404);
+
+    // Every download is audited; the evidence reads say so.
+    const reads = await dbWorker
+      .selectFrom('cg.audit_event')
+      .select(['target_id', 'classification_read', 'actor_account_id'])
+      .where('tenant_id', '=', county)
+      .where('action', '=', 'mission.media.read')
+      .where('target_id', 'in', [clear.id, raw.id, restricted.id])
+      .orderBy('seq')
+      .execute();
+    expect(reads.map((r) => r.target_id)).toEqual([clear.id, raw.id, restricted.id]);
+    expect(reads[0]!.classification_read).not.toContain('evidence');
+    expect(reads[1]!.classification_read).toContain('evidence');
+    expect(reads[2]!.classification_read).toContain('evidence');
+    expect(reads[1]!.actor_account_id).toBe(subjects['evidence']!.accountId);
   });
 });

@@ -2347,6 +2347,33 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
       d: 'The worker withdrew it themself',
     },
   }),
+  supply_request: table({
+    site_id: { c: 'internal', r: 'field_records', d: 'FL:FR-21: the site asking' },
+    client_uuid: { c: 'internal', r: 'field_records', d: 'Idempotency key from the phone' },
+    status: { c: 'internal', r: 'field_records', d: 'draft, sent, filled or canceled' },
+    drafted_automatically: {
+      c: 'internal',
+      r: 'field_records',
+      d: 'FL:FR-22: started when an item reached its reorder point; a person still sends it',
+    },
+    lines: {
+      c: 'internal',
+      r: 'field_records',
+      d: 'Items asked for: stock item, name, unit, quantity and the suggested quantity',
+    },
+    note: {
+      c: 'internal',
+      r: 'field_records',
+      d: 'Free text about supplies; no names or phone numbers',
+    },
+    sent_at: { c: 'internal', r: 'field_records' },
+    sent_by: { c: 'internal', r: 'field_records' },
+    filled_at: { c: 'internal', r: 'field_records' },
+    filled_by: { c: 'internal', r: 'field_records' },
+    mission_id: { c: 'internal', r: 'field_records', d: 'The delivery mission that carried it' },
+    canceled_at: { c: 'internal', r: 'field_records' },
+    canceled_by: { c: 'internal', r: 'field_records' },
+  }),
   field_report: table({
     event_id: { c: 'internal', r: 'field_records' },
     client_uuid: { c: 'internal', r: 'field_records', d: 'Idempotency key from the phone' },

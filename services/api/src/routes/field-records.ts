@@ -29,6 +29,7 @@ import { toUsng } from '@cg/field-core';
 import { ApiError, errors } from '../errors.ts';
 import { sha } from '../public/submit.ts';
 import { iso, listQuery, stepKey, uuidParam } from './helpers.ts';
+import { draftResupply } from './supply-requests.ts';
 
 type Trx = Transaction<Database>;
 /** The record tables are reached by name from the spec table; columns are checked by the database. */
@@ -1744,6 +1745,8 @@ export const fieldRecordRoutes =
               stockItemId: z.uuid(),
               quantity: z.number(),
               runningLow: z.boolean(),
+              /** FL:FR-22: the site's resupply draft gained this item; a person sends it. */
+              resupplyDrafted: z.boolean(),
             }),
           },
         },
@@ -1774,6 +1777,7 @@ export const fieldRecordRoutes =
               stockItemId: seen.stock_item_id,
               quantity: Number(seen.quantity),
               runningLow: low(seen.quantity, seen.reorder_at),
+              resupplyDrafted: false,
             };
           let itemId = b.stockItemId;
           if (!itemId && b.item) {
@@ -1805,7 +1809,7 @@ export const fieldRecordRoutes =
           }
           const item = await trx
             .selectFrom('cg.stock_item')
-            .select(['id', 'quantity', 'reorder_at'])
+            .select(['id', 'site_id', 'name', 'unit', 'quantity', 'reorder_at'])
             .where('id', '=', itemId!)
             .executeTakeFirst();
           if (!item) throw errors.notFound();
@@ -1850,11 +1854,23 @@ export const fieldRecordRoutes =
               ],
             },
           });
+          // FL:FR-22: at the reorder point, the site's resupply draft gains the item.
+          const runningLow = low(Math.max(0, nextQ), item.reorder_at);
+          const drafted =
+            runningLow && b.kind !== 'received' && b.kind !== 'requested'
+              ? await draftResupply(trx, {
+                  tenantId: s.tenantId,
+                  accountId: s.accountId,
+                  item,
+                  quantity: Math.max(0, nextQ),
+                })
+              : null;
           return {
             movementId: movement.id,
             stockItemId: item.id,
             quantity: Math.max(0, nextQ),
-            runningLow: low(Math.max(0, nextQ), item.reorder_at),
+            runningLow,
+            resupplyDrafted: drafted !== null,
           };
         });
       },
@@ -1881,6 +1897,9 @@ export const fieldRecordRoutes =
                 barcode: z.string().nullable(),
                 reorderAt: z.number().nullable(),
                 runningLow: z.boolean(),
+                /** FL:FR-22: handed out or sent on in the last 24 hours, and how long what is left lasts at that rate. */
+                usedLastDay: z.number(),
+                hoursLeft: z.number().nullable(),
               }),
             ),
           },
@@ -1892,13 +1911,18 @@ export const fieldRecordRoutes =
         const q = request.query;
         const rows = await request.tx((trx) => {
           let x = trx
-            .selectFrom('cg.stock_item')
-            .selectAll()
+            .selectFrom('cg.stock_item as i')
+            .selectAll('i')
+            .select(
+              sql<string>`(select coalesce(sum(m.quantity), 0) from cg.stock_movement m
+                where m.stock_item_id = i.id and m.kind in ('issued', 'transferred')
+                and m.occurred_at > now() - interval '24 hours')`.as('used_last_day'),
+            )
             .orderBy('name')
             .limit(q.limit)
             .offset(q.offset);
-          if (q.siteId) x = x.where('site_id', '=', q.siteId);
-          if (q.barcode) x = x.where('barcode', '=', q.barcode);
+          if (q.siteId) x = x.where('i.site_id', '=', q.siteId);
+          if (q.barcode) x = x.where('i.barcode', '=', q.barcode);
           return x.execute();
         });
         return rows.map((r) => ({
@@ -1911,6 +1935,11 @@ export const fieldRecordRoutes =
           barcode: r.barcode,
           reorderAt: r.reorder_at === null ? null : Number(r.reorder_at),
           runningLow: r.reorder_at !== null && Number(r.quantity) <= Number(r.reorder_at),
+          usedLastDay: Number(r.used_last_day),
+          hoursLeft:
+            Number(r.used_last_day) > 0
+              ? Math.floor((Number(r.quantity) / Number(r.used_last_day)) * 24)
+              : null,
         }));
       },
     );

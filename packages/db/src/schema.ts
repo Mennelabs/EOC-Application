@@ -323,6 +323,35 @@ export interface PeerSupportRequestTable extends Stamped {
   closed_by_requester: Generated<boolean>;
 }
 
+/** FL:FR-21/22: one line of a supply request. */
+export interface SupplyRequestLine {
+  stockItemId: Uuid;
+  name: string;
+  unit: string;
+  quantity: number;
+  /** What the server suggested from the last day's use, when it drafted the line. */
+  suggested?: number;
+}
+
+/** FL:FR-21/22: a site's request for supplies; a draft until a person sends it. */
+export interface SupplyRequestTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  site_id: Uuid;
+  client_uuid: Uuid | null;
+  status: Generated<'draft' | 'sent' | 'filled' | 'canceled'>;
+  drafted_automatically: Generated<boolean>;
+  lines: JSONColumnType<SupplyRequestLine[], string, string>;
+  note: string | null;
+  sent_at: TsNullable;
+  sent_by: Uuid | null;
+  filled_at: TsNullable;
+  filled_by: Uuid | null;
+  mission_id: Uuid | null;
+  canceled_at: TsNullable;
+  canceled_by: Uuid | null;
+}
+
 /** FLD-11: what a worker saw at a site, or a resource they came across; an observation, not the site's status of record. */
 export interface FieldReportTable extends Stamped {
   id: Generated<Uuid>;
@@ -3241,6 +3270,7 @@ export interface Database {
   'cg.retention_policy': RetentionPolicyTable;
   'cg.peer_support_request': PeerSupportRequestTable;
   'cg.field_report': FieldReportTable;
+  'cg.supply_request': SupplyRequestTable;
   'cg.legal_hold': LegalHoldTable;
   'cg.deletion_log': DeletionLogTable;
   'cg.idempotency_key': IdempotencyKeyTable;

@@ -4,7 +4,7 @@ What the platform does not do yet, what needs a person before a county relies on
 
 **Status:** draft of 2026-10-16, built from the open notes in `docs/traceability.md`; to be reviewed by Adam before it is shared with a county. Update it with the traceability table: when a row there changes, its line here changes too.
 
-## Not built yet, by decision
+## Not built yet
 
 | What                                                                                                                                                                                                                              | Why, and where it is decided                                                                                                                                                              |
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -16,6 +16,8 @@ What the platform does not do yet, what needs a person before a county relies on
 | CAD, NCIC and records-management feeds (BRD:INT-07)                                                                                                                                                                               | Only under separately approved contracts (2026-10-13). The CJIS enclave holds no real criminal-justice data until it is in an authorized government cloud and has passed the state audit. |
 | Releasing a person's open assignments when they go off duty (AC-05C)                                                                                                                                                              | The policy (BRD:DEC-07) is open.                                                                                                                                                          |
 | The field app on iPhone                                                                                                                                                                                                           | Built and tested for Android and the web build; an iOS build has not been made or tested.                                                                                                 |
+| Printing straight to badge and wristband printers (FL-01, FL:FR-14, BRD:FR-13.05)                                                                                                                                                 | Badges, re-entry passes and sign-up codes print from the browser; a wristband code is written on the band. The Brother label printers chosen on 2026-10-15 are later work, after layer 8. |
+| An interpreter joining a conversation from inside the platform (FL:FR-24)                                                                                                                                                         | Live translation hands over to an interpreter, who calls in by phone or video outside the platform.                                                                                       |
 
 ## Needs a person before a county relies on it
 
@@ -37,11 +39,13 @@ What the platform does not do yet, what needs a person before a county relies on
 - **Relay calls.** Resident pages say to text the county help line or call it through relay by dialling 711. That works only if the county's help line answers relay calls.
 - **One API instance per limit.** The per-address lookup limit and the per-contact limit on resending a lost reference number are kept in each API instance's memory. Several instances allow a few more tries in total.
 - **Feeds a county must switch on.** The Waze closure feed is off until the county enrols with Waze for Cities. Single sign-on through the county's identity provider is off until two administrators approve it.
+- **Uploaded photos.** Photos are decoded and saved again as new images, which drops anything that is not a picture; there is no antivirus scan of uploads (BRD:INT-03).
 - **Offline maps.** A phone works offline only in areas whose map packages were cut and downloaded before it went out.
 - **Data on laptops.** Every stack outside an authorized government cloud holds synthetic or exercise data only.
 
 ## Where to look
 
 - What each requirement does today, with its tests: `docs/traceability.md`.
+- A check that help text never claims what is listed here as not built: `tools/checks/test/help-claims.test.ts` (AC-18C). When a feature is built, remove its line here and its rule there together.
 - Decisions and their dates: `docs/decisions.md`.
 - Security threats and controls per feature: `docs/security/threat-models.md`.

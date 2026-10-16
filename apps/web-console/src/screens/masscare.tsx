@@ -11,10 +11,15 @@
  * - Volunteer reception: a walk-up volunteer registered in one step with the
  *   signed waiver, skills (recorded, not verified), the background-check
  *   status only, a team, a check-in and a badge whose code is shown once.
+ *   Walk-ups can also sign up on their own phones through a code reception
+ *   opens for the event (FL:FR-20); their requests wait at the desk under a
+ *   desk code, and reception completes or declines each one. Reception sees
+ *   whether a phone or email was given, never the contact itself.
  */
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, describeFailure } from '../api/client.ts';
 import { DataTable, Field, Status, Toolbar, fmt } from '../ui/primitives.tsx';
+import { QrImage } from '../ui/qr.tsx';
 import { EventPicker, useOpenEvents } from './dispatch.tsx';
 
 const label = (s: string | null | undefined) => (s ? s.replace(/_/g, ' ') : '—');
@@ -462,6 +467,235 @@ interface Registration {
   waiverVersion: string | null;
   badgeCode?: string;
 }
+/** FL:FR-20: a walk-up's own sign-up waiting at the desk; never the contact itself. */
+interface Signup {
+  id: string;
+  version: number;
+  deskCode: string;
+  name: string;
+  agency: string | null;
+  gavePhone: boolean;
+  gaveEmail: boolean;
+  skills: string[];
+  waiverVersion: string;
+  waiverAcceptedAt: string | null;
+  createdAt: string;
+}
+interface SignupLink {
+  id: string;
+  waiverVersion: string;
+  waiverLanguages: string[];
+  expiresAt: string;
+  waiting: number;
+  url?: string;
+}
+
+/**
+ * FL:FR-20: reception opens a sign-up code for the event (shown once: print it
+ * or keep the page open), sees the requests waiting at the desk and takes each
+ * one into the registration form, or declines it.
+ */
+function SignupDesk({
+  eventId,
+  waiverVersion,
+  signups,
+  reload,
+  onTake,
+  onMessage,
+}: {
+  eventId: string;
+  waiverVersion: string;
+  signups: Signup[];
+  reload: () => void;
+  onTake: (s: Signup) => void;
+  onMessage: (m: { kind: 'success' | 'error'; text: string }) => void;
+}) {
+  const links = useApi<SignupLink[]>(`/volunteer-signup-links?eventId=${eventId}`);
+  const [opened, setOpened] = useState<SignupLink | null>(null);
+  const [form, setForm] = useState({ en: '', es: '', hours: 12 });
+  const open = async (e: FormEvent) => {
+    e.preventDefault();
+    try {
+      const link = await api<SignupLink>('/volunteer-signup-links', {
+        body: {
+          eventId,
+          waiverVersion,
+          waiverText: {
+            ...(form.en.trim() ? { en: form.en.trim() } : {}),
+            ...(form.es.trim() ? { es: form.es.trim() } : {}),
+          },
+          hours: form.hours,
+        },
+      });
+      setOpened(link);
+      links.reload();
+      onMessage({ kind: 'success', text: 'The sign-up code is open.' });
+    } catch (err) {
+      onMessage({ kind: 'error', text: describeFailure(err) });
+    }
+  };
+  const close = async (id: string) => {
+    try {
+      await api(`/volunteer-signup-links/${id}/close`, { method: 'POST' });
+      if (opened?.id === id) setOpened(null);
+      links.reload();
+      onMessage({ kind: 'success', text: 'The sign-up code is closed.' });
+    } catch (err) {
+      onMessage({ kind: 'error', text: describeFailure(err) });
+    }
+  };
+  const decline = async (r: Signup) => {
+    try {
+      await api(`/volunteer-signups/${r.id}/decline`, { method: 'POST', version: r.version });
+      onMessage({
+        kind: 'success',
+        text: `The request with desk code ${r.deskCode} was declined.`,
+      });
+    } catch (err) {
+      onMessage({ kind: 'error', text: describeFailure(err) });
+    }
+    reload();
+  };
+  return (
+    <section className="panel" aria-labelledby="signup-h">
+      <h2 id="signup-h">Sign-up by QR at the desk</h2>
+      <p>
+        Volunteers scan the code with their own phone and get a desk code. Their details wait here
+        until you register them below or decline.
+      </p>
+      {opened?.url ? (
+        <div className="signup-code">
+          <QrImage text={opened.url} alt="Code that opens the volunteer sign-up" size={200} />
+          <p>
+            <span className="url">{opened.url}</span>
+          </p>
+          <p className="hint">
+            Shown once: print this page or keep it open. Open a new code if you lose it.
+          </p>
+          <button type="button" onClick={() => window.print()}>
+            Print the code
+          </button>
+        </div>
+      ) : null}
+      <form onSubmit={(e) => void open(e)} aria-labelledby="signup-open-h">
+        <h3 id="signup-open-h">Open a sign-up code</h3>
+        <Field
+          label="Waiver text in English (optional)"
+          hint={`Volunteers read and accept it on their phone. Leave both blank to have them sign the waiver (${waiverVersion}) at the desk.`}
+        >
+          {({ id, describedBy }) => (
+            <textarea
+              id={id}
+              aria-describedby={describedBy}
+              rows={4}
+              value={form.en}
+              onChange={(e) => setForm({ ...form, en: e.target.value })}
+            />
+          )}
+        </Field>
+        <Field label="Waiver text in Spanish (optional)">
+          {({ id }) => (
+            <textarea
+              id={id}
+              lang="es"
+              rows={4}
+              value={form.es}
+              onChange={(e) => setForm({ ...form, es: e.target.value })}
+            />
+          )}
+        </Field>
+        <Field label="Open for (hours)">
+          {({ id }) => (
+            <input
+              id={id}
+              type="number"
+              min={1}
+              max={72}
+              value={form.hours}
+              onChange={(e) => setForm({ ...form, hours: Number(e.target.value) || 12 })}
+            />
+          )}
+        </Field>
+        <button type="submit">Open a sign-up code</button>
+      </form>
+      <DataTable
+        caption="Open sign-up codes"
+        rows={links.data ?? []}
+        rowKey={(r) => r.id}
+        empty="No sign-up code is open for this event."
+        columns={[
+          { key: 'e', header: 'Open until', render: (r) => fmt(r.expiresAt) },
+          {
+            key: 'w',
+            header: 'Waiver',
+            render: (r) =>
+              r.waiverLanguages.length
+                ? `${r.waiverVersion}, read on the phone (${r.waiverLanguages.join(', ')})`
+                : `${r.waiverVersion}, signed at the desk`,
+          },
+          { key: 'n', header: 'Waiting', render: (r) => String(r.waiting) },
+          {
+            key: 'c',
+            header: 'Close',
+            render: (r) => (
+              <button type="button" onClick={() => void close(r.id)}>
+                Close the code open until {fmt(r.expiresAt)}
+              </button>
+            ),
+          },
+        ]}
+      />
+      <DataTable
+        caption="Waiting at the desk"
+        rows={signups}
+        rowKey={(r) => r.id}
+        empty="Nobody is waiting at the desk."
+        columns={[
+          { key: 'd', header: 'Desk code', render: (r) => <strong>{r.deskCode}</strong> },
+          { key: 'n', header: 'Name', render: (r) => r.name },
+          { key: 'o', header: 'Organization', render: (r) => r.agency ?? '—' },
+          {
+            key: 's',
+            header: 'Skills (unverified)',
+            render: (r) => r.skills.map(label).join(', ') || '—',
+          },
+          {
+            key: 'w',
+            header: 'Waiver',
+            render: (r) =>
+              r.waiverAcceptedAt
+                ? `Accepted on the phone (${r.waiverVersion})`
+                : 'Sign at the desk',
+          },
+          {
+            key: 'r',
+            header: 'Reach them',
+            render: (r) =>
+              [r.gavePhone ? 'phone' : null, r.gaveEmail ? 'email' : null]
+                .filter(Boolean)
+                .join(' and ') || 'none given',
+          },
+          { key: 't', header: 'Signed up', render: (r) => fmt(r.createdAt) },
+          {
+            key: 'a',
+            header: 'Action',
+            render: (r) => (
+              <>
+                <button type="button" onClick={() => onTake(r)}>
+                  Register {r.deskCode}
+                </button>{' '}
+                <button type="button" onClick={() => void decline(r)}>
+                  Decline {r.deskCode}
+                </button>
+              </>
+            ),
+          },
+        ]}
+      />
+    </section>
+  );
+}
+
 export function VolunteerReceptionScreen() {
   const { events } = useOpenEvents();
   const [eventId, setEventId] = useState<string | null>(null);
@@ -487,6 +721,27 @@ export function VolunteerReceptionScreen() {
   });
   const [done, setDone] = useState<Registration | null>(null);
   const [msg, setMsg] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  // FL:FR-20: the desk request this registration completes, if any.
+  const [fromSignup, setFromSignup] = useState<Signup | null>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const signups = useApi<Signup[]>(
+    currentEvent ? `/volunteer-signups?eventId=${currentEvent}` : null,
+  );
+  const takeSignup = (r: Signup) => {
+    setFromSignup(r);
+    setF({
+      ...f,
+      name: r.name,
+      agency: r.agency ?? '',
+      phone: '',
+      email: '',
+      skills: r.skills,
+      waiver: r.waiverAcceptedAt !== null,
+      waiverVersion: r.waiverVersion,
+    });
+    setMsg(null);
+    nameRef.current?.focus();
+  };
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!currentEvent) return;
@@ -495,6 +750,7 @@ export function VolunteerReceptionScreen() {
         body: {
           clientUuid: crypto.randomUUID(),
           eventId: currentEvent,
+          ...(fromSignup ? { signupId: fromSignup.id } : {}),
           person: {
             name: f.name.trim(),
             ...(f.agency.trim() ? { agency: f.agency.trim() } : {}),
@@ -525,7 +781,9 @@ export function VolunteerReceptionScreen() {
         waiver: false,
         team: '',
       });
+      setFromSignup(null);
       list.reload();
+      signups.reload();
     } catch (err) {
       setMsg({ kind: 'error', text: describeFailure(err) });
     }
@@ -545,13 +803,41 @@ export function VolunteerReceptionScreen() {
           Badges page.
         </p>
       ) : null}
+      {currentEvent ? (
+        <SignupDesk
+          eventId={currentEvent}
+          waiverVersion={f.waiverVersion}
+          signups={signups.data ?? []}
+          reload={signups.reload}
+          onTake={takeSignup}
+          onMessage={setMsg}
+        />
+      ) : null}
       <form className="panel" onSubmit={(e) => void submit(e)} aria-labelledby="walkup-reg-h">
         <h2 id="walkup-reg-h">Register a walk-up volunteer</h2>
+        {fromSignup ? (
+          <p>
+            Completing the sign-up with desk code <strong>{fromSignup.deskCode}</strong>.{' '}
+            {fromSignup.gavePhone || fromSignup.gaveEmail
+              ? 'The phone or email they gave goes straight to the roster; type one only to replace it.'
+              : 'They gave no phone or email.'}{' '}
+            <button
+              type="button"
+              onClick={() => {
+                setFromSignup(null);
+                setF({ ...f, name: '', agency: '', skills: [], waiver: false });
+              }}
+            >
+              Not this request
+            </button>
+          </p>
+        ) : null}
         <div className="form-grid">
           <Field label="Full name">
             {({ id }) => (
               <input
                 id={id}
+                ref={nameRef}
                 value={f.name}
                 onChange={(e) => setF({ ...f, name: e.target.value })}
                 required
@@ -645,7 +931,9 @@ export function VolunteerReceptionScreen() {
             onChange={(e) => setF({ ...f, waiver: e.target.checked })}
             required
           />{' '}
-          The volunteer read and signed the waiver ({f.waiverVersion})
+          {fromSignup?.waiverAcceptedAt
+            ? `The volunteer accepted the waiver (${f.waiverVersion}) on their phone at ${fmt(fromSignup.waiverAcceptedAt)}`
+            : `The volunteer read and signed the waiver (${f.waiverVersion})`}
         </label>
         <label className="inline" style={{ flexDirection: 'row', alignItems: 'center' }}>
           <input

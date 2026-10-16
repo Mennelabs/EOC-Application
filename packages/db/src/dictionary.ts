@@ -161,7 +161,20 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
       d: 'PER-02: hours per shift before a warning',
     },
     home_tenant_id: { c: 'internal', d: 'DSP-09: the agency when it runs its own tenant' },
-    photo_key: { c: 'sensitive', r: 'photos', d: 'FR-13.01: badge photo object key' },
+    photo_key: {
+      c: 'sensitive',
+      r: 'photos',
+      d: 'FR-13.01: the approved badge photo, the only one printed',
+    },
+    photo_pending_key: {
+      c: 'sensitive',
+      r: 'photos',
+      d: 'FR-13.01: a badge photo waiting for a second person to approve it',
+    },
+    photo_pending_by: { c: 'internal', r: 'photos' },
+    photo_pending_at: { c: 'internal', r: 'photos' },
+    photo_approved_by: { c: 'internal', r: 'photos', d: 'Never the person who took it' },
+    photo_approved_at: { c: 'internal', r: 'photos' },
     archived_at: { c: 'internal' },
     archived_reason: { c: 'internal' },
   }),
@@ -2391,6 +2404,61 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     reported_by: { c: 'internal', r: 'field_records' },
     reported_personnel_id: { c: 'internal', r: 'field_records' },
   }),
+  // FL:FR-20: a link reception opens for an event; volunteers register themselves through it.
+  volunteer_signup_link: table(
+    {
+      event_id: { c: 'internal', r: 'drafts' },
+      token_hash: {
+        c: 'restricted',
+        r: 'drafts',
+        d: 'SHA-256 of the self-registration link token; the token itself is never stored',
+      },
+      waiver_version: { c: 'internal', r: 'drafts', d: "The county's waiver the link shows" },
+      waiver_text: {
+        c: 'internal',
+        r: 'drafts',
+        d: "The county's waiver text by language, as shown to volunteers; none means sign at the desk",
+      },
+      expires_at: { c: 'internal', r: 'drafts' },
+      closed_at: { c: 'internal', r: 'drafts' },
+      closed_by: { c: 'internal', r: 'drafts' },
+    },
+    { omit: ['version', 'updated_at', 'updated_by'] },
+  ),
+  // FL:FR-20: a walk-up volunteer's own registration, waiting for reception.
+  volunteer_signup: table(
+    {
+      event_id: { c: 'internal', r: 'drafts' },
+      link_id: { c: 'internal', r: 'drafts' },
+      execution_id: { c: 'internal', r: 'drafts', d: 'Idempotency key from the form' },
+      desk_code: {
+        c: 'internal',
+        r: 'drafts',
+        d: 'Short code the volunteer shows at the desk; not a secret',
+      },
+      status: { c: 'internal', r: 'drafts', d: 'waiting, registered or declined' },
+      details_enc: {
+        c: 'restricted',
+        r: 'drafts',
+        d: 'Encrypted name, phone, email and organization; erased once reception decides',
+      },
+      skills: {
+        c: 'internal',
+        r: 'drafts',
+        d: 'Skills the volunteer names, from a fixed list; recorded, never verified',
+      },
+      waiver_version: { c: 'internal', r: 'drafts' },
+      waiver_accepted_at: {
+        c: 'internal',
+        r: 'drafts',
+        d: 'When they accepted the waiver text on the phone; none means they sign at the desk',
+      },
+      registration_id: { c: 'internal', r: 'drafts' },
+      decided_at: { c: 'internal', r: 'drafts' },
+      decided_by: { c: 'internal', r: 'drafts' },
+    },
+    { omit: ['created_by'] },
+  ),
   supply_request: table({
     site_id: { c: 'internal', r: 'field_records', d: 'FL:FR-21: the site asking' },
     client_uuid: { c: 'internal', r: 'field_records', d: 'Idempotency key from the phone' },

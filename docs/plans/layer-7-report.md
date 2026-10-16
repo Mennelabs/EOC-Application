@@ -37,7 +37,7 @@ Everything in the stack is synthetic or the WESTWIND exercise (SCL-12).
 
 ## What passed
 
-- **Traceability:** of the 105 requirement IDs assigned to layer 7, 92 pass and 13 are partial as of 2026-10-16, after the follow-up work (76, 23 and 6 deferred when the report was first written; `docs/traceability.md`, evidence in `trace-layer7.json`). Across every layer so far, 464 of 663 IDs pass, 163 are partial, 33 deferred, 2 designed and 1 not started. Earlier IDs this layer extends are updated in place: INT-12, PHO-03, PHO-07, AIG-05, the GATE rows and others.
+- **Traceability:** of the 105 requirement IDs assigned to layer 7, 92 pass and 13 are partial as of 2026-10-16, after the follow-up work (76, 23 and 6 deferred when the report was first written; `docs/traceability.md`, evidence in `trace-layer7.json`). Across every layer so far, 474 of 663 IDs pass, 153 are partial, 33 deferred, 2 designed and 1 not started. Earlier IDs this layer extends are updated in place: INT-12, PHO-03, PHO-07, AIG-05, the GATE rows and others.
 - **Launch gates:** GATE-02, GATE-04 and GATE-05 pass for layer 7. GATE-03 and GATE-08 are partial; see `layer-7-gates.md`.
 - **Permission sweep:** every staff route (364) refuses a caller with no token and an account with no role, and none fails with a server error (`authz-sweep.db.test.ts`, in CI).
 - **CI:** each merged PR was green end to end (lint, typecheck, unit tests, scans, Semgrep, the Android build, and the compose stack with integration, database and browser suites). Locally the full database list, the console, resident, field and help journeys, and the a11y spec pass.
@@ -97,7 +97,7 @@ Everything in the stack is synthetic or the WESTWIND exercise (SCL-12).
 
 ## Readings taken in favour of privacy and safety (flagged for you)
 
-The plan's §12 lists all 27. The newest:
+The plan's §12 lists all 28. The newest:
 
 - a legal aid organization's referral responses share only the status;
 - resident dictation goes through the county's provider or not at all;
@@ -115,6 +115,8 @@ The plan's §12 lists all 27. The newest:
 - a resupply request started at the reorder point is a draft a person checks and sends; one shortage is asked for once (FL:FR-21, FL:FR-22).
 - a lost pet is matched to an animal found or sheltered by a person, from suggestions that show the words the descriptions share (FL:FR-08).
 - a canteen stop's allergen note is about the food, never who has an allergy (FL:FR-17).
+- a badge photo is printed only once a second person approves it; whoever took it cannot (BRD:FR-13.01).
+- a walk-up volunteer's own sign-up by QR waits at the desk under a desk code; reception sees whether a phone or email was given but never the contact, which goes straight to the roster, and the request's details are erased once decided (FL:FR-20).
 
 ## Questions for you (defaults in force)
 

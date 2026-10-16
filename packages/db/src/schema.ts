@@ -169,8 +169,14 @@ export interface PersonnelTable extends Stamped {
   hours_limit: number | null;
   /** DSP-09: the agency when it runs its own tenant. */
   home_tenant_id: Uuid | null;
-  /** FR-13.01: badge photo object key. */
+  /** FR-13.01: the approved badge photo's object key. */
   photo_key: string | null;
+  /** FR-13.01: a photo waiting for a second person's approval. */
+  photo_pending_key: string | null;
+  photo_pending_by: Uuid | null;
+  photo_pending_at: TsNullable;
+  photo_approved_by: Uuid | null;
+  photo_approved_at: TsNullable;
   archived_at: TsNullable;
   archived_reason: string | null;
 }
@@ -2646,6 +2652,47 @@ export interface FacilityUpdateLinkTable {
   created_at: TsGen;
 }
 
+/** FL:FR-20: a self-registration link reception opens for an event. */
+export interface VolunteerSignupLinkTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  token_hash: Buffer;
+  waiver_version: string;
+  waiver_text: JsonGen<Record<string, string>>;
+  expires_at: Ts;
+  closed_at: TsNullable;
+  closed_by: Uuid | null;
+  created_at: TsGen;
+  created_by: Uuid | null;
+}
+
+/** FL:FR-20: a walk-up volunteer's own registration, waiting for reception. */
+export interface VolunteerSignupTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  link_id: Uuid;
+  execution_id: Uuid;
+  desk_code: string;
+  status: ColumnType<
+    'waiting' | 'registered' | 'declined',
+    'waiting' | 'registered' | 'declined' | undefined,
+    'waiting' | 'registered' | 'declined'
+  >;
+  details_enc: Buffer | null;
+  skills: Generated<string[]>;
+  waiver_version: string;
+  waiver_accepted_at: TsNullable;
+  registration_id: Uuid | null;
+  decided_at: TsNullable;
+  decided_by: Uuid | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
 export interface FacilityChangeTable extends Stamped {
   id: Generated<Uuid>;
   tenant_id: Uuid;
@@ -3395,6 +3442,8 @@ export interface Database {
   'cg.site_walkthrough': SiteWalkthroughTable;
   'cg.right_of_entry': RightOfEntryTable;
   'cg.volunteer_registration': VolunteerRegistrationTable;
+  'cg.volunteer_signup_link': VolunteerSignupLinkTable;
+  'cg.volunteer_signup': VolunteerSignupTable;
   'cg.stock_item': StockItemTable;
   'cg.interpreter_request': InterpreterRequestTable;
   'cg.child_check_in': ChildCheckInTable;

@@ -421,10 +421,10 @@
     ""
   ],
   "BRD:FR-13.01": [
-    "partial",
-    "cg.badge linked to personnel with role label, agency, template, access label, photo key (0032); routes/field-ops.ts; screens/fieldops.tsx badges",
-    "services/api/test/fieldops.db.test.ts (badges)",
-    "The photo is a stored key only: there is no capture, approval or display of a badge photo yet."
+    "pass",
+    "cg.badge linked to personnel with role label, agency, template, access label and the approved photo (0032, 0094); routes/field-ops.ts; screens/fieldops.tsx badges; badge photos: taken at the desk or uploaded (a phone opens its camera), re-encoded as a JPEG without the original's metadata, pending until a second person approves (ADM-05 G4: whoever took it cannot), served only through the API to roles that read the person (pending only to those who take or approve), and the badge prints only the approved photo, which no request can override (0094, routes/personnel-photo.ts, ui/badge-photo.tsx in the personnel detail and the badge print view)",
+    "services/api/test/fieldops.db.test.ts (badges), services/api/test/badge-photo.db.test.ts (BRD:FR-13.01, ADM-05 G4: re-encoded without metadata, refused to roles without the grant, self-approval refused, approved by a second person, printed on the badge and the same bytes served, a named photo key ignored, a rejected photo deleted), tests/e2e/console-screens.spec.ts (a photo taken in the console waits; the taker's approval is refused; with axe)",
+    ""
   ],
   "BRD:FR-13.02": [
     "pass",
@@ -439,10 +439,10 @@
     ""
   ],
   "BRD:FR-13.04": [
-    "partial",
-    "console print view with name, agency, role, access, credentials, validity, the code as a QR image the field app scans and the same code as text beside it; browser printing (screens/fieldops.tsx, ui/qr.tsx)",
-    "tests/e2e/console-l4.spec.ts (badges screen with axe, desktop and phone)",
-    "No photo on the badge yet (BRD:FR-13.01)."
+    "pass",
+    "console print view with the approved photo, name, agency, role, access, credentials, validity, the code as a QR image the field app scans and the same code as text beside it; browser printing (screens/fieldops.tsx, ui/qr.tsx, ui/badge-photo.tsx); photo capture or upload in the personnel detail",
+    "tests/e2e/console-l4.spec.ts (badges screen with axe, desktop and phone), services/api/test/badge-photo.db.test.ts (BRD:FR-13.01, ADM-05 G4: re-encoded without metadata, refused to roles without the grant, self-approval refused, approved by a second person, printed on the badge and the same bytes served, a named photo key ignored, a rejected photo deleted), tests/e2e/console-screens.spec.ts (a photo taken in the console waits; the taker's approval is refused; with axe)",
+    "Printing on Brother badge printers is a later task (decided 2026-10-15); browser printing works today."
   ],
   "BRD:FR-13.05": [
     "partial",
@@ -541,10 +541,10 @@
     ""
   ],
   "BDG-01": [
-    "partial",
-    "badges with name, agency, role, credentials, access label, validity, hashed code shown once; revoke at once; verify (routes/field-ops.ts); walk-up badge (routes/volunteers.ts)",
-    "services/api/test/fieldops.db.test.ts (badges), services/api/test/fieldrecords.db.test.ts (FL:FR-20 badge code shown once), tests/e2e/console-l4.spec.ts",
-    "The code prints as a QR image with the text beside it; no photo on the badge yet (BRD:FR-13.01)."
+    "pass",
+    "badges with the approved photo, name, agency, role, credentials, access label, validity, hashed code shown once; revoke at once; verify (routes/field-ops.ts); walk-up badge (routes/volunteers.ts); the code prints as a QR image with the text beside it (AC-13C)",
+    "services/api/test/fieldops.db.test.ts (badges), services/api/test/fieldrecords.db.test.ts (FL:FR-20 badge code shown once), services/api/test/badge-photo.db.test.ts (BRD:FR-13.01), tests/e2e/console-l4.spec.ts, tests/e2e/console-screens.spec.ts (badge photo)",
+    ""
   ],
   "BDG-02": [
     "pass",
@@ -841,10 +841,10 @@
     "Hours worked by people come from check-in."
   ],
   "FL:FR-20": [
-    "partial",
-    "routes/volunteers.ts walk-up registration in one step (person, waiver, skills, background-check status only, team, check-in, badge); screens/masscare.tsx reception",
-    "services/api/test/fieldrecords.db.test.ts (FL:FR-20)",
-    "Staff register the walk-up at the desk; self-registration by QR is not built."
+    "pass",
+    "routes/volunteers.ts walk-up registration in one step (person, waiver, skills, background-check status only, team, check-in, badge), sign-up links, the desk queue and decline; public/volunteer-signup.ts self-registration by QR (waiver read and accepted on the phone when the county gives its text, skills from a fixed list, desk code only); web-help volunteer.ts; screens/masscare.tsx reception with the sign-up desk; migration 0095",
+    "services/api/test/fieldrecords.db.test.ts (FL:FR-20); services/api/test/volunteer-signup.db.test.ts; tests/e2e/console-screens.spec.ts (FL:FR-20)",
+    "Plan reading 29: reception sees the request without the contact; details erased once decided; requests swept as drafts after 7 days."
   ],
   "FL:FR-21": [
     "pass",

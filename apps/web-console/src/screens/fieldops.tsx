@@ -23,6 +23,7 @@ import { DataTable, Field, Status, Toolbar, fmt } from '../ui/primitives.tsx';
 import { STATUS_TEXT } from './dispatch.tsx';
 import { EventPicker, useOpenEvents } from './dispatch.tsx';
 import { formatDate, fromZoneInput } from '../ui/time.ts';
+import { useImage } from '../ui/badge-photo.tsx';
 import { QrImage } from '../ui/qr.tsx';
 
 const label = (s: string | null | undefined) => (s ? s.replace(/_/g, ' ') : '—');
@@ -941,6 +942,13 @@ interface Badge {
   state: string;
   code?: string;
   printFailedReason: string | null;
+  /** BRD:FR-13.01: the approved photo the badge was generated with, if any. */
+  photoKey: string | null;
+}
+/** FR-13.04: the photo printed on the badge, through the API. */
+function BadgeImage({ badge }: { badge: Badge }) {
+  const src = useImage(badge.photoKey ? `/badges/${badge.id}/photo` : null);
+  return src ? <img src={src} alt={`Photo of ${badge.displayName}`} width={96} /> : null;
 }
 export function BadgesScreen() {
   const { eventId, picker } = useEvent();
@@ -1057,6 +1065,7 @@ export function BadgesScreen() {
         <section className="panel badge-print" aria-labelledby="print-h">
           <h2 id="print-h">Print view</h2>
           <div className="badge-card">
+            <BadgeImage badge={printing} />
             <p className="badge-name">{printing.displayName}</p>
             <p>{printing.agency ?? ''}</p>
             <p>{printing.roleLabel ?? ''}</p>

@@ -8,6 +8,7 @@
  */
 import { langOf, strings, type Lang, type Strings } from './i18n.ts';
 import { offerForm } from './offer.ts';
+import { volunteerForm } from './volunteer.ts';
 import './styles.css';
 
 interface Address {
@@ -562,9 +563,47 @@ function renderOffer(tenant: string): void {
   );
 }
 
+/** FL:FR-20: a walk-up volunteer's sign-up, opened from the code at the volunteer desk. */
+function renderVolunteer(tenant: string, token: string): void {
+  const t = strings(lang);
+  document.documentElement.lang = lang;
+  document.title = `${t.volunteer.title} · ${config.countyName ?? ''}`.trim();
+  const otherLang: Lang = lang === 'en' ? 'es' : 'en';
+  const main = el('main', { id: 'main', tabindex: '-1' });
+  main.append(
+    el('p', { class: 'intro' }, t.volunteer.intro),
+    volunteerForm(el, tenant, token, lang, t),
+  );
+  app.replaceChildren(
+    el(
+      'header',
+      {},
+      el('p', { class: 'county' }, config.countyName ?? ''),
+      el('h1', {}, t.volunteer.title),
+      el(
+        'nav',
+        { 'aria-label': t.language },
+        el(
+          'a',
+          { href: pageUrl({ lang: otherLang }), lang: otherLang, hreflang: otherLang },
+          otherLang === 'es' ? 'Español' : 'English',
+        ),
+      ),
+    ),
+    main,
+  );
+}
+
 config = await loadConfig();
+const joinToken = url.searchParams.get('join');
 if (url.searchParams.get('view') === 'offer' && (pathTenant ?? config.tenant)) {
   renderOffer(pathTenant ?? config.tenant!);
+} else if (
+  url.searchParams.get('view') === 'volunteer' &&
+  joinToken &&
+  (pathTenant ?? config.tenant)
+) {
+  renderVolunteer(pathTenant ?? config.tenant!, joinToken);
 } else {
   render();
   await refresh();

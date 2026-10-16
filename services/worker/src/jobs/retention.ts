@@ -106,6 +106,16 @@ export const SWEEPS: readonly Sweep[] = [
     finished: 'used_at is not null or expires_at < now()',
   },
   { category: 'drafts', table: 'draft', clock: 'created_at' },
+  // FL:FR-20: walk-up sign-ups (details already erased once decided), then the links they came through.
+  { category: 'drafts', table: 'volunteer_signup', clock: 'created_at', eventOf: 'event_id' },
+  {
+    category: 'drafts',
+    table: 'volunteer_signup_link',
+    clock: 'coalesce(closed_at, expires_at)',
+    finished: 'closed_at is not null or expires_at < now()',
+    eventOf: 'event_id',
+    keptByReferences: true,
+  },
   { category: 'abuse_signals', table: 'abuse_signal', clock: 'created_at' },
   {
     category: 'sessions',
@@ -310,6 +320,7 @@ export const SWEEPS: readonly Sweep[] = [
     keptByReferences: true,
     objects: [
       { table: 'personnel', column: 'id', key: 'photo_key' },
+      { table: 'personnel', column: 'id', key: 'photo_pending_key' },
       { table: 'credential', column: 'personnel_id', key: 'evidence_key' },
     ],
   },

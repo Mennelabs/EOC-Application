@@ -1139,6 +1139,7 @@ const templates: readonly RoleTemplate[] = [
     'Walk-up registration by QR, waivers, skills, background-check status only, badges, team assignment (FL:FR-20).',
     [
       'volunteer_registration.*',
+      'personnel.photo', // BRD:FR-13.01: the photo is taken at the desk; someone else approves it
       'badge.generate',
       'badge.print',
       'badge.read',

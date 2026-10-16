@@ -362,10 +362,10 @@
   ],
   "SCL-15": ["pass", "docs/adr/0001–0023", "", ""],
   "ADM-01": [
-    "partial",
-    "routes/tenants.ts, accounts.ts, roles.ts; console administration workspaces; question graphs (routes/intake-graphs.ts, screens/intake.tsx); layer 7: the Event templates editor (screens/settings.tsx EventTemplatesScreen over PUT /event-templates/:id, version-checked) and the Planning factors editor (PlanningFactorsScreen: GET /recommendations/planning-factors, saved with a reason through PUT /tenants/:id/config/recommendation.planning_factors)",
-    "layer1.int.test.ts, console.spec.ts; services/api/test/event-templates.db.test.ts, services/api/test/recommendations.db.test.ts (ADM-01: defaults and county values in force, nonsense not in force, refused without configuration access), tests/e2e/console-screens.spec.ts (ADM-01: a template's layers saved and put back, a wrong keyword named; a planning factor changed with a reason and put back; axe and reflow)",
-    "Languages and branding have no editor yet (a county's branding is set through the tenant API, its languages through configuration); everything is audited through the same path (layer-7 plan reading 41)."
+    "pass",
+    "routes/tenants.ts, accounts.ts, roles.ts; console administration workspaces; question graphs (routes/intake-graphs.ts, screens/intake.tsx); layer 7: the Event templates editor (screens/settings.tsx EventTemplatesScreen over PUT /event-templates/:id, version-checked), the Planning factors editor (PlanningFactorsScreen: GET /recommendations/planning-factors, saved with a reason through PUT /tenants/:id/config/recommendation.planning_factors) and the Branding and languages editor (BrandingScreen over PATCH /tenants/:id: the agency name per language, website and header colour checked by services/api/src/branding.ts, languages limited to reviewed catalogs with English and Spanish kept for residents); the resident and Find help pages show the branding and the county's own help line (apps/web-resident/src/intake/brand.ts, apps/web-help/src/main.ts)",
+    "layer1.int.test.ts (ADM-01: faint colour, unknown field, plain-http site and dropped Spanish refused; saved with a reason, audited, shown on the public intake and help pages, put back), services/api/test/branding.test.ts, console.spec.ts; services/api/test/event-templates.db.test.ts, services/api/test/recommendations.db.test.ts, tests/e2e/console-screens.spec.ts (ADM-01: a template's layers saved and put back, a wrong keyword named; a planning factor changed with a reason and put back; the county's name, website and colour saved with a reason, seen by residents, put back; axe and reflow)",
+    "Branding is the agency's name per language, its website and the header colour; there is no logo upload (layer-7 plan reading 45)."
   ],
   "ADM-03": [
     "pass",

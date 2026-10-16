@@ -5,8 +5,9 @@
  * the public safety messages in English and Spanish, saved against the
  * version that was loaded. Planning factors (layer-7 recommendations): each
  * factor with its documented default, changed with a reason through the
- * versioned configuration; a blank field goes back to the default. Every
- * save is audited by the API.
+ * versioned configuration; a blank field goes back to the default. Branding
+ * and languages: the agency name per language, website and header colour
+ * residents see, and the languages offered. Every save is audited by the API.
  */
 import { useEffect, useState, type FormEvent } from 'react';
 import { MAP_LAYERS } from '@cg/intake';
@@ -520,6 +521,236 @@ export function QuietHoursPanel() {
               </button>
             ) : null}
           </div>
+        </form>
+      ) : null}
+    </section>
+  );
+}
+
+interface TenantBrand {
+  id: string;
+  kind: string;
+  name: string;
+  locales: string[];
+  version: number;
+  branding: { publicName?: { en?: string; es?: string }; website?: string; headerColor?: string };
+}
+
+/** Languages with reviewed resident and public pages (EQ-07); the server holds the same list. */
+const OFFERED_LANGUAGES = [
+  { code: 'en', name: 'English' },
+  { code: 'es', name: 'Spanish (Español)' },
+];
+
+/** WCAG contrast of white text on a #rrggbb colour, as the server checks it; null when not a colour. */
+export function whiteContrast(hex: string): number | null {
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return null;
+  const lin = (i: number) => {
+    const v = parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16) / 255;
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  const l = 0.2126 * lin(0) + 0.7152 * lin(1) + 0.0722 * lin(2);
+  return 1.05 / (l + 0.05);
+}
+
+/**
+ * ADM-01: the county's branding and languages, as residents see them on the
+ * report and Find help pages. The agency name per language, the website and
+ * the header colour (white text must reach 4.5:1). English and Spanish are
+ * always offered to residents. Saving asks for a reason and is recorded.
+ */
+export function BrandingScreen() {
+  const [tenant, setTenant] = useState<TenantBrand | null>(null);
+  const [nameEn, setNameEn] = useState('');
+  const [nameEs, setNameEs] = useState('');
+  const [website, setWebsite] = useState('');
+  const [color, setColor] = useState('');
+  const [locales, setLocales] = useState<string[]>([]);
+  const [notice, setNotice] = useState<Notice>(null);
+  const [busy, setBusy] = useState(false);
+  const show = (t: TenantBrand) => {
+    setTenant(t);
+    setNameEn(t.branding.publicName?.en ?? '');
+    setNameEs(t.branding.publicName?.es ?? '');
+    setWebsite(t.branding.website ?? '');
+    setColor(t.branding.headerColor ?? '');
+    setLocales(t.locales);
+  };
+  useEffect(() => {
+    api<{ tenantId: string }>('/me')
+      .then((me) => api<TenantBrand>(`/tenants/${me.tenantId}`))
+      .then(show)
+      .catch((e: unknown) => setNotice({ kind: 'error', text: describeFailure(e) }));
+  }, []);
+  const ratio = color.trim() ? whiteContrast(color.trim()) : null;
+  const colorProblem = !color.trim()
+    ? null
+    : ratio === null
+      ? 'Enter a colour like #0b4f6c.'
+      : ratio < 4.5
+        ? `White text on this colour is too faint: ${ratio.toFixed(1)} to 1, and it needs 4.5 to 1.`
+        : null;
+  const websiteProblem =
+    website.trim() && !/^https:\/\/[^\s/]+\.[^\s]+$/.test(website.trim())
+      ? 'Enter the full address, starting with https://'
+      : null;
+  const required = tenant?.kind === 'partner_org' ? ['en'] : ['en', 'es'];
+  const save = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!tenant || colorProblem || websiteProblem) return;
+    setBusy(true);
+    setNotice(null);
+    const publicName = {
+      ...(nameEn.trim() ? { en: nameEn.trim() } : {}),
+      ...(nameEs.trim() ? { es: nameEs.trim() } : {}),
+    };
+    const branding = {
+      ...(Object.keys(publicName).length ? { publicName } : {}),
+      ...(website.trim() ? { website: website.trim() } : {}),
+      ...(color.trim() ? { headerColor: color.trim().toLowerCase() } : {}),
+    };
+    try {
+      const saved = await api<TenantBrand>(`/tenants/${tenant.id}`, {
+        method: 'PATCH',
+        body: { branding, locales },
+        version: tenant.version,
+      });
+      show(saved);
+      setNotice({ kind: 'success', text: 'Branding and languages saved.' });
+    } catch (err) {
+      setNotice({ kind: 'error', text: describeFailure(err) });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const fallbackName = tenant ? `${tenant.name} Emergency Management` : '';
+  return (
+    <section aria-labelledby="brand-h">
+      <h1 id="brand-h">Branding and languages</h1>
+      <p>
+        How residents see the county on the report and Find help pages. Leave a field blank to use
+        the standard wording. Saving asks for a reason and is recorded.
+      </p>
+      {notice ? <Status kind={notice.kind}>{notice.text}</Status> : null}
+      {tenant ? (
+        <form onSubmit={(e) => void save(e)} aria-labelledby="brand-h">
+          <Field
+            label="Agency name in English"
+            hint={`At the top of every resident page. Blank shows “${fallbackName}”.`}
+          >
+            {({ id, describedBy }) => (
+              <input
+                id={id}
+                aria-describedby={describedBy}
+                value={nameEn}
+                maxLength={120}
+                onChange={(e) => setNameEn(e.target.value)}
+              />
+            )}
+          </Field>
+          <Field
+            label="Agency name in Spanish"
+            hint="Shown to residents reading in Spanish. Blank uses the standard Spanish wording."
+          >
+            {({ id, describedBy }) => (
+              <input
+                id={id}
+                lang="es"
+                aria-describedby={describedBy}
+                value={nameEs}
+                maxLength={120}
+                onChange={(e) => setNameEs(e.target.value)}
+              />
+            )}
+          </Field>
+          <Field
+            label="County website"
+            hint="Linked at the foot of the resident and Find help pages."
+            {...(websiteProblem ? { error: websiteProblem } : {})}
+          >
+            {({ id, describedBy }) => (
+              <input
+                id={id}
+                type="url"
+                inputMode="url"
+                aria-describedby={describedBy}
+                aria-invalid={websiteProblem ? true : undefined}
+                value={website}
+                placeholder="https://"
+                onChange={(e) => setWebsite(e.target.value)}
+              />
+            )}
+          </Field>
+          <Field
+            label="Header colour"
+            hint="A colour like #0b4f6c. The header's text is white, so the colour must be dark enough to read it."
+            {...(colorProblem ? { error: colorProblem } : {})}
+          >
+            {({ id, describedBy }) => (
+              <input
+                id={id}
+                aria-describedby={describedBy}
+                aria-invalid={colorProblem ? true : undefined}
+                value={color}
+                maxLength={7}
+                onChange={(e) => setColor(e.target.value)}
+              />
+            )}
+          </Field>
+          {ratio !== null && !colorProblem ? (
+            <p
+              className="brand-sample"
+              ref={(node) => {
+                // The sample takes the colour through the style object, which the CSP allows.
+                if (node) {
+                  node.style.background = color.trim();
+                  node.style.color = '#ffffff';
+                }
+              }}
+            >
+              {nameEn.trim() || fallbackName}: white text at {ratio.toFixed(1)} to 1.
+            </p>
+          ) : null}
+          <fieldset>
+            <legend>Languages offered to residents</legend>
+            {OFFERED_LANGUAGES.map((l) => {
+              const locked = required.includes(l.code);
+              const id = `lang-${l.code}`;
+              return (
+                <div key={l.code}>
+                  <input
+                    type="checkbox"
+                    id={id}
+                    checked={locales.includes(l.code)}
+                    disabled={locked}
+                    onChange={(e) =>
+                      setLocales((cur) =>
+                        e.target.checked ? [...cur, l.code] : cur.filter((x) => x !== l.code),
+                      )
+                    }
+                  />{' '}
+                  <label htmlFor={id}>
+                    {l.name}
+                    {locked ? ' (always offered)' : ''}
+                  </label>
+                </div>
+              );
+            })}
+            <p className="hint">
+              {tenant.kind === 'partner_org'
+                ? 'English is always offered.'
+                : 'English and Spanish are always offered to residents.'}{' '}
+              Another language is added once its resident and public pages are translated and
+              reviewed.
+            </p>
+          </fieldset>
+          <button
+            type="submit"
+            className="primary"
+            disabled={busy || Boolean(colorProblem) || Boolean(websiteProblem)}
+          >
+            {busy ? 'Saving…' : 'Save branding and languages'}
+          </button>
         </form>
       ) : null}
     </section>

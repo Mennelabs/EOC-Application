@@ -61,7 +61,12 @@ async function call<T>(
 }
 
 export interface IntakeInfo {
-  tenant: { slug: string; name: string; branding: Record<string, unknown> };
+  tenant: {
+    slug: string;
+    name: string;
+    /** ADM-01: the county's branding, its known fields only. */
+    branding: { publicName?: { en?: string; es?: string }; website?: string; headerColor?: string };
+  };
   event: {
     id: string;
     name: string;

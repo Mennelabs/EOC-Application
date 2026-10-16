@@ -869,4 +869,67 @@ test.describe('every console screen, one by one', () => {
     await expect(household).toHaveValue('');
     await expectReflow(page);
   });
+
+  test('ADM-01, NFR-09, WCAG 1.4.3: an administrator gives the county its name, website and header colour with a reason; residents see them; a faint colour is refused', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'tenant_admin',
+      `Branding ${tag}`,
+      `scr-brand-${testInfo.project.name}`,
+    );
+    await open(page, 'branding', 'Branding and languages');
+    // The launch languages are always offered to residents.
+    for (const name of [/^English/, /^Spanish/]) {
+      const box = page.getByRole('checkbox', { name });
+      await expect(box).toBeChecked();
+      await expect(box).toBeDisabled();
+    }
+    const save = async (reason: string) => {
+      await page.getByRole('button', { name: 'Save branding and languages' }).click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toBeVisible();
+      await dialog.getByLabel('Reason').fill(reason);
+      await dialog.getByRole('button', { name: 'Confirm' }).click();
+      await expect(page.getByText('Branding and languages saved.')).toBeVisible();
+    };
+    const agency = `Exercise Westwind OEM ${tag} ${testInfo.project.name}`;
+    const color = page.getByLabel('Header colour');
+    await color.fill('#ffcc00');
+    await expect(
+      page.getByText(/White text on this colour is too faint: 1\.\d to 1/),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Save branding and languages' })).toBeDisabled();
+    await color.fill('#0b4f6c');
+    await expect(page.getByText(/white text at \d+\.\d to 1/)).toBeVisible();
+    await page.getByLabel('Agency name in English').fill(agency);
+    await page.getByLabel('County website').fill('https://westwind.example.gov');
+    await expectNoViolations(page);
+    try {
+      await save('Exercise: the county office name and colours');
+      // Residents see the agency's name, its colour behind white text, and the website.
+      const resident = await context.newPage();
+      await resident.goto(`${BASE}/county/westwind`);
+      const banner = resident.locator('header.banner');
+      await expect(banner).toContainText(agency);
+      await expect(banner).toHaveCSS('background-color', 'rgb(11, 79, 108)');
+      await expect(resident.getByRole('link', { name: `Website: ${agency}` })).toHaveAttribute(
+        'href',
+        'https://westwind.example.gov',
+      );
+      await expectNoViolations(resident);
+      await resident.close();
+    } finally {
+      await page.getByLabel('Agency name in English').fill('');
+      await page.getByLabel('County website').fill('');
+      await color.fill('');
+      await save('Exercise over: the standard wording again');
+    }
+    await expect(page.getByLabel('Agency name in English')).toHaveValue('');
+    await expectReflow(page);
+  });
 });

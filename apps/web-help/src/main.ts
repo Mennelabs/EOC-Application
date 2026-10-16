@@ -51,7 +51,17 @@ interface Resource {
   thumbnailUrl?: string | null;
 }
 interface Help {
-  tenant: { name: string; slug: string; locales: string[] };
+  tenant: {
+    name: string;
+    slug: string;
+    locales: string[];
+    /** ADM-01: the county's branding, its known fields only. */
+    branding?: {
+      publicName?: { en?: string; es?: string };
+      website?: string;
+      headerColor?: string;
+    };
+  };
   lang: string;
   generatedAt: string;
   near: { query: string; resolved: boolean; label: string | null; how: string } | null;
@@ -316,7 +326,9 @@ function render(): void {
   const skip = document.querySelector('.skip');
   if (skip) skip.textContent = t.skip;
   app.replaceChildren();
-  const county = data?.tenant.name ?? config.countyName ?? '';
+  const brand = data?.tenant.branding ?? {};
+  // ADM-01: the agency's own name in this language when the county gave one.
+  const county = brand.publicName?.[lang] ?? data?.tenant.name ?? config.countyName ?? '';
   const phone = data?.accessibility.supportPhone ?? config.helpPhone ?? null;
 
   // Header with the language switch (EQ-06): a link so it works without scripting once loaded.
@@ -336,6 +348,9 @@ function render(): void {
       ),
     ),
   );
+  // The county's colour as a band over the header (set through the style object, which the CSP allows).
+  if (brand.headerColor && /^#[0-9a-f]{6}$/i.test(brand.headerColor))
+    header.style.borderTop = `0.5rem solid ${brand.headerColor}`;
   app.append(header);
   app.append(el('p', { class: 'danger', role: 'note' }, t.danger));
   app.append(el('p', { class: 'intro' }, t.intro));
@@ -524,6 +539,9 @@ function render(): void {
         )
       : null,
     el('p', {}, t.textKeyword),
+    brand.website && /^https:\/\//.test(brand.website)
+      ? el('p', {}, el('strong', {}, `${t.website}: `), el('a', { href: brand.website }, county))
+      : null,
     el('p', { class: 'muted' }, t.notEligibility),
     el('p', { class: 'muted' }, `${t.updated}: ${shortTime(data.generatedAt)}`),
   );

@@ -703,3 +703,9 @@ ul.plain {
 ul.plain li + li {
   margin-block-start: 0.25rem;
 }
+/* ADM-01: the header colour sample, white text on the county's colour. */
+.brand-sample {
+  padding: 0.75rem 1rem;
+  font-weight: 700;
+  border-radius: 4px;
+}

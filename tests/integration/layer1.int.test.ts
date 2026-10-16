@@ -165,6 +165,68 @@ describe('save semantics (BRD:FR-00.04–00.07)', () => {
     });
     expect(missing.status).toBe(428);
   });
+
+  it('ADM-01, NFR-09, WCAG 1.4.3: branding and languages are checked and recorded with a reason; residents see only the known fields', async () => {
+    const a = await admin();
+    const me = await api(a, '/me');
+    const id = me.body['tenantId'] as string;
+    const before = await api(a, `/tenants/${id}`);
+    const original = {
+      branding: before.body['branding'] as Record<string, unknown>,
+      locales: before.body['locales'] as string[],
+    };
+    const patch = (body: unknown, version: number, confirm = 'integration test') =>
+      api(a, `/tenants/${id}`, { method: 'PATCH', body, version, confirm });
+    const v = before.body['version'] as number;
+    // White text on yellow is unreadable; an unknown field and a plain-http site are refused.
+    expect((await patch({ branding: { headerColor: '#ffcc00' } }, v)).status).toBe(400);
+    expect((await patch({ branding: { script: 'x' } }, v)).status).toBe(400);
+    expect((await patch({ branding: { website: 'http://westwind.example.gov' } }, v)).status).toBe(
+      400,
+    );
+    // Residents always get English and Spanish; a language without reviewed pages is not offered.
+    const english = await patch({ locales: ['en'] }, v);
+    expect(english.status).toBe(400);
+    expect(JSON.stringify(english.body)).toContain('English and Spanish are always offered');
+    expect((await patch({ locales: ['en', 'es', 'vi'] }, v)).status).toBe(400);
+    const branding = {
+      publicName: { en: `Exercise Westwind OEM ${RUN}`, es: `Emergencias de Westwind ${RUN}` },
+      website: 'https://westwind.example.gov',
+      headerColor: '#0b4f6c',
+    };
+    const saved = await patch(
+      { branding, locales: ['es', 'en', 'es'] },
+      v,
+      'Exercise: county branding',
+    );
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    expect(saved.body).toMatchObject({ branding, locales: ['es', 'en'] });
+    try {
+      const intake = (await (await fetch(`${BASE}/api/public/intake/county/westwind`)).json()) as {
+        tenant: { branding: unknown };
+      };
+      expect(intake.tenant.branding).toEqual(branding);
+      const help = (await (await fetch(`${BASE}/api/public/help/county?lang=es`)).json()) as {
+        tenant: { branding: unknown };
+      };
+      expect(help.tenant.branding).toEqual(branding);
+      const audited = await api(
+        await security(),
+        `/audit?action=tenant.update&targetType=tenant&targetId=${id}&limit=5`,
+      );
+      expect(audited.status).toBe(200);
+      expect((audited.body as unknown as { reason: string }[])[0]?.reason).toBe(
+        'Exercise: county branding',
+      );
+    } finally {
+      const back = await patch(
+        original,
+        saved.body['version'] as number,
+        'integration test: restore',
+      );
+      expect(back.status, JSON.stringify(back.body)).toBe(200);
+    }
+  });
 });
 
 describe('second administrator (ADM-05 G6, Section 30.2)', () => {

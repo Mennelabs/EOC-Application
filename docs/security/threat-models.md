@@ -125,6 +125,13 @@ Controls that every feature relies on are described once, in "Shared controls" b
 - **What a scan shows:** a revoked, expired or not-yet-valid pass shows nobody's name. The holder and home are shown only to the role that checks passes.
 - **Audit:** every scan is logged with its checkpoint, naming no one.
 
+## 13. Service metrics and alerts (NFR-10)
+
+- **Exposure:** `/metrics` is on each service's own port, on the platform network only. The gateway routes `/api/*`, `/auth/*` and `/tiles/*`, never `/metrics`, and the DAST suite checks that the gateway does not serve it.
+- **Content:** labels are route templates and fixed vocabularies. A value outside them is counted as `other`. No metric carries a county id, an id of any record, a person, an address or anything anyone wrote.
+- **Exhaustion:** a caller cannot mint labels. A phone's unknown command kind counts as `unknown`, and each metric stops at 1,000 label sets.
+- **Integrity of the alerting:** the rules are in the repository, checked and unit-tested by promtool in CI. A broken audit chain and stopped anchoring each page the security owner.
+
 ## Dynamic testing (DAST)
 
 `tests/e2e/dast.spec.ts` runs against the live stack on every push, as part of the end-to-end suite. It checks:
@@ -136,6 +143,7 @@ Controls that every feature relies on are described once, in "Shared controls" b
 - cross-origin requests, which must never be granted;
 - TRACE requests and path traversal;
 - the identity provider refusing to redirect a sign-in to an unknown address.
+- the services' metrics never served through the gateway.
 
 The first run found that a staff route with a required query parameter answered a request with no token with a validation error. That error described the route to an outsider. Such requests are now refused at the start of the request (B).
 

@@ -100,7 +100,16 @@ export interface AreaPackage {
   }[];
   sites: { id: string; name: string; kind: string; status: string }[];
   jobAids: { id: string; key: string; title: string; bodyHtml: string; lang: string }[];
-  maps: { areaKey: string; available: boolean; url: string | null }[];
+  /** FLD-13: the offline map package of each area, with what the phone checks it against. */
+  maps: {
+    areaKey: string;
+    available: boolean;
+    url: string | null;
+    bytes: number | null;
+    sha256: string | null;
+    version: number | null;
+    bounds: [number, number, number, number] | null;
+  }[];
   /** County choices the screens follow (DCL:DEC-17: ask tribal ownership). */
   options: AreaOptions;
 }

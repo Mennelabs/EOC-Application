@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { asSystem, systemAudit } from '../system.ts';
 import { isTemplateName, renderTemplate, type TemplateVars } from './templates.ts';
 import type { JobContext, TopicHandler } from './types.ts';
+import { integrationCalls } from '../metrics.ts';
 
 export const messagePayloadSchema = z.object({
   template: z.string().min(1),
@@ -164,12 +165,14 @@ export const messageSend: TopicHandler = async (ctx, msg) => {
         text: prepared.rendered.body,
       });
       provider = 'smtp';
+      integrationCalls.inc({ integration: 'email', outcome: 'ok' });
     } else {
       const receipt = await ctx.sms.send({
         to,
         body: prepared.rendered.body,
         ...(prepared.from ? { from: prepared.from } : {}),
       });
+      integrationCalls.inc({ integration: 'sms', outcome: 'ok' });
       provider = receipt.provider;
       providerMessageId = receipt.providerMessageId;
       evidence = { ...evidence, segments: receipt.segments, status: receipt.status };
@@ -201,6 +204,10 @@ export const messageSend: TopicHandler = async (ctx, msg) => {
       });
     });
   } catch (err) {
+    integrationCalls.inc({
+      integration: p.channel === 'email' ? 'email' : 'sms',
+      outcome: 'failed',
+    });
     await asSystem(ctx.db, tenantId, (trx) =>
       trx
         .updateTable('cg.message')

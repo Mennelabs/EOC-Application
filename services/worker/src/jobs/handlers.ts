@@ -30,6 +30,7 @@ import { aiEvaluate } from './ai-evaluate.ts';
 import { equityEvaluate } from './equity.ts';
 import { officialReportIssued } from './official-reports.ts';
 import type { JobContext, OutboxMessage, TopicHandler } from './types.ts';
+import { auditChainsBroken, auditChainsChecked } from '../metrics.ts';
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : String(v ?? ''));
 
@@ -270,13 +271,16 @@ export const topicHandlers: Record<string, TopicHandler> = {
 
 /** Every 15 min: verify each tenant's chain and anchor the head hash (ADR-0012). */
 export async function anchorAuditChains(ctx: JobContext): Promise<void> {
+  let broken = 0;
   for (const tenantId of await allTenantIds(ctx.db)) {
     await asSystem(ctx.db, tenantId, async (trx) => {
       const { rows } = await sql<{ ok: boolean; checked: string; first_bad_seq: string | null }>`
         select ok, checked, first_bad_seq from cg.audit_verify(${tenantId}::uuid)`.execute(trx);
       const v = rows[0];
       if (!v) return;
+      auditChainsChecked.inc({ result: v.ok ? 'ok' : 'broken' });
       if (!v.ok) {
+        broken++;
         ctx.log.error({ tenantId, firstBadSeq: v.first_bad_seq }, 'AUDIT CHAIN BROKEN');
         return; // never anchor a broken chain; the alert is the record
       }
@@ -319,6 +323,7 @@ export async function anchorAuditChains(ctx: JobContext): Promise<void> {
         .execute();
     });
   }
+  auditChainsBroken.set(broken);
 }
 
 /** Every minute: close break-glass sessions past their expiry (SEC-08). */

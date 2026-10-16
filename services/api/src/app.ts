@@ -9,6 +9,7 @@ import {
 import type { Kysely } from 'kysely';
 import type { Database } from '@cg/db';
 import type { FieldCrypto } from '@cg/crypto';
+import { observeAiOutcomes } from '@cg/ai';
 import { runProbes, type Probe } from '@cg/adapters';
 import { AuthError, type SubjectLoader } from './auth/subject.ts';
 import { errorHandler, errors } from './errors.ts';
@@ -18,6 +19,7 @@ import { authorizePlugin } from './plugins/authorize.ts';
 import { contextPlugin } from './plugins/context.ts';
 import { idempotencyPlugin } from './plugins/idempotency.ts';
 import { versionsPlugin } from './plugins/versions.ts';
+import { aiCalls, metricsPlugin } from './plugins/metrics.ts';
 
 export interface AppOptions {
   productName: string;
@@ -90,6 +92,9 @@ export async function buildApp(opts: AppOptions) {
   await app.register(authorizePlugin, opts.db ? { db: opts.db } : {});
   await app.register(versionsPlugin);
   await app.register(idempotencyPlugin);
+  // NFR-10: request, error, duplicate and AI counts at /metrics (internal port only).
+  await app.register(metricsPlugin);
+  observeAiOutcomes((feature, outcome) => aiCalls.inc({ feature, outcome }));
 
   // Liveness: the process is up. Never touches dependencies.
   app.get('/health/live', async () => ({ status: 'ok' }));

@@ -16,3 +16,4 @@ export * from './timers.ts';
 export * from './battery.ts';
 export * from './photos.ts';
 export * from './fema.ts';
+export * from './area-map.ts';

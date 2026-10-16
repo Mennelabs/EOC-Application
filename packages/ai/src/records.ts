@@ -57,11 +57,20 @@ export interface AiOutputRecord {
   targetId?: string | null;
 }
 
+/** NFR-10: a service counts AI calls by feature and outcome (never their content). */
+let outcomeObserver: ((feature: string, outcome: AiOutcome) => void) | null = null;
+export function observeAiOutcomes(
+  fn: ((feature: string, outcome: AiOutcome) => void) | null,
+): void {
+  outcomeObserver = fn;
+}
+
 /** The record of one AI call (AIG-01). Returns its id. */
 export async function recordAiOutput(
   trx: Transaction<Database>,
   r: AiOutputRecord,
 ): Promise<string> {
+  outcomeObserver?.(r.feature, r.outcome);
   const row = await trx
     .insertInto('cg.ai_output')
     .values({

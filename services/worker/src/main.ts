@@ -13,6 +13,7 @@ import {
   createPool,
   createS3,
   ensureLockedBucket,
+  METRICS_CONTENT_TYPE,
   postgresProbe,
   putLocked,
   queueProbe,
@@ -22,7 +23,13 @@ import {
   TwilioSms,
   type QueueSupervisor,
 } from '@cg/adapters';
-import { DEFAULT_PROVIDER, openAIFromEnv, providerByName, registerProvider } from '@cg/ai';
+import {
+  DEFAULT_PROVIDER,
+  observeAiOutcomes,
+  openAIFromEnv,
+  providerByName,
+  registerProvider,
+} from '@cg/ai';
 import { FieldCrypto, OpenBaoKeyService, dbKeyStore } from '@cg/crypto';
 import { westwindGraph } from '@cg/intake';
 import { createDb } from '@cg/db';
@@ -52,11 +59,13 @@ import { webhookSchedule } from './jobs/webhooks.ts';
 import { consume, consumeIntake, relayOnce } from './jobs/relay.ts';
 import type { JobContext, Schedule } from './jobs/types.ts';
 import { nullMailer, smtpMailer } from './mail.ts';
+import { aiCalls, jobDuration, jobRuns, outboxRelayed, workerMetrics } from './metrics.ts';
 
 const config = loadConfig(workerSchema);
 const log = pino({ level: config.LOG_LEVEL, base: { service: 'worker' } });
 // ADR-0043: OpenAI for every AI function when the key is configured; never a fake provider.
 const openai = openAIFromEnv(aiEnv(config));
+observeAiOutcomes((feature, outcome) => aiCalls.inc({ feature, outcome }));
 if (openai) registerProvider(openai);
 const pool = createPool(config.DATABASE_URL, 5);
 const db = createDb(config.DATABASE_URL, 5);
@@ -296,6 +305,7 @@ async function relayLoop(): Promise<void> {
       const queue = queueNow();
       if (queue) {
         const n = await relayOnce(db, queue.channel, log);
+        if (n > 0) outboxRelayed.inc({}, n);
         if (n > 0) continue; // drain quickly under load
       }
     } catch (err) {
@@ -325,10 +335,15 @@ async function changeLoop(): Promise<void> {
 function startSchedules(): void {
   for (const s of schedules) {
     const tick = async () => {
+      const started = performance.now();
       try {
         await s.run(ctx);
+        jobRuns.inc({ schedule: s.name, result: 'ok' });
       } catch (err) {
+        jobRuns.inc({ schedule: s.name, result: 'failed' });
         log.error({ err, schedule: s.name }, 'schedule failed');
+      } finally {
+        jobDuration.observe((performance.now() - started) / 1000, { schedule: s.name });
       }
     };
     setTimeout(() => void tick(), 5_000);
@@ -337,6 +352,11 @@ function startSchedules(): void {
 }
 
 const server = createServer((req, res) => {
+  // NFR-10: the worker's metrics, on its own port only (never routed by the gateway).
+  if (req.url === '/metrics') {
+    res.writeHead(200, { 'content-type': METRICS_CONTENT_TYPE }).end(workerMetrics.expose());
+    return;
+  }
   if (req.url === '/health/live') {
     res.writeHead(200, { 'content-type': 'application/json' }).end('{"status":"ok"}');
     return;

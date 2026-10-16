@@ -235,10 +235,10 @@
     "RPO/RTO numbers belong to the cloud deployment (SCL-05)."
   ],
   "NFR-10": [
-    "partial",
-    "pino structured logs with redaction, request ids",
-    "",
-    "Log redaction, request ids, AI call outcomes with latency, the audit chain and duplicate and conflict counts exist; OpenTelemetry metrics and traces (ADR-0023, still proposed), service-level failure, latency and conflict measurements, and named alert owners are not built."
+    "pass",
+    "pino structured logs with redaction, request ids; packages/adapters/src/metrics.ts (registry, label guard, series cap); services/api/src/plugins/metrics.ts (/metrics: requests by route template, latency, error codes incl. version_conflict, idempotent replays, field command results, AI outcomes); services/worker/src/metrics.ts (schedules, queue results, outbox, SMS/email sends, audit chain checks); infra/prometheus/alerts.yml (14 rules, owner and runbook each); docs/operations/alerts.md (owners, runbooks); compose profile monitoring; ADR-0023",
+    "packages/adapters/test/metrics.test.ts; services/api/test/metrics.test.ts; services/worker/test/alerts.test.ts; infra/prometheus/alerts.test.yml (promtool, scripts/check-alerts.sh in CI); tests/e2e/dast.spec.ts (gateway never serves /metrics)",
+    "Save, command and integration failures, latency, conflicts, duplicate prevention and audit completeness are measured with labels from fixed vocabularies only (no ids or content). Every alert names an owner role and a runbook. The people in each role come from the deployment's on-call roster. Distributed traces wait for the cloud collector (ADR-0023)."
   ],
   "NFR-11": [
     "pass",

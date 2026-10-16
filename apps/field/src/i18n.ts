@@ -96,6 +96,22 @@ const en = {
   'sync.offline': 'No connection. Your work is safe on this phone.',
   'sync.now': 'Sync now',
   'sync.empty': 'Nothing waiting.',
+  'maps.heading': 'Area maps',
+  'maps.item': 'Map of area {area}: on this phone, {size}',
+  'maps.none':
+    'No map of your area on this phone yet. Your jobs, lots and addresses work without one.',
+  'maps.downloading': 'Downloading the map of your area…',
+  'maps.failed':
+    'A map could not be downloaded. It is tried again at the next sync; your jobs, lots and addresses work without it.',
+  'map.open': 'Map of my area',
+  'map.heading': 'Map of your area',
+  'map.label':
+    'Map of your area: {jobs} jobs as yellow circles, the lots outlined in blue, and your position as a blue dot.',
+  'map.summary': 'Jobs on the map: {jobs}. Lots: {lots}. The same jobs are listed on Home.',
+  'map.noPackage':
+    'No map of your area on this phone yet: the lots and jobs are drawn on a plain background.',
+  'map.attribution': 'Map data © OpenStreetMap contributors',
+  'map.back': 'Back to my jobs',
   'sync.discard': 'Remove from this phone',
   'sync.conflictBody': 'Someone changed this on the server after you did. Your entry is kept here.',
   'settings.heading': 'Settings',
@@ -828,6 +844,23 @@ const es: Record<MessageKey, string> = {
   'sync.offline': 'Sin conexión. Su trabajo está seguro en este teléfono.',
   'sync.now': 'Sincronizar ahora',
   'sync.empty': 'Nada pendiente.',
+  'maps.heading': 'Mapas de la zona',
+  'maps.item': 'Mapa de la zona {area}: en este teléfono, {size}',
+  'maps.none':
+    'Todavía no hay mapa de su zona en este teléfono. Sus trabajos, lotes y direcciones funcionan sin él.',
+  'maps.downloading': 'Descargando el mapa de su zona…',
+  'maps.failed':
+    'No se pudo descargar un mapa. Se intentará de nuevo en la próxima sincronización; sus trabajos, lotes y direcciones funcionan sin él.',
+  'map.open': 'Mapa de mi zona',
+  'map.heading': 'Mapa de su zona',
+  'map.label':
+    'Mapa de su zona: {jobs} trabajos como círculos amarillos, los lotes con borde azul y su posición como un punto azul.',
+  'map.summary':
+    'Trabajos en el mapa: {jobs}. Lotes: {lots}. Los mismos trabajos aparecen en Inicio.',
+  'map.noPackage':
+    'Todavía no hay mapa de su zona en este teléfono: los lotes y trabajos se dibujan sobre un fondo liso.',
+  'map.attribution': 'Datos del mapa © colaboradores de OpenStreetMap',
+  'map.back': 'Volver a mis trabajos',
   'sync.discard': 'Quitar de este teléfono',
   'sync.conflictBody':
     'Alguien lo cambió en el servidor después que usted. Su registro se guarda aquí.',

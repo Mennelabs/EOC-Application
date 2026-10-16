@@ -124,6 +124,14 @@ jobs:
       - name: Generate the native Android project
         working-directory: apps/field
         run: CI=1 EXPO_NO_TELEMETRY=1 pnpm prebuild:android
+      # Gradle configures the native modules in parallel and each installs a
+      # missing CMake itself; two installs at once can collide and fail the
+      # build (InstallFailedException for cmake;3.22.1, the Android Gradle
+      # plugin's default). Installed once here, every module finds it in place.
+      - name: Install the CMake the native modules use
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME_17_X64 }}
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "cmake;3.22.1"'
       - name: Compile the debug app
         working-directory: apps/field/android
         env:

@@ -7,10 +7,10 @@
     ""
   ],
   "BRD:FR-16.01": [
-    "partial",
-    "cg.resource + cg.resource_text (0024), services/api/src/routes/resources.ts, apps/web-console/src/screens/resources.tsx",
-    "services/api/test/help.db.test.ts, tests/e2e/console-l3.spec.ts",
-    "Title, summary, body, type, reference link, category, ordering, owner and state ship; thumbnails are not modelled (a resource is text first, FR-16.04)."
+    "pass",
+    "cg.resource + cg.resource_text (0024), thumbnail columns (0102), services/api/src/routes/resources.ts (PUT/DELETE/GET /resources/:id/thumbnail), services/api/src/public/help.ts (public thumbnail.jpg, thumbnailUrl), apps/web-console/src/screens/resources.tsx (Picture panel), apps/web-help/src/main.ts",
+    "services/api/test/help.db.test.ts, services/api/test/resource-thumbnail.db.test.ts, tests/e2e/console-l3.spec.ts, tests/e2e/console-screens.spec.ts (BRD:FR-16.01 thumbnail journey)",
+    "Title, summary, body, type, reference link, category, ordering, owner and state ship. A decorative thumbnail (empty alternative text; the words carry everything, FR-16.04) is re-encoded at 480x320 without camera details, reaches the public only with the publish that approves it, and leaves at once when removed (layer-7 plan reading 37)."
   ],
   "BRD:FR-16.02": [
     "pass",

@@ -738,6 +738,13 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     published_version: { c: 'internal' },
     published_at: { c: 'public' },
     unpublished_at: { c: 'internal' },
+    thumbnail_key: { c: 'internal', d: 'BRD:FR-16.01: the decorative picture staff uploaded' },
+    thumbnail_at: { c: 'internal' },
+    thumbnail_by: { c: 'internal' },
+    published_thumbnail_key: {
+      c: 'internal',
+      d: 'BRD:FR-16.01: the picture the public sees, set when the resource is published',
+    },
   }),
   resource_text: table({
     resource_id: { c: 'internal' },
@@ -2574,6 +2581,50 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     noted_at: { c: 'internal', r: 'field_records', d: 'Dispatch read it' },
     noted_by: { c: 'internal', r: 'field_records' },
   }),
+  reentry_pass: table({
+    event_id: { c: 'internal', r: 'field_records' },
+    code_hash: {
+      c: 'restricted',
+      r: 'field_records',
+      d: 'FL:FR-03: hash of the printed pass code',
+    },
+    zone: {
+      c: 'internal',
+      r: 'field_records',
+      d: 'The closed zone the pass lets the household into',
+    },
+    holder_name_enc: {
+      c: 'restricted',
+      r: 'field_records',
+      d: 'Who the pass is for, encrypted; shown to issuers and at the checkpoint',
+    },
+    address_enc: {
+      c: 'restricted',
+      r: 'field_records',
+      d: 'The home the pass is for, encrypted; shown to issuers and at the checkpoint',
+    },
+    people: { c: 'internal', r: 'field_records', d: 'How many people the pass lets in' },
+    valid_from: { c: 'internal', r: 'field_records' },
+    valid_to: { c: 'internal', r: 'field_records' },
+    state: { c: 'internal', r: 'field_records', d: 'active or revoked' },
+    report_id: { c: 'internal', r: 'field_records', d: 'The resident report showing the home' },
+    revoked_at: { c: 'internal', r: 'field_records' },
+    revoked_by: { c: 'internal', r: 'field_records' },
+    revoke_reason: { c: 'internal', r: 'field_records' },
+  }),
+  reentry_check: table(
+    {
+      id: { c: 'internal' },
+      tenant_id: { c: 'internal' },
+      event_id: { c: 'internal', r: 'field_records' },
+      pass_id: { c: 'internal', r: 'field_records' },
+      checkpoint: { c: 'internal', r: 'field_records', d: 'FL:FR-03: where the pass was scanned' },
+      result: { c: 'internal', r: 'field_records', d: 'valid, expired, revoked or not_yet_valid' },
+      checked_by: { c: 'internal', r: 'field_records' },
+      checked_at: { c: 'internal', r: 'field_records' },
+    },
+    { standard: false },
+  ),
   shelter_count: table(
     {
       id: { c: 'internal' },

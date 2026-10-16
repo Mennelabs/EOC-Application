@@ -286,6 +286,19 @@ export const actions = {
     "Publish or withdraw your organization's own service on the county's public pages",
     { consequential: true, explicit: true },
   ),
+  // FL:FR-03: resident re-entry passes into a closed zone; their holder and home are restricted.
+  'reentry_pass.read': a('read', 'reentry_pass', 'Read re-entry passes and the log of checks'),
+  'reentry_pass.issue': a('write', 'reentry_pass', 'Issue a re-entry pass for a household', {
+    consequential: true,
+  }),
+  'reentry_pass.revoke': a('write', 'reentry_pass', 'Revoke a re-entry pass', {
+    consequential: true,
+  }),
+  'reentry_pass.verify': a(
+    'read',
+    'reentry_pass',
+    'Check a re-entry pass at a checkpoint (shows the holder and home to match an ID)',
+  ),
   // CON-16: shelter counts from the Red Cross records, counts only, never people.
   'shelter_count.read': a(
     'read',

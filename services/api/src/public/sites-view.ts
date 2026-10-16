@@ -63,7 +63,13 @@ export interface PublicResource {
   expiresAt: string | null;
   reviewedAt: string | null;
   updatedAt: string;
+  /** FR-16.01: names the published thumbnail (it changes with the picture); null when there is none. */
+  thumbnail: string | null;
 }
+
+/** A short public name for a stored picture: its random part, never the storage path. */
+export const thumbnailTag = (key: string | null): string | null =>
+  key ? (/thumb-([0-9a-f-]{36})\.jpg$/.exec(key)?.[1]?.slice(0, 8) ?? null) : null;
 
 export function haversineKm(
   a: { lat: number; lon: number },
@@ -275,6 +281,7 @@ export async function publicResources(
       'r.link_status',
       'r.expires_at',
       'r.updated_at',
+      'r.published_thumbnail_key',
       't.locale',
       't.title',
       't.summary',
@@ -309,6 +316,7 @@ export async function publicResources(
       expiresAt: iso(text.expires_at),
       reviewedAt: iso(text.reviewed_at),
       updatedAt: iso(text.updated_at)!,
+      thumbnail: thumbnailTag(text.published_thumbnail_key),
     });
   }
   return out;

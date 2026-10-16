@@ -4,16 +4,27 @@
  * text that a person reviewed, accessible HTML checked before publishing, a
  * review date, an expiry date that turns the public page into "expired on",
  * and an outside-link check. Publishing is consequential (a named approver
- * and a reason) and lands in the publication log.
+ * and a reason) and lands in the publication log. A resource may carry a
+ * decorative thumbnail (FR-16.01): re-encoded on upload (location and camera
+ * details dropped), shown to the public only from the next publish on, and
+ * taken down at once when removed.
  */
+import { randomUUID } from 'node:crypto';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  type S3Client,
+} from '@aws-sdk/client-s3';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import type { Selectable, Transaction } from 'kysely';
+import sharp from 'sharp';
 import { z } from 'zod';
 import { publicLinkCheck } from '@cg/adapters';
 import { diffForAudit } from '@cg/audit';
 import type { Database } from '@cg/db';
-import { errors } from '../errors.ts';
+import { ApiError, errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
 import { checkResourceHtml, safeHref } from '../public/html.ts';
 import { classifierFor, iso, listQuery, pickDefined, stamped, uuidParam } from './helpers.ts';
@@ -23,6 +34,10 @@ type TextRow = Selectable<Database['cg.resource_text']>;
 type Trx = Transaction<Database>;
 
 const types = ['hotline', 'program', 'deadline', 'guidance', 'link', 'document'] as const;
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+/** FR-16.01: every thumbnail is this size, so pages reserve its space and stay light. */
+export const THUMBNAIL = { width: 480, height: 320 } as const;
 const statuses = ['draft', 'published', 'expired', 'removed'] as const;
 
 const textIn = z.object({
@@ -61,6 +76,13 @@ const resourceOut = z.object({
   publishedVersion: z.number().int().nullable(),
   publishedAt: z.iso.datetime().nullable(),
   unpublishedAt: z.iso.datetime().nullable(),
+  /** FR-16.01: the decorative picture; the public sees the one approved at the last publish. */
+  thumbnail: z.object({
+    uploaded: z.boolean(),
+    uploadedAt: z.iso.datetime().nullable(),
+    publicPicture: z.boolean(),
+    waitingForPublish: z.boolean(),
+  }),
   texts: z.array(textOut),
 });
 type ResourceOut = z.infer<typeof resourceOut>;
@@ -80,6 +102,8 @@ export interface ResourceDeps {
    * never the stack's own network (OWASP SSRF, ADR-0042).
    */
   checkLink?: (url: string) => Promise<boolean>;
+  /** Where thumbnails are kept (absent in tests that do not upload). */
+  objects?: { client: S3Client; bucket: string } | undefined;
 }
 
 export const resourceRoutes =
@@ -87,6 +111,26 @@ export const resourceRoutes =
   async (instance) => {
     const app = instance.withTypeProvider<ZodTypeProvider>();
     const checkLink = deps.checkLink ?? publicLinkCheck();
+    app.addContentTypeParser(
+      [...IMAGE_TYPES],
+      { parseAs: 'buffer', bodyLimit: MAX_IMAGE_BYTES },
+      (_req, body, done) => done(null, body),
+    );
+    const storage = () => {
+      if (!deps.objects)
+        throw new ApiError(503, 'pictures_unavailable', 'Pictures cannot be stored right now.', {
+          retryable: true,
+        });
+      return deps.objects;
+    };
+    /** Removes stored pictures no longer pointed at; a failure leaves an orphan, never an error. */
+    async function removeObjects(keys: (string | null)[]) {
+      if (!deps.objects) return;
+      for (const key of new Set(keys.filter((k): k is string => !!k)))
+        await deps.objects.client
+          .send(new DeleteObjectCommand({ Bucket: deps.objects.bucket, Key: key }))
+          .catch(() => undefined);
+    }
 
     const account = (request: FastifyRequest) => {
       const s = request.subject;
@@ -117,6 +161,12 @@ export const resourceRoutes =
       publishedVersion: r.published_version,
       publishedAt: iso(r.published_at),
       unpublishedAt: iso(r.unpublished_at),
+      thumbnail: {
+        uploaded: !!r.thumbnail_key,
+        uploadedAt: iso(r.thumbnail_at),
+        publicPicture: !!r.published_thumbnail_key,
+        waitingForPublish: !!r.thumbnail_key && r.thumbnail_key !== r.published_thumbnail_key,
+      },
       texts: texts.map((t) => ({
         locale: t.locale,
         title: t.title,
@@ -455,7 +505,7 @@ export const resourceRoutes =
         }
         if (problems.length > 0) throw errors.validation(problems);
         const { reason } = request.confirmation();
-        return request.tx(async (trx) => {
+        const out = await request.tx(async (trx) => {
           const row = await trx
             .updateTable('cg.resource')
             .set({
@@ -463,6 +513,8 @@ export const resourceRoutes =
               published_version: current.row.version + 1,
               published_at: new Date(),
               unpublished_at: null,
+              // FR-16.01: the uploaded picture goes public with this approval, not before.
+              published_thumbnail_key: current.row.thumbnail_key,
               updated_by: s.accountId,
             })
             .where('id', '=', current.row.id)
@@ -490,6 +542,10 @@ export const resourceRoutes =
           });
           return toOut(row, current.texts);
         });
+        // The picture the public saw before, if this publish replaced it.
+        if (current.row.published_thumbnail_key !== current.row.thumbnail_key)
+          await removeObjects([current.row.published_thumbnail_key]);
+        return out;
       },
     );
 
@@ -568,6 +624,182 @@ export const resourceRoutes =
           });
           return toOut(row, current.texts);
         });
+      },
+    );
+
+    // ------------------------------------------------------------ thumbnail
+    // FR-16.01: upload or replace the picture; the public sees it from the next publish.
+    app.put(
+      '/resources/:id/thumbnail',
+      {
+        config: { requiresVersion: true },
+        schema: { tags: ['resources'], params: uuidParam, response: { 200: resourceOut } },
+      },
+      async (request) => {
+        const s = account(request);
+        const expected = request.expectedVersion();
+        const current = await load(request, request.params.id);
+        await request.authorize(
+          'resource.edit',
+          { type: 'resource', id: current.row.id, tenantId: s.tenantId },
+          { asNotFound: true },
+        );
+        const type = String(request.headers['content-type'] ?? '')
+          .split(';')[0]!
+          .trim();
+        if (!(IMAGE_TYPES as readonly string[]).includes(type) || !Buffer.isBuffer(request.body))
+          throw errors.validation([
+            { name: 'thumbnail', message: 'send a JPEG, PNG or WebP image' },
+          ]);
+        let jpeg: Buffer;
+        try {
+          // Re-encoded: orientation applied, metadata (location, camera) dropped, one small size.
+          jpeg = await sharp(request.body)
+            .rotate()
+            .resize({ ...THUMBNAIL, fit: 'cover' })
+            .jpeg({ quality: 75, mozjpeg: true })
+            .toBuffer();
+        } catch {
+          throw errors.validation([{ name: 'thumbnail', message: 'this image could not be read' }]);
+        }
+        const { client, bucket } = storage();
+        const key = `tenants/${current.row.tenant_id}/resources/${current.row.id}/thumb-${randomUUID()}.jpg`;
+        await client.send(
+          new PutObjectCommand({ Bucket: bucket, Key: key, Body: jpeg, ContentType: 'image/jpeg' }),
+        );
+        let out: ResourceOut;
+        try {
+          out = await request.tx(async (trx) => {
+            const row = assertUpdated(
+              await trx
+                .updateTable('cg.resource')
+                .set({
+                  thumbnail_key: key,
+                  thumbnail_at: new Date(),
+                  thumbnail_by: s.accountId,
+                  updated_by: s.accountId,
+                })
+                .where('id', '=', current.row.id)
+                .where('version', '=', expected)
+                .returningAll()
+                .executeTakeFirst(),
+              toOut(current.row, current.texts),
+            );
+            await request.audit(trx, {
+              action: 'resource.update',
+              targetType: 'resource',
+              targetId: row.id,
+              targetVersion: row.version,
+              changes: {
+                fields: [
+                  {
+                    name: 'thumbnail',
+                    from: current.row.thumbnail_key ? 'uploaded' : 'none',
+                    to: 'uploaded',
+                  },
+                ],
+              },
+            });
+            return toOut(row, current.texts);
+          });
+        } catch (err) {
+          await removeObjects([key]);
+          throw err;
+        }
+        // The picture it replaces, unless the public still sees it until the next publish.
+        if (current.row.thumbnail_key !== current.row.published_thumbnail_key)
+          await removeObjects([current.row.thumbnail_key]);
+        return out;
+      },
+    );
+
+    // FR-16.01: removing the picture takes it off the public page at once.
+    app.delete(
+      '/resources/:id/thumbnail',
+      {
+        config: { requiresVersion: true },
+        schema: { tags: ['resources'], params: uuidParam, response: { 200: resourceOut } },
+      },
+      async (request) => {
+        const s = account(request);
+        const expected = request.expectedVersion();
+        const current = await load(request, request.params.id);
+        await request.authorize(
+          'resource.edit',
+          { type: 'resource', id: current.row.id, tenantId: s.tenantId },
+          { asNotFound: true },
+        );
+        const out = await request.tx(async (trx) => {
+          const row = assertUpdated(
+            await trx
+              .updateTable('cg.resource')
+              .set({
+                thumbnail_key: null,
+                thumbnail_at: null,
+                thumbnail_by: null,
+                published_thumbnail_key: null,
+                updated_by: s.accountId,
+              })
+              .where('id', '=', current.row.id)
+              .where('version', '=', expected)
+              .returningAll()
+              .executeTakeFirst(),
+            toOut(current.row, current.texts),
+          );
+          await request.audit(trx, {
+            action: 'resource.update',
+            targetType: 'resource',
+            targetId: row.id,
+            targetVersion: row.version,
+            changes: {
+              fields: [
+                {
+                  name: 'thumbnail',
+                  from: current.row.thumbnail_key ? 'uploaded' : 'none',
+                  to: 'none',
+                },
+              ],
+            },
+          });
+          return toOut(row, current.texts);
+        });
+        await removeObjects([current.row.thumbnail_key, current.row.published_thumbnail_key]);
+        return out;
+      },
+    );
+
+    // Staff preview: the uploaded picture, or the one the public sees now.
+    app.get(
+      '/resources/:id/thumbnail',
+      {
+        schema: {
+          tags: ['resources'],
+          params: uuidParam,
+          querystring: z.object({ which: z.enum(['uploaded', 'public']).default('uploaded') }),
+        },
+      },
+      async (request, reply) => {
+        const s = account(request);
+        const current = await load(request, request.params.id);
+        await request.authorize(
+          'resource.read',
+          { type: 'resource', id: current.row.id, tenantId: s.tenantId },
+          { asNotFound: true },
+        );
+        const key =
+          request.query.which === 'public'
+            ? current.row.published_thumbnail_key
+            : current.row.thumbnail_key;
+        if (!key) throw errors.notFound();
+        const { client, bucket } = storage();
+        const obj = await client
+          .send(new GetObjectCommand({ Bucket: bucket, Key: key }))
+          .catch(() => null);
+        if (!obj?.Body) throw errors.notFound();
+        return reply
+          .header('content-type', 'image/jpeg')
+          .header('cache-control', 'no-store')
+          .send(Buffer.from(await obj.Body.transformToByteArray()));
       },
     );
   };

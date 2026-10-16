@@ -140,23 +140,27 @@ export const healthNoticeSend: TopicHandler = async (ctx, msg) => {
       count[way.channel] += 1;
     }
     const now = new Date();
-    await trx
-      .updateTable('cg.health_notice')
-      .set(
-        p.phase === 'issued'
-          ? {
-              sent_sms: sql`sent_sms + ${count.sms}`,
-              sent_email: sql`sent_email + ${count.email}`,
-              sent_at: sql`coalesce(sent_at, ${now})`,
-            }
-          : {
-              ended_sent_sms: sql`ended_sent_sms + ${count.sms}`,
-              ended_sent_email: sql`ended_sent_email + ${count.email}`,
-              ended_sent_at: sql`coalesce(ended_sent_at, ${now})`,
-            },
-      )
-      .where('id', '=', n.id)
-      .execute();
+    // A repeat run that told nobody new changes nothing: the notice keeps its version, so an
+    // officer lifting it is not refused for a change they cannot see.
+    const recordedAt = p.phase === 'issued' ? n.sent_at : n.ended_sent_at;
+    if (count.sms + count.email > 0 || !recordedAt)
+      await trx
+        .updateTable('cg.health_notice')
+        .set(
+          p.phase === 'issued'
+            ? {
+                sent_sms: sql`sent_sms + ${count.sms}`,
+                sent_email: sql`sent_email + ${count.email}`,
+                sent_at: sql`coalesce(sent_at, ${now})`,
+              }
+            : {
+                ended_sent_sms: sql`ended_sent_sms + ${count.sms}`,
+                ended_sent_email: sql`ended_sent_email + ${count.email}`,
+                ended_sent_at: sql`coalesce(ended_sent_at, ${now})`,
+              },
+        )
+        .where('id', '=', n.id)
+        .execute();
     await systemAudit(trx, tenantId, 'health_notice.send', {
       action: 'health_notice.sent',
       targetType: 'health_notice',

@@ -164,7 +164,12 @@ export async function fetchBlob(path: string): Promise<Blob> {
   return res.blob();
 }
 
-export async function upload<T>(path: string, file: Blob, contentType: string): Promise<T> {
+export async function upload<T>(
+  path: string,
+  file: Blob,
+  contentType: string,
+  options: { version?: number } = {},
+): Promise<T> {
   const token = await accessToken();
   if (!token)
     throw new ApiFailure(401, {
@@ -175,7 +180,11 @@ export async function upload<T>(path: string, file: Blob, contentType: string): 
     });
   const res = await fetch(`/api/v1${path}`, {
     method: 'PUT',
-    headers: { authorization: `Bearer ${token}`, 'content-type': contentType },
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': contentType,
+      ...(options.version !== undefined ? { 'if-match': `"${options.version}"` } : {}),
+    },
     body: file,
   });
   const text = await res.text();

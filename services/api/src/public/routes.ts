@@ -42,6 +42,7 @@ import {
   type ReferenceCodeLeaser,
 } from './reference-codes.ts';
 import { helpRoutes, langOf } from './help.ts';
+import { wazeFeedRoutes } from './waze.ts';
 import { loadResidentCopy } from './my-copy.ts';
 import { residentCopyPdf } from './pdf.ts';
 import { signResidentToken, verifyResidentToken } from './resident-token.ts';
@@ -152,7 +153,9 @@ export const publicRoutes =
     }
 
     // Public "Find help": sites, resources, feeds, widget and media sheet (PUB-*), same tenant hook.
-    await app.register(helpRoutes({ publicBase: deps.publicBase }));
+    await app.register(helpRoutes({ publicBase: deps.publicBase, objects: deps.objects }));
+    // FL:FR-05, Q-04: the Waze for Cities closure feed, when the county has switched it on.
+    await app.register(wazeFeedRoutes);
     // REC-01: a place offered through the public form waits for county approval.
     await app.register(facilityRegistrationRoutes);
     // FL:FR-20: walk-up volunteers sign up through the code at the desk.

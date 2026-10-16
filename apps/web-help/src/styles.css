@@ -281,6 +281,18 @@ dd {
   margin: 0.1rem 0 0;
   color: var(--muted);
 }
+.resources li.with-thumb {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+.resources li.with-thumb img {
+  flex: none;
+  width: 96px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 4px;
+}
 .tools {
   display: flex;
   flex-wrap: wrap;
@@ -315,6 +327,7 @@ footer {
   .skip,
   .search,
   .tools,
+  .resources img,
   .map-tools,
   .map,
   nav,

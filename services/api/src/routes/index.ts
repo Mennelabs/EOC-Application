@@ -30,6 +30,8 @@ import { fieldVoiceRoutes, type FieldVoiceDeps } from './field-voice.ts';
 import { fieldVisitRoutes } from './field-visits.ts';
 import { shelterCountRoutes } from './shelter-counts.ts';
 import { eventTemplateRoutes } from './event-templates.ts';
+import { reentryRoutes } from './reentry.ts';
+import { wazeRoutes } from './waze.ts';
 import { intakeGraphRoutes } from './intake-graphs.ts';
 import { meRoutes } from './me.ts';
 import { messageRoutes } from './messages.ts';
@@ -45,7 +47,7 @@ import { peerSupportRoutes } from './peer-support.ts';
 import { supplyRequestRoutes } from './supply-requests.ts';
 import { refdataRoutes, type RefdataDeps } from './refdata.ts';
 import { reportRoutes } from './reports.ts';
-import { resourceRoutes } from './resources.ts';
+import { resourceRoutes, type ResourceDeps } from './resources.ts';
 import { roleRoutes } from './roles.ts';
 import { rosterRoutes } from './roster.ts';
 import { handoverRoutesWith } from './handover.ts';
@@ -70,6 +72,7 @@ export interface RouteDeps {
   fieldRecords?: FieldRecordDeps;
   missions?: MissionDeps;
   personnelPhotos?: PersonnelPhotoDeps;
+  resources?: ResourceDeps;
   refdata?: RefdataDeps;
   metrics?: { productName?: string };
   commands?: CommandDeps;
@@ -114,6 +117,10 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   shelterCountRoutes,
   // CON-02: the county's event templates by hazard.
   eventTemplateRoutes,
+  // FL:FR-03: resident re-entry passes and the log of checks.
+  reentryRoutes,
+  // FL:FR-05, Q-04: the Waze for Cities closure feed as staff see it.
+  wazeRoutes,
   fieldOpsRoutes,
   fieldAssessmentRoutes,
   fieldVoiceRoutes(deps.fieldVoice),
@@ -121,7 +128,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   dispatchRoutes(deps.dispatch),
   situationRoutes,
   fieldSyncRoutes(deps.fieldSync),
-  resourceRoutes(),
+  resourceRoutes(deps.resources),
   contactRoutes,
   messageRoutes,
   referralRoutes,

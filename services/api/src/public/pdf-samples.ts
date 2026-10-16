@@ -70,6 +70,7 @@ for (const lang of ['en', 'es'] as Lang[]) {
           expiresAt: null,
           reviewedAt: null,
           updatedAt: '2026-10-15T10:00:00.000Z',
+          thumbnail: null,
         },
       ],
       helpPhone: '+1 555 0100',

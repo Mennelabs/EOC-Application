@@ -15,10 +15,11 @@
  * A walk-up volunteer signs up on their own phone through the desk code and
  * reception registers them (FL:FR-20). A health notice is approved by someone
  * other than its drafter and shows on Find help for its ZIP until lifted
- * (FL:FR-06).
+ * (FL:FR-06). A resource's picture reaches Find help only with the publish
+ * that approves it, and leaves at once when removed (BRD:FR-16.01).
  */
 import { expect, test, type Page } from '@playwright/test';
-import { expectNoViolations, expectReflow, onboard } from './support/console.ts';
+import { BASE, expectNoViolations, expectReflow, onboard } from './support/console.ts';
 
 const tag = Date.now().toString(36);
 
@@ -603,5 +604,173 @@ test.describe('every console screen, one by one', () => {
     await closing.getByLabel('Reason').fill('Exercise over');
     await closing.getByRole('button', { name: 'Confirm' }).click();
     await expect(page.getByText(`Closed ${name}.`)).toBeVisible();
+  });
+
+  test('FL:FR-03: a director issues a re-entry pass with a reason, prints its code once, and revokes it; axe finds nothing', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'county_em_director',
+      `Director ${tag}`,
+      `scr-dir-${testInfo.project.name}`,
+    );
+    await open(page, 'reentry', 'Re-entry passes');
+    const zone = `Exercise canyon zone ${tag} ${testInfo.project.name}`;
+    const form = page.getByRole('form', { name: 'Issue a pass' });
+    await form.getByLabel('Zone').fill(zone);
+    await form.getByLabel('Name on the pass').fill('Ana Exercise');
+    await form.getByLabel('Home address').fill('12 Exercise Canyon Rd, Westwind');
+    await form.getByLabel('People').fill('3');
+    await expectNoViolations(page);
+    await form.getByRole('button', { name: 'Issue the pass' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel('Reason').fill('Exercise: the household checks the house');
+    await dialog.getByRole('button', { name: 'Confirm' }).click();
+    await expect(
+      page.getByText('Pass issued. Print it now: its code is shown only once.'),
+    ).toBeVisible();
+    const card = page.getByRole('region', { name: 'Pass to print' });
+    await expect(card.getByText(`Re-entry pass: ${zone}`)).toBeVisible();
+    await expect(card.getByRole('img', { name: /Pass code/ })).toBeVisible();
+    await expect(card.getByText(/Code: /)).toBeVisible();
+    await expectNoViolations(page);
+    await card.getByRole('button', { name: 'Done: hide the code' }).click();
+    await expect(page.getByRole('region', { name: 'Pass to print' })).toHaveCount(0);
+
+    const row = page
+      .getByRole('table', { name: 'Passes for this event' })
+      .getByRole('row', { name: new RegExp(zone) });
+    await expect(row).toContainText('Active');
+    await expect(row).toContainText('Not scanned yet');
+    await row.getByRole('button', { name: 'Revoke the pass for Ana Exercise' }).click();
+    const revoking = page.getByRole('dialog');
+    await expect(revoking).toBeVisible();
+    await revoking.getByLabel('Reason').fill('Exercise: the house is unsafe');
+    await revoking.getByRole('button', { name: 'Confirm' }).click();
+    await expect(row).toContainText('Revoked: Exercise: the house is unsafe');
+    await expectNoViolations(page);
+    await expectReflow(page);
+  });
+
+  test('FL:FR-05, Q-04: an administrator switches the Waze closure feed on with a reason; Waze can read it; switched off it is gone; axe finds nothing', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'tenant_admin',
+      `Tenant admin W ${tag}`,
+      `scr-waze-${testInfo.project.name}`,
+    );
+    await page.goto('/console/integrations');
+    const section = page.getByRole('region', { name: 'Waze for Cities road closure feed' });
+    await expect(section.getByText(/The feed is/)).toBeVisible({ timeout: 30_000 });
+    const address = (await section.locator('code').textContent())!;
+    expect(address).toMatch(/\/api\/public\/waze\/county\/cifs\.json$/);
+    const feedUrl = `${BASE}/api/public/waze/county/cifs.json`;
+    const flip = async (to: 'on' | 'off') => {
+      await section.getByRole('button', { name: `Switch the Waze feed ${to}` }).click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toBeVisible();
+      await dialog.getByLabel('Reason').fill(`Exercise: Waze for Cities enrolment (${to})`);
+      await dialog.getByRole('button', { name: 'Confirm' }).click();
+      await expect(section.getByText(`The Waze feed is switched ${to}.`)).toBeVisible();
+    };
+    if (await section.getByRole('button', { name: 'Switch the Waze feed off' }).isVisible())
+      await flip('off');
+    expect((await fetch(feedUrl)).status).toBe(404);
+    await flip('on');
+    const on = await fetch(feedUrl);
+    expect(on.status).toBe(200);
+    expect(Array.isArray(((await on.json()) as { incidents: unknown }).incidents)).toBe(true);
+    await expect(section.getByRole('table', { name: 'Roads in the feed now' })).toBeVisible();
+    await expectNoViolations(page);
+    await expectReflow(page);
+    await flip('off');
+    expect((await fetch(feedUrl)).status).toBe(404);
+  });
+
+  test('BRD:FR-16.01: the PIO adds a picture to a resource; Find help shows it only once published; removed, it is gone; axe finds nothing', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'public_information_officer',
+      `PIO pictures ${tag}`,
+      `scr-thumb-${testInfo.project.name}`,
+    );
+    await open(page, 'resources', 'Resources');
+    const title = `Exercise debris pickup ${tag}-${testInfo.project.name}`;
+    await page.getByLabel('English title').fill(title);
+    await page
+      .getByLabel('English body (HTML)')
+      .fill('<p>Crews pick up storm debris at the curb.</p>');
+    await page.getByLabel('I reviewed the English text').check();
+    await page.getByRole('button', { name: 'Save draft' }).click();
+    await expect(page.getByText(/Resource saved as a draft/)).toBeVisible();
+    const row = page.getByRole('row').filter({ hasText: title });
+    await row.getByRole('button', { name: `Picture for ${title}` }).click();
+    const panel = page.getByRole('region', { name: `Picture for ${title}` });
+    await panel.getByLabel(/Choose a picture/).setInputFiles({
+      name: 'debris.png',
+      mimeType: 'image/png',
+      // A tiny synthetic image; the server crops and re-encodes whatever it gets.
+      buffer: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        'base64',
+      ),
+    });
+    await expect(panel.getByText(/Picture saved, cropped to 3:2/)).toBeVisible();
+    await expect(panel.getByRole('img', { name: `Picture uploaded for ${title}` })).toBeVisible();
+    await expect(row).toContainText('Shown once published');
+    await expectNoViolations(page);
+
+    const publicEntry = async () => {
+      const res = await fetch(`${BASE}/api/public/help/county?lang=en`);
+      const body = (await res.json()) as {
+        resources: { title: string; thumbnailUrl: string | null }[];
+      };
+      return body.resources.find((r) => r.title === title);
+    };
+    expect(await publicEntry()).toBeUndefined();
+    await row.getByRole('button', { name: 'Publish…' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel('Reason').fill('Exercise: debris guidance approved');
+    await dialog.getByRole('button', { name: 'Confirm' }).click();
+    await expect(row).toContainText('Shown to the public');
+    const url = (await publicEntry())?.thumbnailUrl;
+    expect(url).toMatch(/\/thumbnail\.jpg\?v=/);
+    const shown = await fetch(`${BASE}${url}`);
+    expect(shown.status).toBe(200);
+    expect(shown.headers.get('content-type')).toBe('image/jpeg');
+    // On Find help it sits beside the title, decorative: empty alternative text.
+    const visitor = await context.newPage();
+    await visitor.goto('/county/help?lang=en');
+    const item = visitor.locator('.resources li').filter({ hasText: title });
+    await expect(item.locator('img')).toHaveAttribute('alt', '');
+    await visitor.close();
+
+    await panel.getByRole('button', { name: 'Remove the picture' }).click();
+    await expect(panel.getByText('Picture removed, from the public page too.')).toBeVisible();
+    expect((await fetch(`${BASE}${url}`)).status).toBe(404);
+    expect((await publicEntry())?.thumbnailUrl).toBeNull();
+    await expectReflow(page);
+    // Off the county's public list again.
+    await row.getByRole('button', { name: 'Unpublish' }).click();
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel('Reason').fill('Exercise over');
+    await dialog.getByRole('button', { name: 'Confirm' }).click();
+    await expect(row.getByRole('button', { name: 'Publish…' })).toBeVisible();
   });
 });

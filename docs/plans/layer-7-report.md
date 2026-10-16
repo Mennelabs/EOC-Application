@@ -37,7 +37,7 @@ Everything in the stack is synthetic or the WESTWIND exercise (SCL-12).
 
 ## What passed
 
-- **Traceability:** of the 105 requirement IDs assigned to layer 7, 92 pass and 13 are partial as of 2026-10-16, after the follow-up work (76, 23 and 6 deferred when the report was first written; `docs/traceability.md`, evidence in `trace-layer7.json`). Across every layer so far, 484 of 663 IDs pass, 143 are partial, 33 deferred, 2 designed and 1 not started. Earlier IDs this layer extends are updated in place: INT-12, PHO-03, PHO-07, AIG-05, the GATE rows and others.
+- **Traceability:** of the 105 requirement IDs assigned to layer 7, 92 pass and 13 are partial as of 2026-10-16, after the follow-up work (76, 23 and 6 deferred when the report was first written; `docs/traceability.md`, evidence in `trace-layer7.json`). Across every layer so far, 486 of 663 IDs pass, 141 are partial, 33 deferred, 2 designed and 1 not started. Earlier IDs this layer extends are updated in place: INT-12, PHO-03, PHO-07, AIG-05, the GATE rows and others.
 - **Launch gates:** GATE-02, GATE-04 and GATE-05 pass for layer 7. GATE-03 and GATE-08 are partial; see `layer-7-gates.md`.
 - **Permission sweep:** every staff route (364) refuses a caller with no token and an account with no role, and none fails with a server error (`authz-sweep.db.test.ts`, in CI).
 - **CI:** each merged PR was green end to end (lint, typecheck, unit tests, scans, Semgrep, the Android build, and the compose stack with integration, database and browser suites). Locally the full database list, the console, resident, field and help journeys, and the a11y spec pass.
@@ -97,7 +97,7 @@ Everything in the stack is synthetic or the WESTWIND exercise (SCL-12).
 
 ## Readings taken in favour of privacy and safety (flagged for you)
 
-The plan's §12 lists all 34. The newest:
+The plan's §12 lists all 37. The newest:
 
 - a legal aid organization's referral responses share only the status;
 - resident dictation goes through the county's provider or not at all;
@@ -122,6 +122,9 @@ The plan's §12 lists all 34. The newest:
 - an organization reports its places one after another in one visit, each its own report with its own number; who they are and how to reach them are asked once, everything about each place every time, and no place's needs or sharing choices are copied to another (ORG-01).
 - Red Cross shelter counts are loaded from a file of counts only; a file with columns about people is refused whole, and a linked county shelter takes the count as its occupancy but not its status (CON-16).
 - an event template presets its hazard, the docs/06 keywords and the map's first layers, and its safety messages are drafted into Resources for a person to publish, never published by opening the event (CON-02).
+- a re-entry pass shows the checkpoint the zone and the people, and who and which home only for a valid pass and to a role that checks passes; every scan is logged without naming anyone (FL:FR-03).
+- Waze reads the county's current road closures from a feed the county switches on; a road drawn only as a point is left out, never guessed (FL:FR-05).
+- a resource's picture is decorative (empty alternative text), stripped of camera details, and reaches the public only with the publish that approves it; removed, it leaves at once (BRD:FR-16.01).
 
 ## Questions for you (defaults in force)
 
@@ -149,3 +152,4 @@ The plan's §12 lists all 34. The newest:
    - Recall shared copies from partners?
    - Keep any de-identified counts?
 10. **Documents survivors share (FL-09).** Who may see them: the default is the assessment reviewer and the damage-assessment coordinator (`document.read`). Should case managers in partner organizations see them too, through the sharing grant? Withdrawing a shared document is not built yet.
+11. **Debris pickup requests from resident reports (FL:FR-05).** Residents cannot yet ask for curbside debris pickup: the intake questions offer "Cleanup help or a tarp" (volunteer crews), not county pickup. The default proposal is a new need, "Pick up storm debris I put at the curb" ("Recoger escombros de la tormenta que puse en la acera"), in the next version of the shipped questions. Public works would then see those requests by route area and open debris missions from them, the way field visits work. Changing the shipped questions means a new graph version for every county and a translator's check of the Spanish. Yes, or a different wording?

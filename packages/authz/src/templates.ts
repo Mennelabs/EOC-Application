@@ -129,6 +129,7 @@ const templates: readonly RoleTemplate[] = [
     description: 'Dana in WESTWIND: how bad is it, where, do we need state and federal help.',
     source: 'cast',
     grants: [
+      g('reentry_pass.*'), // FL:FR-03
       g('shelter_count.read'), // CON-16
       g('dashboard.read'),
       g('board.read'),
@@ -1145,8 +1146,8 @@ const templates: readonly RoleTemplate[] = [
   ...frontline(
     'checkpoint_officer',
     'Checkpoint (perimeter) officer',
-    'Verifies badges at a perimeter: valid, expired, revoked or unknown; never more than name, agency and label (FL:FR-03).',
-    ['badge.verify'],
+    'Verifies badges and resident re-entry passes at a perimeter: valid, expired, revoked or unknown; never more than name, agency and label, or for a pass the zone, the household and its home to match an ID (FL:FR-03).',
+    ['badge.verify', 'reentry_pass.verify'],
   ),
   ...frontline(
     'volunteer_reception',

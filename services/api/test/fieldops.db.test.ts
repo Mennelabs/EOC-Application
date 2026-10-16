@@ -761,14 +761,17 @@ describe.skipIf(!appUrl || !workerUrl)(
       expect(v.result).toBe('valid');
       expect(v.displayName).toBeTruthy();
       expect(v.accessLabel).toBe('FIELD');
+      // "kind" tells the checkpoint a badge from a re-entry pass (FL:FR-03); nothing personal.
       expect(Object.keys(v).sort()).toEqual([
         'accessLabel',
         'agency',
         'displayName',
+        'kind',
         'result',
         'roleLabel',
         'validTo',
       ]);
+      expect((v as { kind?: string }).kind).toBe('badge');
       expect(
         (
           await call('checkpoint', 'POST', '/api/v1/badges/verify', { code: 'ZZZZ-ZZZZ-ZZZZ' })

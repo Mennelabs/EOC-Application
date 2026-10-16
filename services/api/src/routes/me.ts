@@ -13,6 +13,8 @@ const meResponse = z.object({
   tenantId: z.uuid(),
   /** county, city, region, state or partner_org: the console picks its workspaces by it. */
   tenantKind: z.string(),
+  /** BRD:FR-00.08: the tenant's approved time zone (IANA name); the console shows times in it. */
+  timeZone: z.string(),
   status: z.string(),
   roles: z.array(
     z.object({ key: z.string(), version: z.number().int(), templateKey: z.string().nullable() }),
@@ -67,6 +69,7 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
         accountId: s.accountId,
         tenantId: s.tenantId,
         tenantKind: s.tenantKind ?? 'county',
+        timeZone: s.tenantTimeZone ?? 'UTC',
         status: s.status,
         roles: s.roles.map((r) => ({ key: r.key, version: r.version, templateKey: r.templateKey })),
         agreementTenantIds: s.agreementTenantIds ?? [],

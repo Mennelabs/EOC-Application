@@ -22,6 +22,7 @@ import { api, describeFailure } from '../api/client.ts';
 import { DataTable, Field, Status, Toolbar, fmt } from '../ui/primitives.tsx';
 import { STATUS_TEXT } from './dispatch.tsx';
 import { EventPicker, useOpenEvents } from './dispatch.tsx';
+import { formatDate, fromZoneInput } from '../ui/time.ts';
 
 const label = (s: string | null | undefined) => (s ? s.replace(/_/g, ' ') : '—');
 
@@ -1001,8 +1002,8 @@ export function BadgesScreen() {
             <p>Access: {printing.accessLabel ?? 'none'}</p>
             <p>Credentials: {printing.credentials.map(label).join(', ') || 'none recorded'}</p>
             <p>
-              Valid {new Date(printing.validFrom).toLocaleDateString()} to{' '}
-              {new Date(printing.validTo).toLocaleDateString()}
+              Valid {formatDate(new Date(printing.validFrom))} to{' '}
+              {formatDate(new Date(printing.validTo))}
             </p>
             {printing.code ? (
               <p>
@@ -1115,7 +1116,7 @@ export function RemindersScreen() {
         api('/reminders', {
           body: {
             title: f.title.trim(),
-            dueAt: new Date(f.due).toISOString(),
+            dueAt: fromZoneInput(f.due).toISOString(),
             ...(f.note.trim() ? { note: f.note.trim() } : {}),
             ...(eventId ? { eventId } : {}),
           },

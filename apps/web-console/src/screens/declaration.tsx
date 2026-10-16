@@ -16,6 +16,7 @@ import { DataTable, Field, Status, fmt } from '../ui/primitives.tsx';
 import { EventPicker, useOpenEvents } from './dispatch.tsx';
 import { PackageExports, PackagePhotos } from './fema-package.tsx';
 import { PartnerRollupChooser } from './partner-rollup.tsx';
+import { fromZoneInput } from '../ui/time.ts';
 
 const DEGREES = ['affected', 'minor', 'major', 'destroyed'] as const;
 type Degree = (typeof DEGREES)[number];
@@ -278,7 +279,7 @@ const usd = (v: number | null) =>
     ? 'Unknown'
     : v.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 /** A datetime-local value as an ISO instant; empty stays empty. */
-const instant = (v: string) => (v ? new Date(v).toISOString() : null);
+const instant = (v: string) => (v ? fromZoneInput(v).toISOString() : null);
 
 export function DeclarationScreen() {
   const { events, error: eventsError } = useOpenEvents();

@@ -89,7 +89,17 @@ describe('request context and authorization chain', () => {
     expect(ok.json()).toMatchObject({
       accountId: alice.accountId,
       roles: [{ key: 'tenant_admin' }],
+      timeZone: 'UTC',
     });
+    // BRD:FR-00.08: the tenant's approved zone rides on the account; the console shows times in it.
+    const zoned = await buildApp({
+      ...base,
+      probes: [],
+      subjects: fakeSubjects({ ...alice, tenantTimeZone: 'America/Chicago' }),
+      routes,
+    });
+    const me = await zoned.inject({ url: '/api/v1/me', headers: { authorization: 'Bearer good' } });
+    expect(me.json()).toMatchObject({ timeZone: 'America/Chicago' });
   });
 
   it('an inactive account is denied on its next action (AC-01A) without details', async () => {

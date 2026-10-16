@@ -46,6 +46,7 @@ import { PublicRecordsScreen } from './screens/public-records.tsx';
 import { FindSurvivorScreen } from './screens/find-survivor.tsx';
 import { CommandWindow } from './ui/command-window.tsx';
 import { ConfirmDialog, Field, Status } from './ui/primitives.tsx';
+import { formatTime, setDisplayZone } from './ui/time.ts';
 
 /**
  * Console shell (CON-01): one console, role-based workspaces. Layer 1 ships
@@ -109,6 +110,7 @@ interface Me {
   accountId: string;
   tenantId: string;
   tenantKind?: string;
+  timeZone?: string;
   roles: { key: string; version: number }[];
   breakGlass: { id: string; expiresAt: string } | null;
 }
@@ -210,6 +212,8 @@ export function App({ config }: { config: RuntimeConfig }) {
     if (!session) return;
     api<Me>('/me')
       .then((m) => {
+        // BRD:FR-00.08: every time from here on is shown and typed on the tenant's clock.
+        setDisplayZone(m.timeZone);
         setMe(m);
         setMeError(null);
       })
@@ -387,8 +391,8 @@ export function App({ config }: { config: RuntimeConfig }) {
       </header>
       {me?.breakGlass ? (
         <p className="banner" role="status">
-          Emergency access is active until {new Date(me.breakGlass.expiresAt).toLocaleTimeString()}.
-          Every record you open is audited as restricted.
+          Emergency access is active until {formatTime(new Date(me.breakGlass.expiresAt))}. Every
+          record you open is audited as restricted.
         </p>
       ) : null}
       {meError ? <Status kind="error">{meError}</Status> : null}

@@ -95,6 +95,9 @@ test.describe('every console screen, one by one', () => {
           await expect(page.getByRole('status').filter({ hasText: 'Reminder set.' })).toBeVisible();
           const row = page.getByRole('row').filter({ hasText: title });
           await expect(row).toContainText('Overdue ·');
+          // BRD:FR-00.08: the due time is on the county's clock (Central), named, whatever
+          // zone the browser runs in (UTC on CI).
+          await expect(row).toContainText(/\d (AM|PM) C[DS]T/);
           await expect(row.locator('[aria-hidden="true"]')).toHaveText('⚠ ');
           // Done with it: completed with what was done, it leaves the open list.
           await row.getByLabel(`What was done for “${title}”`).fill('Called; beds confirmed.');

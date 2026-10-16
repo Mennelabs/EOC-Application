@@ -6,6 +6,7 @@
  */
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type { Confirmation } from '../api/client.ts';
+import { formatInstant } from './time.ts';
 
 export function Field({
   label,
@@ -182,7 +183,8 @@ export function Toolbar({ children }: { children: ReactNode }) {
   return <div className="toolbar">{children}</div>;
 }
 
+/** BRD:FR-00.08: a time on the tenant's clock with the zone named ("Oct 16, 2026, 7:00 AM CDT"). */
 export function fmt(iso: string | null | undefined): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return formatInstant(new Date(iso));
 }

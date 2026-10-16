@@ -552,6 +552,18 @@ export const actions = {
   'placard.write': a('write', 'placard', 'Record a posted placard'),
   'road_status.read': a('read', 'road_status', 'Read road status'),
   'road_status.write': a('write', 'road_status', 'Set road status'),
+  // FLD-11: a site's status or a resource seen, from the field; an observation for dispatch.
+  'field_report.read': a(
+    'read',
+    'field_report',
+    'Read quick reports of site status and resources seen',
+  ),
+  'field_report.write': a(
+    'write',
+    'field_report',
+    'Send a quick report of a site status or a resource seen',
+  ),
+  'field_report.note': a('write', 'field_report', 'Mark a quick report from the field as noted'),
   'debris_ticket.read': a('read', 'debris_ticket', 'Read debris load tickets'),
   'debris_ticket.write': a('write', 'debris_ticket', 'Record a debris load ticket'),
   'inspection.read': a('read', 'inspection', 'Read inspections (aggregate illness counts only)'),

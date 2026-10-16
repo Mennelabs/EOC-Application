@@ -97,6 +97,19 @@ interface Board {
     position: Point | null;
     reportedAt: string;
   }[];
+  /** FLD-11: what workers saw at sites and resources they came across, not yet noted. */
+  fieldReports?: {
+    id: string;
+    category: 'site_status' | 'resource_seen';
+    siteId: string | null;
+    siteName: string | null;
+    siteStatus: string | null;
+    resourceKind: string | null;
+    place: string | null;
+    note: string | null;
+    position: Point | null;
+    reportedAt: string;
+  }[];
   counts: {
     teamsByStatus: Record<string, number>;
     queue: number;
@@ -105,6 +118,7 @@ interface Board {
     openAlerts: number;
     needs?: number;
     closures?: number;
+    fieldReports?: number;
   };
 }
 interface Suggestion {
@@ -655,6 +669,8 @@ export function DispatchScreen() {
             <dd>{board.counts.needs ?? 0}</dd>
             <dt>Road closures</dt>
             <dd>{board.counts.closures ?? 0}</dd>
+            <dt>Reports from the field not yet noted</dt>
+            <dd>{board.counts.fieldReports ?? 0}</dd>
           </dl>
           {showMap ? <BoardMap board={board} /> : null}
           {assigning ? (
@@ -759,6 +775,60 @@ export function DispatchScreen() {
                   { key: 'st', header: 'Status', render: (c) => label(c.status) },
                   { key: 'why', header: 'Reason', render: (c) => c.reason ?? '—' },
                   { key: 'at', header: 'Reported', render: (c) => fmt(c.reportedAt) },
+                ]}
+              />
+            </>
+          ) : null}
+          {board.fieldReports?.length ? (
+            <>
+              <h2>Reports from the field</h2>
+              <p className="hint">
+                What workers saw at a site or a resource they came across. A site report is not the
+                site&rsquo;s status: the site&rsquo;s lead confirms that.
+              </p>
+              <DataTable
+                caption="Site status and resources seen, newest first"
+                rows={board.fieldReports}
+                rowKey={(r) => r.id}
+                columns={[
+                  {
+                    key: 'what',
+                    header: 'Report',
+                    render: (r) =>
+                      r.category === 'site_status'
+                        ? `${r.siteName ?? 'A site'}: seen ${label(r.siteStatus ?? 'other')}`
+                        : `Resource seen: ${label(r.resourceKind ?? 'other')}${r.place ? ` at ${r.place}` : ''}`,
+                  },
+                  { key: 'note', header: 'Note', render: (r) => r.note ?? '—' },
+                  {
+                    key: 'where',
+                    header: 'Where',
+                    render: (r) =>
+                      r.position
+                        ? `${r.position.lat.toFixed(4)}, ${r.position.lon.toFixed(4)}`
+                        : 'No pin',
+                  },
+                  { key: 'at', header: 'Reported', render: (r) => fmt(r.reportedAt) },
+                  {
+                    key: 'act',
+                    header: 'Action',
+                    render: (r) => (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void api(`/field-records/field_report/${r.id}/note`, { body: {} })
+                            .then(() => setNotice('Report marked noted.'))
+                            .catch((e: unknown) => setNotice(describeFailure(e)))
+                            .finally(reload)
+                        }
+                      >
+                        Mark noted:{' '}
+                        {r.category === 'site_status'
+                          ? (r.siteName ?? 'site report')
+                          : label(r.resourceKind ?? 'resource')}
+                      </button>
+                    ),
+                  },
                 ]}
               />
             </>

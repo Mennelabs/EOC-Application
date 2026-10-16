@@ -625,10 +625,10 @@
     ""
   ],
   "FLD-11": [
-    "partial",
-    "quick report as a hazard with a pin, a category and photos (apps/field/app/report.tsx, hazard.report command)",
-    "services/api/test/fieldops.db.test.ts (hazards reported), tests/e2e/field.spec.ts (quick report saved on the phone)",
-    "Only hazards: 'site status' lives on the census screen and 'resource seen' is not a category."
+    "pass",
+    "quick report from any screen: a hazard, how a site looks or a resource seen, each with the phone's position, photos and a category (apps/field/app/report.tsx; hazard.report and record.field_report commands; services/api/src/routes/field-records.ts `field_report`, migration 0089); dispatch sees site and resource reports on the board and marks them noted (services/api/src/routes/dispatch.ts, apps/web-console/src/screens/dispatch.tsx)",
+    "services/api/test/fieldops.db.test.ts (hazards reported), services/api/test/fieldrecords.db.test.ts (FLD-11: site status and resource seen, resend, photo, board, noted, site unchanged, refusals), tests/e2e/field.spec.ts (quick report saved on the phone; how a site looks reaches the board), tests/e2e/console-l4.spec.ts (dispatch marks a resource seen noted)",
+    "Plan reading 24: a site report is an observation, never the site's status of record."
   ],
   "FLD-12": [
     "pass",

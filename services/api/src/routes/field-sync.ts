@@ -95,6 +95,7 @@ export const FIELD_COMMANDS: Record<
       'shelter_stay',
       'shelter_incident',
       'health_note',
+      'field_report',
     ].map((k) => [
       `record.${k}`,
       { method: 'POST' as const, path: () => `/api/v1/field-records/${k}`, needsTarget: false },
@@ -209,6 +210,7 @@ const fieldRecordTypes = [
   'road_status',
   'canvass_visit',
   'pa_site',
+  'field_report',
 ] as const;
 const imageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'] as const;
 

@@ -323,6 +323,28 @@ export interface PeerSupportRequestTable extends Stamped {
   closed_by_requester: Generated<boolean>;
 }
 
+/** FLD-11: what a worker saw at a site, or a resource they came across; an observation, not the site's status of record. */
+export interface FieldReportTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  client_uuid: Uuid;
+  category: 'site_status' | 'resource_seen';
+  site_id: Uuid | null;
+  site_status: 'open' | 'limited' | 'full' | 'closed' | 'damaged' | null;
+  resource_kind:
+    'water' | 'food' | 'fuel' | 'pharmacy' | 'store' | 'power' | 'equipment' | 'other' | null;
+  place: string | null;
+  note: string | null;
+  geom: ColumnType<unknown, unknown, unknown> | null;
+  accuracy_m: number | null;
+  reported_by: Uuid | null;
+  reported_personnel_id: Uuid | null;
+  reported_at: TsGen;
+  noted_at: TsNullable;
+  noted_by: Uuid | null;
+}
+
 export interface RetentionPolicyTable extends Stamped {
   tenant_id: Uuid;
   data_category: string;
@@ -3217,6 +3239,7 @@ export interface Database {
   'cg.tenant_key': TenantKeyTable;
   'cg.retention_policy': RetentionPolicyTable;
   'cg.peer_support_request': PeerSupportRequestTable;
+  'cg.field_report': FieldReportTable;
   'cg.legal_hold': LegalHoldTable;
   'cg.deletion_log': DeletionLogTable;
   'cg.idempotency_key': IdempotencyKeyTable;

@@ -8,7 +8,8 @@
  * at the door, census from the open stays, check-out), FR-15 health notes
  * (health roles only, each read audited), FR-28 canvass ("no one home"
  * schedules a revisit), FR-21/22 stock (append-only by phone id), FR-24
- * interpreter requests, and the field commands that carry them (FLD-13).
+ * interpreter requests, FLD-11 quick reports of a site's status or a
+ * resource seen, and the field commands that carry them (FLD-13).
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -109,6 +110,8 @@ describe.skipIf(!appUrl || !workerUrl)('frontline role records (database-backed)
       ['roads', 'road_crew'],
       ['health', 'public_health_inspector'],
       ['host', 'facility_host'],
+      ['volunteer', 'field_volunteer'],
+      ['coordinator', 'field_coordinator'],
     ] as const) {
       const email = `${who}.fieldrecords@example.org`;
       const existing = await dbWorker
@@ -625,6 +628,127 @@ describe.skipIf(!appUrl || !workerUrl)('frontline role records (database-backed)
     // Queued when the resident opted in; otherwise the reason why not. Never refused for the role.
     expect(r['residentMessage']).toBeDefined();
     expect(r['residentMessage']).not.toBe('not_allowed');
+  });
+
+  it('FLD-11: a site status and a resource seen reach dispatch as observations with a pin and a photo; dispatch marks them noted; the site keeps its status of record', async () => {
+    const siteBefore = await dbWorker
+      .selectFrom('cg.site')
+      .select(['status', 'version'])
+      .where('id', '=', siteId)
+      .executeTakeFirstOrThrow();
+    const clientUuid = randomUUID();
+    const seen = {
+      clientUuid,
+      eventId,
+      category: 'site_status',
+      siteId,
+      siteStatus: 'full',
+      note: 'Exercise: line out the door, cots along the hallway',
+      position: { lat: 37.69, lon: -97.33, accuracyM: 12 },
+    };
+    const site = await create('volunteer', 'field_report', seen);
+    expect(site).toMatchObject({ category: 'site_status', siteId, siteStatus: 'full' });
+    // A resend from the phone is the same report (FLD-13).
+    const resent = await create('volunteer', 'field_report', seen, 200);
+    expect(resent['id']).toBe(site['id']);
+    // A site status names the site; a resource says what kind.
+    const noSite = await call('volunteer', 'POST', '/api/v1/field-records/field_report', {
+      clientUuid: randomUUID(),
+      eventId,
+      category: 'site_status',
+      siteStatus: 'closed',
+    });
+    expect(noSite.status).toBe(400);
+    const noKind = await call('volunteer', 'POST', '/api/v1/field-records/field_report', {
+      clientUuid: randomUUID(),
+      eventId,
+      category: 'resource_seen',
+    });
+    expect(noKind.status).toBe(400);
+    // Through the field command, as the phone sends it.
+    const cmdId = randomUUID();
+    const cmd = await call('volunteer', 'POST', '/api/v1/field/commands', {
+      commands: [
+        {
+          id: cmdId,
+          kind: 'record.field_report',
+          body: {
+            eventId,
+            category: 'resource_seen',
+            resourceKind: 'water',
+            place: 'Exercise Fire Station 3, side door',
+            position: { lat: 37.7, lon: -97.31 },
+          },
+        },
+      ],
+    });
+    expect(cmd.status, cmd.body).toBe(200);
+    const applied = cmd.json<{
+      results: { result: string; record: { type: string; id: string } | null }[];
+    }>().results[0]!;
+    expect(applied).toMatchObject({ result: 'applied', record: { type: 'field_report' } });
+    const resourceId = applied.record!.id;
+    // A photo documents the report (FLD-07).
+    const ticket = await call('volunteer', 'POST', '/api/v1/field/photos', {
+      clientUuid: randomUUID(),
+      contentType: 'image/jpeg',
+      bytes: 4,
+      recordType: 'field_report',
+      recordId: resourceId,
+    });
+    expect(ticket.status, ticket.body).toBe(201);
+
+    // An observation, not the site's status of record: only its operators confirm that.
+    const siteAfter = await dbWorker
+      .selectFrom('cg.site')
+      .select(['status', 'version'])
+      .where('id', '=', siteId)
+      .executeTakeFirstOrThrow();
+    expect(siteAfter).toEqual(siteBefore);
+
+    // The worker sends; dispatch reads and notes.
+    expect((await call('volunteer', 'GET', '/api/v1/field-records/field_report')).status).toBe(403);
+    expect(
+      (await call('volunteer', 'POST', `/api/v1/field-records/field_report/${site['id']}/note`))
+        .status,
+    ).toBe(403);
+    const board = await call('coordinator', 'GET', `/api/v1/dispatch/board?eventId=${eventId}`);
+    expect(board.status, board.body).toBe(200);
+    const reports = board.json<{
+      fieldReports: { id: string; siteName: string | null; position: unknown }[];
+      counts: { fieldReports: number };
+    }>();
+    const onBoard = reports.fieldReports.find((r) => r.id === site['id']);
+    expect(onBoard?.siteName).toBeTruthy();
+    expect(onBoard?.position).toEqual({ lat: 37.69, lon: -97.33 });
+    expect(reports.fieldReports.map((r) => r.id)).toContain(resourceId);
+    expect(reports.counts.fieldReports).toBe(reports.fieldReports.length);
+    const noted = await call(
+      'coordinator',
+      'POST',
+      `/api/v1/field-records/field_report/${site['id']}/note`,
+    );
+    expect(noted.status, noted.body).toBe(200);
+    expect(noted.json()['notedAt']).toBeTruthy();
+    expect(
+      (await call('coordinator', 'POST', `/api/v1/field-records/field_report/${site['id']}/note`))
+        .status,
+    ).toBe(409);
+    const later = await call('coordinator', 'GET', `/api/v1/dispatch/board?eventId=${eventId}`);
+    expect(
+      later.json<{ fieldReports: { id: string }[] }>().fieldReports.map((r) => r.id),
+    ).not.toContain(site['id']);
+    // Everyone who reads hazards in the field may send one; a PIO may not.
+    expect(
+      (
+        await call('pio', 'POST', '/api/v1/field-records/field_report', {
+          clientUuid: randomUUID(),
+          eventId,
+          category: 'resource_seen',
+          resourceKind: 'fuel',
+        })
+      ).status,
+    ).toBe(403);
   });
 
   it('FL:FR-05, FL:FR-06, FL:FR-09: a road is reported and cleared once; a debris load works out its cubic yards; an inspection keeps illness as a count; a walk-through is kept before and after; other roles cannot', async () => {

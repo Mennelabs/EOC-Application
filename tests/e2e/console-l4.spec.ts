@@ -1,5 +1,5 @@
 /**
- * Layer 4 console journeys (layer-4 plan §9; CALL-01, DSP-01/02/03/04/07,
+ * Layer 4 console journeys (layer-4 plan §9; CALL-01, DSP-01/02/03/04/07, FLD-11,
  * AC-06C, CON-03, PER-01, DSP-10, BDG-01, ACC-07): a field coordinator takes
  * a phone request as a mission, assigns it from the dispatch board with the
  * keyboard only (a conflict needs a recorded reason and the confirmation dialog), acknowledges any open
@@ -7,7 +7,15 @@
  * badges; every screen passes axe WCAG 2.2 AA.
  */
 import { expect, test } from '@playwright/test';
-import { BASE, appears, expectNoViolations, onboard } from './support/console.ts';
+import {
+  BASE,
+  administrators,
+  api,
+  appears,
+  expectNoViolations,
+  onboard,
+  token,
+} from './support/console.ts';
 
 const tag = Date.now().toString(36);
 
@@ -160,6 +168,42 @@ test.describe('layer 4 console', () => {
       timeout: 30_000,
     });
     await expectNoViolations(page);
+
+    // FLD-11: a resource a field lead came across reaches the board; dispatch marks it noted.
+    const admin = await token('county', administrators('county').admin);
+    const events = (await api(admin, '/events')).body as unknown as { id: string; name: string }[];
+    const ww = events.find((e) => e.name === 'Exercise WESTWIND tornado')!;
+    const place = `Exercise water tank ${tag}`;
+    const seen = await api(
+      await token('county', 'rowan.field@example.org'),
+      '/field-records/field_report',
+      {
+        body: {
+          clientUuid: crypto.randomUUID(),
+          eventId: ww.id,
+          category: 'resource_seen',
+          resourceKind: 'water',
+          place,
+          position: { lat: 38.79, lon: -90.86 },
+        },
+      },
+    );
+    expect(seen.status, JSON.stringify(seen.body)).toBe(201);
+    await page.reload();
+    await westwind();
+    const fieldReports = page.getByRole('table', {
+      name: 'Site status and resources seen, newest first',
+    });
+    await expect(fieldReports.getByRole('row', { name: new RegExp(place) })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expectNoViolations(page);
+    await fieldReports
+      .getByRole('row', { name: new RegExp(place) })
+      .getByRole('button', { name: 'Mark noted: water' })
+      .click();
+    await expect(page.getByText('Report marked noted.')).toBeVisible();
+    await expect(fieldReports.getByRole('row', { name: new RegExp(place) })).toHaveCount(0);
 
     for (const [path, name] of [
       ['/console/roster', 'Roster and check-in'],

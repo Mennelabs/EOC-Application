@@ -974,6 +974,83 @@ const SPECS: Record<string, Spec> = {
       };
     },
   },
+
+  // FLD-11: the quick report that is not a hazard: what a worker saw at a site, or a
+  // resource they came across. An observation for dispatch, never the site's status of
+  // record (only the site's operators confirm that, `site.confirm`).
+  field_report: {
+    table: 'cg.field_report',
+    write: 'field_report.write',
+    read: 'field_report.read',
+    needsEvent: true,
+    orderColumn: 'reported_at',
+    filters: { eventId: 'event_id', siteId: 'site_id', kind: 'category' },
+    body: z.object({
+      ...base,
+      category: z.enum(['site_status', 'resource_seen']),
+      siteId: z.uuid().optional(),
+      siteStatus: z.enum(['open', 'limited', 'full', 'closed', 'damaged']).optional(),
+      resourceKind: z
+        .enum(['water', 'food', 'fuel', 'pharmacy', 'store', 'power', 'equipment', 'other'])
+        .optional(),
+      /** A place name or landmark, never a person (SEC-10). */
+      place: z.string().max(200).optional(),
+      note,
+      position: point.optional(),
+    }),
+    async values(b, ctx) {
+      const site = b['category'] === 'site_status';
+      if (site && (!b['siteId'] || !b['siteStatus']))
+        throw errors.validation([
+          { name: 'siteStatus', message: 'a site status names the site and what was seen there' },
+        ]);
+      if (!site && !b['resourceKind'])
+        throw errors.validation([
+          { name: 'resourceKind', message: 'a resource seen says what kind of resource' },
+        ]);
+      if (site) {
+        const known = await ctx.trx
+          .selectFrom('cg.site')
+          .select('id')
+          .where('id', '=', b['siteId'] as string)
+          .executeTakeFirst();
+        if (!known) throw errors.validation([{ name: 'siteId', message: 'unknown site' }]);
+      }
+      const p = b['position'] as z.infer<typeof point> | undefined;
+      return {
+        event_id: ctx.eventId,
+        category: b['category'],
+        site_id: site ? b['siteId'] : null,
+        site_status: site ? b['siteStatus'] : null,
+        resource_kind: site ? null : b['resourceKind'],
+        place: b['place'] ?? null,
+        note: b['note'] ?? null,
+        geom: p ? sql`ST_SetSRID(ST_MakePoint(${p.lon}, ${p.lat}), 4326)` : null,
+        accuracy_m: p?.accuracyM ?? null,
+        reported_by: ctx.accountId,
+        reported_personnel_id: ctx.personnelId,
+      };
+    },
+    async out(r) {
+      return {
+        ...common(r),
+        eventId: str(r['event_id']),
+        category: str(r['category']),
+        siteId: str(r['site_id']),
+        siteStatus: str(r['site_status']),
+        resourceKind: str(r['resource_kind']),
+        place: str(r['place']),
+        note: str(r['note']),
+        reportedAt: date(r['reported_at']),
+        notedAt: date(r['noted_at']),
+      };
+    },
+    summary: (b) =>
+      b['category'] === 'site_status'
+        ? `Site seen ${String(b['siteStatus'])}`
+        : `Resource seen: ${String(b['resourceKind'])}${b['place'] ? ` at ${String(b['place'])}` : ''}`,
+    activity: 'note',
+  },
 };
 
 export const FIELD_RECORD_KINDS = Object.keys(SPECS);
@@ -1342,6 +1419,25 @@ export const fieldRecordRoutes =
             return { status: 'cleared', cleared_at: new Date() };
           },
           () => [{ name: 'status', to: 'cleared' }],
+        ),
+    );
+
+    // FLD-11: dispatch has read a quick report from the field.
+    app.post(
+      '/field-records/field_report/:id/note',
+      { schema: { tags: ['field'], params: uuidParam, response: { 200: outAny } } },
+      (request) =>
+        transition(
+          request,
+          'field_report',
+          'field_report.note',
+          request.params.id,
+          async (r) => {
+            if (r['noted_at'])
+              throw new ApiError(409, 'already_noted', 'This report is already marked noted.');
+            return { noted_at: new Date(), noted_by: account(request).accountId };
+          },
+          () => [{ name: 'noted', to: 'yes' }],
         ),
     );
 

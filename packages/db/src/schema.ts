@@ -646,6 +646,7 @@ export interface PhotoTable extends Stamped {
     | 'canvass_visit'
     | 'pa_site'
     | 'shared_document'
+    | 'field_report'
     | null;
   field_record_id: Uuid | null;
 }

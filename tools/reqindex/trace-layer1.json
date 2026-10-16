@@ -238,7 +238,7 @@
     "partial",
     "pino structured logs with redaction, request ids",
     "",
-    "Metrics and traces (OpenTelemetry) arrive in layer 2 with intake load tests."
+    "Log redaction, request ids, AI call outcomes with latency, the audit chain and duplicate and conflict counts exist; OpenTelemetry metrics and traces (ADR-0023, still proposed), service-level failure, latency and conflict measurements, and named alert owners are not built."
   ],
   "NFR-11": [
     "pass",
@@ -452,9 +452,9 @@
   "NFR-01": ["partial", "", "tests/e2e", "Automated only; manual passes pending."],
   "NFR-09": [
     "partial",
-    "packages/i18n via react-intl in the resident app, Keycloak realm locales",
+    "apps/web-resident/src/i18n via react-intl in the resident app, Keycloak realm locales",
     "a11y.spec.ts (Spanish)",
-    "Staff console English in layer 1."
+    "English and Spanish throughout the resident, help, field and text channels; the staff console and the enclave screens are English only, and no right-to-left language is enabled (EQ-09)."
   ],
   "RULE-01": [
     "deferred",

@@ -6,7 +6,9 @@
  * shown so the worker can write it on a card for them. Needs signal; nothing
  * is kept on the phone.
  */
+import { router } from 'expo-router';
 import { useState } from 'react';
+import { View } from 'react-native';
 import { RadioGroup } from '../src/controls';
 import { useField } from '../src/field';
 import type { MessageKey } from '../src/i18n';
@@ -167,13 +169,28 @@ export default function Find() {
         <Card label={t('find.found')}>
           <Heading level={2}>{t('find.found')}</Heading>
           {found.map((r) => (
-            <Body key={r.reportId}>
-              {t('find.code.is', {
-                code: r.referenceCode,
-                day: day(r.submittedAt),
-                how: how(r.channel),
-              })}
-            </Body>
+            <View key={r.reportId} style={{ gap: 6 }}>
+              <Body>
+                {t('find.code.is', {
+                  code: r.referenceCode,
+                  day: day(r.submittedAt),
+                  how: how(r.channel),
+                })}
+              </Body>
+              {f.can('document.capture') ? (
+                // FL-09: a document they choose to share goes straight into this record.
+                <Button
+                  kind="secondary"
+                  label={t('find.addDocument')}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/document',
+                      params: { reportId: r.reportId, code: r.referenceCode },
+                    })
+                  }
+                />
+              ) : null}
+            </View>
           ))}
           <Body muted>{t('find.giveCard')}</Body>
         </Card>

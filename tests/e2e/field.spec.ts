@@ -20,7 +20,7 @@ const LEAD = 'rowan.field@example.org';
 test.describe('field app (web build)', () => {
   test.use({
     geolocation: { latitude: 38.7951, longitude: -90.871 },
-    permissions: ['geolocation'],
+    permissions: ['geolocation', 'camera'],
   });
 
   test('check in, offline capture, help, check out', async ({ page, context }, testInfo) => {
@@ -90,7 +90,7 @@ test.describe('field app (web build)', () => {
       const me = (await res.json()) as { actions: string[] };
       await route.fulfill({
         response: res,
-        json: { ...me, actions: [...me.actions, 'survivor.find'] },
+        json: { ...me, actions: [...me.actions, 'survivor.find', 'document.capture'] },
       });
     });
     const survivor = {
@@ -122,6 +122,27 @@ test.describe('field app (web build)', () => {
           },
         });
       return route.fulfill({ json: survivor });
+    });
+    // FL-09: the document is asked for and sent to the stubbed record; nothing else is kept.
+    const documentId = crypto.randomUUID();
+    const documentRequests: { method: string; body: unknown }[] = [];
+    await page.route('**/api/v1/reports/*/documents', (route) => {
+      documentRequests.push({
+        method: route.request().method(),
+        body: route.request().postDataJSON(),
+      });
+      return route.fulfill({
+        status: 201,
+        json: {
+          documentId,
+          uploadPath: `/api/v1/documents/${documentId}/content`,
+          status: 'uploading',
+        },
+      });
+    });
+    await page.route('**/api/v1/documents/*/content', (route) => {
+      documentRequests.push({ method: route.request().method(), body: null });
+      return route.fulfill({ json: { documentId, status: 'uploaded' } });
     });
 
     await page.goto('/field/');
@@ -261,6 +282,43 @@ test.describe('field app (web build)', () => {
     await expect(page.getByText(/KXRT-4827/)).toHaveCount(0);
     await page.getByRole('button', { name: /They say this is theirs/ }).click();
     await expect(page.getByText(/Reference code KXRT-4827/)).toBeVisible();
+    await expectNoViolations(page);
+
+    // FL-09: a document they choose to share goes straight into the record, asked in their language.
+    await page.getByRole('button', { name: 'Add a document they share' }).click();
+    await expect(page.getByRole('heading', { name: 'Add a document they share' })).toBeVisible();
+    await page.getByRole('radio', { name: 'Lease or rental agreement' }).click();
+    await page.getByRole('radio', { name: 'Español' }).click();
+    await expect(
+      page.getByText(/¿Puedo tomar una foto de su contrato de arrendamiento/),
+    ).toBeVisible();
+    await expectNoViolations(page);
+    await page.getByRole('button', { name: 'They said no' }).click();
+    await expect(page.getByText('Nothing was taken.')).toBeVisible();
+    expect(documentRequests).toEqual([]);
+    await page.getByRole('radio', { name: 'Lease or rental agreement' }).click();
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: /They tapped yes/ }).click();
+    await (
+      await chooser
+    ).setFiles({
+      name: 'lease.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+        'base64',
+      ),
+    });
+    await expect(page.getByText(/The photo is in their record/)).toBeVisible({ timeout: 15_000 });
+    expect(documentRequests.map((r) => r.method)).toEqual(['POST', 'PUT']);
+    expect(documentRequests[0]!.body).toMatchObject({
+      kind: 'lease',
+      contentType: 'image/jpeg',
+      consent: { method: 'tapped', language: 'es' },
+    });
+    expect((documentRequests[0]!.body as { consent: { text: string } }).consent.text).toMatch(
+      /^¿Puedo tomar una foto de su contrato de arrendamiento/,
+    );
     await expectNoViolations(page);
 
     // FL-04, FL-05, FL-18: the conversation note-taker asks first, in the person's language,

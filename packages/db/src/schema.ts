@@ -2084,6 +2084,13 @@ export interface ChangeFeedTable {
   created_at: TsGen;
 }
 
+/** SEC-13: the highest change-feed sequence the retention sweep removed, per tenant. */
+export interface ChangeFeedPrunedTable {
+  tenant_id: Uuid;
+  through_seq: ColumnType<string, string | number, string | number>;
+  pruned_at: TsGen;
+}
+
 export interface ClientCommandTable {
   id: Generated<Uuid>;
   tenant_id: Uuid;
@@ -3251,6 +3258,7 @@ export interface Database {
   'cg.health_note': HealthNoteTable;
   'cg.field_assessment': FieldAssessmentTable;
   'cg.change_feed': ChangeFeedTable;
+  'cg.change_feed_pruned': ChangeFeedPrunedTable;
   'cg.client_command': ClientCommandTable;
   'cg.location_geo': LocationGeoTable;
   'cg.declaration': DeclarationTable;

@@ -322,6 +322,43 @@ export async function sweepOne(
   };
 }
 
+/**
+ * SEC-13: the field change feed is kept for the `sessions` period, then pruned a batch at a time.
+ * The highest sequence removed is kept per tenant, so a phone whose cursor is below it is told to
+ * download its area again rather than silently missing changes (routes/field-sync.ts).
+ */
+export async function pruneChangeFeed(
+  trx: Transaction<Database>,
+  tenantId: string,
+  cutoff: Date,
+  holds: Holds,
+): Promise<{ count: number; oldest: Date | null; newest: Date | null }> {
+  const none = { count: 0, oldest: null, newest: null };
+  if (holds.categories.has('sessions') || holds.categories.has('table:change_feed')) return none;
+  const gone = await sql<{ seq: string; created_at: Date }>`
+    delete from cg.change_feed
+    where seq in (
+      select seq from cg.change_feed
+      where tenant_id = ${tenantId} and created_at < ${cutoff}
+      order by seq
+      limit ${BATCH})
+    returning seq, created_at`.execute(trx);
+  if (gone.rows.length === 0) return none;
+  const through = gone.rows.reduce((m, r) => (BigInt(r.seq) > m ? BigInt(r.seq) : m), 0n);
+  await sql`
+    insert into cg.change_feed_pruned (tenant_id, through_seq, pruned_at)
+    values (${tenantId}, ${through.toString()}, now())
+    on conflict (tenant_id) do update
+      set through_seq = greatest(cg.change_feed_pruned.through_seq, excluded.through_seq),
+          pruned_at = now()`.execute(trx);
+  const times = gone.rows.map((r) => new Date(r.created_at).getTime());
+  return {
+    count: gone.rows.length,
+    oldest: new Date(Math.min(...times)),
+    newest: new Date(Math.max(...times)),
+  };
+}
+
 /** Daily: every sweep for every tenant; returns the rows deleted. */
 export async function sweepRetention(ctx: JobContext): Promise<number> {
   const now = ctx.now?.() ?? new Date();
@@ -332,11 +369,16 @@ export async function sweepRetention(ctx: JobContext): Promise<number> {
       const days = await keepDays(trx, tenantId);
       const holds = await activeHolds(trx, tenantId);
       let n = 0;
-      for (const sweep of SWEEPS) {
+      // The change feed has no id column; it is pruned by sequence (pruneChangeFeed).
+      const feed: Sweep = { category: 'sessions', table: 'change_feed', clock: 'created_at' };
+      for (const sweep of [...SWEEPS, feed]) {
         const d = days.get(sweep.category);
         if (d === undefined || !Number.isFinite(d) || d <= 0) continue;
         const cutoff = new Date(now.getTime() - d * 86_400_000);
-        const r = await sweepOne(trx, tenantId, sweep, cutoff, holds);
+        const r =
+          sweep === feed
+            ? await pruneChangeFeed(trx, tenantId, cutoff, holds)
+            : await sweepOne(trx, tenantId, sweep, cutoff, holds);
         if (r.count === 0) continue;
         n += r.count;
         await trx

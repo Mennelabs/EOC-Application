@@ -21,6 +21,8 @@ class FakeApi implements FieldApi {
   records = new Map<string, Record<string, unknown> & { id: string; version: number }>();
   failNextPost = false;
   failNextSync = false;
+  /** SEC-13: changes at or below this were pruned; an older cursor is told to start over. */
+  prunedThrough = 0;
   wipe = false;
   posts = 0;
   versions = new Map<string, number>();
@@ -91,6 +93,8 @@ class FakeApi implements FieldApi {
       this.failNextSync = false;
       throw new Error('timeout');
     }
+    if (input.cursor < this.prunedThrough)
+      throw Object.assign(new Error('cursor expired'), { status: 410, code: 'cursor_expired' });
     const changes = this.feed.filter((c) => c.seq > input.cursor).slice(0, input.limit ?? 500);
     const more = this.feed.filter((c) => c.seq > input.cursor).length > changes.length;
     return {
@@ -320,6 +324,37 @@ describe('sync loop (FLD-13, NFR-07, NFR-08, AC-00B)', () => {
     api.failNextSync = true;
     expect((await loop.runOnce()).ok).toBe(false);
     expect(await store.getMeta('cursor')).toBe('4');
+  });
+
+  it('SEC-13: a cursor below what the server keeps downloads the area again and resumes from its cursor, once a round', async () => {
+    const store = new MemoryStore();
+    const api = new FakeApi();
+    api.records.set('mission:m9', { id: 'm9', version: 1, summary: 'after the package' });
+    api.feed = [change(10, 'mission', 'm8', 1), change(12, 'mission', 'm9', 1)];
+    api.prunedThrough = 10;
+    let resyncs = 0;
+    const loop = new SyncLoop(store, api, {
+      events: {
+        onResync: async () => {
+          resyncs += 1;
+          return 11; // the area package's cursor, taken before its snapshot
+        },
+      },
+    });
+    const r = await loop.runOnce();
+    expect(r.ok).toBe(true);
+    expect(resyncs).toBe(1);
+    expect(api.fetched).toEqual(['mission:m9']);
+    expect(await store.getMeta('cursor')).toBe('12');
+
+    // The server pruned past the phone again while it could not download: the round fails, the
+    // cursor stays, and the next round tries again.
+    api.prunedThrough = 20;
+    const stuck = new SyncLoop(store, api, { events: { onResync: async () => null } });
+    expect((await stuck.runOnce()).ok).toBe(false);
+    expect(await store.getMeta('cursor')).toBe('12');
+    // Without a way to download, an expired cursor is a failed round, never an endless loop.
+    expect((await new SyncLoop(store, api).runOnce()).ok).toBe(false);
   });
 
   it('a status or receipt change refreshes the team or message it belongs to; a record no longer visible leaves the phone (FLD-14)', async () => {

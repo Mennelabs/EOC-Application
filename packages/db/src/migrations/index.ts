@@ -81,6 +81,7 @@ import * as m0079 from './0079_facility_owner_link.ts';
 import * as m0080 from './0080_retention_delete_records.ts';
 import * as m0081 from './0081_retention_delete_field.ts';
 import * as m0082 from './0082_shared_document.ts';
+import * as m0083 from './0083_change_feed_pruning.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -166,4 +167,5 @@ export const migrations: Record<string, Migration> = {
   '0080_retention_delete_records': m0080,
   '0081_retention_delete_field': m0081,
   '0082_shared_document': m0082,
+  '0083_change_feed_pruning': m0083,
 };

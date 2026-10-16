@@ -73,7 +73,19 @@ export interface SyncEvents {
   onStatus?(s: SyncStatus): void;
   onWipe?(): void;
   onConflict?(cmd: OutboxCommand, resolution: Resolution): void;
+  /**
+   * SEC-13: the server pruned changes this phone had not read yet ("cursor expired"). The app
+   * downloads its area package again and returns the package's cursor to resume from, or null
+   * when it could not.
+   */
+  onResync?(): Promise<number | null>;
 }
+
+/** The sync's answer when the phone's cursor is below what the server still keeps. */
+export const isCursorExpired = (err: unknown): boolean => {
+  const e = err as { status?: unknown; code?: unknown } | null;
+  return !!e && e.status === 410 && e.code === 'cursor_expired';
+};
 
 export interface SyncStatus {
   phase: 'idle' | 'sending' | 'receiving' | 'offline' | 'wiped';
@@ -162,6 +174,7 @@ export class SyncLoop {
     if (this.running || this.wiped)
       return { sent: 0, applied: 0, conflicts: 0, received: 0, ok: !this.wiped, wiped: this.wiped };
     this.running = true;
+    this.resyncs = 0;
     let sent = 0;
     let applied = 0;
     let conflicts = 0;
@@ -218,7 +231,10 @@ export class SyncLoop {
         try {
           page = await this.api.getSync({ cursor, limit: 500, ...(deviceId ? { deviceId } : {}) });
         } catch (err) {
-          return this.failed(err, { sent, applied, conflicts, received });
+          const resumed = isCursorExpired(err) ? await this.resync() : null;
+          if (resumed === null) return this.failed(err, { sent, applied, conflicts, received });
+          cursor = resumed;
+          continue;
         }
         if (page.device?.wipe) return this.wipe();
         // The latest change per record; only records newer than the phone's copy are fetched, in batches.
@@ -292,6 +308,17 @@ export class SyncLoop {
     } finally {
       this.running = false;
     }
+  }
+
+  /** Once per round: a fresh area package, and its cursor to resume from. */
+  private resyncs = 0;
+  private async resync(): Promise<number | null> {
+    if (this.resyncs > 0 || !this.events.onResync) return null;
+    this.resyncs += 1;
+    const fresh = await this.events.onResync().catch(() => null);
+    if (fresh === null) return null;
+    await this.store.setMeta('cursor', String(fresh));
+    return fresh;
   }
 
   private async failed(

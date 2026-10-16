@@ -1921,6 +1921,14 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     },
     { standard: false },
   ),
+  // SEC-13: a phone with a cursor below this mark downloads its area package again.
+  change_feed_pruned: table(
+    {
+      through_seq: { c: 'internal', r: 'sessions' },
+      pruned_at: { c: 'internal', r: 'sessions' },
+    },
+    { omit: ['id', 'version', 'created_at', 'created_by', 'updated_at', 'updated_by'] },
+  ),
   change_feed: table(
     {
       seq: { c: 'internal', r: 'sessions' },

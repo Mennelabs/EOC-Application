@@ -571,6 +571,29 @@ describe.skipIf(!appUrl || !workerUrl)(
       expect(page.more).toBe(true);
       expect(page.cursor).toBe(page.changes[1]!.seq);
 
+      // SEC-13: below the pruned mark the phone is told to download its area again; at the mark
+      // the sync goes on. The mark is put back to 0 so the shared county is left as it was.
+      const mark = page.cursor;
+      await dbWorker
+        .insertInto('cg.change_feed_pruned')
+        .values({ tenant_id: tenants['county']!, through_seq: mark })
+        .onConflict((oc) => oc.column('tenant_id').doUpdateSet({ through_seq: mark }))
+        .execute();
+      try {
+        const behind = await call('assessor', 'GET', `/api/v1/field/sync?cursor=${mark - 1}`);
+        expect(behind.status, behind.body).toBe(410);
+        expect(behind.json<{ code: string }>().code).toBe('cursor_expired');
+        expect((await call('assessor', 'GET', `/api/v1/field/sync?cursor=${mark}`)).status).toBe(
+          200,
+        );
+      } finally {
+        await dbWorker
+          .updateTable('cg.change_feed_pruned')
+          .set({ through_seq: 0 })
+          .where('tenant_id', '=', tenants['county']!)
+          .execute();
+      }
+
       // A batch from the phone: acknowledge the dispatch, report positions, raise a help alert.
       const ack = randomUUID();
       const pos = randomUUID();

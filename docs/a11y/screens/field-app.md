@@ -24,3 +24,5 @@ Screens: PIN, check-in, home with the help button and the check-in timer, messag
 Open: checks 2 and 10 need a person with a device; a recorded conversation with the AI note-taker on (OpenAI key set) is part of check 10.
 
 Scanning (2026-10-16, FLD-03, FL:FR-14): the check-in screen and the shelter door now have the same "scan" button as the checkpoint. It opens the camera only when pressed, and it says plainly when camera permission is refused. Typing the code always works, so the camera is never the only way (WCAG 2.5, FLD-15). The camera itself is checked on a device by a person.
+
+Peer support and rest (2026-10-16, FL-16): the peer-support screen uses the same radio groups and buttons as the rest of the app, with the 988 line shown as text. Sending is a queued record, like any other, so it works without signal. The rest reminder on the home screen is a warning in words, never colour or sound alone.

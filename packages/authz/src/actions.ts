@@ -476,6 +476,22 @@ export const actions = {
     'Read people involved (restricted details by category)',
   ),
   'mission.person.edit': a('write', 'mission_person', 'Add, change or remove a person involved'),
+  // FL-16: a private request for peer support. The worker asks; only the peer-support role reads.
+  'peer_support.request': a(
+    'write',
+    'peer_support_request',
+    'Ask privately for peer support, see and withdraw your own request',
+  ),
+  'peer_support.read': a(
+    'read',
+    'peer_support_request',
+    'Read peer-support requests and how to reach the people who asked',
+  ),
+  'peer_support.update': a(
+    'write',
+    'peer_support_request',
+    'Mark a peer-support request contacted or closed',
+  ),
   'mission.media.read': a(
     'read',
     'mission_media',

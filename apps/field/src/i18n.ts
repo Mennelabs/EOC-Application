@@ -606,6 +606,29 @@ const en = {
   'people.transport.shelter_transport': 'Shelter transport',
   'people.transport.other': 'Other',
   'people.transport.unknown': 'Unknown',
+  // FL-16: rest and private peer support.
+  'rest.heading': 'Time to rest',
+  'rest.body':
+    'You have been on shift for {time}. Take a break and tell your lead when you step away.',
+  'peer.heading': 'Peer support (private)',
+  'peer.open': 'Talk to a peer supporter',
+  'peer.body':
+    'Ask a peer supporter to reach you. Only the peer support team sees this. Your lead, dispatch and coordinators are not told.',
+  'peer.reachBy': 'How should they reach you?',
+  'peer.reachBy.call': 'A phone call',
+  'peer.reachBy.text': 'A text message',
+  'peer.reachBy.in_person': 'In person',
+  'peer.reachWhen': 'When?',
+  'peer.reachWhen.now': 'As soon as they can',
+  'peer.reachWhen.after_shift': 'After my shift',
+  'peer.send': 'Ask for peer support',
+  'peer.sent':
+    'Asked. A peer supporter will reach you. It is saved on the phone until there is signal.',
+  'peer.status.open': 'Your request is waiting for a peer supporter.',
+  'peer.status.contacted': 'A peer supporter has been in touch.',
+  'peer.withdraw': 'I no longer need this',
+  'peer.withdrawn': 'Withdrawn.',
+  'peer.crisis': 'If you are in crisis right now, call or text 988.',
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -1219,6 +1242,27 @@ const es: Record<MessageKey, string> = {
   'people.transport.shelter_transport': 'Transporte del albergue',
   'people.transport.other': 'Otro',
   'people.transport.unknown': 'Desconocido',
+  'rest.heading': 'Hora de descansar',
+  'rest.body': 'Lleva {time} en turno. Tome un descanso y avise a su líder cuando se aparte.',
+  'peer.heading': 'Apoyo entre compañeros (privado)',
+  'peer.open': 'Hablar con un compañero de apoyo',
+  'peer.body':
+    'Pida que un compañero de apoyo se comunique con usted. Solo el equipo de apoyo lo ve. No se le avisa a su líder, al despacho ni a los coordinadores.',
+  'peer.reachBy': '¿Cómo deben comunicarse con usted?',
+  'peer.reachBy.call': 'Una llamada',
+  'peer.reachBy.text': 'Un mensaje de texto',
+  'peer.reachBy.in_person': 'En persona',
+  'peer.reachWhen': '¿Cuándo?',
+  'peer.reachWhen.now': 'Lo antes posible',
+  'peer.reachWhen.after_shift': 'Después de mi turno',
+  'peer.send': 'Pedir apoyo',
+  'peer.sent':
+    'Pedido. Un compañero de apoyo se comunicará con usted. Se guarda en el teléfono hasta que haya señal.',
+  'peer.status.open': 'Su pedido espera a un compañero de apoyo.',
+  'peer.status.contacted': 'Un compañero de apoyo ya se comunicó con usted.',
+  'peer.withdraw': 'Ya no lo necesito',
+  'peer.withdrawn': 'Retirado.',
+  'peer.crisis': 'Si está en crisis ahora mismo, llame o envíe un mensaje al 988.',
 };
 
 const catalog: Record<Locale, Record<MessageKey, string>> = { en, es };

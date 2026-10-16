@@ -2325,6 +2325,28 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     { omit: ['version', 'created_by', 'updated_at', 'updated_by'] },
   ),
   // FL-09: a document a survivor chose to share, photographed with their consent.
+  peer_support_request: table({
+    personnel_id: {
+      c: 'restricted',
+      r: 'peer_support',
+      d: 'FL-16: who asked; seen only by the peer-support role (counseling)',
+    },
+    event_id: { c: 'internal', r: 'peer_support' },
+    client_uuid: { c: 'internal', r: 'peer_support', d: 'Idempotency key from the phone' },
+    reach_by: { c: 'restricted', r: 'peer_support', d: 'call, text or in person' },
+    reach_when: { c: 'restricted', r: 'peer_support', d: 'now or after the shift' },
+    status: { c: 'restricted', r: 'peer_support', d: 'open, contacted or closed' },
+    requested_at: { c: 'restricted', r: 'peer_support' },
+    contacted_at: { c: 'restricted', r: 'peer_support' },
+    contacted_by: { c: 'restricted', r: 'peer_support' },
+    closed_at: { c: 'restricted', r: 'peer_support' },
+    closed_by: { c: 'restricted', r: 'peer_support' },
+    closed_by_requester: {
+      c: 'restricted',
+      r: 'peer_support',
+      d: 'The worker withdrew it themself',
+    },
+  }),
   shared_document: table({
     report_id: { c: 'internal', r: 'photos' },
     client_uuid: { c: 'internal', r: 'photos', d: 'Idempotency key from the phone' },

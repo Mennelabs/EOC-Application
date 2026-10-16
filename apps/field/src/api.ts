@@ -107,6 +107,8 @@ export interface AreaPackage {
 
 export interface AreaOptions {
   tribalOwnership: boolean;
+  /** FL-16: hours on shift after which the phone reminds the worker to rest. */
+  restAfterHours: number;
 }
 
 export interface VoiceDraft {

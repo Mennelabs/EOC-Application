@@ -86,6 +86,7 @@ import * as m0084 from './0084_retention_delete_scribe.ts';
 import * as m0085 from './0085_retention_delete_roster.ts';
 import * as m0086 from './0086_command_outcome.ts';
 import * as m0087 from './0087_ai_complaint.ts';
+import * as m0088 from './0088_peer_support.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -176,4 +177,5 @@ export const migrations: Record<string, Migration> = {
   '0085_retention_delete_roster': m0085,
   '0086_command_outcome': m0086,
   '0087_ai_complaint': m0087,
+  '0088_peer_support': m0088,
 };

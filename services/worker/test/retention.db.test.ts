@@ -69,6 +69,7 @@ describe.skipIf(!workerUrl)('retention sweeps by category (database-backed)', ()
         ['badges', '3 years'],
         ['contacts', '3 years'],
         ['safety', '7 years'],
+        ['peer_support', '30 days'],
         ['comms', '7 years'],
         ['referrals', '7 years'],
         ['sharing', '7 years'],
@@ -255,6 +256,30 @@ describe.skipIf(!workerUrl)('retention sweeps by category (database-backed)', ()
           .returning('id')
           .executeTakeFirstOrThrow()
       ).id;
+
+      // FL-16: peer-support requests (30 days after closing); an open one never expires.
+      const peer = async (key: string, status: 'open' | 'closed', at: Date) => {
+        ids[key] = (
+          await trx
+            .insertInto('cg.peer_support_request')
+            .values({
+              tenant_id: tenantId,
+              personnel_id: personnelId,
+              event_id: eventId,
+              client_uuid: randomUUID(),
+              reach_by: 'call',
+              reach_when: 'after_shift',
+              status,
+              requested_at: at,
+              ...(status === 'closed' ? { closed_at: at } : {}),
+            })
+            .returning('id')
+            .executeTakeFirstOrThrow()
+        ).id;
+      };
+      await peer('peerClosedOld', 'closed', ago(40));
+      await peer('peerClosedRecent', 'closed', ago(5));
+      await peer('peerOpenOld', 'open', ago(400));
 
       // The 7-year categories: communications, referrals, sharing, publications.
       const message = await trx
@@ -600,6 +625,11 @@ describe.skipIf(!workerUrl)('retention sweeps by category (database-backed)', ()
     expect(await exists('cg.partner_contact', ids['contactActive']!)).toBe(true);
 
     expect(await exists('cg.safety_alert', ids['safetyOld']!)).toBe(true);
+
+    // FL-16: a request closed 40 days ago goes; one closed 5 days ago and an open one stay.
+    expect(await exists('cg.peer_support_request', ids['peerClosedOld']!)).toBe(false);
+    expect(await exists('cg.peer_support_request', ids['peerClosedRecent']!)).toBe(true);
+    expect(await exists('cg.peer_support_request', ids['peerOpenOld']!)).toBe(true);
 
     // 7-year categories: old communications go with their receipts; a finished referral and a
     // revoked grant go, but a grant an open referral still uses stays; a superseded publication

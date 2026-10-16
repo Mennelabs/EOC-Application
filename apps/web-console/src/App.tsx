@@ -12,6 +12,7 @@ import {
 } from './screens/permissions.tsx';
 import { AiRegisterScreen, AssistedScreen, IntakeSetupScreen } from './screens/intake.tsx';
 import { ContactsScreen } from './screens/contacts.tsx';
+import { PeerSupportScreen } from './screens/peer-support.tsx';
 import { DispatchScreen, ReplayScreen } from './screens/dispatch.tsx';
 import { SheltersScreen, VolunteerReceptionScreen } from './screens/masscare.tsx';
 import { SituationScreen } from './screens/situation.tsx';
@@ -79,6 +80,7 @@ const routes = [
   { path: '/console/field-messages', label: 'Messages to the field', layer: 4 },
   { path: '/console/badges', label: 'Badges', layer: 4 },
   { path: '/console/reminders', label: 'Reminders', layer: 4 },
+  { path: '/console/peer-support', label: 'Peer support', layer: 4 },
   { path: '/console/devices', label: 'Field devices', layer: 4 },
   { path: '/console/declaration', label: 'Declaration data', layer: 6 },
   { path: '/console/joint-assessment', label: 'Joint assessment', layer: 6 },
@@ -277,6 +279,8 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <BadgesScreen />;
       case '/console/reminders':
         return <RemindersScreen />;
+      case '/console/peer-support':
+        return <PeerSupportScreen />;
       case '/console/devices':
         return <DevicesScreen />;
       case '/console/reference-data':

@@ -77,6 +77,15 @@ export default function Home() {
         {checkIn ? (
           <Body>{t('home.onShift', { time: duration(checkIn.startedAt, now) })}</Body>
         ) : null}
+        {/* FL-16: after the county's rest limit, a reminder in words, announced once. */}
+        {checkIn &&
+        !checkIn.endedAt &&
+        now.getTime() - new Date(checkIn.startedAt).getTime() >=
+          f.options.restAfterHours * 3_600_000 ? (
+          <Alert tone="warn">
+            {t('rest.heading')}. {t('rest.body', { time: duration(checkIn.startedAt, now) })}
+          </Alert>
+        ) : null}
         <Body>{policy.enabled ? `● ${t('home.sharing')}` : `○ ${t('home.notSharing')}`}</Body>
         {timer ? (
           <View style={{ gap: 8 }}>
@@ -237,6 +246,13 @@ export default function Home() {
               kind="secondary"
               label={t('aids.heading')}
               onPress={() => router.push('/job-aids')}
+            />
+          ) : null}
+          {f.can('peer_support.request') ? (
+            <Button
+              kind="secondary"
+              label={t('peer.heading')}
+              onPress={() => router.push('/peer-support')}
             />
           ) : null}
         </View>

@@ -386,15 +386,15 @@
   ],
   "AC-A01": [
     "partial",
-    "Field errors in text next to the field with role=alert, aria-describedby and aria-invalid (apps/web-resident/src/ui/primitives.tsx, Flow.tsx); the address is a form, never a map; the reference code is spelled out for screen readers",
-    "tests/e2e/resident.spec.ts (keyboard only, English: deep link to reference number, axe on every screen), apps/web-resident/test/state.test.ts (spells the reference code, ACC-50), tests/e2e/a11y.spec.ts (keyboard only: Start is reachable and announces status)",
-    "No end-to-end test raises a validation error and corrects it. The screen-reader pass is pending a person (docs/a11y/screens/resident-intake.md check 2)."
+    "Field errors in text next to the field with role=alert, aria-describedby and aria-invalid (apps/web-resident/src/ui/primitives.tsx, Flow.tsx; the optional questions after sending, screens/Submit.tsx, since 2026-10-16); the address is a form, never a map; the reference code is spelled out for screen readers",
+    "tests/e2e/resident.spec.ts (keyboard only, English: deep link to reference number, axe on every screen; AC-A01/A02/A05: Continue with nothing chosen is announced and fixed by keyboard, an out-of-range number is announced with its range and marked aria-invalid, then corrected), apps/web-resident/test/state.test.ts (spells the reference code, ACC-50), tests/e2e/a11y.spec.ts (keyboard only: Start is reachable and announces status)",
+    "The screen-reader pass is pending a person (docs/a11y/screens/resident-intake.md check 2)."
   ],
   "AC-A02": [
     "partial",
     "Layout reflows to 320 CSS px; the whole suite also runs on the phone project",
-    "tests/e2e/a11y.spec.ts (ACC-07: reflows at 320 CSS px, welcome), tests/e2e/resident.spec.ts (ACC-07: a question screen reflows at 320 px)",
-    "Only the welcome and first question are checked at 320 px, by scroll width; review, confirmation and my report are not; 200 % zoom and text spacing are not tested; nothing asserts that controls and required text are still present."
+    "tests/e2e/a11y.spec.ts (ACC-07: reflows at 320 CSS px, welcome), tests/e2e/resident.spec.ts (ACC-07: a question screen reflows at 320 px; AC-A01/A02/A05: a whole report at 320 px, with no sideways scroll on the review, the confirmation and the optional questions)",
+    "My report is not checked at 320 px; 200 % zoom and text spacing are not tested; nothing asserts that controls and required text are still present beyond the steps the test presses."
   ],
   "AC-A03": [
     "partial",
@@ -410,9 +410,9 @@
   ],
   "AC-A05": [
     "partial",
-    "Every resident string in English and Spanish, type-checked complete (i18n/messages.ts); answer errors are translated from the engine's codes (intake/validation-text.ts) and My report's errors and the county's questions are shown in the resident's language (2026-10-16; before, some came in English)",
-    "apps/web-resident/test/validation-text.test.ts (every error on every question of the shipped graph has its English and Spanish message), tests/e2e/resident.spec.ts and a11y.spec.ts (Spanish: the flow switches language)",
-    "The Spanish e2e stops at the first question: consent and confirmation in Spanish are not exercised end to end. Spanish strings are reviewed drafts; professional review is the EQ-07 gate."
+    "Every resident string in English and Spanish, type-checked complete (i18n/messages.ts); answer errors are translated from the engine's codes (intake/validation-text.ts), on the questions and on the optional questions after sending; My report's errors, the county's questions and a failed send are shown in the resident's language (2026-10-16; before, some came in English or as the server's reason)",
+    "apps/web-resident/test/validation-text.test.ts (every error on every question of the shipped graph has its English and Spanish message), tests/e2e/resident.spec.ts and a11y.spec.ts (Spanish: the flow switches language; AC-A01/A02/A05: an optional-question error reads in Spanish after switching, never the engine's English)",
+    "Consent and confirmation in Spanish are not exercised end to end. Spanish strings are reviewed drafts; professional review is the EQ-07 gate."
   ],
   "AC-A06": [
     "partial",

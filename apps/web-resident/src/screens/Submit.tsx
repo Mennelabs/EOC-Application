@@ -11,6 +11,7 @@ import { text, validateAnswer, type AnswerValue, type QuestionNode } from '@cg/i
 import { useT, type Shell } from '../App.tsx';
 import { Offline, sendAfter, textCode, type IntakeInfo } from '../api/public.ts';
 import { IdleTimer, KIOSK_CONFIRMATION } from '../intake/idle.ts';
+import { validationText } from '../intake/validation-text.ts';
 import type { OutboxItem } from '../intake/outbox.ts';
 import { nextPlace, spellCode, type FlowState } from '../intake/state.ts';
 import { ButtonRow, Card, ChoiceGroup, Field, Status } from '../ui/primitives.tsx';
@@ -104,7 +105,8 @@ function SendState({ item }: { item: OutboxItem | undefined }) {
       </p>
       {state === 'sending' ? <p>{t('send.sending')}</p> : null}
       {state === 'failed' && item?.final ? (
-        <Status kind="error">{t('send.failed', { reason: item.lastError ?? '' })}</Status>
+        // AC-A05: in the resident's language; the server's reason stays in the outbox for support.
+        <Status kind="error">{t('send.failed')}</Status>
       ) : state === 'failed' || state === 'not_sent' ? (
         <p>{t('send.waiting')}</p>
       ) : null}
@@ -478,7 +480,11 @@ function AfterQuestion({
   }));
   const commit = (value: AnswerValue) => {
     const errors = validateAnswer(q, value);
-    if (errors.length) return setError(errors[0]!.message);
+    if (errors.length) {
+      // AC-A05: the resident's language, never the engine's English.
+      const shown = validationText(q, errors[0]!);
+      return setError(t(shown.id, shown.values));
+    }
     onAnswer(value);
   };
   let control: ReactNode;
@@ -496,11 +502,13 @@ function AfterQuestion({
   } else if (q.answerType === 'number') {
     control = (
       <Field label={text(q.prompt, locale)} hint={t('number.hint')} error={error ?? undefined}>
-        {({ id }) => (
+        {({ id, describedBy, invalid }) => (
           <input
             id={id}
             type="number"
             inputMode="numeric"
+            aria-describedby={describedBy}
+            aria-invalid={invalid || undefined}
             value={textValue}
             onChange={(e) => setTextValue(e.target.value)}
           />
@@ -510,8 +518,14 @@ function AfterQuestion({
   } else {
     control = (
       <Field label={text(q.prompt, locale)} error={error ?? undefined}>
-        {({ id }) => (
-          <textarea id={id} value={textValue} onChange={(e) => setTextValue(e.target.value)} />
+        {({ id, describedBy, invalid }) => (
+          <textarea
+            id={id}
+            aria-describedby={describedBy}
+            aria-invalid={invalid || undefined}
+            value={textValue}
+            onChange={(e) => setTextValue(e.target.value)}
+          />
         )}
       </Field>
     );

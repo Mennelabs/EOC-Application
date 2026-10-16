@@ -169,7 +169,8 @@ const en = {
   'send.sending': 'Sending your report…',
   'send.waiting':
     'Not sent yet. We will keep trying while this page is open. Your answers are safe on this device.',
-  'send.failed': 'We could not send your report: {reason}',
+  'send.failed':
+    'We could not send your report. Your answers are still here: check them and send again, or call the county help line.',
   'send.retry': 'Try sending again',
   'send.state.notSent': 'Not sent yet',
   'send.state.sending': 'Sending',
@@ -445,7 +446,8 @@ const es: Record<MessageId, string> = {
   'send.sending': 'Enviando su reporte…',
   'send.waiting':
     'Aún no enviado. Seguiremos intentando mientras esta página esté abierta. Sus respuestas están seguras en este dispositivo.',
-  'send.failed': 'No pudimos enviar su reporte: {reason}',
+  'send.failed':
+    'No pudimos enviar su reporte. Sus respuestas siguen aquí: revíselas y envíelo de nuevo, o llame a la línea de ayuda del condado.',
   'send.retry': 'Intentar enviar de nuevo',
   'send.state.notSent': 'Aún no enviado',
   'send.state.sending': 'Enviando',

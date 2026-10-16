@@ -438,6 +438,63 @@ test.describe('resident report', () => {
     expect(overflow).toBe(false);
   });
 
+  test('AC-A01, AC-A02, AC-A05: at 320 px an error is announced and fixed by keyboard; review, confirmation and optional questions reflow; a number error names its range, in Spanish too', async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    await page.setViewportSize({ width: 320, height: 740 });
+    const reflows = async (where: string) =>
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        ),
+        `${where} scrolls sideways at 320 px`,
+      ).toBe(false);
+    const email = `reflow-${Date.now().toString(36)}@example.org`;
+    await page.goto('/county/westwind');
+    await pressButton(page, 'Start');
+    // Continue with nothing chosen: the error is announced with the question; choosing fixes it.
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(/Is anyone in danger/);
+    await pressButton(page, 'Continue');
+    await expect(page.getByRole('alert')).toContainText('Please choose an answer.');
+    await chooseRadio(page, 'No, everyone is safe');
+    await pressButton(page, 'Continue');
+    await expect(page.getByRole('heading', { level: 1 })).not.toHaveText(/Is anyone in danger/);
+    await answerUntilReview(page, email, new Set());
+    await reflows('the review');
+    await pressButton(page, 'Send my report');
+    await expect(page.getByRole('heading', { name: 'We received your report' })).toBeVisible({
+      timeout: 30_000,
+    });
+    await reflows('the confirmation');
+    await pressButton(page, 'Answer a few optional questions');
+    await expect(page.getByRole('heading', { name: 'A few optional questions' })).toBeVisible();
+    await reflows('the optional questions');
+    const people = page.getByRole('spinbutton', { name: 'How many people live in your home?' });
+    for (let i = 0; i < 12 && !(await people.isVisible().catch(() => false)); i++)
+      await pressButton(page, 'Skip');
+    await expect(people).toBeVisible();
+    // Out of range: the error names the range and is tied to the field.
+    await people.fill('99');
+    await pressButton(page, 'Continue');
+    await expect(page.getByRole('alert')).toContainText('Enter a number from 1 to 50.');
+    await expect(people).toHaveAttribute('aria-invalid', 'true');
+    // The same mistake in Spanish reads in Spanish (AC-A05), never the engine's English.
+    await page.getByLabel('Language').selectOption('es');
+    const personas = page.getByRole('spinbutton', {
+      name: '¿Cuántas personas viven en su hogar?',
+    });
+    await expect(personas).toBeVisible();
+    await personas.fill('99');
+    await pressButton(page, 'Continuar');
+    await expect(page.getByRole('alert')).toContainText('Escriba un número del 1 al 50.');
+    await expect(page.getByText('out of range')).toHaveCount(0);
+    // Corrected, it goes on.
+    await personas.fill('3');
+    await pressButton(page, 'Continuar');
+    await expect(personas).toHaveCount(0);
+  });
+
   test('photos: when the objects host cannot be reached, the photo goes through the gateway (SCL-04, SCL-06, PHO-05)', async ({
     page,
   }) => {

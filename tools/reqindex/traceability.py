@@ -8,10 +8,14 @@ earlier entry for the same ID. IDs without an evidence entry are listed as
 whatever its layer, so partial early deliveries stay visible.
 
 Run: python3 tools/reqindex/traceability.py
+Check (CI): python3 tools/reqindex/traceability.py --check fails when
+docs/traceability.md is not what the evidence files generate, so an edit
+made to the table by hand, and lost on the next run, is caught.
 """
 from __future__ import annotations
 
 import json
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -81,7 +85,17 @@ def main() -> None:
     for key, layer, status, code, tests, note, _ in rows:
         cell = lambda s: s.replace("|", "/")  # noqa: E731
         out.append(f"| {key} | {layer} | {status} | {cell(code)} | {cell(tests)} | {cell(note)} |")
-    OUT.write_text("\n".join(out) + "\n", encoding="utf-8")
+    text = "\n".join(out) + "\n"
+    if "--check" in sys.argv[1:]:
+        if OUT.read_text(encoding="utf-8") != text:
+            print(
+                f"{OUT.relative_to(ROOT)} differs from the evidence files: edit tools/reqindex/trace-*.json "
+                "and run python3 tools/reqindex/traceability.py"
+            )
+            sys.exit(1)
+        print(f"{OUT.relative_to(ROOT)} matches the evidence files: {len(rows)} rows {dict(counts)}")
+        return
+    OUT.write_text(text, encoding="utf-8")
     print(f"wrote {OUT.relative_to(ROOT)}: {len(rows)} rows {dict(counts)}")
 
 

@@ -39,8 +39,8 @@
   "BRD:FR-07.04": [
     "partial",
     "cg.mission_media references with source, uploader, time, access class, retention (0030); routes/missions.ts media (object key never returned); body-camera references only in the enclave (cjis.record_bodycam, evidence reference encrypted); the platform refuses body-camera media (422 cji_in_enclave)",
-    "services/api/test/cjislink.db.test.ts (bodycam media refused), services/cjis-api/test/api.db.test.ts (bodycam references), tests/e2e/cjis.spec.ts",
-    "Live feeds need separate approval (layer-4 plan §11); the platform's general media routes have no route-level test yet."
+    "services/api/test/cjislink.db.test.ts (bodycam media refused), services/cjis-api/test/api.db.test.ts (bodycam references), tests/e2e/cjis.spec.ts, services/api/test/missions.db.test.ts (AC-07B: add, list, download and remove through the media routes)",
+    "Live feeds need separate approval (layer-4 plan §11)."
   ],
   "BRD:FR-07.05": [
     "pass",

@@ -31,6 +31,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm check:product-name
+      - run: pnpm check:traceability
       - run: pnpm test
       - name: Public help page builds inside its first-load budget (PUB-07)
         run: pnpm --filter @cg/web-help build && pnpm --filter @cg/web-help check:size

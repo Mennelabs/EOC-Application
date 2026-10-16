@@ -494,9 +494,9 @@
   ],
   "FL-01": [
     "partial",
-    "reference code in text and as a scannable code on the confirmation; SMS confirmation carries it",
-    "apps/web-resident/test/state.test.ts (code spelled for screen readers), tests/e2e/resident.spec.ts",
-    "Printed cards, wristbands and scanning into a staff record arrive with the field app (layer 4)."
+    "reference code in text and as a scannable code on the confirmation; SMS confirmation carries it; field app \"Find a survivor's record\" opens a record by its code, scanned from the confirmation's QR link or typed (apps/field/app/find.tsx, src/format.ts codeFrom), through GET /reports?reference= within the worker's own permissions, with \"Add a document they share\" from there (FL-09)",
+    "apps/web-resident/test/state.test.ts (code spelled for screen readers), tests/e2e/resident.spec.ts, apps/field/test/format.test.ts (FL-01: the code from the QR link or as typed), tests/e2e/field.spec.ts (FL-01: an unknown code says so; the QR link opens the record)",
+    "Printed cards and shelter wristbands wait for the badge printer work (Brother printers, queued after layer 8). Partner workers open a survivor's record through what was shared with them (FL-03)."
   ],
   "CHN-01": [
     "pass",
@@ -542,8 +542,8 @@
   ],
   "CHN-08": [
     "pass",
-    "deep links /<tenant>/<event>, QR code and keywords on the intake setup screen",
-    "services/api/test/reports.db.test.ts (event intake facts), tests/e2e/console.spec.ts (QR image), apps/web-resident/test/state.test.ts (deep links)",
+    "deep links /<tenant>/<event>, QR code and keywords on the intake setup screen; a `?lang=` on the link opens the resident flow in that language (apps/web-resident/src/App.tsx); door hangers carry one code per language (screens/intake.tsx)",
+    "services/api/test/reports.db.test.ts (event intake facts), tests/e2e/console.spec.ts (QR image), apps/web-resident/test/state.test.ts (deep links); tests/e2e/a11y.spec.ts (CHN-08: a link with ?lang=es opens in Spanish, axe), tests/e2e/console.spec.ts (door hanger codes)",
     ""
   ],
   "CHN-09": [

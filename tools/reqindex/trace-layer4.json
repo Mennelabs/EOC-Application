@@ -9,8 +9,8 @@
   "RULE-04": [
     "partial",
     "mission states cleared and closed apart, cleared_at and closed_at (0030); routes/missions.ts close (disposition, release) and the cleared transition",
-    "services/api/test/missions.db.test.ts (closure needs a disposition)",
-    "No test moves a mission to cleared and then closes it; the definitions are the proposed defaults (BRD:DEC-06)."
+    "services/api/test/missions.db.test.ts (closure needs a disposition); services/api/test/missions.db.test.ts (RULE-04: en route, on scene, cleared, then a move back refused and closing with a disposition)",
+    "The definitions are the proposed defaults (BRD:DEC-06)."
   ],
   "RULE-05": [
     "pass",
@@ -127,10 +127,10 @@
     ""
   ],
   "AC-03B": [
-    "partial",
-    "location_state unknown never stores a point; dispatchBlockers lists location (routes/missions.ts); board and situation plot only rows with a point",
-    "services/api/test/missions.db.test.ts (AC-02B: missing location blocks dispatch)",
-    "No test checks that an unknown location is absent from the board or situation map."
+    "pass",
+    "location_state unknown never stores a point, even when the request sends one (routes/missions.ts saveLocation); dispatchBlockers lists location (routes/missions.ts); board and situation plot only rows with a point",
+    "services/api/test/missions.db.test.ts (AC-02B: missing location blocks dispatch); services/api/test/missions.db.test.ts (AC-03B: an unknown location sent with a point stores no point; the board shows no position and says unknown)",
+    ""
   ],
   "AC-03C": [
     "partial",
@@ -163,10 +163,10 @@
     ""
   ],
   "BRD:FR-04.05": [
-    "partial",
-    "hazards are records of their own: board hazard list and map layer (screens/dispatch.tsx), hazard warnings near the fix on the phone home screen (apps/field/app/home.tsx)",
-    "services/api/test/dispatch-sync.db.test.ts (board snapshot with active hazards), packages/field-core/test/geo.test.ts (hazard areas warn)",
-    "The console mission detail and the phone's assignment screen do not list the mission's hazards yet."
+    "pass",
+    "hazards are records of their own: board hazard list and map layer (screens/dispatch.tsx), hazard warnings near the fix on the phone home screen (apps/field/app/home.tsx); each mission lists its own: the console mission detail's \"Hazards here\" (open hazards linked to the mission or within 300 m of its position; only linked ones when it has no position) and the phone's job screen \"Hazards at this job\" (from the area package, inside or within 100 m)",
+    "services/api/test/dispatch-sync.db.test.ts (board snapshot with active hazards), packages/field-core/test/geo.test.ts (hazard areas warn); tests/e2e/field.spec.ts (HAZ-01: a line down reported at the job is shown on its screen, with axe), tests/e2e/console-l5.spec.ts (the mission detail's hazards section, with axe)",
+    ""
   ],
   "AC-04A": [
     "pass",
@@ -211,10 +211,10 @@
     ""
   ],
   "BRD:FR-05.05": [
-    "partial",
+    "pass",
     "personnel archived with archived_at and reason, never deleted (0004, 0028); teams stood down and archived (routes/roster.ts)",
-    "",
-    "No test archives a person or a team and reads the history back."
+    "services/api/test/missions.db.test.ts (FR-05.05: an archived person read back with the reason audited; an archived team read back with its out-of-service history)",
+    ""
   ],
   "BRD:FR-05.06": [
     "pass",
@@ -229,10 +229,10 @@
     ""
   ],
   "AC-05B": [
-    "partial",
+    "pass",
     "routes/missions.ts conflictsFor: an inactive person or stood-down team is a conflict that only assignment.override with a reason accepts",
-    "",
-    "No test assigns an inactive person."
+    "services/api/test/missions.db.test.ts (AC-05B: the archived person is an 'inactive' conflict; only an override with a reason accepts it, and the assignment keeps the conflict)",
+    ""
   ],
   "AC-05C": [
     "not started",
@@ -259,10 +259,10 @@
     ""
   ],
   "BRD:FR-06.04": [
-    "partial",
+    "pass",
     "routes/missions.ts TRANSITIONS graph with cancel, close and reopen on their own routes; assignment status steps",
-    "services/api/test/missions.db.test.ts (closure and reopen; assignment status steps)",
-    "No test drives POST /missions/:id/transitions or cancel, or checks that an illegal transition is refused."
+    "services/api/test/missions.db.test.ts (closure and reopen; assignment status steps); services/api/test/missions.db.test.ts (FR-06.04: the graph walked, a move it does not allow refused with the field named, cancel needs a reason, nothing moves a closed or canceled mission)",
+    ""
   ],
   "BRD:FR-06.05": [
     "pass",
@@ -355,10 +355,10 @@
     ""
   ],
   "AC-07B": [
-    "partial",
-    "mission_media holds an object key that never leaves the server; no direct-reference download route exists",
-    "",
-    "No download route and no test yet; a download through an authorized route comes with evidence handling."
+    "pass",
+    "mission_media holds an object key that never leaves the server; adding a reference takes only this county's photos or a key under the mission's own prefix (`missions/<tenant>/<mission>/`), never a key the caller names; `GET /missions/:id/media/:mediaId/download` (routes/missions.ts) is the one way out: the media must belong to that mission and not be removed, restricted media and photos not yet blurred go only to the evidence category, anything else answers 404 like a wrong id, the answer is a 60-second signed link (a photo's review image, never its original), and every download is audited, evidence reads marked",
+    "services/api/test/missions.db.test.ts (AC-07B: a named key and another county's photo refused; list carries no keys; blurred photo linked for a minute to its review image; unblurred and restricted 404 without the evidence category, linked with it; same id under another mission, unknown id, role without the grant and removed media 404; downloads audited)",
+    "Evidence the platform keeps is mission media; criminal-justice evidence stays in the CJIS enclave (SEC-12)."
   ],
   "AC-07C": [
     "pass",
@@ -391,10 +391,10 @@
     ""
   ],
   "BRD:FR-09.05": [
-    "partial",
+    "pass",
     "overdue flagged by the worker (watchReminders); console reminders screen says overdue in words with a symbol (screens/fieldops.tsx)",
-    "services/api/test/fieldops.db.test.ts (overdue on the worker clock)",
-    "No automated check of the reminders screen (the console browser spec does not visit it)."
+    "services/api/test/fieldops.db.test.ts (overdue on the worker clock); tests/e2e/console-screens.spec.ts (a reminder set two days back reads \"Overdue\" in words, the ⚠ symbol hidden from screen readers, with axe; then completed with what was done)",
+    "No sound is used, so none is the sole cue."
   ],
   "BRD:FR-09.06": [
     "partial",
@@ -440,9 +440,9 @@
   ],
   "BRD:FR-13.04": [
     "partial",
-    "console print view with name, agency, role, access, credentials, validity and the code as text; browser printing (screens/fieldops.tsx)",
-    "tests/e2e/console-l4.spec.ts (badges screen with axe)",
-    "The print view shows no photo and no QR image (the code is printed as text); checked only by the browser spec."
+    "console print view with name, agency, role, access, credentials, validity, the code as a QR image the field app scans and the same code as text beside it; browser printing (screens/fieldops.tsx, ui/qr.tsx)",
+    "tests/e2e/console-l4.spec.ts (badges screen with axe, desktop and phone)",
+    "No photo on the badge yet (BRD:FR-13.01)."
   ],
   "BRD:FR-13.05": [
     "partial",
@@ -493,10 +493,10 @@
     "Drafting from a spoken summary through the command window is layer 7; the one-minute target is not measured."
   ],
   "HAZ-01": [
-    "partial",
-    "hazards in routes/field-ops.ts with states and restricted detail; board hazard list (screens/dispatch.tsx); quick report (apps/field/app/report.tsx); phone warnings near the fix (home.tsx, field-core hazardsAround)",
-    "services/api/test/fieldops.db.test.ts (hazards), packages/field-core/test/geo.test.ts (hazard areas warn), services/api/test/dispatch-sync.db.test.ts (board hazards)",
-    "Hazards are shown by place, not on each mission and field assignment: the console mission detail and the phone's assignment screen do not list them yet."
+    "pass",
+    "hazards in routes/field-ops.ts with states and restricted detail; board hazard list (screens/dispatch.tsx); quick report (apps/field/app/report.tsx); phone warnings near the fix (home.tsx, field-core hazardsAround); each mission lists its own: the console mission detail's \"Hazards here\" (open hazards linked to the mission or within 300 m of its position; only linked ones when it has no position) and the phone's job screen \"Hazards at this job\" (from the area package, inside or within 100 m)",
+    "services/api/test/fieldops.db.test.ts (hazards), packages/field-core/test/geo.test.ts (hazard areas warn), services/api/test/dispatch-sync.db.test.ts (board hazards); tests/e2e/field.spec.ts (HAZ-01: a line down reported at the job is shown on its screen, with axe), tests/e2e/console-l5.spec.ts (the mission detail's hazards section, with axe)",
+    ""
   ],
   "PPL-01": [
     "partial",
@@ -505,16 +505,16 @@
     "Law-enforcement roles and details are stored in the CJIS enclave, layer 5 (plan §11)."
   ],
   "MIS-01": [
-    "partial",
+    "pass",
     "mission kinds (welfare check, verification route, cleanup work order, delivery, outreach sweep, site staffing, …), only inside an active event, immutable id and reference (0030, routes/missions.ts)",
-    "services/api/test/missions.db.test.ts (CALL-01), services/api/test/roster.db.test.ts (references)",
-    "Need claims from the layer-3 needs board (CON-08) are not yet missions."
+    "services/api/test/missions.db.test.ts (CALL-01), services/api/test/roster.db.test.ts (references); services/api/test/dispatch-sync.db.test.ts (DSP-01, DSP-03, MIS-01: an open need waits at about a block, becomes a mission and leaves the needs; a second mission refused, a replay not; closures by the latest report per road; a partner sees no county needs), tests/e2e/console-l4.spec.ts (a resident need on the board, made a mission, with axe)",
+    "An open need becomes a mission from the board in one step (`POST /needs/:id/mission`: the create route itself, linked to the need and its report, at the need's place, of the kind the need usually becomes; a need with a live mission answers with its reference; a replay returns the same mission)."
   ],
   "MIS-02": [
     "partial",
     "states draft, open, en route, on scene, cleared, closed, canceled; TRANSITIONS graph; reopen with a reason (routes/missions.ts)",
-    "services/api/test/missions.db.test.ts (draft, closure, reopen)",
-    "The transitions and cancel routes have no test; allowed skips are the proposed defaults (BRD:DEC-06)."
+    "services/api/test/missions.db.test.ts (draft, closure, reopen); services/api/test/missions.db.test.ts (MIS-02: transitions, refusals and cancel)",
+    "Allowed skips are the proposed defaults (BRD:DEC-06)."
   ],
   "MIS-03": [
     "pass",
@@ -544,7 +544,7 @@
     "partial",
     "badges with name, agency, role, credentials, access label, validity, hashed code shown once; revoke at once; verify (routes/field-ops.ts); walk-up badge (routes/volunteers.ts)",
     "services/api/test/fieldops.db.test.ts (badges), services/api/test/fieldrecords.db.test.ts (FL:FR-20 badge code shown once), tests/e2e/console-l4.spec.ts",
-    "No photo on the badge and the code is printed as text, not a QR image."
+    "The code prints as a QR image with the text beside it; no photo on the badge yet (BRD:FR-13.01)."
   ],
   "BDG-02": [
     "pass",
@@ -577,10 +577,10 @@
     "Screenshot blocking and reading managed (MDM) app configuration are not built; native behaviour is checked on a device by a person."
   ],
   "FLD-03": [
-    "partial",
-    "check-in by event code, QR method or coordinator with the credentials snapshot, check-out, ICS 214 entries (routes/roster.ts); apps/field/app/check-in.tsx",
-    "services/api/test/field.db.test.ts (FLD-03), services/api/test/roster.db.test.ts (check-in hours), tests/integration/layer4.int.test.ts (check in by event code), tests/e2e/field.spec.ts",
-    "The phone's check-in screen takes the typed event code; a camera scan of the staging QR is not wired there."
+    "pass",
+    "check-in by event code, QR method or coordinator with the credentials snapshot, check-out, ICS 214 entries (routes/roster.ts); each event's staging code set or replaced by a coordinator (`POST /events/:id/check-in-code`, action event.check_in_code; six letters and digits that cannot be confused, unique in the county, a replaced code stops working at once, audited without the code) and returned on the event; the console roster shows it as a printable sign, a QR code with the code in large letters beside it; apps/field/app/check-in.tsx scans the sign's QR code or takes the typed code, recording the check-in as `qr` or `event_code`",
+    "services/api/test/field.db.test.ts (FLD-03: check-in by code; the staging code set, replaced, refused for another event's code, a stale version or a closed event, and refused to a role without the grant; a replaced code no longer finds the event), services/api/test/roster.db.test.ts (check-in hours), tests/integration/layer4.int.test.ts (check in by event code), tests/e2e/field.spec.ts, tests/e2e/console-screens.spec.ts (staging sign on the roster with axe)",
+    "The camera scan itself is checked on a device by a person (native)."
   ],
   "FLD-04": [
     "partial",
@@ -669,8 +669,8 @@
   "DSP-01": [
     "partial",
     "GET /dispatch/board (teams by status with positions, queue, active work, hazards, open sites, alerts; routes/dispatch.ts); screens/dispatch.tsx list, filters and optional map",
-    "services/api/test/dispatch-sync.db.test.ts (DSP-01/02/03), tests/e2e/console-l4.spec.ts (board with axe)",
-    "Open needs without a mission and road closures are not on the board yet."
+    "services/api/test/dispatch-sync.db.test.ts (DSP-01/02/03), tests/e2e/console-l4.spec.ts (board with axe); services/api/test/dispatch-sync.db.test.ts (DSP-01, DSP-03, MIS-01: an open need waits at about a block, becomes a mission and leaves the needs; a second mission refused, a replay not; closures by the latest report per road; a partner sees no county needs), tests/e2e/console-l4.spec.ts (a resident need on the board, made a mission, with axe)",
+    "Open needs with no mission and road closures are on the board as lists (layer 7 follow-up, L45); they are not drawn on the board map yet, where every layer has its list."
   ],
   "DSP-02": [
     "pass",
@@ -679,10 +679,10 @@
     ""
   ],
   "DSP-03": [
-    "partial",
+    "pass",
     "unassigned queue sorted by priority, urgency and age (routes/dispatch.ts)",
-    "services/api/test/dispatch-sync.db.test.ts (DSP-03 suggestion; queue by priority), tests/e2e/console-l4.spec.ts",
-    "The queue lists missions only; needs without a mission stay on the needs board, and a staffing gap must be a site_staffing mission."
+    "services/api/test/dispatch-sync.db.test.ts (DSP-03 suggestion; queue by priority), tests/e2e/console-l4.spec.ts; services/api/test/dispatch-sync.db.test.ts (DSP-01, DSP-03, MIS-01: an open need waits at about a block, becomes a mission and leaves the needs; a second mission refused, a replay not; closures by the latest report per road; a partner sees no county needs), tests/e2e/console-l4.spec.ts (a resident need on the board, made a mission, with axe)",
+    "Open needs with no mission sit under the queue with \"Make a mission\" (`POST /needs/:id/mission`); a staffing gap is still a site_staffing mission."
   ],
   "DSP-04": [
     "partial",
@@ -763,10 +763,10 @@
     "Seeded job aids are exercise drafts until the county approves them."
   ],
   "FL-16": [
-    "partial",
-    "time on shift on the home screen (apps/field/app/home.tsx); personnel hours limit raises an over-hours assignment conflict (routes/missions.ts)",
-    "services/api/test/field.db.test.ts (check-out counts the hours)",
-    "Rest reminders after the tenant-set limit and a private way to ask for peer support are not built."
+    "pass",
+    "time on shift on the home screen (apps/field/app/home.tsx); personnel hours limit raises an over-hours assignment conflict (routes/missions.ts); rest reminder on the home screen once time on shift passes the county's `field.rest_after_hours` (12 unless set) or the person's own lower hours limit, sent in the area package (routes/field-sync.ts); a private request for peer support (migration 0088 cg.peer_support_request; routes/peer-support.ts; apps/field/app/peer-support.tsx; console Peer support screen): how and when to be reached, no words; queued on the phone while offline; only the crisis-counselor template reads it (the counseling category, ADM-05 G7), never the lead, dispatch, coordinators or administrators; the worker sees and withdraws their own; reads audited as counseling; a closed request deleted after `peer_support` (30 days)",
+    "services/api/test/peer-support.db.test.ts (FL-16: how and when only, one request at a time, replay by the phone's id; only the peer-support role sees who asked and their phone, a role given the action without the template sees nothing; contacted, closed, withdrawn; reads audited as counseling; 30-day default), services/worker/test/retention.db.test.ts (FL-16: closed 40 days ago goes, recent and open stay), tests/e2e/console-screens.spec.ts (Peer support screen with axe for the peer-support role; refused with its heading for another)",
+    "Plan reading 23. Counties provisioned before this change get the grants through a role change approved by a second administrator."
   ],
   "FL-17": [
     "partial",
@@ -781,10 +781,10 @@
     "There is no 'searched' map layer yet."
   ],
   "FL:FR-02": [
-    "partial",
+    "pass",
     "EMS medical assist template; people involved on a mission with injury and transport only (apps/field/app/people/[id].tsx, routes/missions.ts people)",
-    "services/api/test/missions.db.test.ts (people involved by category)",
-    "No test runs the EMS role's narrow access."
+    "services/api/test/missions.db.test.ts (people involved by category); services/api/test/missions.db.test.ts (FL:FR-02, DSP-13: EMS reads only its assigned mission; people by injury and transport without details or health notes; no mission of its own and no dispatch board)",
+    ""
   ],
   "FL:FR-03": [
     "partial",
@@ -801,14 +801,14 @@
   "FL:FR-05": [
     "partial",
     "road_status with reopen and debris_ticket with cubic yards (0033, routes/field-records.ts); app forms (apps/field/src/records.ts)",
-    "apps/field/test/records.test.ts (debris ticket form)",
-    "No database test of road status or debris tickets; debris pickup from resident reports is not linked; the Waze update is deferred (Waze for Cities agreement, plan §11) and its file stand-in is not built."
+    "apps/field/test/records.test.ts (debris ticket form); services/api/test/fieldrecords.db.test.ts (FL:FR-05: a road reported and cleared once; 40 cubic yards at 75% is 30; the PIO refused)",
+    "Debris pickup from resident reports is not linked; the Waze update is deferred (Waze for Cities agreement, plan §11) and its file stand-in is not built."
   ],
   "FL:FR-06": [
     "partial",
     "inspection with checklist answers and illness as an aggregate count only (0033, routes/field-records.ts)",
-    "",
-    "No test records an inspection; targeted boil-water and safety notices are not built."
+    "services/api/test/fieldrecords.db.test.ts (FL:FR-06: an inspection keeps illness as a count; the table has no person column; the PIO refused)",
+    "Targeted boil-water and safety notices are not built."
   ],
   "FL:FR-08": [
     "partial",
@@ -817,10 +817,10 @@
     "Lost-and-found matching and a shelter pet census are not built."
   ],
   "FL:FR-09": [
-    "partial",
+    "pass",
     "site_walkthrough with before/after, photos, key holders and issues (0033, 0038, routes/field-records.ts)",
-    "",
-    "No test records a walk-through."
+    "services/api/test/fieldrecords.db.test.ts (FL:FR-09: before and after walk-throughs recorded and listed for the site)",
+    ""
   ],
   "FL:FR-13": [
     "pass",
@@ -871,10 +871,10 @@
     ""
   ],
   "FL:FR-28": [
-    "partial",
+    "pass",
     "canvass_visit outcomes; 'no one home' schedules a revisit reminder; assisted intake opens the resident form in shared-device mode (routes/field-records.ts, apps/field/src/records.ts)",
-    "services/api/test/fieldrecords.db.test.ts (FL:FR-28)",
-    "Door hangers are recorded as left; printing door hangers with QR codes is not built."
+    "services/api/test/fieldrecords.db.test.ts (FL:FR-28); tests/e2e/console.spec.ts (FL:FR-28: the door hanger with both codes and the 911 line, axe)",
+    "Door hangers print from Intake setup (L46): English beside Spanish, each with a code that opens the report in that language, the text keyword and number with a code that starts the text, and the 911 line, under the county's name."
   ],
   "CON-16": [
     "partial",
@@ -886,7 +886,7 @@
     "partial",
     "shelter door: register with a wristband code, look up, census from open stays, dietary, access and pet needs, quiet incident log, check-out (routes/field-records.ts, apps/field/app/shelter.tsx); confirmed census to the county (0039)",
     "services/api/test/fieldrecords.db.test.ts (FL:FR-14 door and census), services/api/test/siteoperator.db.test.ts (FL:FR-14 operator)",
-    "The wristband is looked up by typed code; the camera scan is only on the checkpoint screen."
+    "The door looks a wristband up by scanning its printed code or typing it (apps/field/app/shelter.tsx); printed wristbands wait for the badge printer work (Brother printers, queued after layer 8)."
   ],
   "FL:FR-15": [
     "pass",
@@ -895,16 +895,16 @@
     ""
   ],
   "FL-02": [
-    "not started",
-    "",
-    "",
-    "Carried into layer 4 by plan §1, but nothing finds a resident record by phone plus a one-time code or by address plus name yet (the personnel phone blind index is a different lookup)."
+    "pass",
+    "services/api/src/routes/survivor-lookup.ts: explicit action survivor.find (canvasser, call taker, mass care, AFN, assessment reviewer, damage-assessment coordinator); by phone, the county texts the survivor the one-time code message through its own number (the code encrypted in the queue, 10 minutes, five tries, one use) and the reports on that phone the worker may read are listed only once the survivor reads it back; by address and name, reports at that street whose sender's name matches (decrypted per candidate, accents and order ignored, ZIP optional) are offered with their date and channel only, and the reference code is shown when the worker confirms the survivor recognised it; the same answer whether or not a phone is on file (RULE-17); 10 texts and 20 searches an hour per worker; every step audited as survivor.find; console screen \"Find a survivor's record\" (apps/web-console/src/screens/find-survivor.tsx) and the field app's (apps/field/app/find.tsx, English and Spanish), each reading back only the day and channel before the survivor confirms",
+    "services/api/test/survivor-lookup.db.test.ts (FL-02: code encrypted in the queue, same answer for an unknown number, wrong code refused, right code lists the readable reports and never a withdrawn one, a code works once, locked after five tries; address and name offers date and channel only, other names and ZIPs find nothing, confirmation shows the code and is audited with its note; PIO refused, a canvasser offered only their event's report; the hourly limit), tests/e2e/console-l7.spec.ts (FL-02: a resident's report found by address and name, the code and the street never shown before confirmation, a wrong texted code refused, axe on both projects), tests/e2e/field.spec.ts (FL-02 on the phone with the server's answers stubbed, axe), docs/a11y/screens/find-survivor.md",
+    "Partner organizations find a survivor through what the survivor shared with them (FL-03), not through this lookup."
   ],
   "FL-09": [
-    "not started",
-    "",
-    "",
-    "Carried into layer 4 by plan §1, but there is no consented document-photo capture into a survivor's record yet (field photos attach to field records only)."
+    "pass",
+    "migration 0082 cg.shared_document (kind, the consent words in the survivor's language, spoken or tapped, who and when, the photo; retention category photos); services/api/src/routes/shared-documents.ts: explicit actions document.capture (canvasser, mass care, AFN, assessment reviewer, damage-assessment coordinator) and document.read (assessment reviewer, damage-assessment coordinator); the photo is linked as field record type shared_document, never by report_id, so it is not a damage photo and never reaches the review gallery or a FEMA package; only the person who asked sends the bytes; processed like other photos (metadata stripped) but never sent to an AI service (worker photos.ts); every view audited with a five-minute link; field app apps/field/app/document.tsx (from a found record: which document, the survivor's language, the question shown for them to read, said or tapped yes, the camera only, never the photo library, nothing kept on the phone, English and Spanish); console report screen \"Documents they shared\", shown only when asked for (review.tsx SharedDocuments)",
+    "services/api/test/shared-documents.db.test.ts (FL-09: consent kept with the document, a resend is the same document, only the asker uploads, stored under the document's own key and queued for processing, absent from the report's photos, the audit names the kind and method but not the words; only document readers see it, the link once processed, views audited; PIO refused, a canvasser outside the event refused, a withdrawn report refused, consent words required), tests/e2e/field.spec.ts (FL-09: the Spanish question, \"no\" takes nothing, \"yes\" opens the camera picker and sends the consent with the photo; axe), tests/e2e/console-l7.spec.ts (FL-09: a role without document.read is told documents are not shown; axe)",
+    "A survivor withdrawing a shared document later is not built yet (a staff member can be asked; there is no screen for it)."
   ],
   "CON-03": [
     "partial",

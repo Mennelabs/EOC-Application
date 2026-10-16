@@ -194,6 +194,15 @@ export const COMMAND_EVAL_CATALOG: { usage: string; title: string }[] = [
     usage: '/needs claimed [category:<category>] [postal:<code>] release [note]',
     title: 'Release the needs your organization holds that a filter names',
   },
+  { usage: '/export ida', title: 'Prepare the IDA package' },
+  {
+    usage: '/export sitrep|briefing [number|latest] [pdf|csv]',
+    title: 'Export an issued report',
+  },
+  {
+    usage: '/export records <request> <kinds> [from:YYYY-MM-DD] [to:YYYY-MM-DD]',
+    title: 'Prepare a public-records release',
+  },
 ];
 
 export const commandEvaluationCases: CommandEvalCase[] = [

@@ -49,3 +49,11 @@ The executor lives in the API process and adds no service. The language model si
 - Batches are phase 4, so they are off until a county turns that phase on, and they need the explicit action `command.bulk` as well as each record's own action. The shipped templates grant it to the county EM director, mass care coordinator, NGO incident commander and COAD chair.
 - Limits follow Section 30.2. Up to 50 records take one confirmation. From 51 to 500, the person must also type the count. Over 500 is refused, so the person narrows the filter or uses the screen. The limit of 30 confirmed commands a minute counts a batch as one command.
 - The result names every record that was not changed and why. The execution ends as succeeded, partially succeeded (migration 0075) or failed. It is never "rolled back", because each change that succeeded stands, and the reverse batch (release) is the compensating action.
+
+## Addendum 2026-10-16: exports (CMD-16)
+
+- Section 30.2 places exports with neither lookups nor drafts. The window treats them as confirmed changes: the IDA package and an issued report's file are phase 3 with one tap, and a public-records release is phase 4 with the full review and a reason (RULE-14), which its route also demands. All are off until a county turns their phase on.
+- The plan states the scope and the period: the IDA package covers every jurisdiction and the whole event; a report is named by its kind and number (or the latest issued one) and shows its own period; a release names its request, the kinds of record and the dates.
+- Reports are a target kind of their own, listed through the console's route and narrowed to issued or superseded ones, so a draft is never found (RULE-10).
+- An export is answered as queued, never done. The answer names the screen that lists the file once the worker builds it, and nothing is sent anywhere.
+- The request reference of a release is free text (it may carry a requester's name), so the execution keeps only its digest once the command has run (CMD-37).

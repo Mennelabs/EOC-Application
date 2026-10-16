@@ -59,7 +59,7 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
 
   const call = async (
     who: string,
-    method: 'GET' | 'POST' | 'DELETE',
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE',
     url: string,
     payload?: unknown,
     headers: Record<string, string> = {},
@@ -1082,5 +1082,146 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
       'command_alias.create',
       'command_alias.retire',
     ]);
+  });
+
+  it('CMD-16, RULE-10, SEC-13: exports state their scope and period, wait for a confirmation and are queued, never "done"; a draft is never exported; a records release is reviewed with a reason', async () => {
+    subjects['director'] = { ...subjects['admin']!, accountId: randomUUID(), roles: [] };
+    const t = roleTemplates.find((x) => x.key === 'county_em_director')!;
+    subjects['director'].roles = [
+      {
+        roleId: randomUUID(),
+        key: t.key,
+        version: 1,
+        templateKey: t.key,
+        grants: t.grants,
+        scope: { eventIds: [eventId] },
+      },
+    ];
+    const reason = { 'x-confirm': 'true', 'x-reason': 'Exercise: records office request' };
+    const phases = (on: number[]) =>
+      withTenant(dbWorker, { tenantId: county }, async (trx) => {
+        await trx
+          .deleteFrom('cg.tenant_config')
+          .where('tenant_id', '=', county)
+          .where('key', '=', 'command.phases')
+          .execute();
+        await trx
+          .insertInto('cg.tenant_config')
+          .values({ tenant_id: county, key: 'command.phases', value: JSON.stringify(on) })
+          .execute();
+      });
+    await phases([1, 2, 3]);
+    const files = () =>
+      dbWorker
+        .selectFrom('cg.export_file')
+        .select(['id', 'kind', 'format', 'report_id', 'scope', 'status'])
+        .where('event_id', '=', eventId)
+        .execute();
+
+    // Only drafts so far: nothing issued, so nothing to export (RULE-10).
+    const early = await command('director', '/export sitrep latest');
+    expect(early.status, early.message).toBe('not_found');
+    expect(early.message).toContain('No issued report you can see');
+
+    // A sitrep drafted by the planner, approved and issued by the director.
+    const draft = await command('planner', '/sitrep 3');
+    const reportId = draft.result!.records[0]!.id;
+    let r = (await call('planner', 'GET', `/official-reports/${reportId}`)).body;
+    // F15.02: the author confirms the summary in their own words before it is approved.
+    const summary = (r['sections'] as { key: string; content: { text: string } }[]).find(
+      (x) => x.key === 'summary',
+    )!;
+    r = (
+      await call(
+        'planner',
+        'PUT',
+        `/official-reports/${reportId}/sections/summary`,
+        { text: `${summary.content.text} Exercise: confirmed by the planner.` },
+        { 'if-match': `"${r['version'] as number}"` },
+      )
+    ).body;
+    r = (
+      await call(
+        'director',
+        'POST',
+        `/official-reports/${reportId}/review`,
+        { decision: 'approve' },
+        { 'if-match': `"${r['version'] as number}"` },
+      )
+    ).body;
+    const issued = await call(
+      'director',
+      'POST',
+      `/official-reports/${reportId}/issue`,
+      undefined,
+      {
+        'if-match': `"${r['version'] as number}"`,
+        ...reason,
+      },
+    );
+    expect(issued.status, JSON.stringify(issued.body)).toBe(200);
+    const sequence = issued.body['sequence'] as number;
+
+    const report = await command('director', `/export sitrep ${sequence} csv`);
+    expect(report.status, report.message).toBe('awaiting_confirmation');
+    expect(report.plan?.description).toMatch(
+      new RegExp(`Situation report ${sequence} \\(issued\\), .+ to .+ as CSV`),
+    );
+    expect(report.plan?.target?.id).toBe(reportId);
+    const latest = await command('director', '/exportar informe ultimo');
+    expect(latest.plan?.target?.id).toBe(reportId);
+    const queued = await confirm('director', report);
+    expect(queued.body['status'], JSON.stringify(queued.body)).toBe('succeeded');
+    const result = queued.body['result'] as Execution['result'];
+    expect(result?.state).toBe('queued');
+    expect(result?.records).toEqual([
+      { kind: 'official_report', id: reportId, label: 'The report file' },
+    ]);
+    expect(queued.body['message']).toContain('nothing is sent anywhere');
+
+    const ida = await command('director', '/export ida');
+    expect(ida.status, ida.message).toBe('awaiting_confirmation');
+    expect(ida.plan?.description).toContain('Scope: every jurisdiction in the event');
+    expect(ida.plan?.description).toContain('Period: the whole event');
+    expect((await confirm('director', ida)).body['status']).toBe('succeeded');
+
+    // A records release is phase 4: off until the county turns it on.
+    const line = `/export records PRR-${run} reports needs from:2026-01-01 to:2026-12-31`;
+    expect((await command('director', line)).status).toBe('unsupported');
+    await phases([1, 2, 3, 4]);
+    expect((await command('mc', line)).status).toBe('denied');
+    const release = await command('director', line);
+    expect(release.status, release.message).toBe('awaiting_confirmation');
+    expect(release.plan?.description).toBe(
+      `Prepare a public-records release for request PRR-${run}. Scope: resident reports, needs in the open event. Period: 2026-01-01 to 2026-12-31. Restricted, sensitive and criminal-justice details are withheld.`,
+    );
+    expect((await confirm('director', release)).status).toBe(428);
+    const prepared = await confirm('director', release, reason);
+    expect(prepared.body['status'], JSON.stringify(prepared.body)).toBe('succeeded');
+    expect((prepared.body['result'] as Execution['result'])?.records[0]?.kind).toBe(
+      'public_records',
+    );
+    // CMD-37: the request reference may carry a requester's name; the execution keeps its digest.
+    const kept = await stored(release.id!);
+    expect(JSON.stringify(kept.plan)).not.toContain(`PRR-${run}`);
+    expect(
+      (await command('director', '/export records PRR-1 reports from:2026-12-31 to:2026-01-01'))
+        .status,
+    ).toBe('clarify');
+
+    const made = await files();
+    expect(made.map((f) => `${f.kind}:${f.format}`).sort()).toEqual([
+      'ida_package:zip',
+      'official_report:csv',
+      'public_records:zip',
+    ]);
+    expect(made.find((f) => f.kind === 'official_report')?.report_id).toBe(reportId);
+    expect(made.find((f) => f.kind === 'public_records')?.scope).toMatchObject({
+      requestReference: `PRR-${run}`,
+      recordTypes: ['reports', 'needs'],
+      from: '2026-01-01',
+      to: '2026-12-31',
+    });
+    await phases([1, 2, 3]);
   });
 });

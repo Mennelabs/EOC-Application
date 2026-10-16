@@ -12,10 +12,11 @@
  * result from the operation's own response (CMD-26).
  */
 import { z } from 'zod';
+import { RECORD_TYPES, RECORD_TYPE_KEYS, type RecordType } from '@cg/reporting';
 
 export type Confirmation = 'none' | 'one_tap' | 'full_review' | 'second_person';
 export type Reversal = 'undo_15_min' | 'compensating' | 'none';
-export type TargetKind = 'mission' | 'need' | 'reminder' | 'check_in';
+export type TargetKind = 'mission' | 'need' | 'reminder' | 'check_in' | 'official_report';
 
 /** A resolved record the command acts on, with the version it had when the plan was made. */
 export interface Target {
@@ -115,6 +116,21 @@ const rows = (r: unknown): Row[] => (Array.isArray(r) ? (r as Row[]) : []);
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
 const ver = (v: unknown) => (typeof v === 'number' ? v : undefined);
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * CMD-16, CMD-26: an export is queued, never "done"; the file is listed where it was asked for
+ * (the declaration screen, the report, or the records requests) once the worker builds it.
+ */
+const queuedExport =
+  (what: string, where: string, link: (d: Row) => { kind: string; id: string }) =>
+  (r: unknown): Verified => {
+    const d = (r ?? {}) as Row;
+    return {
+      state: 'queued',
+      summary: `${what} is being prepared. It is listed on ${where} when it is ready; nothing is sent anywhere.`,
+      records: [{ ...link(d), label: what }],
+    };
+  };
 
 /** Each spec is checked against its own argument type, then kept in the catalog erased. */
 const define = <A>(spec: CommandSpec<A>): CommandSpec => spec as unknown as CommandSpec;
@@ -1053,6 +1069,116 @@ export const CATALOG = [
     },
     describe: () => 'Release needs.',
     verify: () => ({ state: 'saved', summary: '', records: [] }),
+  }),
+
+  // CMD-16: exports with an explicit scope and period. Section 30.2 lists exports with
+  // neither lookups nor drafts, so they are confirmed and sit in phase 3 (IDA package, an
+  // issued report) and phase 4 (a public-records release, reviewed with a reason, RULE-14).
+  define<Record<string, never>>({
+    name: 'ida.export',
+    version: 1,
+    phase: 3,
+    action: 'declaration.export',
+    kind: 'change',
+    title: 'Prepare the IDA package',
+    usage: '/export ida',
+    args: z.object({}),
+    needsEvent: true,
+    confirmation: 'one_tap',
+    reversal: 'none',
+    sideEffects:
+      'Builds the IDA package of the open event (counts and generalized places, no personal details) from the records as they stand when it is built. It is not sent to FEMA or anyone else.',
+    request: (_a, _t, ctx) => ({
+      method: 'POST',
+      path: `/events/${ctx.eventId ?? ''}/exports`,
+      body: { clientUuid: ctx.executionId },
+    }),
+    describe: () =>
+      'Prepare the IDA package for the open event. Scope: every jurisdiction in the event. Period: the whole event, up to when the package is built.',
+    verify: queuedExport('The IDA package', 'Declaration data', (d) => ({
+      kind: 'ida_package',
+      id: str(d['id']),
+    })),
+  }),
+
+  define<{ format: 'pdf' | 'csv' }>({
+    name: 'report.export',
+    version: 1,
+    phase: 3,
+    action: 'official_report.export',
+    kind: 'change',
+    title: 'Export an issued report',
+    usage: '/export sitrep|briefing [number|latest] [pdf|csv]',
+    args: z.object({ format: z.enum(['pdf', 'csv']).default('pdf') }),
+    target: 'official_report',
+    confirmation: 'one_tap',
+    reversal: 'none',
+    sideEffects:
+      'Builds a file of the report as it was issued, from its frozen copy (RULE-10); drafts are never exported. It is not sent anywhere.',
+    request: (a, t, ctx) => ({
+      method: 'POST',
+      path: `/official-reports/${t!.id}/exports`,
+      body: { clientUuid: ctx.executionId, format: a.format },
+    }),
+    describe: (a, t) =>
+      `Export ${t?.label ?? 'the report'} as ${a.format.toUpperCase()}. Scope and period: the report as issued.`,
+    verify: queuedExport('The report file', 'the report', (d) => ({
+      kind: 'official_report',
+      id: str(d['reportId']),
+    })),
+  }),
+
+  define<{
+    requestReference: string;
+    recordTypes: RecordType[];
+    from?: string | undefined;
+    to?: string | undefined;
+  }>({
+    name: 'public_records.export',
+    version: 1,
+    phase: 4,
+    action: 'public_records.export',
+    kind: 'change',
+    title: 'Prepare a public-records release',
+    usage: '/export records <request> <kinds> [from:YYYY-MM-DD] [to:YYYY-MM-DD]',
+    args: z
+      .object({
+        requestReference: z.string().trim().min(1).max(80),
+        recordTypes: z.array(z.enum(RECORD_TYPE_KEYS as [RecordType, ...RecordType[]])).min(1),
+        from: z.iso.date().optional(),
+        to: z.iso.date().optional(),
+      })
+      .refine((a) => !a.from || !a.to || a.from < a.to, {
+        message: 'The period ends before it starts.',
+      }),
+    needsEvent: true,
+    confirmation: 'full_review',
+    reversal: 'none',
+    sideEffects:
+      'Builds a ZIP of the kinds of record named, for the open event and the period, with restricted, sensitive and criminal-justice details withheld column by column. A person reviews it before anything is released.',
+    // A request reference is what the records office typed; it may carry a requester's name.
+    freeText: ['requestReference'],
+    request: (a, _t, ctx) => ({
+      method: 'POST',
+      path: `/events/${ctx.eventId ?? ''}/public-records`,
+      body: {
+        clientUuid: ctx.executionId,
+        requestReference: a.requestReference,
+        recordTypes: a.recordTypes,
+        ...(a.from ? { from: a.from } : {}),
+        ...(a.to ? { to: a.to } : {}),
+      },
+    }),
+    describe: (a) =>
+      `Prepare a public-records release for request ${a.requestReference}. Scope: ${a.recordTypes
+        .map((t) => RECORD_TYPES[t].label.toLowerCase())
+        .join(
+          ', ',
+        )} in the open event. Period: ${a.from || a.to ? `${a.from ?? 'the start of the event'} to ${a.to ?? 'now'}` : 'the whole event'}. Restricted, sensitive and criminal-justice details are withheld.`,
+    verify: queuedExport('The public-records release', 'Records requests', (d) => ({
+      kind: 'public_records',
+      id: str(d['id']),
+    })),
   }),
 ] satisfies readonly CommandSpec[];
 

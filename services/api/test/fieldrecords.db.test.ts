@@ -106,6 +106,9 @@ describe.skipIf(!appUrl || !workerUrl)('frontline role records (database-backed)
       ['pio', 'public_information_officer'],
       ['reception', 'volunteer_reception'],
       ['inspector', 'building_inspector'],
+      ['roads', 'road_crew'],
+      ['health', 'public_health_inspector'],
+      ['host', 'facility_host'],
     ] as const) {
       const email = `${who}.fieldrecords@example.org`;
       const existing = await dbWorker
@@ -622,5 +625,107 @@ describe.skipIf(!appUrl || !workerUrl)('frontline role records (database-backed)
     // Queued when the resident opted in; otherwise the reason why not. Never refused for the role.
     expect(r['residentMessage']).toBeDefined();
     expect(r['residentMessage']).not.toBe('not_allowed');
+  });
+
+  it('FL:FR-05, FL:FR-06, FL:FR-09: a road is reported and cleared once; a debris load works out its cubic yards; an inspection keeps illness as a count; a walk-through is kept before and after; other roles cannot', async () => {
+    const road = await create('roads', 'road_status', {
+      clientUuid: randomUUID(),
+      eventId,
+      name: 'Exercise Old Mill Rd at the creek',
+      status: 'impassable',
+      reason: 'Exercise: tree across both lanes',
+    });
+    expect(road).toMatchObject({ status: 'impassable', name: 'Exercise Old Mill Rd at the creek' });
+    const cleared = await call(
+      'roads',
+      'POST',
+      `/api/v1/field-records/road_status/${road['id']}/clear`,
+    );
+    expect(cleared.status, cleared.body).toBe(200);
+    expect(cleared.json()['status']).toBe('cleared');
+    const again = await call(
+      'roads',
+      'POST',
+      `/api/v1/field-records/road_status/${road['id']}/clear`,
+    );
+    expect(again.status).toBe(409);
+    expect(
+      (
+        await call('pio', 'POST', '/api/v1/field-records/road_status', {
+          clientUuid: randomUUID(),
+          eventId,
+          name: 'Exercise Pine St',
+          status: 'closed',
+        })
+      ).status,
+    ).toBe(403);
+
+    // A 40 cubic-yard truck at 75% carries 30 cubic yards (FEMA PA load ticket).
+    const load = await create('roads', 'debris_ticket', {
+      clientUuid: randomUUID(),
+      eventId,
+      ticketNumber: `EX-${randomUUID().slice(0, 6)}`,
+      debrisType: 'vegetative',
+      truckId: 'EX-TRUCK-7',
+      truckCapacityCy: 40,
+      loadPercent: 75,
+      disposalSite: 'Exercise burn site',
+    });
+    expect(load['cubicYards']).toBe(30);
+
+    // Illness is a number, never a person (EQ-13).
+    const inspection = await create('health', 'inspection', {
+      clientUuid: randomUUID(),
+      eventId,
+      siteId,
+      kind: 'shelter',
+      checklist: { handwashing: 'yes', food_temps: 'no' },
+      result: 'corrective',
+      illnessCount: 3,
+    });
+    expect(inspection).toMatchObject({ result: 'corrective', illnessCount: 3 });
+    const columns = await dbWorker
+      .selectFrom('information_schema.columns' as never)
+      .select('column_name' as never)
+      .where('table_schema' as never, '=', 'cg' as never)
+      .where('table_name' as never, '=', 'inspection' as never)
+      .execute();
+    expect(columns.map((c) => (c as { column_name: string }).column_name)).not.toContain(
+      'person_id',
+    );
+
+    const before = await create('host', 'site_walkthrough', {
+      clientUuid: randomUUID(),
+      siteId,
+      phase: 'before',
+      keyHolders: 'Exercise: custodian and the principal',
+      issues: 'Exercise: gym door sticks',
+    });
+    const after = await create('host', 'site_walkthrough', {
+      clientUuid: randomUUID(),
+      siteId,
+      phase: 'after',
+      issues: 'Exercise: scuffed floor in the gym',
+    });
+    expect([before['phase'], after['phase']]).toEqual(['before', 'after']);
+    const walks = await call(
+      'host',
+      'GET',
+      `/api/v1/field-records/site_walkthrough?siteId=${siteId}`,
+    );
+    expect(walks.status).toBe(200);
+    expect(walks.json<{ id: string }[]>().map((w) => w.id)).toEqual(
+      expect.arrayContaining([before['id'], after['id']]),
+    );
+    expect(
+      (
+        await call('pio', 'POST', '/api/v1/field-records/inspection', {
+          clientUuid: randomUUID(),
+          eventId,
+          kind: 'shelter',
+          result: 'pass',
+        })
+      ).status,
+    ).toBe(403);
   });
 });

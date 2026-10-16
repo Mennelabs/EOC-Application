@@ -662,9 +662,11 @@ export const missionRoutesWith =
         state: loc.stateCode ?? null,
         postal: loc.postal ?? null,
         landmark: [loc.landmark, loc.crossStreets].filter(Boolean).join(' / ') || null,
-        geom: loc.position
-          ? sql`ST_SetSRID(ST_MakePoint(${loc.position.lon}, ${loc.position.lat}), 4326)`
-          : null,
+        // AC-03B: a location said to be unknown is never stored as a point, even if one was sent.
+        geom:
+          loc.position && state !== 'unknown'
+            ? sql`ST_SetSRID(ST_MakePoint(${loc.position.lon}, ${loc.position.lat}), 4326)`
+            : null,
         precision: precision as 'exact' | 'approximate' | 'area' | 'unknown',
         source: 'reviewer' as const,
         no_fixed_address: !loc.line1,

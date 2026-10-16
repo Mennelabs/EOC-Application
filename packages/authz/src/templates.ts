@@ -244,6 +244,9 @@ const templates: readonly RoleTemplate[] = [
       // CON-07: coverage alerts say where to verify next.
       g('metric.read'),
       g('equity.read'),
+      // CON-05: opens a verification route for the reports sent to the field.
+      g('mission.create'),
+      g('mission.read'),
     ],
   },
   {

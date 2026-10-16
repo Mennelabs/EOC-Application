@@ -55,12 +55,20 @@ export default function Sweep() {
       const stored = await f.list<{ id: string; state: Saved }>('sweeps');
       const existing = stored.find((x) => x.id === key);
       if (existing) return setSweep(existing.state);
-      const missions = await f.list<Mission & { route?: { area?: string } | null }>('missions');
+      const missions = await f.list<
+        Mission & { route?: { area?: string; stops?: unknown[] } | null }
+      >('missions');
       const mission = missions.find((m) => m.id === missionId);
       const parcels = await f.list<Parcel>('parcels');
       const area = mission?.route?.area;
+      // CON-05: a route opened from the review queue names its parcels; walk those only.
+      const named = new Set(
+        (mission?.route?.stops ?? []).filter((x): x is string => typeof x === 'string'),
+      );
       const stops = parcels
-        .filter((p) => p.centroid && (!area || p.areaKey === area))
+        .filter(
+          (p) => p.centroid && (named.size ? named.has(p.parcelId) : !area || p.areaKey === area),
+        )
         .map((p) => ({ parcelId: p.parcelId, position: p.centroid! }));
       const start = lastFix() ??
         mission?.location?.position ??

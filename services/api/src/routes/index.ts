@@ -27,6 +27,7 @@ import { fieldOpsRoutes } from './field-ops.ts';
 import { fieldRecordRoutes, type FieldRecordDeps } from './field-records.ts';
 import { fieldSyncRoutes, type FieldSyncDeps } from './field-sync.ts';
 import { fieldVoiceRoutes, type FieldVoiceDeps } from './field-voice.ts';
+import { fieldVisitRoutes } from './field-visits.ts';
 import { intakeGraphRoutes } from './intake-graphs.ts';
 import { meRoutes } from './me.ts';
 import { messageRoutes } from './messages.ts';
@@ -105,6 +106,8 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   geocodeRoutes(deps.geocode),
   // CON-17, SCL-13: the county's parcels and route areas from its GIS.
   parcelRoutes,
+  // CON-05: reports sent to the field, grouped by route area, opened as routes.
+  fieldVisitRoutes,
   fieldOpsRoutes,
   fieldAssessmentRoutes,
   fieldVoiceRoutes(deps.fieldVoice),

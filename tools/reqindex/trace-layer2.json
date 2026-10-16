@@ -331,10 +331,10 @@
     "The event template table exists and an event stores its template, but nothing applies a template's presets (map layers, public messages, keywords); the hazard type chooses the intake branches. No test times opening an event in under 5 minutes."
   ],
   "CON-05": [
-    "partial",
-    "review queue with need-signal order and filters (routes/reports.ts, apps/web-console/src/screens/review.tsx); layer 4: verification results sync from the offline field app (routes/field-sync.ts, apps/field)",
-    "services/api/test/reports.db.test.ts (queue order and filters), tests/e2e/console.spec.ts (review journey), services/api/test/fieldwork.db.test.ts (A7, DCL:DEC-02/03: linked report becomes field verified), tests/e2e/field.spec.ts (saved offline, then sent)",
-    "Routing from the review queue is not built: there is no \"send to the field\" review decision and no route suggestion grouping the reports that need a visit; teams get field work through dispatch."
+    "pass",
+    "review queue with need-signal order and filters (routes/reports.ts, apps/web-console/src/screens/review.tsx); layer 4: verification results sync from the offline field app (routes/field-sync.ts, apps/field); field-team routing (migration 0099, routes/field-visits.ts): a `field_visit` review decision keeps the report in review waiting for a visit; GET /reports/field-visits groups the waiting reports by the route area of their parcel (named, under the point, or the parcel of record at the typed street line), else by ZIP, with the open routes covering them; POST /reports/field-visits/routes opens a verification route for those not yet routed, stops = their parcels, no-photo first, and names the found parcel on each location so the visit links back; the phone's sweep walks a route's stops only and the area package carries each assigned route's area; the review queue shows 'Waiting for a field visit' with 'Open a route for <area>' (plan reading 31)",
+    "services/api/test/reports.db.test.ts (queue order and filters), tests/e2e/console.spec.ts (review journey), services/api/test/fieldwork.db.test.ts (A7, DCL:DEC-02/03: linked report becomes field verified), tests/e2e/field.spec.ts (saved offline, then sent); services/api/test/field-visits.db.test.ts (CON-05: sent with a reason and confirmation, stays in review, a verified report refused; grouped by area (named parcel, point, typed address) else ZIP; the route refused without the mission role, opened with the parcels as stops, not twice; locations name their parcel; a verified report stops waiting), tests/e2e/console.spec.ts (CON-05: a resident's report sent to the field, waiting under its route area, a route opened, with axe)",
+    "A report with no parcel in a route area is listed by ZIP and cannot be routed until its place is fixed (plan reading 31)."
   ],
   "CON-10": [
     "pass",

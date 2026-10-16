@@ -837,9 +837,14 @@ export const fieldSyncRoutes =
             .execute();
           const eventId =
             q.eventId ?? assignments[0]?.event_id ?? (await myEventIds(trx, me))[0] ?? null;
-          // The areas: named, else those holding a parcel the assignments point at.
-          let areaKeys: string[] = q.areaKey ? [q.areaKey] : [];
+          // The areas: named, else the route areas of the assigned routes and those holding a
+          // parcel the assignments point at.
+          const areaKeys: string[] = q.areaKey ? [q.areaKey] : [];
           if (!areaKeys.length) {
+            for (const a of assignments) {
+              const area = (a.route as { area?: unknown } | null)?.area;
+              if (typeof area === 'string' && area && !areaKeys.includes(area)) areaKeys.push(area);
+            }
             const points = assignments.filter((a) => a.lat !== null && a.lon !== null);
             if (points.length) {
               const found = await trx
@@ -856,7 +861,8 @@ export const fieldSyncRoutes =
                   )}]))`,
                 )
                 .execute();
-              areaKeys = found.map((f) => f.area_key!).filter(Boolean);
+              for (const f of found)
+                if (f.area_key && !areaKeys.includes(f.area_key)) areaKeys.push(f.area_key);
             }
           }
           const parcelRows = areaKeys.length

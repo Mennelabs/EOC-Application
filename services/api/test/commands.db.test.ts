@@ -13,7 +13,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Kysely } from 'kysely';
-import { fakeProvider } from '@cg/ai';
+import { fakeProvider, type AiProvider } from '@cg/ai';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
 import { createDb, withTenant, type Database } from '@cg/db';
@@ -35,6 +35,7 @@ interface Execution {
     interpretation: string | null;
     args: Record<string, unknown>;
     target: { id: string; version: number } | null;
+    count: number | null;
   } | null;
   planHash: string | null;
   options: { kind: string; id: string; label: string }[];
@@ -186,6 +187,7 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
     subjects['admin'] = as('tenant_admin');
     subjects['planner'] = as('reporting_planning');
     subjects['canteen'] = as('canteen_crew');
+    subjects['afn'] = as('afn_coordinator');
     const loader: SubjectLoader = {
       async fromBearer(token) {
         const s = subjects[token];
@@ -762,6 +764,245 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
       context: { kind: 'personnel', id: randomUUID() },
     });
     expect(bad.status).toBe(400);
+  });
+
+  it('CMD-30, Section 30.2: a batch is phase 4 and needs command.bulk; it lists what the person may see, runs one operation per record and names what was not changed; over 50 the count is typed; over 500 it is refused', async () => {
+    const seed = (category: string, n: number, tag: string) =>
+      withTenant(dbWorker, { tenantId: county }, async (trx) =>
+        (
+          await trx
+            .insertInto('cg.need')
+            .values(
+              Array.from({ length: n }, (_, i) => ({
+                tenant_id: county,
+                event_id: eventId,
+                category,
+                detail: null,
+                source: 'staff' as const,
+                reference_code: `B${run.slice(0, 4)}${tag}${i}`.toUpperCase(),
+                report_id: null,
+                subject_party_id: null,
+                claimed_by_tenant_id: null,
+                claimed_by_account_id: null,
+                claimed_at: null,
+                assigned_by_account_id: null,
+                released_at: null,
+                done_at: null,
+                done_note: null,
+                location_id: null,
+                contact_party_id: null,
+                execution_id: null,
+              })),
+            )
+            .returning('id')
+            .execute()
+        ).map((r) => r.id),
+      );
+    const small = await seed(`bulk_a_${run}`, 3, 'A');
+    const line = `/needs open category:bulk_a_${run} claim note:"Exercise: our pantry"`;
+    // Phase 4 is off until the county turns it on.
+    expect((await command('mc', line)).status).toBe('unsupported');
+    await withTenant(dbWorker, { tenantId: county }, (trx) =>
+      trx
+        .updateTable('cg.tenant_config')
+        .set({ value: JSON.stringify([1, 2, 3, 4]) })
+        .where('key', '=', 'command.phases')
+        .execute(),
+    );
+    // A role that may claim one need, but not batch, is told to act one by one.
+    const one = await command('afn', line);
+    expect(one.status).toBe('denied');
+    expect(one.message).toContain('one by one');
+
+    const plan = await command('mc', line);
+    expect(plan.status, plan.message).toBe('awaiting_confirmation');
+    expect(plan.plan?.count).toBe(3);
+    expect(plan.plan?.description).toContain('Claim 3 open needs');
+    // One of them is closed before the confirmation: its own route refuses it, the rest go ahead.
+    await dbWorker
+      .updateTable('cg.need')
+      .set({ status: 'closed' })
+      .where('id', '=', small[0]!)
+      .execute();
+    const reason = { 'x-confirm': 'true', 'x-reason': 'Exercise: pantry takes the area' };
+    expect((await confirm('mc', plan)).status).toBe(428);
+    const ran = await confirm('mc', plan, reason);
+    expect(ran.status, JSON.stringify(ran.body)).toBe(200);
+    expect(ran.body['status']).toBe('partially_succeeded');
+    const result = ran.body['result'] as {
+      records: { id: string }[];
+      failures: { id: string; label: string }[];
+    };
+    expect(result.records.map((r) => r.id).sort()).toEqual([small[1], small[2]].sort());
+    expect(result.failures.map((f) => f.id)).toEqual([small[0]]);
+    expect(ran.body['message']).toMatch(/^Claimed 2 of 3 needs\. Not changed: /);
+    expect((await need(small[1]!)).status).toBe('claimed');
+    // Confirming again returns the same execution; nothing runs twice.
+    const again = await confirm('mc', plan, reason);
+    expect(again.body['status']).toBe('partially_succeeded');
+    expect((await stored(plan.id!)).state).toBe('partially_succeeded');
+
+    // Release the same way, as the organization holds them.
+    const back = await command('mc', `/needs claimed category:bulk_a_${run} release`);
+    expect(back.plan?.count).toBe(2);
+    const released = await confirm('mc', back, reason);
+    expect(released.body['status'], JSON.stringify(released.body)).toBe('succeeded');
+    expect((await need(small[1]!)).status).toBe('open');
+
+    // Over 50: the count is typed as a second confirmation.
+    await seed(`bulk_b_${run}`, 51, 'B');
+    const many = await command('mc', `/needs open category:bulk_b_${run} claim`);
+    expect(many.plan?.count).toBe(51);
+    const untyped = await confirm('mc', many, reason);
+    expect(untyped.status).toBe(422);
+    expect(untyped.body['code']).toBe('batch_count_required');
+    const wrong = await call(
+      'mc',
+      'POST',
+      `/commands/${many.id}/confirm`,
+      { planHash: many.planHash, count: 50 },
+      reason,
+    );
+    expect(wrong.status).toBe(422);
+    const typed = await call(
+      'mc',
+      'POST',
+      `/commands/${many.id}/confirm`,
+      { planHash: many.planHash, count: 51 },
+      reason,
+    );
+    expect(typed.body['status'], JSON.stringify(typed.body).slice(0, 300)).toBe('succeeded');
+
+    // Over 500 is not a command.
+    await seed(`bulk_c_${run}`, 501, 'C');
+    const huge = await command('mc', `/needs open category:bulk_c_${run} claim`);
+    expect(huge.status).toBe('unsupported');
+    expect(huge.message).toContain('More than 500');
+
+    await withTenant(dbWorker, { tenantId: county }, (trx) =>
+      trx
+        .updateTable('cg.tenant_config')
+        .set({ value: JSON.stringify([1, 2, 3]) })
+        .where('key', '=', 'command.phases')
+        .execute(),
+    );
+  }, 120_000);
+
+  it('Section 30.2: no more than 30 confirmed commands a minute per person', async () => {
+    const accountId = subjects['mc2']!.accountId;
+    await withTenant(dbWorker, { tenantId: county }, (trx) =>
+      trx
+        .insertInto('cg.command_execution')
+        .values(
+          Array.from({ length: 30 }, () => ({
+            tenant_id: county,
+            account_id: accountId,
+            execution_id: randomUUID(),
+            input_kind: 'shorthand' as const,
+            command: 'reminder.create',
+            command_version: 1,
+            phase: 2,
+            plan: JSON.stringify({}),
+            plan_hash: 'x'.repeat(64),
+            confirmation: 'one_tap' as const,
+            reversal: 'undo_15_min' as const,
+            state: 'succeeded' as const,
+            confirmed_by: accountId,
+            confirmed_at: new Date(),
+            created_by: accountId,
+            updated_by: accountId,
+          })),
+        )
+        .execute(),
+    );
+    const plan = await command('mc2', `/need ${ref(2)} claim`);
+    expect(plan.status, plan.message).toBe('awaiting_confirmation');
+    const limited = await confirm('mc2', plan);
+    expect(limited.status).toBe(429);
+    expect(limited.body['code']).toBe('rate_limited');
+  });
+
+  it('CMD-38: past the deadline an interpretation is given up as timed out and an execution answers "still running", then finishes and records its result; response times are reported against the targets', async () => {
+    // A provider that answers late, and an app that waits 1 ms instead of 15 s.
+    const llm = fakeProvider.llm!;
+    const slowLlm = Object.create(llm) as NonNullable<AiProvider['llm']>;
+    slowLlm.interpretCommand = async (r) => {
+      await new Promise((ok) => setTimeout(ok, 100));
+      return llm.interpretCommand!(r);
+    };
+    const slow: AiProvider = { ...fakeProvider, llm: slowLlm };
+    const late = await buildApp({
+      productName: 'Test Product',
+      version: '0.0.0',
+      dataMode: 'synthetic',
+      logLevel: 'silent',
+      probes: [],
+      db: dbApp,
+      fieldCrypto: new FieldCrypto(new InMemoryKeyService(), new MemoryKeyStore()),
+      subjects: {
+        async fromBearer(token) {
+          const s = subjects[token];
+          if (!s) throw new AuthError('invalid_token');
+          return s;
+        },
+      },
+      routes: routesWith({ commands: { ai: { providerFor: async () => slow }, deadlineMs: 1 } }),
+    });
+    try {
+      const ask = async (input: string) =>
+        (
+          await late.inject({
+            method: 'POST',
+            url: '/api/v1/commands',
+            headers: { authorization: 'Bearer mc', 'idempotency-key': randomUUID() },
+            payload: { executionId: randomUUID(), input },
+          })
+        ).json() as Execution;
+      // The command.interpret feature is on from CMD-03.
+      const words = await ask(`claim need ${ref(2)} for our pantry`);
+      expect(words.status).toBe('unsupported');
+      expect(words.message).toContain('did not answer');
+      const timedOut = await dbWorker
+        .selectFrom('cg.ai_output')
+        .select('outcome')
+        .where('tenant_id', '=', county)
+        .where('feature', '=', 'command.interpret')
+        .where('execution_id', '=', words.executionId)
+        .executeTakeFirstOrThrow();
+      expect(timedOut.outcome).toBe('timeout');
+
+      const running = await ask('/reminders');
+      expect(running.status).toBe('executing');
+      expect(running.message).toMatch(/^Still running after 15 seconds/);
+      await expect
+        .poll(async () => (await stored(running.id!)).state, { timeout: 10_000 })
+        .toBe('succeeded');
+      const row = await stored(running.id!);
+      expect(row.execute_ms).not.toBeNull();
+      expect(row.prepare_ms).not.toBeNull();
+    } finally {
+      await late.close();
+    }
+
+    const report = await call('admin', 'GET', '/commands/performance?days=1');
+    expect(report.status, JSON.stringify(report.body)).toBe(200);
+    const r = report.body as {
+      deadlineMs: number;
+      shorthand: { count: number; p95Ms: number | null; targetMs: number; met: boolean | null };
+      interpretation: { count: number; timedOut: number; targetMs: number };
+      execution: { count: number; p95Ms: number | null; targetMs: number };
+    };
+    expect(r.deadlineMs).toBe(15_000);
+    expect(r.shorthand.targetMs).toBe(1000);
+    expect(r.shorthand.count).toBeGreaterThan(0);
+    expect(typeof r.shorthand.p95Ms).toBe('number');
+    expect(typeof r.shorthand.met).toBe('boolean');
+    expect(r.interpretation.targetMs).toBe(2500);
+    expect(r.interpretation.timedOut).toBeGreaterThanOrEqual(1);
+    expect(r.execution.targetMs).toBe(2000);
+    expect(r.execution.count).toBeGreaterThan(0);
+    // The report is for those who oversee the AI and the window, not every user.
+    expect((await call('field', 'GET', '/commands/performance')).status).toBe(403);
   });
 
   it('CMD-04, BRD:FR-18.05: personal aliases look things up for their owner only; organization aliases need the explicit, confirmed action; every expansion is shown and checked again when used', async () => {

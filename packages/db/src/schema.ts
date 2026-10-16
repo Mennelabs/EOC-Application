@@ -2529,7 +2529,14 @@ export interface CommandExecutionTable extends Stamped {
   plan_hash: string;
   confirmation: 'none' | 'one_tap' | 'full_review' | 'second_person';
   reversal: 'undo_15_min' | 'compensating' | 'none';
-  state: 'awaiting_confirmation' | 'executing' | 'succeeded' | 'failed' | 'canceled' | 'stale';
+  state:
+    | 'awaiting_confirmation'
+    | 'executing'
+    | 'succeeded'
+    | 'partially_succeeded'
+    | 'failed'
+    | 'canceled'
+    | 'stale';
   confirmed_by: Uuid | null;
   confirmed_at: TsNullable;
   reason: string | null;
@@ -2537,6 +2544,9 @@ export interface CommandExecutionTable extends Stamped {
   reversal_of: Uuid | null;
   undone_by: Uuid | null;
   undo_until: TsNullable;
+  /** CMD-38: how long the plan took to prepare, and the confirmed operation to run. */
+  prepare_ms: ColumnType<number | null, number | null | undefined, number | null>;
+  execute_ms: ColumnType<number | null, number | null | undefined, number | null>;
 }
 
 /** One AI call (AIG-01, layer-7 task A); never the prompt or the reply. */

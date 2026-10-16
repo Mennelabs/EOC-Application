@@ -278,6 +278,8 @@ PDFs (the package, reports, metrics, the media sheet, the resident's own copy) a
 
 `retention_policy(tenant_id, data_category, keep_for)` defaults to 7 years (SEC-13). The exceptions are seeded: scribe audio on note confirmation, positions 30 days, personal command conversations 30 days. CJIS retention lives inside the enclave. `legal_hold(scope)` overrides deletion. A nightly worker job deletes data that has expired, and writes an audit event for each deletion batch.
 
+Category sweeps (`services/worker/src/jobs/retention.ts`, daily) cover one-time codes, intake drafts, abuse signals, SMS and voice sessions, device commands, finished reminders and notices, checked-out child records, badges no longer valid, inactive partner contacts and resolved safety alerts. Each sweep deletes only finished rows past the tenant's period. It skips rows another record still points at, and it deletes a row's own history with it. A legal hold on the category, the record or its event keeps rows. Every batch is counted in `deletion_log` and audited. Tables that are otherwise append-only get a delete policy that only the worker role passes (migration 0077). Still open: the 7-year record categories (field records, communications, referrals, sharing, publications, core records and photos), pruning the field change feed (the field app would first need to re-download its area package when its cursor falls behind), and the public-records export that redacts restricted fields.
+
 ## 5. Adapters
 
 Each adapter is a TypeScript interface in `packages/adapters`, with a local implementation used on Docker Desktop and a cloud implementation chosen by environment variables. Business code imports only the interface.

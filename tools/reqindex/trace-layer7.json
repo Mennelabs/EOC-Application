@@ -175,10 +175,10 @@
     ""
   ],
   "CMD-30": [
-    "partial",
-    "At most 30 confirmed commands a minute per person (routes/commands.ts RATE_PER_MINUTE, 429); each command needs its own action and a phase the county has on (tenant config command.phases, default 1 and 2); every command acts on one record; an alias expands to exactly one command, re-checked at use",
-    "services/api/test/commands.db.test.ts (Section 30.2 phases; CMD-04 alias re-check at use), services/api/test/commands.test.ts (phases)",
-    "No bulk command exists, so the 50/500 batch limits, the resolved count before execution and per-record results are not built; the rate limit has no automated test."
+    "pass",
+    "catalog.ts BATCH_ONE_CONFIRMATION (50), BATCH_MAX (500), BulkSpec; needs.claim_many and needs.release_many (phase 4, full review with a reason); routes/commands.ts: the batch is listed through GET /needs as the person may see it and bound into the plan hash; over 50 the confirmation carries the typed count (422 batch_count_required otherwise); over 500 is refused; one operation per record with its own idempotency key; per-record failures named; state partially_succeeded (migration 0075); action command.bulk (explicit) on the county EM director, mass care, NGO incident commander and COAD chair templates; 30 confirmed commands a minute per person (429); ADR-0044 addendum",
+    "services/api/test/commands.db.test.ts (CMD-30: phase 4 off, a role without command.bulk told to act one by one, 3 planned and 2 claimed with the closed one named, confirming twice runs nothing twice, release the same way, 51 needs the typed count, 501 refused; Section 30.2: the 31st command in a minute is refused), services/api/test/commands.test.ts (CMD-30 parse), packages/authz/test/templates.test.ts, tests/e2e/console-l7.spec.ts (CMD-30: typed count, Partly done, Not changed; desktop and phone with axe)",
+    "Batches exist for need claims and releases only; other batch commands are added as catalog entries. Over 500 has no scheduled bulk job: the person narrows the filter or uses the screen."
   ],
   "CMD-31": [
     "partial",
@@ -223,10 +223,10 @@
     ""
   ],
   "CMD-38": [
-    "partial",
-    "Section 30.2 targets (shorthand 1 s, interpretation 2.5 s, execution 2 s at p95; 15 s timeout); each interpretation records its latency and outcome in cg.ai_output, counted by the AI health job; executions record their state; the window announces \"Working…\" and the outcome",
-    "services/api/test/commands.db.test.ts (CMD-03: interpretation outcomes recorded: ok, filtered, accepted, rejected)",
-    "The targets are not enforced or measured: the OpenAI call times out at 20 s (AI_TIMEOUT_MS) and executions have no timeout; clarifications are not recorded; no completion, clarification or duplicate metric yet."
+    "pass",
+    "services/api/src/commands/timing.ts (TARGETS: shorthand 1 s, interpretation 2.5 s, execution 2 s at p95; DEADLINE_MS 15 s; within, p95); routes/commands.ts: the model's reading is given up at the deadline and recorded as timed out; an execution past it answers \"still running\" and finishes in the background, recording its own result (GET /commands/:id; the window's \"Check again\"); prepare_ms and execute_ms per execution (migration 0076); GET /commands/performance (ai_register.read) gives count, p95 and whether each target is met, separately, with timeouts and executions still running; the AI register screen shows it",
+    "services/api/test/command-timing.test.ts, services/api/test/commands.db.test.ts (CMD-38: timed-out reading recorded, \"still running\" then succeeded with its timings, the report against the targets, refused to a field coordinator), tests/e2e/console.spec.ts (the section on the AI register screen)",
+    "Completion, clarification and duplicate rates are not reported yet (clarifications keep no execution record). The report table itself is shown in the browser only to the register's readers; the journey's reviewer sees the permission message."
   ],
   "AC-C01": [
     "pass",
@@ -265,10 +265,10 @@
     ""
   ],
   "AC-C07": [
-    "deferred",
-    "",
-    "",
-    "No multi-step or external workflow is catalogued: every command is one operation, recorded as succeeded or failed from its own answer and never as rolled back (routes/commands.ts execute). The case needs a multi-step command; none is scheduled in layer 7."
+    "partial",
+    "routes/commands.ts executeBatch: a batch reports each record it changed and each it did not, ends partially succeeded, and never claims a rollback; single commands record succeeded or failed from their own answer",
+    "services/api/test/commands.db.test.ts (CMD-30: 2 of 3 changed, the third named, state partially_succeeded)",
+    "No external multi-step workflow (message then record, for example) is catalogued yet, so the external case itself is not exercised."
   ],
   "AC-C08": [
     "partial",
@@ -782,9 +782,9 @@
   ],
   "SEC-13": [
     "partial",
-    "position_trail retention with daily partitions dropped whole and logged (worker dropPositionTrails, 0029); categories field_records, badges (3 years), safety, comms, child_records (1 year); phone purge (field-core purge.ts); enclave retention per agency and category with floors in the schema (records at least 1 year, audit at least 7 years), default 7 years, legal holds, deletion log, hourly sweep (services/cjis-api/src/jobs.ts sweepRetention); layer 7: scribe audio deleted on confirming the note, logged as scribe_audio (routes/scribe.ts); unconfirmed conversations expire after 30 days, holds respected (worker scribe-expiry); command history 30 days, clearable, kept under a hold (0058, worker command-history)",
-    "services/api/test/field.db.test.ts (SEC-13 / DSP-08), services/api/test/roster.db.test.ts (a 40-day-old day dropped); packages/cjis-db/test/enclave.db.test.ts (floors, holds), services/cjis-api/test/api.db.test.ts (retention sweep honours holds); layer 7: services/api/test/scribe.db.test.ts (FL-04, SEC-13: confirming deletes the audio; never confirmed expires after 30 days), services/api/test/command-history.db.test.ts (sweep past 30 days, not under a hold; a hold stops clearing)",
-    "No sweep yet deletes rows in the new field_records, badges, safety, comms or child_records categories, and cg.change_feed is never pruned. No public-records request export that redacts restricted fields is built yet."
+    "position_trail retention with daily partitions dropped whole and logged (worker dropPositionTrails, 0029); categories field_records, badges (3 years), safety, comms, child_records (1 year); phone purge (field-core purge.ts); enclave retention per agency and category with floors in the schema (records at least 1 year, audit at least 7 years), default 7 years, legal holds, deletion log, hourly sweep (services/cjis-api/src/jobs.ts sweepRetention); layer 7: scribe audio deleted on confirming the note, logged as scribe_audio (routes/scribe.ts); unconfirmed conversations expire after 30 days, holds respected (worker scribe-expiry); command history 30 days, clearable, kept under a hold (0058, worker command-history); category sweeps (worker retention.ts, daily, migration 0077 worker-only delete policies): one-time codes, intake drafts, abuse signals, SMS and voice sessions, device commands, finished reminders and notices with their history, checked-out child records (1 year), badges no longer valid (3 years), inactive partner contacts not referenced (3 years) and resolved safety alerts; holds on category, record or event respected; deletion log and audit",
+    "services/api/test/field.db.test.ts (SEC-13 / DSP-08), services/api/test/roster.db.test.ts (a 40-day-old day dropped); packages/cjis-db/test/enclave.db.test.ts (floors, holds), services/cjis-api/test/api.db.test.ts (retention sweep honours holds); layer 7: services/api/test/scribe.db.test.ts (FL-04, SEC-13: confirming deletes the audio; never confirmed expires after 30 days), services/api/test/command-history.db.test.ts (sweep past 30 days, not under a hold; a hold stops clearing); services/worker/test/retention.db.test.ts (expired and finished rows go with their history; fresh, open, referenced and held rows stay; logged and audited; the API role still cannot delete a badge)",
+    "Not yet swept: the 7-year categories field_records, comms, referrals, sharing, publications and the core records, photos and free text; cg.change_feed is never pruned (the field app would first need to re-download its area package when its cursor falls behind the oldest kept change). No public-records request export that redacts restricted fields is built yet."
   ],
   "INT-12": [
     "pass",

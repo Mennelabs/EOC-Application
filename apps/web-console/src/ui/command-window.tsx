@@ -47,6 +47,7 @@ export interface Execution {
     | 'awaiting_confirmation'
     | 'executing'
     | 'succeeded'
+    | 'partially_succeeded'
     | 'failed'
     | 'canceled'
     | 'stale';
@@ -57,6 +58,8 @@ export interface Execution {
     description: string;
     interpretation: string | null;
     target: { kind: string; id: string; label: string } | null;
+    /** CMD-30: how many records a batch covers. */
+    count: number | null;
   } | null;
   planHash: string | null;
   options: { kind: string; id: string; label: string }[];
@@ -64,6 +67,7 @@ export interface Execution {
     state: string;
     summary: string | null;
     records: { kind: string; id: string; label?: string }[];
+    failures?: { id: string; label: string; message: string }[];
   } | null;
   error: { status: number; code: string; message: string } | null;
   undoUntil: string | null;
@@ -83,6 +87,8 @@ interface Alias {
 }
 
 const DRAFT_KEY = 'cg.command.draft';
+/** Section 30.2: one confirmation covers this many records; more needs the count typed. */
+const BATCH_ONE_CONFIRMATION = 50;
 const PREFS_KEY = 'cg.command.prefs';
 
 interface Prefs {
@@ -190,6 +196,8 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
   const [current, setCurrent] = useState<Execution | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [choice, setChoice] = useState<string>('');
+  // CMD-30: a batch over 50 records is confirmed by typing how many.
+  const [typedCount, setTypedCount] = useState('');
   const [announce, setAnnounce] = useState('');
   const [history, setHistory] = useState<HistoryItem[] | null>(null);
   const [aliases, setAliases] = useState<Alias[] | null>(null);
@@ -244,6 +252,7 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
 
   const settle = (e: Execution) => {
     setCurrent(e);
+    setTypedCount('');
     // A screen showing the changed record reads it again.
     if (e.status === 'succeeded' && e.plan?.target && e.command?.kind === 'change')
       announceChanged(e.plan.target.kind, e.plan.target.id);
@@ -319,9 +328,13 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
     }
   };
 
+  const needsCount = (current?.plan?.count ?? 0) > BATCH_ONE_CONFIRMATION;
   const confirmPlan = () =>
     current?.id
-      ? act(`/commands/${current.id}/confirm`, { planHash: current.planHash })
+      ? act(`/commands/${current.id}/confirm`, {
+          planHash: current.planHash,
+          ...(needsCount ? { count: Number(typedCount) } : {}),
+        })
       : undefined;
   const cancelPlan = () => (current?.id ? act(`/commands/${current.id}/cancel`) : undefined);
 
@@ -423,6 +436,7 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
         denied: 'Not allowed for your role',
         awaiting_confirmation: 'Check the plan',
         executing: 'Running',
+        partially_succeeded: 'Partly done',
         succeeded: current.reversalOf
           ? 'Undone'
           : current.result?.state === 'drafted'
@@ -579,6 +593,23 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
                     </>
                   ) : null}
                 </dl>
+                {needsCount ? (
+                  <Field
+                    label={`Type ${current.plan.count} to confirm all of them`}
+                    hint={`This changes ${current.plan.count} records, more than ${BATCH_ONE_CONFIRMATION} at once.`}
+                  >
+                    {({ id, describedBy }) => (
+                      <input
+                        id={id}
+                        aria-describedby={describedBy}
+                        inputMode="numeric"
+                        autoComplete="off"
+                        value={typedCount}
+                        onChange={(e) => setTypedCount(e.target.value)}
+                      />
+                    )}
+                  </Field>
+                ) : null}
                 {clash.length ? (
                   <div className="status info" role="group" aria-label="Unsaved changes">
                     <p>
@@ -608,13 +639,26 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
                       type="button"
                       className="primary"
                       onClick={() => void confirmPlan()}
-                      disabled={busy}
+                      disabled={busy || (needsCount && Number(typedCount) !== current.plan.count)}
                     >
                       Confirm
                     </button>
                   </div>
                 )}
               </>
+            ) : null}
+
+            {current.status === 'executing' && current.id ? (
+              <div className="actions">
+                {/* CMD-38: a command past the deadline is still running; ask again for its result. */}
+                <button
+                  type="button"
+                  onClick={() => void api<Execution>(`/commands/${current.id}`).then(settle, fail)}
+                  disabled={busy}
+                >
+                  Check again
+                </button>
+              </div>
             ) : null}
 
             {current.status === 'stale' ? (
@@ -625,7 +669,8 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
               </div>
             ) : null}
 
-            {current.status === 'succeeded' && current.result?.records.length ? (
+            {(current.status === 'succeeded' || current.status === 'partially_succeeded') &&
+            current.result?.records.length ? (
               <ul className="command-records">
                 {current.result.records
                   .map((r) => ({ r, href: recordHref(r) }))
@@ -646,6 +691,19 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
                     </li>
                   ))}
               </ul>
+            ) : null}
+
+            {current.result?.failures?.length ? (
+              <>
+                <h4>Not changed</h4>
+                <ul className="command-records">
+                  {current.result.failures.map((f) => (
+                    <li key={f.id}>
+                      {f.label}: {f.message}
+                    </li>
+                  ))}
+                </ul>
+              </>
             ) : null}
 
             {current.status === 'succeeded' && current.undoUntil ? (

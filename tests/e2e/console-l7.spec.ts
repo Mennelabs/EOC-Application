@@ -10,7 +10,9 @@
  * each state and, on the phone project, the window reflows at phone width.
  * With a need open on the board (CMD-06), "/need this claim" plans for it;
  * a note typed but not saved is asked about before the claim runs, kept or
- * discarded (CMD-29, AC-C09); set aside, "this" finds nothing.
+ * discarded (CMD-29, AC-C09); set aside, "this" finds nothing. A batch over 50
+ * records waits for the count typed, and a partly done batch names what it
+ * did not change (CMD-30).
  *
  * Recommendations (REC-02–REC-12): mass care asks for a shelter; the top
  * three come with reasons, the fairgrounds lot is set aside as no shelter,
@@ -236,6 +238,119 @@ test.describe('layer 7 console: the command window', () => {
     await expect(dialog.getByRole('heading', { name: 'Nothing found' })).toBeVisible();
     await page.keyboard.press('Escape');
     expect(await statusOf()).toBe('claimed');
+  });
+
+  test('CMD-30: a batch over 50 asks for the count typed; a partly done batch names what it did not change', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(180_000);
+    await onboard(
+      page,
+      context,
+      'mass_care_coordinator',
+      `Mass care batch ${tag}`,
+      `l7b-${testInfo.project.name}`,
+    );
+    // The engine's batch rules run in commands.db.test.ts against the database; here the two
+    // command calls are answered in the browser so the shared exercise needs stay as they are.
+    const id = crypto.randomUUID();
+    const meta = {
+      name: 'needs.claim_many',
+      title: 'Claim the open needs a filter names, for your organization',
+      usage: '/needs open [category:<category>] [postal:<code>] claim [note]',
+      phase: 4,
+      kind: 'change',
+      confirmation: 'full_review',
+      reversal: 'compensating',
+      sideEffects: 'Claims each open need the filter names for your organization, one at a time.',
+    };
+    const base = {
+      id,
+      usage: meta.usage,
+      command: meta,
+      options: [],
+      error: null,
+      undoUntil: null,
+      reversalOf: null,
+      undoneBy: null,
+      createdAt: new Date().toISOString(),
+      commands: [],
+      aliases: [],
+    };
+    const plan = {
+      description:
+        'Claim 51 open needs in food water for your organization: B1, B2, B3, B4, B5 and 46 more.',
+      args: { category: 'food_water' },
+      target: null,
+      eventId: null,
+      interpretation: null,
+      count: 51,
+    };
+    let confirmed: unknown = null;
+    await page.route('**/api/v1/commands', (route) =>
+      route.fulfill({
+        json: {
+          ...base,
+          executionId: crypto.randomUUID(),
+          status: 'awaiting_confirmation',
+          message: 'Check the plan, then confirm or cancel.',
+          plan,
+          planHash: 'a'.repeat(64),
+          result: null,
+        },
+      }),
+    );
+    await page.route(`**/api/v1/commands/${id}/confirm`, (route) => {
+      confirmed = route.request().postDataJSON();
+      return route.fulfill({
+        json: {
+          ...base,
+          executionId: crypto.randomUUID(),
+          status: 'partially_succeeded',
+          message:
+            'Claimed 50 of 51 needs. Not changed: B7 (That is not available to you, or no longer exists.).',
+          plan,
+          planHash: null,
+          result: {
+            state: 'saved',
+            summary: 'Claimed 50 of 51 needs.',
+            records: [],
+            failures: [
+              {
+                id: crypto.randomUUID(),
+                label: 'B7',
+                code: 'not_available',
+                message: 'That is not available to you, or no longer exists.',
+              },
+            ],
+          },
+        },
+      });
+    });
+
+    await page.goto('/console/');
+    await page.getByRole('button', { name: /command window/i }).click();
+    const dialog = page.getByRole('dialog', { name: 'Command window' });
+    const box = dialog.getByRole('textbox', { name: 'Command' });
+    await box.fill('/needs open category:food_water claim');
+    await box.press('Enter');
+    await expect(dialog.getByRole('heading', { name: 'Check the plan' })).toBeVisible();
+    await expect(dialog).toContainText('Claim 51 open needs');
+    const count = dialog.getByRole('textbox', { name: 'Type 51 to confirm all of them' });
+    const go = dialog.getByRole('button', { name: 'Confirm', exact: true });
+    await expect(go).toBeDisabled();
+    await count.fill('50');
+    await expect(go).toBeDisabled();
+    await expectNoViolations(page);
+    await count.fill('51');
+    await go.click();
+    await expect(dialog.getByRole('heading', { name: 'Partly done' })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: 'Not changed' })).toBeVisible();
+    await expect(dialog.getByRole('listitem').filter({ hasText: 'B7' })).toBeVisible();
+    expect(confirmed).toMatchObject({ count: 51 });
+    await expectNoViolations(page);
+    await page.keyboard.press('Escape');
   });
 
   test('REC-01: the COAD proposes a facility; county EM approves it in their own browser and re-checks it', async ({

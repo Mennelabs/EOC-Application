@@ -21,10 +21,19 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { sql, type Selectable, type Transaction } from 'kysely';
 import { z } from 'zod';
-import { callAi, recordAiOutput, recordHumanAction, redact, type AiProvider } from '@cg/ai';
+import {
+  AiProviderError,
+  callAi,
+  recordAiOutput,
+  recordHumanAction,
+  redact,
+  type AiProvider,
+} from '@cg/ai';
 import { actions, decide, isActionKey } from '@cg/authz';
 import type { CommandExecutionTable, Database } from '@cg/db';
 import {
+  BATCH_MAX,
+  BATCH_ONE_CONFIRMATION,
   CATALOG,
   commandByName,
   DEFAULT_PHASES,
@@ -36,6 +45,7 @@ import {
 } from '../commands/catalog.ts';
 import { aliasMayRun, type AliasScope } from '../commands/aliases.ts';
 import { ON_SCREEN, parseShorthand } from '../commands/parse.ts';
+import { DEADLINE_MS, TARGETS, p95, within } from '../commands/timing.ts';
 import { ApiError, errors } from '../errors.ts';
 import { iso, uuidParam } from './helpers.ts';
 
@@ -57,6 +67,7 @@ const statuses = [
   'awaiting_confirmation',
   'executing',
   'succeeded',
+  'partially_succeeded',
   'failed',
   'canceled',
   'stale',
@@ -92,6 +103,10 @@ const verifiedOut = z.object({
       version: z.number().int().optional(),
     }),
   ),
+  /** CMD-30: records of a batch that were not changed, and why. */
+  failures: z
+    .array(z.object({ id: z.string(), label: z.string(), code: z.string(), message: z.string() }))
+    .optional(),
 });
 
 const executionOut = z.object({
@@ -108,6 +123,8 @@ const executionOut = z.object({
       target: targetOut.nullable(),
       eventId: z.uuid().nullable(),
       interpretation: z.string().nullable(),
+      /** CMD-30: how many records a batch covers; over 50, the count is typed to confirm. */
+      count: z.number().int().nullable(),
     })
     .nullable(),
   planHash: z.string().nullable(),
@@ -140,6 +157,8 @@ interface Plan {
   eventId: string | null;
   /** CMD-10: the shorthand plain words were read as, shown with the plan. */
   interpretation?: string;
+  /** CMD-30: the records a batch covers, as they were when the plan was made. */
+  batch?: Target[];
 }
 
 interface StoredResult {
@@ -228,6 +247,7 @@ function messageFor(status: Status, spec: CommandSpec | undefined, result: Store
     case 'executing':
       return 'Running. The result shows here when the operation answers.';
     case 'succeeded':
+    case 'partially_succeeded':
       return result?.verified?.summary ?? `${spec?.title ?? 'The command'}: done.`;
     case 'failed':
       return result?.error?.message ?? 'The operation refused this. Nothing was changed.';
@@ -255,17 +275,29 @@ function view(row: Row, now: Date, live?: Verified): ExecutionOut {
     plan: {
       description: plan.undoOf
         ? `Undo: ${spec?.title ?? row.command}`
-        : spec
-          ? spec.describe(plan.args, plan.target)
-          : row.command,
+        : spec?.bulk && plan.batch
+          ? spec.bulk.describe(
+              plan.args,
+              plan.batch.length,
+              plan.batch.slice(0, 5).map((t) => t.label),
+            )
+          : spec
+            ? spec.describe(plan.args, plan.target)
+            : row.command,
       args: plan.args ?? {},
       target: plan.target ?? null,
       eventId: plan.eventId ?? null,
       interpretation: plan.interpretation ?? null,
+      count: plan.batch?.length ?? null,
     },
     planHash: row.state === 'awaiting_confirmation' ? row.plan_hash : null,
     result: verified
-      ? { state: verified.state, summary: verified.summary ?? null, records: verified.records }
+      ? {
+          state: verified.state,
+          summary: verified.summary ?? null,
+          records: verified.records,
+          ...(verified.failures ? { failures: verified.failures } : {}),
+        }
       : null,
     error:
       stored?.error && status === 'failed'
@@ -439,7 +471,12 @@ async function resolveOnScreen(
 
 export interface CommandDeps {
   ai?: { providerFor(tenantId: string, trx: Transaction<Database>): Promise<AiProvider | null> };
+  /** CMD-38: how long the window waits before answering honestly (tests shorten it). */
+  deadlineMs?: number;
 }
+
+const STILL_RUNNING =
+  'Still running after 15 seconds. Nothing is lost: the result shows here when it finishes. Check the record before trying again.';
 
 const AI_OFF =
   'Plain-language commands need the AI assistant, which is off here. Type /help for the shorthand, which always works.';
@@ -452,11 +489,30 @@ export const commandRoutesWith =
   (deps: CommandDeps = {}): FastifyPluginAsync =>
   async (base) => {
     const app = base.withTypeProvider<ZodTypeProvider>();
+    const deadlineMs = deps.deadlineMs ?? DEADLINE_MS;
 
     const account = (request: FastifyRequest) => {
       const s = request.subject;
       if (s.kind !== 'account') throw errors.unauthorized();
       return s;
+    };
+
+    /**
+     * CMD-38: an operation that has not answered by the deadline is reported as
+     * still running, never as done or failed; it finishes in the background and
+     * records its own result, which GET /commands/:id then shows.
+     */
+    const answerWithin = async (
+      request: FastifyRequest,
+      row: Row,
+      work: Promise<ExecutionOut>,
+    ): Promise<ExecutionOut> => {
+      const r = await within(work, deadlineMs);
+      if (r.done) return r.value;
+      r.later.catch((err: unknown) =>
+        request.log.error({ err, command: row.command }, 'command finished after its answer'),
+      );
+      return { ...view(row, new Date()), message: STILL_RUNNING };
     };
 
     /** Section 30.2: phases 1 and 2 on by default; a county turns on 3 and 4 in its configuration. */
@@ -489,6 +545,13 @@ export const commandRoutesWith =
       return decide(s, spec.action, { type: resource, tenantId: s.tenantId }).effect === 'allow';
     };
 
+    const holdsBulk = (request: FastifyRequest) => {
+      const s = account(request);
+      return (
+        decide(s, 'command.bulk', { type: 'command', tenantId: s.tenantId }).effect === 'allow'
+      );
+    };
+
     const loadOwn = (trx: Transaction<Database>, id: string, accountId: string) =>
       trx
         .selectFrom('cg.command_execution')
@@ -506,6 +569,7 @@ export const commandRoutesWith =
       extraHeaders: Record<string, string>,
     ): Promise<ExecutionOut> {
       const s = account(request);
+      const started = performance.now();
       // CMD-24: an operation that did not answer is reported as such, never as done or undone.
       const res = await op(request, req, {
         'idempotency-key': row.execution_id,
@@ -521,6 +585,7 @@ export const commandRoutesWith =
         };
       });
       const ok = res.status >= 200 && res.status < 300;
+      const executeMs = Math.round(performance.now() - started);
       const now = new Date();
       const verified = ok
         ? row.reversal_of
@@ -553,6 +618,7 @@ export const commandRoutesWith =
               ok && spec.reversal === 'undo_15_min' && spec.undo && !row.reversal_of
                 ? new Date(now.getTime() + UNDO_MS)
                 : null,
+            execute_ms: executeMs,
             updated_by: s.accountId,
           })
           .where('id', '=', row.id)
@@ -576,6 +642,94 @@ export const commandRoutesWith =
         return updated;
       });
       return view(done, now, verified);
+    }
+
+    /**
+     * CMD-30, CMD-24: one operation per record, each with its own idempotency
+     * key, so confirming twice or a retry never repeats one. Each record's
+     * route checks its own state; a record that changed meanwhile is refused
+     * there and named here. The execution says how many changed, never more.
+     */
+    async function executeBatch(
+      request: FastifyRequest,
+      row: Row,
+      spec: CommandSpec,
+      plan: Plan,
+      extraHeaders: Record<string, string>,
+    ): Promise<ExecutionOut> {
+      const s = account(request);
+      const bulk = spec.bulk!;
+      const started = performance.now();
+      const done: Verified['records'] = [];
+      const failures: NonNullable<Verified['failures']> = [];
+      for (const t of plan.batch!) {
+        const key = createHash('sha256').update(`${row.execution_id}:${t.id}`).digest('hex');
+        const res = await op(request, bulk.item(plan.args, t), {
+          // A UUID-shaped key per record, derived from the execution and the record.
+          'idempotency-key': `${key.slice(0, 8)}-${key.slice(8, 12)}-5${key.slice(13, 16)}-a${key.slice(17, 20)}-${key.slice(20, 32)}`,
+          ...extraHeaders,
+        }).catch(() => ({ status: 504, body: { code: 'no_answer', message: 'No answer.' } }));
+        if (res.status >= 200 && res.status < 300) {
+          const n = ((res.body ?? {}) as Record<string, unknown>)['need'] as
+            Record<string, unknown> | undefined;
+          done.push({
+            kind: t.kind,
+            id: t.id,
+            label: t.label,
+            version: typeof n?.['version'] === 'number' ? n['version'] : undefined,
+          });
+        } else failures.push({ id: t.id, label: t.label, ...errorOf(res.status, res.body) });
+      }
+      const of = plan.batch!.length;
+      const verified: Verified = {
+        state: 'saved',
+        summary: `${bulk.done(done.length, of)}${
+          failures.length
+            ? ` Not changed: ${failures
+                .slice(0, 5)
+                .map((f) => `${f.label} (${f.message})`)
+                .join('; ')}${failures.length > 5 ? `; and ${failures.length - 5} more` : ''}.`
+            : ''
+        }`,
+        records: done,
+        ...(failures.length ? { failures } : {}),
+      };
+      const state =
+        failures.length === 0 ? 'succeeded' : done.length ? 'partially_succeeded' : 'failed';
+      const stored: StoredResult =
+        state === 'failed'
+          ? {
+              httpStatus: 409,
+              verified,
+              error: { code: 'batch_failed', message: verified.summary },
+            }
+          : { httpStatus: 200, verified };
+      const now = new Date();
+      const saved = await request.tx(async (trx) => {
+        const updated = await trx
+          .updateTable('cg.command_execution')
+          .set({
+            state,
+            result: JSON.stringify(stored),
+            plan: JSON.stringify(withoutFreeText(plan, spec)),
+            undo_until: null,
+            execute_ms: Math.round(performance.now() - started),
+            updated_by: s.accountId,
+          })
+          .where('id', '=', row.id)
+          .returningAll()
+          .executeTakeFirstOrThrow();
+        await request.audit(trx, {
+          action: 'command.execute',
+          targetType: 'command_execution',
+          targetId: row.id,
+          targetVersion: updated.version,
+          executionId: row.execution_id,
+          reason: `${spec.name}@${spec.version}: ${done.length} of ${of} changed${row.reason ? `; ${row.reason}` : ''}`,
+        });
+        return updated;
+      });
+      return view(saved, now, verified);
     }
 
     const undoVerified = (body: unknown): Verified => {
@@ -636,16 +790,25 @@ export const commandRoutesWith =
         (c) => ({ usage: c.usage, title: c.title }),
       );
       const { text: redacted, tokens } = redact(text);
-      const call = await callAi(() =>
+      const call = await callAi(async () => {
         // CMD-06: the model learns only which kind of record is open, never which one.
-        llm.interpretCommand!({
-          text: redacted,
-          commands,
-          now: now.toISOString(),
-          timeZone,
-          onScreen,
-        }),
-      );
+        const r = await within(
+          llm.interpretCommand!({
+            text: redacted,
+            commands,
+            now: now.toISOString(),
+            timeZone,
+            onScreen,
+          }),
+          deadlineMs,
+        );
+        // CMD-38: past the deadline the reading is given up and recorded as timed out.
+        if (!r.done) {
+          r.later.catch(() => undefined);
+          throw new AiProviderError('timeout');
+        }
+        return r.value;
+      });
       const out = call.ok ? call.out.output : null;
       const aiOutputId = await request.tx((trx) =>
         recordAiOutput(trx, {
@@ -715,6 +878,91 @@ export const commandRoutesWith =
         );
         const now = new Date();
         return rows.map((r) => view(r, now));
+      },
+    );
+
+    // ---------------------------------------------------------------- response times (CMD-38)
+    const measured = z.object({
+      count: z.number().int(),
+      p95Ms: z.number().nullable(),
+      targetMs: z.number().int(),
+      met: z.boolean().nullable(),
+    });
+    app.get(
+      '/commands/performance',
+      {
+        schema: {
+          tags: ['commands'],
+          querystring: z.object({ days: z.coerce.number().int().min(1).max(90).default(7) }),
+          response: {
+            200: z.object({
+              days: z.number().int(),
+              deadlineMs: z.number().int(),
+              shorthand: measured,
+              interpretation: measured.extend({ timedOut: z.number().int() }),
+              execution: measured.extend({ stillRunning: z.number().int() }),
+            }),
+          },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('ai_register.read', {
+          type: 'ai_use_register',
+          tenantId: s.tenantId,
+        });
+        const since = new Date(Date.now() - request.query.days * 86_400_000);
+        const { runs, reads } = await request.tx(async (trx) => ({
+          runs: await trx
+            .selectFrom('cg.command_execution')
+            .select(['input_kind', 'state', 'prepare_ms', 'execute_ms', 'updated_at'])
+            .where('created_at', '>=', since)
+            .where('reversal_of', 'is', null)
+            .execute(),
+          reads: await trx
+            .selectFrom('cg.ai_output')
+            .select(['latency_ms', 'outcome'])
+            .where('feature', '=', 'command.interpret')
+            .where('created_at', '>=', since)
+            .execute(),
+        }));
+        const score = (values: number[], targetMs: number) => {
+          const p = p95(values);
+          return {
+            count: values.length,
+            p95Ms: p,
+            targetMs,
+            met: p === null ? null : p <= targetMs,
+          };
+        };
+        const now = Date.now();
+        return {
+          days: request.query.days,
+          deadlineMs,
+          // Shorthand and aliases are read without a model; their preparation is the target.
+          shorthand: score(
+            runs
+              .filter((r) => r.input_kind !== 'natural' && r.prepare_ms !== null)
+              .map((r) => r.prepare_ms!),
+            TARGETS.shorthandMs,
+          ),
+          interpretation: {
+            ...score(
+              reads.filter((r) => r.latency_ms !== null).map((r) => Number(r.latency_ms)),
+              TARGETS.interpretMs,
+            ),
+            timedOut: reads.filter((r) => r.outcome === 'timeout').length,
+          },
+          execution: {
+            ...score(
+              runs.filter((r) => r.execute_ms !== null).map((r) => r.execute_ms!),
+              TARGETS.executeMs,
+            ),
+            stillRunning: runs.filter(
+              (r) => r.state === 'executing' && r.updated_at.getTime() < now - deadlineMs,
+            ).length,
+          },
+        };
       },
     );
 
@@ -962,6 +1210,7 @@ export const commandRoutesWith =
         const s = account(request);
         await request.authorize('command.use', { type: 'command', tenantId: s.tenantId });
         const b = request.body;
+        const started = performance.now();
         const now = new Date();
 
         const prior = await request.tx((trx) =>
@@ -1052,8 +1301,46 @@ export const commandRoutesWith =
               args.error.issues[0]?.message ?? 'Something in the command needs a second look.',
           };
 
+        // CMD-30: a batch lists its records as the person may see them; one plan covers them all.
+        let batch: Target[] | undefined;
+        if (spec.bulk) {
+          if (
+            decide(s, 'command.bulk', { type: 'command', tenantId: s.tenantId }).effect !== 'allow'
+          )
+            return {
+              ...head,
+              status: 'denied',
+              message: 'Your role cannot run a command over many records. Act on them one by one.',
+            };
+          const where = RECORDS[spec.target!];
+          const found: ListRow[] = [];
+          for (let offset = 0; found.length <= BATCH_MAX; offset += 200) {
+            const res = await op(request, {
+              method: 'GET',
+              path: `${spec.bulk.list(args.data, { tenantId: s.tenantId })}&limit=200&offset=${offset}`,
+            });
+            const page =
+              res.status === 200 && Array.isArray(res.body) ? (res.body as ListRow[]) : [];
+            found.push(...page);
+            if (page.length < 200) break;
+          }
+          if (found.length === 0)
+            return { ...head, status: 'not_found', message: 'Nothing you can see matches that.' };
+          if (found.length > BATCH_MAX)
+            return {
+              ...head,
+              message: `More than ${BATCH_MAX} match. The command window changes at most ${BATCH_MAX} at once: narrow it (category:, postal:) or use the screen.`,
+            };
+          batch = found.map((r) => ({
+            kind: spec.target!,
+            id: str(r['id']),
+            version: typeof r['version'] === 'number' ? r['version'] : 0,
+            label: str(r['referenceCode']) || where.label(r),
+          }));
+        }
+
         let target: Target | null = null;
-        if (spec.target) {
+        if (spec.target && !spec.bulk) {
           const here = parsed.ref === ON_SCREEN;
           const r = here
             ? await resolveOnScreen(request, spec.target, b.context)
@@ -1143,6 +1430,7 @@ export const commandRoutesWith =
           args: planArgs,
           target,
           eventId,
+          ...(batch ? { batch } : {}),
           ...(natural
             ? { interpretation: natural.shorthand }
             : alias
@@ -1167,6 +1455,7 @@ export const commandRoutesWith =
               confirmation: spec.confirmation,
               reversal: spec.reversal,
               state: immediate ? 'executing' : 'awaiting_confirmation',
+              prepare_ms: Math.round(performance.now() - started),
               created_by: s.accountId,
               updated_by: s.accountId,
             })
@@ -1182,12 +1471,16 @@ export const commandRoutesWith =
           return inserted;
         });
         if (!immediate) return view(row, now);
-        return execute(
+        return answerWithin(
           request,
           row,
-          spec,
-          spec.request(plan.args, plan.target, { now, eventId, executionId: b.executionId }),
-          {},
+          execute(
+            request,
+            row,
+            spec,
+            spec.request(plan.args, plan.target, { now, eventId, executionId: b.executionId }),
+            {},
+          ),
         );
       },
     );
@@ -1203,7 +1496,11 @@ export const commandRoutesWith =
         schema: {
           tags: ['commands'],
           params: uuidParam,
-          body: z.object({ planHash: z.string().regex(/^[0-9a-f]{64}$/) }),
+          body: z.object({
+            planHash: z.string().regex(/^[0-9a-f]{64}$/),
+            /** CMD-30: a batch over 50 records is confirmed by typing how many. */
+            count: z.number().int().min(1).optional(),
+          }),
           response: { 200: executionOut },
         },
       },
@@ -1263,6 +1560,19 @@ export const commandRoutesWith =
           extra['x-reason'] = c.reason;
         }
 
+        // Section 30.2: up to 50 records on one confirmation; up to 500 with a second, typed one.
+        if (plan.batch && plan.batch.length > BATCH_ONE_CONFIRMATION) {
+          if (request.body.count !== plan.batch.length)
+            // 422, not 428: the person has confirmed; what is missing is the typed count.
+            throw new ApiError(
+              422,
+              'batch_count_required',
+              `This changes ${plan.batch.length} records. Type ${plan.batch.length} to confirm.`,
+              { details: { count: plan.batch.length } },
+            );
+        }
+        if (plan.batch && (!spec.bulk || !holdsBulk(request))) throw errors.forbidden();
+
         // Section 30.2: no more than 30 consequential commands a minute.
         const recent = await request.tx((trx) =>
           trx
@@ -1319,16 +1629,22 @@ export const commandRoutesWith =
           const cur = await request.tx((trx) => loadOwn(trx, row.id, s.accountId));
           return view(cur!, now);
         }
-        return execute(
+        return answerWithin(
           request,
           claimed,
-          spec,
-          spec.request(plan.args, plan.target, {
-            now,
-            eventId: plan.eventId,
-            executionId: row.execution_id,
-          }),
-          extra,
+          plan.batch && spec.bulk
+            ? executeBatch(request, claimed, spec, plan, extra)
+            : execute(
+                request,
+                claimed,
+                spec,
+                spec.request(plan.args, plan.target, {
+                  now,
+                  eventId: plan.eventId,
+                  executionId: row.execution_id,
+                }),
+                extra,
+              ),
         );
       },
     );

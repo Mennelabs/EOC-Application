@@ -172,6 +172,19 @@ describe.skipIf(!appUrl || !workerUrl)('resource discovery (database-backed)', (
       },
     ];
     await withTenant(dbWorker, { tenantId: county }, async (trx) => {
+      // The stack's own worker runs discovery and its notices every minute for every tenant. A
+      // run just finished keeps it from starting a scheduled one for this county, so the runs
+      // these tests ask for are the only ones that draft candidates here.
+      await trx
+        .insertInto('cg.discovery_run')
+        .values({
+          tenant_id: county,
+          state: 'done',
+          started_at: new Date(),
+          finished_at: new Date(),
+          summary: JSON.stringify({ note: 'Exercise: keeps the scheduled run away' }),
+        })
+        .execute();
       const place = async (lon: number, lat: number, line1: string, postal: string) =>
         (
           await trx
@@ -428,8 +441,9 @@ describe.skipIf(!appUrl || !workerUrl)('resource discovery (database-backed)', (
         { tenantIds: [county] },
       );
     // Both places are within 3 km of the food requests: two alerts and one digest. No reviewer
-    // accounts in this county, so the security contact hears (one email each).
-    expect(await notify()).toBe(3);
+    // accounts in this county, so the security contact hears (one email each). The stack's own
+    // worker may send some of them first, so what is recorded is checked, not this call's count.
+    expect(await notify()).toBeLessThanOrEqual(3);
     const notices = await dbWorker
       .selectFrom('cg.notice_log')
       .select(['kind', 'subject_kind', 'cycle_key', 'recipient_count'])

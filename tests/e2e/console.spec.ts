@@ -153,6 +153,11 @@ test.describe('console review (CON-02, CON-05, BRD:FR-12, DCL:DEC-02/03, AIG-01,
         await expect(
           page.getByRole('heading', { name: 'Severity suggestion: reviewer agreement' }),
         ).toBeVisible();
+        // CMD-38: the command window's response times sit there too (this reviewer may not read
+        // them; the register's readers see the table, covered in commands.db.test.ts).
+        await expect(
+          page.getByRole('heading', { name: 'Command window response times' }),
+        ).toBeVisible();
       }
       await expectNoViolations(page);
     }

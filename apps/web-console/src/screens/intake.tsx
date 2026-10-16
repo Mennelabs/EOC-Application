@@ -380,6 +380,86 @@ const alertWhat = (a: HealthAlert) => {
  * agreement with the severity suggestion per model, by hazard, home type and income band
  * (PHO-13). Income band 1 is the county's highest-poverty fifth of tracts.
  */
+interface Measured {
+  count: number;
+  p95Ms: number | null;
+  targetMs: number;
+  met: boolean | null;
+}
+interface CommandPerformance {
+  days: number;
+  deadlineMs: number;
+  shorthand: Measured;
+  interpretation: Measured & { timedOut: number };
+  execution: Measured & { stillRunning: number };
+}
+
+const seconds = (ms: number | null) => (ms === null ? '—' : `${(ms / 1000).toFixed(2)} s`);
+
+/** CMD-38: the command window's response times against the Section 30.2 targets. */
+function CommandTimes() {
+  const [perf, setPerf] = useState<CommandPerformance | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    api<CommandPerformance>('/commands/performance?days=7')
+      .then((p) => live && setPerf(p))
+      .catch((e: unknown) => live && setError(describeFailure(e)));
+    return () => {
+      live = false;
+    };
+  }, []);
+  const rows = perf
+    ? [
+        { key: 'shorthand', what: 'Shorthand prepared', m: perf.shorthand, extra: '' },
+        {
+          key: 'interpretation',
+          what: 'Plain words read by the AI',
+          m: perf.interpretation,
+          extra: perf.interpretation.timedOut ? `${perf.interpretation.timedOut} timed out` : '',
+        },
+        {
+          key: 'execution',
+          what: 'Confirmed command run',
+          m: perf.execution,
+          extra: perf.execution.stillRunning
+            ? `${perf.execution.stillRunning} still running past the deadline`
+            : '',
+        },
+      ]
+    : [];
+  return (
+    <>
+      <h2 id="command-times-h">Command window response times</h2>
+      <p>
+        The slowest of every twenty, over the last {perf?.days ?? 7} days, against the targets.
+        Nothing waits longer than {perf ? perf.deadlineMs / 1000 : 15} seconds without saying so:
+        the AI reading is given up, and a command still running says it is still running.
+      </p>
+      {error ? <Status kind="error">{error}</Status> : null}
+      {perf ? (
+        <DataTable
+          caption="Command window response times (95th percentile)"
+          rows={rows}
+          rowKey={(r) => r.key}
+          columns={[
+            { key: 'what', header: 'Step', render: (r) => r.what },
+            { key: 'n', header: 'Count', render: (r) => String(r.m.count) },
+            { key: 'p95', header: '95th percentile', render: (r) => seconds(r.m.p95Ms) },
+            { key: 'target', header: 'Target', render: (r) => seconds(r.m.targetMs) },
+            {
+              key: 'met',
+              header: 'Within target',
+              render: (r) => (r.m.met === null ? 'No data yet' : r.m.met ? 'Yes' : 'No'),
+            },
+            { key: 'note', header: 'Notes', render: (r) => r.extra || '—' },
+          ]}
+        />
+      ) : null}
+    </>
+  );
+}
+
 function AiHealth({ onChanged }: { onChanged: (text: string, kind: 'success' | 'error') => void }) {
   const alerts = useList<HealthAlert>('/ai-register/alerts');
   const [agreement, setAgreement] = useState<Agreement | null>(null);
@@ -471,6 +551,7 @@ function AiHealth({ onChanged }: { onChanged: (text: string, kind: 'success' | '
           ))}
         </>
       ) : null}
+      <CommandTimes />
     </>
   );
 }

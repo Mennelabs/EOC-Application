@@ -44,6 +44,7 @@ import { evaluateEquityAlerts } from './jobs/equity.ts';
 import { evaluateAiHealth } from './jobs/ai-health.ts';
 import { staleAbandonedPlans, sweepCommandHistory } from './jobs/commands.ts';
 import { expireScribeSessions } from './jobs/scribe.ts';
+import { sweepRetention } from './jobs/retention.ts';
 import { notifyDiscovery, runDiscovery } from './jobs/discovery.ts';
 import { remindFacilityRechecks } from './jobs/facilities.ts';
 import { webhookSchedule } from './jobs/webhooks.ts';
@@ -188,6 +189,11 @@ const schedules: Schedule[] = [
   { name: 'break-glass-expiry', everyMs: 60_000, run: expireBreakGlass },
   { name: 'audit-anchor', everyMs: 15 * 60_000, run: anchorAuditChains },
   { name: 'retention-sweep', everyMs: 24 * 3600_000, run: retentionSweep },
+  {
+    name: 'retention-categories',
+    everyMs: 24 * 3600_000,
+    run: (c) => sweepRetention(c).then(() => undefined),
+  },
   // SCL-06: submissions stored while the queue was down, or whose message was lost, are filed from the row.
   {
     name: 'intake-stored-sweep',

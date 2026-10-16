@@ -29,6 +29,7 @@ import { exportRequested } from './exports.ts';
 import { aiEvaluate } from './ai-evaluate.ts';
 import { equityEvaluate } from './equity.ts';
 import { officialReportIssued } from './official-reports.ts';
+import { ssoApply, tenantUsesSso } from './sso.ts';
 import type { JobContext, OutboxMessage, TopicHandler } from './types.ts';
 import { auditChainsBroken, auditChainsChecked } from '../metrics.ts';
 
@@ -130,11 +131,14 @@ export const accountInvited: TopicHandler = async (ctx, msg) => {
   }
   const devPassword =
     typeof msg.payload['devPassword'] === 'string' ? msg.payload['devPassword'] : undefined;
+  // SEC-07: a county with single sign-on invites for the passkey only.
+  const sso = await tenantUsesSso(ctx.db, row.tenant_id);
   const userId = await ctx.idp.ensureUser(row.slug, {
     email: row.email,
     displayName: row.display_name,
     enabled: row.status !== 'deactivated' && row.status !== 'suspended',
     ...(devPassword ? { devPassword } : {}),
+    sso,
   });
   await asSystem(ctx.db, row.tenant_id, async (trx) => {
     await trx
@@ -150,7 +154,7 @@ export const accountInvited: TopicHandler = async (ctx, msg) => {
     });
   });
   if (!devPassword) {
-    await ctx.idp.sendInvitation(row.slug, userId, `${ctx.urls.gatewayPublic}/console/`);
+    await ctx.idp.sendInvitation(row.slug, userId, `${ctx.urls.gatewayPublic}/console/`, sso);
   }
 };
 
@@ -265,6 +269,7 @@ export const topicHandlers: Record<string, TopicHandler> = {
   'equity.evaluate': equityEvaluate, // EQ-12, CON-07
   'ai.evaluate': aiEvaluate, // AIG-08, ADR-0043
   'health_notice.send': healthNoticeSend, // FL:FR-06
+  'sso.apply': ssoApply, // SEC-07
 };
 
 // ---- schedules --------------------------------------------------------------

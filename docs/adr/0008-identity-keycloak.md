@@ -25,3 +25,12 @@ The same container runs in the government cloud's Kubernetes with an external ma
 
 - The CJIS enclave runs a **second, separate** Keycloak (layer 5).
 - Field volunteers checked in by QR do not get a Keycloak account; they get a short-lived device session bound to the check-in (FLD-03, ACCT-01).
+
+## Brokering to the county's identity provider (2026-10-16, SEC-07)
+
+- **Configured per county, approved by two administrators.** An administrator proposes the provider on the console's Single sign-on screen: SAML metadata, or OpenID Connect addresses with a client ID and secret. A second administrator approves it (ADM-05). The worker's `sso.apply` job then puts it on the county's realm as the identity provider `county-sso`. The OIDC client secret is encrypted under the tenant key (SEC-10) and decrypted only to hand to Keycloak. See `docs/operations/single-sign-on.md`.
+- **Link only, never create.** The first-broker-login flow `cg-first-broker` detects the existing user by email and links to it. When there is none, the sign-in fails. A county account therefore reaches only someone the county invited, and the county's sign-in can never mint an account.
+- **The passkey stays.** The post-broker-login flow `cg-post-broker` requires the person's WebAuthn passkey after the county sign-in. SSO replaces the password, never the phishing-resistant factor. This is the stricter reading of SEC-07 (plan reading 49).
+- **Signed and checked.** SAML assertions must be signed and the signature is validated; AuthnRequests are signed; the Name ID is the email address. OIDC uses PKCE and validates tokens against the provider's JWKS. `trustEmail` is off.
+- **Switching off** disables the provider and keeps its links, so switching it back on needs no relinking. Invitations under SSO ask for a passkey only; the pending password step is dropped when SSO comes on.
+- **Tested end to end:** `tests/e2e/sso.spec.ts` stands up a second realm as the county's SAML identity provider. It then proposes, approves, signs an invited person in with a passkey, and refuses a county user nobody invited.

@@ -132,6 +132,14 @@ Controls that every feature relies on are described once, in "Shared controls" b
 - **Exhaustion:** a caller cannot mint labels. A phone's unknown command kind counts as `unknown`, and each metric stops at 1,000 label sets.
 - **Integrity of the alerting:** the rules are in the repository, checked and unit-tested by promtool in CI. A broken audit chain and stopped anchoring each page the security owner.
 
+## 14. Single sign-on through the county's identity provider (SEC-07)
+
+- **A rogue provider:** an administrator who controls a provider could assert anyone's email. Two things stop that. A second administrator must approve every provider (ADM-05). And the passkey is still required after the county sign-in, so asserting an email is not enough to get in.
+- **Account creation:** a county sign-in only links to an account the county invited, and fails otherwise. It never creates an account, so there are no shared or unexpected accounts.
+- **Forged assertions:** SAML assertions must be signed and are validated against the certificate in the approved metadata. OIDC tokens are validated against the provider's keys, with PKCE.
+- **Hostile metadata:** metadata with a document type declaration or entities is refused before anyone sees it, and Keycloak parses the rest. The API never fetches a URL the administrator types (no server-side request forgery).
+- **Secrets:** the OIDC client secret is encrypted under the tenant key and never returned, logged or audited.
+
 ## Dynamic testing (DAST)
 
 `tests/e2e/dast.spec.ts` runs against the live stack on every push, as part of the end-to-end suite. It checks:

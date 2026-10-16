@@ -96,6 +96,9 @@ const templates: readonly RoleTemplate[] = [
       // SCL-09: explicit actions, never reached by the wildcard below.
       g('api_key.manage'),
       g('webhook.manage'),
+      // SEC-07: the county's single sign-on, approved by a second administrator.
+      g('sso.read'),
+      g('sso.manage'),
       // CMD-04, BRD:FR-18.05: the organization's command aliases, confirmed and audited.
       g('command_alias.manage'),
       { action: '*', dataCategories: ['contact'] },
@@ -121,6 +124,8 @@ const templates: readonly RoleTemplate[] = [
       g('api_key.manage'),
       g('webhook.read'),
       g('webhook.manage'),
+      g('sso.read'),
+      g('sso.manage'),
     ],
   },
   {

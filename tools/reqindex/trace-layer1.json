@@ -277,10 +277,10 @@
     ""
   ],
   "SEC-07": [
-    "partial",
-    "Keycloak realm: password + passkey browser flow, no shared accounts",
-    "console.spec.ts (passkey on a virtual authenticator)",
-    "SAML/OIDC brokering to a tenant's own IdP is configured per realm but not yet exercised by a test."
+    "pass",
+    "Keycloak realm: password + passkey browser flow, no shared accounts; enclave: password then passkey with user verification, the second factor required in amr by the API (ADR-0036); single sign-on through the county's identity provider: cg.tenant_sso (0105), routes/sso.ts (propose, second-administrator approve or decline, switch off; SAML metadata screened, OIDC https only, client secret encrypted), worker sso.apply and KeycloakAdmin.ensureSsoProvider (provider county-sso, cg-first-broker links to invited accounts only, cg-post-broker requires the passkey), passkey-only invitations under SSO, console Single sign-on screen (ADR-0008)",
+    "console.spec.ts (passkey on a virtual authenticator); services/cjis-api/test/token.test.ts, tests/integration/stack.int.test.ts (password alone refused), tests/e2e/cjis.spec.ts (passkey on a virtual authenticator); tests/e2e/sso.spec.ts (stand-in SAML provider: proposed, approved by a second administrator, applied, invited person signs in with the county account then registers a passkey, uninvited county user refused); services/api/test/sso.db.test.ts; services/api/test/sso-config.test.ts; services/worker/test/sso-keycloak.test.ts",
+    "OpenID Connect brokering is covered by unit and database tests; the browser journey uses SAML (a local OIDC provider would need back-channel addresses the gateway does not route). The enclave keeps its own accounts (no county SSO into the enclave)."
   ],
   "SEC-08": [
     "pass",

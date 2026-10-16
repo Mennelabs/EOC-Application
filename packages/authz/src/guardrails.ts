@@ -143,9 +143,12 @@ export const G6: Guardrail = {
     if (actionKey === 'role.publish' && resource.requestedBy === subject.accountId) {
       return { deny: 'second_administrator_required' };
     }
-    // SCL-09: a key or webhook is approved or declined by someone other than who asked.
+    // SCL-09, SEC-07: a key, webhook or sign-in provider is approved or declined by
+    // someone other than who asked.
     if (
-      (actionKey === 'api_key.manage' || actionKey === 'webhook.manage') &&
+      (actionKey === 'api_key.manage' ||
+        actionKey === 'webhook.manage' ||
+        actionKey === 'sso.manage') &&
       resource.requestedBy !== undefined &&
       resource.requestedBy === subject.accountId
     ) {

@@ -83,6 +83,18 @@ test.describe('layer 4 console', () => {
       await page.waitForTimeout(1000);
     }
     await expectNoViolations(page);
+    // DSP-07: an alert can also take over later, while the board is in use: a team checked in by
+    // an earlier journey misses its check-in timer. Whoever is at the board acknowledges it and
+    // carries on. Before, the assign step below could wait on the takeover until the test timed
+    // out (PR #55, phone run of 58bdb2e).
+    await page.addLocatorHandler(takeover, async () => {
+      // Every open alert is acknowledged, one by one, until the takeover is gone.
+      const ack = page.getByRole('button', { name: /Acknowledge/ });
+      for (let i = 0; i < 30 && (await takeover.isVisible()); i++) {
+        if (await ack.count()) await ack.first().click();
+        await page.waitForTimeout(500);
+      }
+    });
 
     // DSP-03, WCAG 2.1.1: assign with the keyboard only.
     const assign = page.getByRole('button', { name: `Assign ${reference}…` });
@@ -111,7 +123,7 @@ test.describe('layer 4 console', () => {
       await why.fill(reason);
       await send.focus();
       await page.keyboard.press('Enter');
-      const dialog = page.getByRole('dialog');
+      const dialog = page.getByRole('dialog', { name: 'Please confirm' });
       if (await appears(dialog, 8000)) {
         await expectNoViolations(page);
         const field = dialog.getByLabel(/reason/i);

@@ -364,11 +364,27 @@ describe('shorthand', () => {
     expect(parse('/report AB12CD approve')).toMatchObject({ ok: false, error: 'usage' });
     expect(parse('/report AB12CD ask')).toMatchObject({ ok: false, error: 'usage' });
     expect(parse('/report AB12CD delete')).toMatchObject({ ok: false, error: 'usage' });
+    // The other report is named by its code; the reason follows it.
+    expect(parse('/report AB12CD duplicate WX34YZ same house, same photos')).toMatchObject({
+      command: 'report.duplicate',
+      args: { of: 'WX34YZ', reason: 'same house, same photos', evidenceRefs: [] },
+      ref: 'AB12CD',
+      refKind: 'report',
+    });
+    expect(parse('/reporte AB12CD duplicado WX34YZ reason:"misma casa"')).toMatchObject({
+      args: { of: 'WX34YZ', reason: 'misma casa' },
+    });
+    expect(parse('/report AB12CD duplicate same house')).toMatchObject({
+      ok: false,
+      error: 'usage',
+    });
+    expect(parse('/report AB12CD duplicate WX34YZ')).toMatchObject({ ok: false, error: 'usage' });
     const review = CATALOG.filter((c) => c.name.startsWith('report.'));
     expect(review.map((c) => [c.name, c.phase, c.confirmation])).toEqual([
       ['report.claim', 3, 'one_tap'],
       ['report.approve', 4, 'full_review'],
       ['report.reject', 4, 'full_review'],
+      ['report.duplicate', 4, 'full_review'],
       ['report.ask', 4, 'full_review'],
       ['report.export', 3, 'one_tap'],
     ]);

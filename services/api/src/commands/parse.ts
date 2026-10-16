@@ -370,7 +370,10 @@ const NEW_WORDS = new Set(['new', 'nueva', 'nuevo']);
 const MISSION_DRAFT_USAGE = `/mission new <${[...new Set(Object.values(MISSION_KINDS))].join('|')}> <what is needed>`;
 
 /** CMD-15: what a reviewer does to one report, in English and Spanish. */
-const REPORT_ACTIONS: Record<string, 'claim' | 'approve' | 'reject' | 'ask'> = {
+const REPORT_ACTIONS: Record<string, 'claim' | 'approve' | 'reject' | 'ask' | 'duplicate'> = {
+  duplicate: 'duplicate',
+  duplicado: 'duplicate',
+  dup: 'duplicate',
   review: 'claim',
   revisar: 'claim',
   claim: 'claim',
@@ -385,7 +388,7 @@ const REPORT_ACTIONS: Record<string, 'claim' | 'approve' | 'reject' | 'ask'> = {
   pedir_informacion: 'ask',
 };
 const REPORT_USAGE =
-  '/report <reference code> review | approve <why> | reject <why> | ask <question>';
+  '/report <reference code> review | approve <why> | reject <why> | ask <question> | duplicate <other reference code> <why>';
 
 /** CMD-16: the exports the window can prepare. */
 const EXPORT_IDA = new Set(['ida', 'ida_package', 'paquete_ida']);
@@ -720,6 +723,14 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
         .map((e) => e.trim())
         .filter(Boolean);
       if (act === 'claim') return ok('report.claim', {}, ref, 'report');
+      if (act === 'duplicate') {
+        const [of, ...why] = rest;
+        const reason = (pairs['reason'] ?? pairs['text'] ?? why.join(' ')).trim();
+        if (!of || !/^(?=.*\d)[a-z0-9-]{6,12}$/iu.test(of))
+          return usage('A duplicate of which report? Give its reference code.', REPORT_USAGE);
+        if (reason.length < 3) return usage('Say why, for the record.', REPORT_USAGE);
+        return ok('report.duplicate', { of, reason, evidenceRefs: evidence }, ref, 'report');
+      }
       if (act === 'ask') {
         if (!text) return usage('What should the resident be asked?', REPORT_USAGE);
         return ok('report.ask', { message: text }, ref, 'report');

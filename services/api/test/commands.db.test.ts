@@ -1575,4 +1575,76 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
       'denied',
     );
   });
+
+  it('CMD-15, CMD-08: a duplicate names the other report by its code, found among those the reviewer may see; the plan names both, the other is not changed; itself or an unknown code is refused', async () => {
+    subjects['reviewer'] = person('assessment_reviewer');
+    const codes = [randomCode(), randomCode(), randomCode()];
+    const ids = await withTenant(dbWorker, { tenantId: county }, async (trx) => {
+      const out: string[] = [];
+      for (const c of codes)
+        out.push(
+          (
+            await trx
+              .insertInto('cg.report')
+              .values({
+                tenant_id: county,
+                event_id: eventId,
+                reference_code: c,
+                execution_id: randomUUID(),
+                graph_key: 'damage',
+                graph_version: 1,
+                channel_of_origin: 'web',
+                relationship: 'own_home',
+              })
+              .returning('id')
+              .executeTakeFirstOrThrow()
+          ).id,
+        );
+      return out;
+    });
+    const report = (id: string) =>
+      dbWorker
+        .selectFrom('cg.report')
+        .select(['review_state', 'duplicate_of', 'version'])
+        .where('id', '=', id)
+        .executeTakeFirstOrThrow();
+    const other = await report(ids[1]!);
+    await phases([1, 2, 3, 4]);
+
+    const line = `/report ${codes[0]} duplicate ${codes[1]} Exercise: same house, same photos`;
+    expect((await command('mc', line)).status).toBe('denied');
+    const plan = await command('reviewer', line);
+    expect(plan.status, plan.message).toBe('awaiting_confirmation');
+    expect(plan.plan?.description).toMatch(
+      new RegExp(
+        `^Mark ${codes[0]} \\(submitted, .+\\) as a duplicate of ${codes[1]}\\. ${codes[1]} is not changed\\.$`,
+      ),
+    );
+    expect(plan.plan?.args['ofId']).toBe(ids[1]);
+    const done = await confirm('reviewer', plan, {
+      'x-confirm': 'true',
+      'x-reason': 'Exercise: the second call about the same house',
+    });
+    expect(done.body['status'], JSON.stringify(done.body)).toBe('succeeded');
+    expect(done.body['message']).toContain('is marked as a duplicate');
+    expect(await report(ids[0]!)).toMatchObject({
+      review_state: 'duplicate',
+      duplicate_of: ids[1],
+    });
+    // The other report is untouched.
+    expect(await report(ids[1]!)).toEqual(other);
+    // CMD-37: the reason lives in the decision, not in the execution record.
+    expect(JSON.stringify((await stored(plan.id!)).plan)).not.toContain('same photos');
+
+    const self = await command('reviewer', `/report ${codes[2]} duplicate ${codes[2]} same one`);
+    expect(self.status).toBe('not_found');
+    expect(self.message).toContain('cannot duplicate itself');
+    const unknown = await command(
+      'reviewer',
+      `/report ${codes[2]} duplicate ${randomCode()} Exercise: no such report`,
+    );
+    expect(unknown.status).toBe('not_found');
+    expect((await report(ids[2]!)).review_state).toBe('submitted');
+    await phases([1, 2, 3]);
+  });
 });

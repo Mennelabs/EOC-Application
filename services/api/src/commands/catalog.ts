@@ -102,6 +102,12 @@ export interface CommandSpec<A = Record<string, unknown>> {
    * (CMD-08), and puts the chosen id in `personId` before the plan is shown.
    */
   person?: boolean;
+  /**
+   * CMD-08, CMD-15: a second record the command names by reference (`arg`), found among the
+   * records the caller may see; its id goes in `idArg` before the plan is shown. More than
+   * one match asks for the full reference rather than guess.
+   */
+  also?: { arg: string; idArg: string; kind: TargetKind };
   /** CMD-30: runs over many records (phase 4, `command.bulk`); `target` names their kind. */
   bulk?: BulkSpec<A>;
   confirmation: Confirmation;
@@ -1456,6 +1462,44 @@ export const CATALOG = [
       verify: (r) => reviewed(r, decision === 'approve' ? 'is approved' : 'is rejected'),
     }),
   ),
+  // CMD-15: the other report is found by its reference code among those the reviewer may
+  // see, and named in the plan. Reopening is a new decision on the review screen.
+  define<{ of: string; ofId?: string | undefined; reason: string; evidenceRefs: string[] }>({
+    name: 'report.duplicate',
+    version: 1,
+    phase: 4,
+    action: 'report.review',
+    kind: 'change',
+    title: 'Mark a report as a duplicate of another',
+    usage: '/report <reference code> duplicate <other reference code> <why>',
+    args: z.object({
+      of: z.string().trim().min(6).max(12),
+      ofId: z.uuid().optional(),
+      reason: z.string().trim().min(3).max(2000),
+      evidenceRefs: z.array(z.string().trim().min(1).max(200)).max(20).default([]),
+    }),
+    target: 'report',
+    also: { arg: 'of', idArg: 'ofId', kind: 'report' },
+    confirmation: 'full_review',
+    reversal: 'compensating',
+    sideEffects:
+      'Records the review decision with your reason: this report becomes a duplicate and points at the other one. Neither report is deleted, and the other is not changed.',
+    freeText: ['reason'],
+    request: (a, t) => ({
+      method: 'POST',
+      path: `/reports/${t!.id}/decisions`,
+      version: t!.version,
+      body: {
+        decision: 'duplicate',
+        duplicateOf: a.ofId,
+        reason: a.reason,
+        evidenceRefs: a.evidenceRefs,
+      },
+    }),
+    describe: (a, t) =>
+      `Mark ${t?.label ?? 'the report'} as a duplicate of ${a.of.toUpperCase()}${a.evidenceRefs.length ? `, citing ${a.evidenceRefs.join(', ')}` : ''}. ${a.of.toUpperCase()} is not changed.`,
+    verify: (r) => reviewed(r, 'is marked as a duplicate'),
+  }),
   define<{ message: string }>({
     name: 'report.ask',
     version: 1,

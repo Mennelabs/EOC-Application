@@ -1477,6 +1477,27 @@ export const commandRoutesWith =
         // CMD-08, CMD-14: the person a command names is found among the people this person may
         // see, by name; more than one asks which. Nothing about them is inferred.
         const planArgs = args.data as Record<string, unknown>;
+        // CMD-08, CMD-15: a second record named by its reference, among those this person may see.
+        if (spec.also) {
+          const named = str(planArgs[spec.also.arg]).trim();
+          const noun = RECORDS[spec.also.kind].noun ?? spec.also.kind;
+          const other = await resolveTarget(request, spec.also.kind, named, undefined);
+          if (other.kind === 'none')
+            return {
+              ...head,
+              status: 'not_found',
+              message: `No ${noun} you can see matches "${named}".`,
+            };
+          if (other.kind === 'many')
+            return {
+              ...head,
+              status: 'not_found',
+              message: `More than one ${noun} matches "${named}". Give its full reference code.`,
+            };
+          if (other.target.id === target?.id)
+            return { ...head, status: 'not_found', message: `A ${noun} cannot duplicate itself.` };
+          planArgs[spec.also.idArg] = other.target.id;
+        }
         if (spec.person) {
           const named = str(planArgs['person']).trim();
           const res = await op(request, {

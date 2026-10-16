@@ -222,6 +222,10 @@ export const COMMAND_EVAL_CATALOG: { usage: string; title: string }[] = [
     title: 'Reject a report',
   },
   {
+    usage: '/report <reference code> duplicate <other reference code> <why>',
+    title: 'Mark a report as a duplicate of another',
+  },
+  {
     usage: '/report <reference code> ask <question>',
     title: 'Ask the resident for more information',
   },

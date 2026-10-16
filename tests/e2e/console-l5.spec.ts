@@ -54,6 +54,8 @@ test.describe('layer 5 console: the CJIS enclave link', () => {
       `${CJIS_URL}/records/${EXERCISE_REF}?mission=${exercise.reference}&county=county`,
     );
     await expect(link).toHaveAttribute('rel', /noreferrer/);
+    // HAZ-01: the mission's own hazards section is there for every role that opens it.
+    await expect(page.getByRole('heading', { name: 'Hazards here' })).toBeVisible();
     await expectNoViolations(page);
 
     // The link lands on the enclave's own address, which asks for its own sign-in.
@@ -66,7 +68,9 @@ test.describe('layer 5 console: the CJIS enclave link', () => {
     // Linking a mission asks for a reason (RULE-14) and answers an enclave link.
     const coordinator = await token('county', 'casey.dispatch@example.org');
     const events = await api(coordinator, '/events');
-    const eventId = (events.body as unknown as { id: string; intakeSlug?: string }[])[0]!.id;
+    // The exercise event, not whichever event was made last (other suites close theirs).
+    const list = events.body as unknown as { id: string; intakeSlug?: string; status?: string }[];
+    const eventId = (list.find((e) => e.intakeSlug === 'westwind') ?? list[0]!).id;
     const created = await api(coordinator, '/missions', {
       body: {
         eventId,

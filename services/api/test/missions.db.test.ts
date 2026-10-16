@@ -20,7 +20,7 @@ import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
 import { createDb, type Database } from '@cg/db';
 import { westwindGraph } from '@cg/intake';
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import { loadSeed } from '../../../tools/seed/src/load.ts';
 import { buildApp, type App } from '../src/app.ts';
 import { AuthError, type SubjectLoader } from '../src/auth/subject.ts';
@@ -75,6 +75,7 @@ describe.skipIf(!appUrl || !workerUrl)('missions and assignments (database-backe
   let dbApp: Kysely<Database>;
   let dbWorker: Kysely<Database>;
   let tenants: Record<string, string>;
+  let emsPersonnel = '';
   let subjects: Record<string, AccountSubject>;
   let eventId: string;
   let teams: Record<string, string>;
@@ -110,6 +111,32 @@ describe.skipIf(!appUrl || !workerUrl)('missions and assignments (database-backe
       .where('intake_slug', '=', 'westwind')
       .executeTakeFirstOrThrow();
     eventId = event.id;
+    // FL:FR-02: an EMS worker with their own account and roster entry.
+    const emsAccount = (
+      await dbWorker
+        .insertInto('cg.account')
+        .values({
+          tenant_id: tenants['county']!,
+          email: `ems-${randomUUID().slice(0, 8)}@example.org`,
+          display_name: 'Exercise EMS medic',
+          status: 'active',
+        } as never)
+        .returning('id')
+        .executeTakeFirstOrThrow()
+    ).id;
+    emsPersonnel = (
+      await dbWorker
+        .insertInto('cg.personnel')
+        .values({
+          tenant_id: tenants['county']!,
+          name: 'Exercise EMS medic',
+          account_id: emsAccount,
+          duty_status: 'on_duty',
+          availability: 'available',
+        })
+        .returning('id')
+        .executeTakeFirstOrThrow()
+    ).id;
     const subjectFor = (tenantKey: string, templateKey: string, accountId: string) => {
       const t = roleTemplates.find((r) => r.key === templateKey)!;
       const tenantId = tenants[tenantKey]!;
@@ -147,6 +174,8 @@ describe.skipIf(!appUrl || !workerUrl)('missions and assignments (database-backe
         seeded.accounts['tomas.pio@example.org']!,
       ),
       counselor: subjectFor('county', 'crisis_counselor', randomUUID()),
+      admin: subjectFor('county', 'tenant_admin', randomUUID()),
+      ems: subjectFor('county', 'ems_medical_assist', emsAccount),
       saw: subjectFor(
         'cleanup',
         'agency_dispatcher',
@@ -629,5 +658,320 @@ describe.skipIf(!appUrl || !workerUrl)('missions and assignments (database-backe
       { 'idempotency-key': randomUUID() },
     );
     expect([400, 422]).toContain(foreign.status);
+  });
+
+  it('RULE-04, BRD:FR-06.04, MIS-02: the status moves along its graph only; cleared is not closed, and closing after it needs a disposition; a move the graph does not allow is refused; cancel needs a reason and ends the mission', async () => {
+    const make = async (summary: string) => {
+      const res = await call(
+        'calltaker',
+        'POST',
+        '/api/v1/missions',
+        {
+          eventId,
+          kind: 'delivery',
+          source: 'call',
+          priority: 'normal',
+          urgency: 'soon',
+          summary,
+          location: {
+            line1: '9 Exercise Row',
+            city: 'Harmon City',
+            postal: '63002',
+            position: { lat: 38.79, lon: -90.86 },
+            state: 'approximate',
+          },
+        },
+        { 'idempotency-key': randomUUID() },
+      );
+      expect(res.status, res.body).toBe(201);
+      return res.json<Mission>();
+    };
+    const move = (m: Mission, to: string) =>
+      call(
+        'priya',
+        'POST',
+        `/api/v1/missions/${m.id}/transitions`,
+        { to },
+        { 'if-match': String(m.version) },
+      );
+
+    let m = await make('Exercise: water to the clinic.');
+    for (const to of ['en_route', 'on_scene', 'cleared']) {
+      const r = await move(m, to);
+      expect(r.status, `${to}: ${r.body}`).toBe(200);
+      m = r.json<Mission>();
+      expect(m.state).toBe(to);
+    }
+    // Cleared is the crew's word, not the end: the mission stays open to close.
+    const back = await move(m, 'en_route');
+    expect(back.status).toBe(400);
+    expect(back.json<ErrorBody>().fields?.[0]?.name).toBe('to');
+    const closed = await call(
+      'priya',
+      'POST',
+      `/api/v1/missions/${m.id}/close`,
+      { disposition: 'completed' },
+      confirmed('Exercise: delivered and signed for', m.version),
+    );
+    expect(closed.status, closed.body).toBe(200);
+    m = closed.json<Mission>();
+    expect(m.state).toBe('closed');
+    expect((await move(m, 'on_scene')).status).toBe(400);
+
+    // Cancel: a reason first, then the mission ends and nothing moves it.
+    let c = await make('Exercise: duplicate call about the clinic.');
+    const unreasoned = await call(
+      'priya',
+      'POST',
+      `/api/v1/missions/${c.id}/cancel`,
+      {},
+      { 'if-match': String(c.version) },
+    );
+    expect(unreasoned.status).toBe(428);
+    const canceled = await call(
+      'priya',
+      'POST',
+      `/api/v1/missions/${c.id}/cancel`,
+      {},
+      confirmed('Exercise: the same call came in twice', c.version),
+    );
+    expect(canceled.status, canceled.body).toBe(200);
+    c = canceled.json<Mission>();
+    expect(c.state).toBe('canceled');
+    expect((await move(c, 'open')).status).toBe(400);
+    const twice = await call(
+      'priya',
+      'POST',
+      `/api/v1/missions/${c.id}/cancel`,
+      {},
+      confirmed('Exercise: again', c.version),
+    );
+    expect(twice.status).toBe(400);
+  });
+
+  it('BRD:FR-05.05, AC-05B: an archived person and an archived team stay readable with their history; assigning the archived person is a conflict only an override with a reason accepts', async () => {
+    const person = await dbWorker
+      .insertInto('cg.personnel')
+      .values({
+        tenant_id: tenants['county']!,
+        name: `Exercise Archived Person ${randomUUID().slice(0, 6)}`,
+      })
+      .returningAll()
+      .executeTakeFirstOrThrow();
+    const archived = await call(
+      'admin',
+      'POST',
+      `/api/v1/personnel/${person.id}/archive`,
+      {},
+      confirmed('Exercise: moved out of the county', person.version),
+    );
+    expect(archived.status, archived.body).toBe(200);
+    const read = await call('admin', 'GET', `/api/v1/personnel/${person.id}`);
+    expect(read.status).toBe(200);
+    expect(read.json<{ status: string; name: string }>()).toMatchObject({
+      status: 'archived',
+      name: person.name,
+    });
+    const audited = await dbWorker
+      .selectFrom('cg.audit_event')
+      .select(['action', 'reason'])
+      .where('target_id', '=', person.id)
+      .execute();
+    expect(audited).toContainEqual({
+      action: 'personnel.archive',
+      reason: 'Exercise: moved out of the county',
+    });
+
+    const team = await dbWorker
+      .insertInto('cg.team')
+      .values({
+        tenant_id: tenants['county']!,
+        key: `ex-arch-${randomUUID().slice(0, 6)}`,
+        name: 'Exercise archived crew',
+      })
+      .returningAll()
+      .executeTakeFirstOrThrow();
+    const teamArchived = await call(
+      'priya',
+      'POST',
+      `/api/v1/teams/${team.id}/archive`,
+      {},
+      confirmed('Exercise: crew disbanded', team.version),
+    );
+    expect(teamArchived.status, teamArchived.body).toBe(200);
+    const history = await call('priya', 'GET', `/api/v1/teams/${team.id}`);
+    expect(history.status).toBe(200);
+    const t = history.json<{
+      status: string;
+      history?: { status: string; note: string | null }[];
+    }>();
+    expect(t.status).toBe('archived');
+    expect(t.history?.[0]).toMatchObject({
+      status: 'out_of_service',
+      note: 'Exercise: crew disbanded',
+    });
+
+    // AC-05B: the archived person is a conflict; only an override with a reason accepts it.
+    const m = (
+      await call(
+        'calltaker',
+        'POST',
+        '/api/v1/missions',
+        {
+          eventId,
+          kind: 'welfare_check',
+          source: 'call',
+          priority: 'normal',
+          urgency: 'soon',
+          summary: "Exercise: check on the archived volunteer's old route.",
+          location: {
+            line1: '3 Exercise Lane',
+            city: 'Harmon City',
+            postal: '63002',
+            position: { lat: 38.791, lon: -90.861 },
+            state: 'approximate',
+          },
+        },
+        { 'idempotency-key': randomUUID() },
+      )
+    ).json<Mission>();
+    const refused = await call(
+      'priya',
+      'POST',
+      `/api/v1/missions/${m.id}/assignments`,
+      { resources: [{ kind: 'person', id: person.id }] },
+      { 'idempotency-key': randomUUID() },
+    );
+    expect(refused.status, refused.body).toBe(409);
+    expect(
+      refused.json<ErrorBody>().details!.conflicts![0]!.conflicts.map((c) => c.kind),
+    ).toContain('inactive');
+    const accepted = await call(
+      'priya',
+      'POST',
+      `/api/v1/missions/${m.id}/assignments`,
+      {
+        resources: [{ kind: 'person', id: person.id }],
+        overrideReason: 'Exercise: they agreed to help one last time',
+      },
+      {
+        'idempotency-key': randomUUID(),
+        ...confirmed('Exercise: they agreed to help one last time'),
+      },
+    );
+    expect(accepted.status, accepted.body).toBe(201);
+    const a = accepted.json<Assignment[]>()[0]!;
+    expect(a.conflicts.map((c) => c.kind)).toContain('inactive');
+  });
+
+  it('FL:FR-02, DSP-13: EMS sees only the missions it is assigned to, and on them the people involved by injury and transport, never their details or health notes; it creates and dispatches nothing', async () => {
+    const make = async (summary: string) =>
+      (
+        await call(
+          'calltaker',
+          'POST',
+          '/api/v1/missions',
+          {
+            eventId,
+            kind: 'welfare_check',
+            source: 'call',
+            priority: 'high',
+            urgency: 'now',
+            summary,
+            location: {
+              line1: '21 Exercise Ct',
+              city: 'Harmon City',
+              postal: '63002',
+              position: { lat: 38.793, lon: -90.865 },
+              state: 'approximate',
+            },
+          },
+          { 'idempotency-key': randomUUID() },
+        )
+      ).json<Mission>();
+    const theirs = await make('Exercise: fall at home, needs a medic.');
+    const other = await make('Exercise: unrelated welfare check.');
+    const assigned = await call(
+      'priya',
+      'POST',
+      `/api/v1/missions/${theirs.id}/assignments`,
+      {
+        resources: [{ kind: 'person', id: emsPersonnel }],
+        overrideReason: 'Exercise: the medic is closest',
+      },
+      { 'idempotency-key': randomUUID(), ...confirmed('Exercise: the medic is closest') },
+    );
+    expect(assigned.status, assigned.body).toBe(201);
+    const person = await call('priya', 'POST', `/api/v1/missions/${theirs.id}/people`, {
+      role: 'survivor',
+      displayLabel: 'resident',
+      details: { name: 'E. Example', phone: '+13145550133' },
+      injury: 'minor',
+      transport: 'ems',
+      behavioralHealth: 'Exercise: shaken after the fall.',
+    });
+    expect(person.status, person.body).toBe(201);
+
+    expect((await call('ems', 'GET', `/api/v1/missions/${theirs.id}`)).status).toBe(200);
+    expect((await call('ems', 'GET', `/api/v1/missions/${other.id}`)).status).toBe(404);
+    const people = await call('ems', 'GET', `/api/v1/missions/${theirs.id}/people`);
+    expect(people.status, people.body).toBe(200);
+    const seen = people.json<Record<string, unknown>[]>()[0]!;
+    expect(seen).toMatchObject({ injury: 'minor', transport: 'ems' });
+    expect(seen['details']).toBeUndefined();
+    expect(seen['behavioralHealth']).toBeUndefined();
+    // No mission of its own, no dispatch board, no 911-style dispatch (DSP-13).
+    expect(
+      (
+        await call(
+          'ems',
+          'POST',
+          '/api/v1/missions',
+          { eventId, kind: 'welfare_check', source: 'call', summary: 'Exercise' },
+          { 'idempotency-key': randomUUID() },
+        )
+      ).status,
+    ).toBe(403);
+    expect((await call('ems', 'GET', '/api/v1/dispatch/board')).status).toBe(403);
+  });
+
+  it('AC-03B: a location said to be unknown is kept as words only, never as a point, even when a point is sent; the board shows the mission with no position and says the location is unknown', async () => {
+    const res = await call(
+      'calltaker',
+      'POST',
+      '/api/v1/missions',
+      {
+        eventId,
+        kind: 'welfare_check',
+        source: 'call',
+        priority: 'high',
+        urgency: 'now',
+        summary: 'Exercise: caller unsure where they are, somewhere along the river.',
+        location: {
+          landmark: 'Exercise: somewhere along the river road',
+          position: { lat: 38.8, lon: -90.88 },
+          state: 'unknown',
+        },
+      },
+      { 'idempotency-key': randomUUID() },
+    );
+    expect(res.status, res.body).toBe(201);
+    const m = res.json<Mission>();
+    expect(m.location?.position).toBeNull();
+    const geom = await dbWorker
+      .selectFrom('cg.mission as mi')
+      .innerJoin('cg.location as l', 'l.id', 'mi.location_id')
+      .select(sql<boolean>`l.geom is null`.as('none'))
+      .where('mi.id', '=', m.id)
+      .executeTakeFirstOrThrow();
+    expect(geom.none).toBe(true);
+    const board = await call('priya', 'GET', `/api/v1/dispatch/board?eventId=${eventId}`);
+    expect(board.status, board.body).toBe(200);
+    const b = board.json<{
+      queue: { id: string; position: unknown; locationState: string }[];
+      active: { id: string; position: unknown; locationState: string }[];
+    }>();
+    const shown = [...b.queue, ...b.active].find((x) => x.id === m.id);
+    expect(shown).toMatchObject({ position: null, locationState: 'unknown' });
   });
 });

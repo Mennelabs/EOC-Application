@@ -25,7 +25,9 @@ export type TargetKind =
   | 'report'
   | 'team'
   | 'personnel'
-  | 'resource';
+  | 'resource'
+  | 'account'
+  | 'role';
 
 /** A resolved record the command acts on, with the version it had when the plan was made. */
 export interface Target {
@@ -134,6 +136,19 @@ export interface CommandSpec<A = Record<string, unknown>> {
    */
   freeText?: string[];
   request(args: A, target: Target | null, ctx: OpContext): OpRequest;
+  /**
+   * AC-C07: a second operation, run once the first has succeeded (a message, then its note on
+   * a mission). The person must hold its action too. When it fails the execution is partly
+   * done: the answer names what the first step did, and nothing is rolled back or said to be.
+   */
+  then?: {
+    action: string;
+    /** How the answer names the second step when it was not done. */
+    label: string;
+    when(args: A): boolean;
+    request(args: A, target: Target | null, first: Verified): OpRequest;
+    verify(response: unknown): Verified;
+  };
   /** AC-C08: what "undo" answers when the change cannot be taken back, in this command's words. */
   undoUnavailable?: string;
   /** Undo from what the plan targeted and what the operation verified; never from free text. */
@@ -1510,16 +1525,43 @@ export const CATALOG = [
 
   // AC-C08, Section 30.2 phase 4 (outbound messages): a message to a team's phones, reviewed
   // with a reason. It is answered as sent, never as delivered: delivery is each phone's receipt.
-  define<{ text: string }>({
+  define<{ text: string; mission?: string | undefined; missionId?: string | undefined }>({
     name: 'team.message',
     version: 1,
     phase: 4,
     action: 'field_message.send',
     kind: 'change',
     title: 'Message a team in the field',
-    usage: '/message <team> <text>',
-    args: z.object({ text: z.string().trim().min(1).max(1000) }),
+    usage: '/message <team> <text> [mission:<number>]',
+    args: z.object({
+      text: z.string().trim().min(1).max(1000),
+      mission: z.string().trim().min(1).max(40).optional(),
+      missionId: z.uuid().optional(),
+    }),
     target: 'team',
+    // AC-C07: with mission:, the message is then noted on the mission's timeline.
+    also: { arg: 'mission', idArg: 'missionId', kind: 'mission' },
+    then: {
+      action: 'mission.narrative',
+      label: 'the note on the mission',
+      when: (a) => Boolean(a.missionId),
+      request: (a, t, first) => ({
+        method: 'POST',
+        path: `/missions/${a.missionId ?? ''}/narratives`,
+        body: {
+          role: 'dispatcher',
+          body: `Field message ${first.records[0]?.id ?? ''} sent to ${t?.label ?? 'the team'} from the command window.`,
+        },
+      }),
+      verify: (r) => {
+        const e = (r ?? {}) as Row;
+        return {
+          state: 'saved',
+          summary: 'It is noted on the mission timeline.',
+          records: e['id'] ? [{ kind: 'mission_event', id: str(e['id']) }] : [],
+        };
+      },
+    },
     needsEvent: true,
     confirmation: 'full_review',
     reversal: 'compensating',
@@ -1538,8 +1580,8 @@ export const CATALOG = [
         audience: { kind: 'team', teamId: t!.id },
       },
     }),
-    describe: (_a, t) =>
-      `Send what you typed to ${t?.label ?? 'the team'}. It shows as delivered only when their phones confirm it.`,
+    describe: (a, t) =>
+      `Send what you typed to ${t?.label ?? 'the team'}. It shows as delivered only when their phones confirm it.${a.mission ? ` Then note it on mission ${a.mission}.` : ''}`,
     verify: (r) => {
       const d = (r ?? {}) as Row;
       const n = typeof d['recipientCount'] === 'number' ? d['recipientCount'] : 0;
@@ -1669,6 +1711,166 @@ export const CATALOG = [
     describe: (_a, t) =>
       `Ask the resident who sent ${t?.label ?? 'the report'} for more information. They are sent your question.`,
     verify: (r) => reviewed(r, 'needs information; the question is queued for the resident'),
+  }),
+
+  // CMD-18, Section 30.2 phase 4 (administration): only the workflows the Accounts and
+  // Permissions screens already run, each with the full review and a reason. Nothing is ever
+  // granted because a command asked: a role is requested, and a second administrator approves
+  // it on the Permissions screen (ADM-05).
+  ...(['suspend', 'deactivate', 'activate'] as const).map((step) =>
+    define<Record<string, never>>({
+      name: `account.${step}`,
+      version: 1,
+      phase: 4,
+      action: `account.${step}`,
+      kind: 'change',
+      title:
+        step === 'suspend'
+          ? 'Suspend an account'
+          : step === 'deactivate'
+            ? 'Deactivate an account'
+            : 'Activate an account again',
+      usage: `/account <name or email> ${step}`,
+      args: z.object({}),
+      target: 'account',
+      confirmation: 'full_review',
+      reversal: step === 'suspend' ? 'undo_15_min' : 'none',
+      sideEffects:
+        step === 'suspend'
+          ? 'They cannot sign in until an administrator activates the account again; the identity provider is told at once.'
+          : step === 'deactivate'
+            ? 'They can never sign in with this account again; its history is kept. The identity provider is told at once.'
+            : 'They can sign in again with the roles they had.',
+      ...(step === 'deactivate'
+        ? {
+            undoUnavailable:
+              'A deactivated account cannot be activated again. Invite the person again if they come back.',
+          }
+        : step === 'activate'
+          ? { undoUnavailable: 'Suspend the account again if this was wrong.' }
+          : {}),
+      request: (_a, t) => ({
+        method: 'POST',
+        path: `/accounts/${t!.id}/${step}`,
+        body: {},
+        version: t!.version,
+      }),
+      ...(step === 'suspend'
+        ? {
+            undo: (_a: Record<string, never>, t: Target | null, v: Verified): OpRequest => ({
+              method: 'POST',
+              path: `/accounts/${t!.id}/activate`,
+              body: {},
+              version: v.records[0]?.version,
+            }),
+          }
+        : {}),
+      describe: (_a, t) =>
+        step === 'suspend'
+          ? `Suspend ${t!.label}. They cannot sign in until the account is activated again.`
+          : step === 'deactivate'
+            ? `Deactivate ${t!.label} for good. Their history is kept.`
+            : `Activate ${t!.label} again.`,
+      verify: (r) => {
+        const d = (r ?? {}) as Row;
+        return {
+          state: 'saved',
+          summary: `${str(d['displayName'])} is ${str(d['status'])}.`,
+          records: [
+            {
+              kind: 'account',
+              id: str(d['id']),
+              label: str(d['displayName']),
+              version: ver(d['version']),
+            },
+          ],
+        };
+      },
+    }),
+  ),
+  define<{ role: string; roleId?: string | undefined }>({
+    name: 'role.request',
+    version: 1,
+    phase: 4,
+    action: 'permission_change.request',
+    kind: 'change',
+    title: 'Ask for a role to be given to someone',
+    usage: '/role request <role> to:<name or email>',
+    args: z.object({ role: z.string().trim().min(2).max(120), roleId: z.uuid().optional() }),
+    target: 'account',
+    also: { arg: 'role', idArg: 'roleId', kind: 'role' },
+    confirmation: 'full_review',
+    reversal: 'none',
+    undoUnavailable:
+      'The request waits for a second administrator, who approves or rejects it on the Permissions screen.',
+    sideEffects:
+      'Records a request. Nothing is granted until a second administrator approves it on the Permissions screen (ADM-05).',
+    request: (a, t) => ({
+      method: 'POST',
+      path: '/permission-changes',
+      body: { kind: 'assign_role', accountId: t!.id, roleId: a.roleId, scope: {} },
+    }),
+    describe: (a, t) =>
+      `Ask for the role "${a.role}" to be given to ${t!.label}. Nothing is granted until a second administrator approves it.`,
+    verify: (r) => {
+      const d = (r ?? {}) as Row;
+      return {
+        state: 'queued',
+        summary:
+          'Requested. A second administrator approves or rejects it on the Permissions screen.',
+        records: [{ kind: 'permission_change_request', id: str(d['id']) }],
+      };
+    },
+  }),
+  define<{
+    role: string;
+    roleId?: string | undefined;
+    assignmentId?: string | undefined;
+    assignmentVersion?: number | undefined;
+  }>({
+    name: 'role.revoke',
+    version: 1,
+    phase: 4,
+    action: 'role_assignment.revoke',
+    kind: 'change',
+    title: 'Take a role away from someone',
+    usage: '/role revoke <role> from:<name or email>',
+    args: z.object({
+      role: z.string().trim().min(2).max(120),
+      roleId: z.uuid().optional(),
+      assignmentId: z.uuid().optional(),
+      assignmentVersion: z.number().int().optional(),
+    }),
+    target: 'account',
+    also: { arg: 'role', idArg: 'roleId', kind: 'role' },
+    within: {
+      path: (_a, t) => `/role-assignments?limit=200&accountId=${t!.id}`,
+      pick: (list, a) => list.filter((x) => x['roleId'] === a.roleId && x['status'] === 'active'),
+      idArg: 'assignmentId',
+      versionArg: 'assignmentVersion',
+      none: (a) => `They do not hold the role "${a.role}".`,
+      many: (a) =>
+        `They hold the role "${a.role}" more than once (for different events). Take it away on the Permissions screen.`,
+    },
+    confirmation: 'full_review',
+    reversal: 'none',
+    undoUnavailable: 'Giving the role back is a new request, approved by a second administrator.',
+    sideEffects:
+      'Takes the role away at once, with your reason. Giving it back needs a second administrator.',
+    request: (a) => ({
+      method: 'POST',
+      path: `/role-assignments/${a.assignmentId ?? ''}/revoke`,
+      version: a.assignmentVersion,
+    }),
+    describe: (a, t) => `Take the role "${a.role}" away from ${t!.label}.`,
+    verify: (r) => {
+      const d = (r ?? {}) as Row;
+      return {
+        state: 'saved',
+        summary: `The role is ${str(d['status'])}.`,
+        records: [{ kind: 'role_assignment', id: str(d['id']), version: ver(d['version']) }],
+      };
+    },
   }),
 
   // CMD-16: exports with an explicit scope and period. Section 30.2 lists exports with

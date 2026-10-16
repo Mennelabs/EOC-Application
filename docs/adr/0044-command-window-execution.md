@@ -70,3 +70,14 @@ The executor lives in the API process and adds no service. The language model si
 - `/mission new <kind> <what is needed>` drafts a mission in the open event. It is phase 1 (a draft), runs at once and dispatches nothing. The words are kept in the mission, never in the execution record.
 - `/message <team> <text>` sends a field message to a team's phones. It is phase 4 (outbound messages) with the full review and a reason. It is answered as sent with the number of people, never as delivered; delivery is each phone's receipt on the messages screen.
 - A command can name its own answer when it cannot be undone (`undoUnavailable`). For a sent message, "undo" says it cannot be recalled from people's phones and that a correction is a new message (AC-C08).
+
+## Addendum 2026-10-16: second steps, second records and the people they name (AC-C07, CMD-13 to CMD-17)
+
+- **Second steps (`then`).** A command may run a second operation once the first has succeeded: `/message <team> <text> mission:<number>` sends the message, then notes it on the mission.
+  - The person must hold the second step's action too; otherwise the plan is refused before anything is sent.
+  - The second step has its own idempotency key, derived from the execution id, so a retry never repeats it.
+  - When it fails, the execution is `partially_succeeded`. The answer says what the first step did, names the step not done with the operation's own reason, and says nothing was rolled back, because nothing was.
+  - There is no undo on a partly done execution.
+- **Second records (`also`).** A record the command names besides its target (the other report of a duplicate, the mission a message is noted on) is found by its reference among the records the person may see. More than one match asks for the full reference rather than guess.
+- **Records within the target (`within`).** A record inside the target that the arguments name is read through its list route before the plan is shown: the person's open assignment on a mission, or the person's badge waiting for a print outcome. None, or more than one, is answered rather than guessed.
+- **What is kept for undo (`was`).** A target may keep what its changeable fields held when the plan was made (a person's duty status and availability, a resource's review date and expiry). Undo puts those back, and the version check refuses it if the record changed since.

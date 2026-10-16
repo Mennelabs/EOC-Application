@@ -12,7 +12,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import { fakeProvider, type AiProvider } from '@cg/ai';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
@@ -1829,5 +1829,256 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
       ['command', 'day', 'input_kind', 'n', 'outcome', 'tenant_id'].sort(),
     );
     expect(today.find((t) => t.outcome === 'clarify')?.n).toBeGreaterThan(0);
+  });
+
+  it('AC-C07, CMD-24: a message then its note on a mission; when the note fails the message stands, the answer names both, and nothing is said to be rolled back', async () => {
+    subjects['dispatch'] = person('agency_dispatcher');
+    subjects['safety'] = person('safety_officer');
+    await phases([1, 2, 3, 4]);
+    const m = await call('calltaker', 'POST', '/missions', {
+      eventId,
+      kind: 'delivery',
+      source: 'call',
+      priority: 'normal',
+      urgency: 'soon',
+      summary: 'Exercise: water to the library.',
+      location: {
+        line1: '44 Exercise Way',
+        city: 'Harmon City',
+        postal: '63002',
+        position: { lat: 38.792, lon: -90.872 },
+        state: 'approximate',
+      },
+    });
+    expect(m.status, JSON.stringify(m.body)).toBe(201);
+    const mission = { id: m.body['id'] as string, ref: m.body['reference'] as string };
+    const team = await withTenant(dbWorker, { tenantId: county }, async (trx) => {
+      const t = (
+        await trx
+          .insertInto('cg.team')
+          .values({ tenant_id: county, key: `two-${run}`, name: `Exercise Birch Crew ${run}` })
+          .returning('id')
+          .executeTakeFirstOrThrow()
+      ).id;
+      const p = (
+        await trx
+          .insertInto('cg.personnel')
+          .values({ tenant_id: county, name: `Exercise Cy ${run}` })
+          .returning('id')
+          .executeTakeFirstOrThrow()
+      ).id;
+      await trx
+        .insertInto('cg.team_member')
+        .values({ tenant_id: county, team_id: t, personnel_id: p })
+        .execute();
+      return t;
+    });
+    const line = (text: string) =>
+      `/message to:"Exercise Birch Crew ${run}" ${text} mission:${mission.ref}`;
+    const reason = { 'x-confirm': 'true', 'x-reason': 'Exercise: keep the crew informed' };
+    const notes = () =>
+      dbWorker
+        .selectFrom('cg.mission_event')
+        .select('id')
+        .where('mission_id', '=', mission.id)
+        .where('kind', '=', 'narrative')
+        .execute();
+
+    // A role that may message but not write on a mission is told before anything is sent.
+    const safety = await command('safety', line('Exercise: the road is open.'));
+    expect(safety.status, safety.message).toBe('denied');
+    expect(safety.message).toContain('the note on the mission');
+
+    // Both steps done.
+    const both = await command('dispatch', line('Exercise: the road is open.'));
+    expect(both.status, both.message).toBe('awaiting_confirmation');
+    expect(both.plan?.description).toContain(`Then note it on mission ${mission.ref}.`);
+    expect(both.plan?.target?.id).toBe(team);
+    const before = (await notes()).length;
+    const done = await confirm('dispatch', both, reason);
+    expect(done.body['status'], JSON.stringify(done.body)).toBe('succeeded');
+    expect(done.body['message']).toContain('It is noted on the mission timeline.');
+    expect((await notes()).length).toBe(before + 1);
+
+    // The mission is locked after the plan: the message goes, the note does not.
+    const second = await command('dispatch', line('Exercise: bring two more pallets.'));
+    expect(second.status, second.message).toBe('awaiting_confirmation');
+    const locked = await call('admin', 'POST', `/missions/${mission.id}/lock`, {
+      reason: 'Exercise: editing the call',
+    });
+    expect(locked.status, JSON.stringify(locked.body)).toBe(200);
+    try {
+      const partly = await confirm('dispatch', second, reason);
+      expect(partly.body['status'], JSON.stringify(partly.body)).toBe('partially_succeeded');
+      const said = String(partly.body['message']);
+      expect(said).toMatch(/^Sent to 1 person\./);
+      expect(said).toContain(
+        'Not done: the note on the mission (This mission is locked by another person).',
+      );
+      expect(said).toContain('nothing was rolled back');
+      // The only word about rolling back is that nothing was.
+      expect(said.replace('nothing was rolled back', '')).not.toMatch(
+        /rolled back|undone|reverted/i,
+      );
+      const result = partly.body['result'] as Execution['result'] & {
+        failures?: { id: string; label: string }[];
+      };
+      expect(result?.failures?.map((f) => f.label)).toEqual(['the note on the mission']);
+      const sent = await dbWorker
+        .selectFrom('cg.field_message')
+        .select('recipient_count')
+        .where('id', '=', result!.records[0]!.id)
+        .executeTakeFirstOrThrow();
+      expect(sent.recipient_count).toBe(1);
+      expect((await notes()).length).toBe(before + 1);
+      expect((await stored(second.id!)).state).toBe('partially_succeeded');
+    } finally {
+      await call('admin', 'DELETE', `/missions/${mission.id}/lock`, {});
+      await phases([1, 2, 3]);
+    }
+  });
+
+  it('CMD-18, ADM-05: administration runs the Accounts and Permissions workflows with a full review; a role is only ever requested for a second administrator to approve; suspending undoes, deactivating does not', async () => {
+    await phases([1, 2, 3, 4]);
+    const reason = { 'x-confirm': 'true', 'x-reason': 'Exercise: left the agency' };
+    // This county's own copy of a shipped role (the seeded county's roles are not this one's).
+    const roleName = `Exercise Shelter lead ${run}`;
+    const roleId = await withTenant(
+      dbWorker,
+      { tenantId: county },
+      async (trx) =>
+        (
+          await trx
+            .insertInto('cg.role')
+            .values({
+              tenant_id: county,
+              key: `exercise_shelter_lead_${run}`,
+              name: roleName,
+              template_key: 'mass_care_coordinator',
+            } as never)
+            .returning('id')
+            .executeTakeFirstOrThrow()
+        ).id,
+    );
+    const [kim, lee] = await withTenant(dbWorker, { tenantId: county }, async (trx) => {
+      const ids: string[] = [];
+      for (const n of ['Kim', 'Lee'])
+        ids.push(
+          (
+            await trx
+              .insertInto('cg.account')
+              .values({
+                tenant_id: county,
+                email: `exercise-${n.toLowerCase()}-${run}@example.org`,
+                display_name: `Exercise ${n} Admin-Test ${run}`,
+                status: 'active',
+              } as never)
+              .returningAll()
+              .executeTakeFirstOrThrow()
+          ).id,
+        );
+      return ids;
+    });
+    const account = (id: string) =>
+      dbWorker
+        .selectFrom('cg.account')
+        .select(['status'])
+        .where('id', '=', id)
+        .executeTakeFirstOrThrow();
+
+    // A role without the administration actions is refused before anything is planned.
+    expect((await command('mc', `/account exercise-kim-${run}@example.org suspend`)).status).toBe(
+      'denied',
+    );
+
+    // Suspend by email: a full review with a reason, then undone within the window.
+    const suspend = await command('admin', `/account exercise-kim-${run}@example.org suspend`);
+    expect(suspend.status, suspend.message).toBe('awaiting_confirmation');
+    expect(suspend.command).toMatchObject({ confirmation: 'full_review', reversal: 'undo_15_min' });
+    expect(suspend.plan?.description).not.toContain('@');
+    expect((await confirm('admin', suspend)).status).toBe(428);
+    expect((await confirm('admin', suspend, reason)).body['status']).toBe('succeeded');
+    expect((await account(kim!)).status).toBe('suspended');
+    const lifecycle = await dbWorker
+      .selectFrom('cg.account_lifecycle')
+      .select(['to_status', 'reason'])
+      .where('account_id', '=', kim!)
+      .execute();
+    expect(lifecycle).toEqual([{ to_status: 'suspended', reason: 'Exercise: left the agency' }]);
+    const undone = await call('admin', 'POST', `/commands/${suspend.id}/undo`, {
+      executionId: randomUUID(),
+    });
+    expect(undone.body['status'], JSON.stringify(undone.body)).toBe('succeeded');
+    expect((await account(kim!)).status).toBe('active');
+
+    // Deactivate by name, in Spanish: for good, so undo says so.
+    const off = await command('admin', `/cuenta Exercise Kim Admin-Test ${run} desactivar`);
+    expect(off.status, off.message).toBe('awaiting_confirmation');
+    expect((await confirm('admin', off, reason)).body['status']).toBe('succeeded');
+    expect((await account(kim!)).status).toBe('deactivated');
+    const noUndo = await call('admin', 'POST', `/commands/${off.id}/undo`, {
+      executionId: randomUUID(),
+    });
+    expect(noUndo.status).toBe(409);
+    expect(noUndo.body['message']).toContain('cannot be activated again');
+
+    // A role is requested, never granted: the request waits for a second administrator.
+    const ask = await command(
+      'admin',
+      `/role request ${roleName} to:"Exercise Lee Admin-Test ${run}"`,
+    );
+    expect(ask.status, ask.message).toBe('awaiting_confirmation');
+    expect(ask.plan?.description).toContain('Nothing is granted until a second administrator');
+    const asked = await confirm('admin', ask, reason);
+    expect(asked.body['status'], JSON.stringify(asked.body)).toBe('succeeded');
+    expect((asked.body['result'] as Execution['result'])?.state).toBe('queued');
+    const pending = await dbWorker
+      .selectFrom('cg.permission_change_request')
+      .select(['kind', 'status', 'payload'])
+      .where('tenant_id', '=', county)
+      .where(sql<boolean>`payload->>'accountId' = ${lee}`)
+      .execute();
+    expect(pending.map((p) => [p.kind, p.status])).toEqual([['assign_role', 'pending']]);
+    expect(
+      await dbWorker
+        .selectFrom('cg.role_assignment')
+        .select('id')
+        .where('account_id', '=', lee!)
+        .execute(),
+    ).toEqual([]);
+
+    // A role they hold is taken away with a reason; one they do not hold is answered.
+    const role = { id: roleId };
+    await withTenant(dbWorker, { tenantId: county }, (trx) =>
+      trx
+        .insertInto('cg.role_assignment')
+        .values({
+          tenant_id: county,
+          account_id: lee!,
+          role_id: role.id,
+          granted_by: randomUUID(),
+          approved_by: randomUUID(),
+        } as never)
+        .execute(),
+    );
+    const revoke = await command(
+      'admin',
+      `/role revoke ${roleName} from:exercise-lee-${run}@example.org`,
+    );
+    expect(revoke.status, revoke.message).toBe('awaiting_confirmation');
+    expect((await confirm('admin', revoke, reason)).body['status']).toBe('succeeded');
+    const held = await dbWorker
+      .selectFrom('cg.role_assignment')
+      .select(['status', 'revoke_reason'])
+      .where('account_id', '=', lee!)
+      .executeTakeFirstOrThrow();
+    expect(held).toEqual({ status: 'revoked', revoke_reason: 'Exercise: left the agency' });
+    const again = await command(
+      'admin',
+      `/role revoke ${roleName} from:exercise-lee-${run}@example.org`,
+    );
+    expect(again.status).toBe('not_found');
+    expect(again.message).toContain('do not hold the role');
+    await phases([1, 2, 3]);
   });
 });

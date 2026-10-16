@@ -362,6 +362,12 @@ type Resolution =
 type ListRow = Record<string, unknown>;
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
 
+/** A UUID-shaped idempotency key for one part of an execution (a batch record, a second step). */
+const derivedKey = (executionId: string, part: string) => {
+  const key = createHash('sha256').update(`${executionId}:${part}`).digest('hex');
+  return `${key.slice(0, 8)}-${key.slice(8, 12)}-5${key.slice(13, 16)}-a${key.slice(17, 20)}-${key.slice(20, 32)}`;
+};
+
 /** FR-C11: requests answered with an earlier execution again (CMD-25), counted as duplicates. */
 const replays = new WeakSet<FastifyRequest>();
 
@@ -523,6 +529,37 @@ const RECORDS: Record<
     },
     was: (r) => ({ reviewAt: str(r['reviewAt']), expiresAt: str(r['expiresAt']) }),
   },
+  // CMD-18: a staff account by its exact email, or by its name; the plan names it, not the email.
+  account: {
+    list: (ref) => (ref.trim() ? '/accounts?limit=200' : null),
+    one: (id) => `/accounts/${id}`,
+    label: (r) => `${str(r['displayName'])} (${str(r['status'])})`,
+    pick: (rows, ref) => {
+      const want = ref.trim().toLowerCase();
+      const byEmail = rows.filter((r) => str(r['email']).toLowerCase() === want);
+      if (byEmail.length) return byEmail;
+      const exact = rows.filter((r) => str(r['displayName']).toLowerCase() === want);
+      return exact.length
+        ? exact
+        : rows.filter((r) => str(r['displayName']).toLowerCase().includes(want));
+    },
+    noun: 'account',
+  },
+  // CMD-18: a role by its name or key, as the Permissions screen lists them.
+  role: {
+    list: (ref) => (ref.trim() ? '/roles?limit=200' : null),
+    one: (id) => `/roles/${id}`,
+    label: (r) => str(r['name']),
+    pick: (rows, ref) => {
+      const want = ref.trim().toLowerCase();
+      const live = rows.filter((r) => r['status'] === 'active');
+      const exact = live.filter((r) =>
+        [r['name'], r['key']].some((v) => str(v).toLowerCase() === want),
+      );
+      return exact.length ? exact : live.filter((r) => str(r['name']).toLowerCase().includes(want));
+    },
+    unversioned: true,
+  },
   // CMD-15: a resident's report by its reference code, as the review queue lists it.
   report: {
     list: (ref) =>
@@ -675,6 +712,12 @@ export const commandRoutesWith =
       return decide(s, spec.action, { type: resource, tenantId: s.tenantId }).effect === 'allow';
     };
 
+    const holdsAction = (request: FastifyRequest, action: string) => {
+      const s = account(request);
+      const resource = isActionKey(action) ? actions[action].resource : action;
+      return decide(s, action, { type: resource, tenantId: s.tenantId }).effect === 'allow';
+    };
+
     const holdsBulk = (request: FastifyRequest) => {
       const s = account(request);
       return (
@@ -715,13 +758,38 @@ export const commandRoutesWith =
         };
       });
       const ok = res.status >= 200 && res.status < 300;
-      const executeMs = Math.round(performance.now() - started);
-      const now = new Date();
-      const verified = ok
+      let verified = ok
         ? row.reversal_of
           ? undoVerified(res.body)
           : spec.verify(res.body)
         : undefined;
+      // AC-C07: the second step, once the first has answered; its failure leaves the first standing.
+      let partly = false;
+      const args = (row.plan as unknown as Plan).args;
+      if (ok && verified && !row.reversal_of && spec.then?.when(args)) {
+        const plan0 = row.plan as unknown as Plan;
+        const second = await op(request, spec.then.request(args, plan0.target, verified), {
+          'idempotency-key': derivedKey(row.execution_id, 'then'),
+        }).catch(() => ({ status: 504, body: { code: 'no_answer', message: 'No answer.' } }));
+        if (second.status >= 200 && second.status < 300) {
+          const v2 = spec.then.verify(second.body);
+          verified = {
+            ...verified,
+            summary: `${verified.summary} ${v2.summary}`,
+            records: [...verified.records, ...v2.records],
+          };
+        } else {
+          const why = errorOf(second.status, second.body);
+          partly = true;
+          verified = {
+            ...verified,
+            summary: `${verified.summary} Not done: ${spec.then.label} (${why.message.replace(/\.$/, '')}). What was done stands; nothing was rolled back.`,
+            failures: [{ id: 'then', label: spec.then.label, ...why }],
+          };
+        }
+      }
+      const executeMs = Math.round(performance.now() - started);
+      const now = new Date();
       // Lookups answer the person now; the record keeps which records, not what they said.
       const stored: StoredResult = ok
         ? {
@@ -741,11 +809,11 @@ export const commandRoutesWith =
         const updated = await trx
           .updateTable('cg.command_execution')
           .set({
-            state: ok ? 'succeeded' : 'failed',
+            state: ok ? (partly ? 'partially_succeeded' : 'succeeded') : 'failed',
             result: JSON.stringify(stored),
             plan: JSON.stringify(plan),
             undo_until:
-              ok && spec.reversal === 'undo_15_min' && spec.undo && !row.reversal_of
+              ok && !partly && spec.reversal === 'undo_15_min' && spec.undo && !row.reversal_of
                 ? new Date(now.getTime() + UNDO_MS)
                 : null,
             execute_ms: executeMs,
@@ -767,7 +835,7 @@ export const commandRoutesWith =
             targetId: row.id,
             targetVersion: updated.version,
             executionId: row.execution_id,
-            reason: `${spec.name}@${spec.version}: ${ok ? 'succeeded' : `failed (${stored.error?.code})`}${row.reason ? `; ${row.reason}` : ''}`,
+            reason: `${spec.name}@${spec.version}: ${ok ? (partly ? 'first step succeeded, second not done' : 'succeeded') : `failed (${stored.error?.code})`}${row.reason ? `; ${row.reason}` : ''}`,
           });
         return updated;
       });
@@ -793,10 +861,8 @@ export const commandRoutesWith =
       const done: Verified['records'] = [];
       const failures: NonNullable<Verified['failures']> = [];
       for (const t of plan.batch!) {
-        const key = createHash('sha256').update(`${row.execution_id}:${t.id}`).digest('hex');
         const res = await op(request, bulk.item(plan.args, t), {
-          // A UUID-shaped key per record, derived from the execution and the record.
-          'idempotency-key': `${key.slice(0, 8)}-${key.slice(8, 12)}-5${key.slice(13, 16)}-a${key.slice(17, 20)}-${key.slice(20, 32)}`,
+          'idempotency-key': derivedKey(row.execution_id, t.id),
           ...extraHeaders,
         }).catch(() => ({ status: 504, body: { code: 'no_answer', message: 'No answer.' } }));
         if (res.status >= 200 && res.status < 300) {
@@ -1556,7 +1622,7 @@ export const commandRoutesWith =
         // see, by name; more than one asks which. Nothing about them is inferred.
         const planArgs = args.data as Record<string, unknown>;
         // CMD-08, CMD-15: a second record named by its reference, among those this person may see.
-        if (spec.also) {
+        if (spec.also && str(planArgs[spec.also.arg]).trim()) {
           const named = str(planArgs[spec.also.arg]).trim();
           const noun = RECORDS[spec.also.kind].noun ?? spec.also.kind;
           const other = await resolveTarget(request, spec.also.kind, named, undefined);
@@ -1576,6 +1642,13 @@ export const commandRoutesWith =
             return { ...head, status: 'not_found', message: `A ${noun} cannot duplicate itself.` };
           planArgs[spec.also.idArg] = other.target.id;
         }
+        // AC-C07: a second step runs only for someone who may do it by hand too.
+        if (spec.then?.when(planArgs) && !holdsAction(request, spec.then.action))
+          return {
+            ...head,
+            status: 'denied',
+            message: `Your role cannot do ${spec.then.label}. Leave it out, or ask someone who can.`,
+          };
         if (spec.person) {
           const named = str(planArgs['person']).trim();
           const res = await op(request, {

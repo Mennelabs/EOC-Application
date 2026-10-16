@@ -17,7 +17,14 @@ import { RECORD_TYPES, RECORD_TYPE_KEYS, type RecordType } from '@cg/reporting';
 export type Confirmation = 'none' | 'one_tap' | 'full_review' | 'second_person';
 export type Reversal = 'undo_15_min' | 'compensating' | 'none';
 export type TargetKind =
-  'mission' | 'need' | 'reminder' | 'check_in' | 'official_report' | 'report' | 'team';
+  | 'mission'
+  | 'need'
+  | 'reminder'
+  | 'check_in'
+  | 'official_report'
+  | 'report'
+  | 'team'
+  | 'personnel';
 
 /** A resolved record the command acts on, with the version it had when the plan was made. */
 export interface Target {
@@ -25,6 +32,8 @@ export interface Target {
   id: string;
   version: number;
   label: string;
+  /** What the fields a command changes held when the plan was made, so undo can put them back. */
+  was?: Record<string, string> | undefined;
 }
 
 export interface OpRequest {
@@ -126,6 +135,15 @@ const MISSION_KINDS = [
   'debris',
   'other',
 ] as const;
+
+/** CMD-14: what the window may set on a roster entry, and the field each one sets. */
+const PERSON_SETTINGS = ['available', 'unavailable', 'on_duty', 'off_duty'] as const;
+const PERSON_FIELD: Record<(typeof PERSON_SETTINGS)[number], 'availability' | 'dutyStatus'> = {
+  available: 'availability',
+  unavailable: 'availability',
+  on_duty: 'dutyStatus',
+  off_duty: 'dutyStatus',
+};
 
 type Row = Record<string, unknown>;
 const rows = (r: unknown): Row[] => (Array.isArray(r) ? (r as Row[]) : []);
@@ -939,6 +957,56 @@ export const CATALOG = [
           id: str(x['id']),
           version: ver(x['version']),
         })),
+      };
+    },
+  }),
+  // CMD-14, Section 30.2 phase 3: a person's duty status or availability, as the roster
+  // records it. "Assigned" comes from an assignment, never from here.
+  define({
+    name: 'person.status',
+    version: 1,
+    phase: 3,
+    action: 'personnel.update',
+    kind: 'change',
+    title: "Change a person's duty status or availability",
+    usage: '/person <name> <available|unavailable|on duty|off duty>',
+    args: z.object({ set: z.enum(PERSON_SETTINGS) }),
+    target: 'personnel',
+    confirmation: 'one_tap',
+    reversal: 'undo_15_min',
+    sideEffects:
+      'Changes the roster entry the dispatch board reads. Missions the person is already assigned to are not changed; the board shows any conflict.',
+    request: (a, t) => ({
+      method: 'PATCH',
+      path: `/personnel/${t!.id}`,
+      body: { [PERSON_FIELD[a.set]]: a.set },
+      version: t!.version,
+    }),
+    // Puts back what the plan saw; a change made since then is refused by the version check.
+    undo: (a, t, v) => ({
+      method: 'PATCH',
+      path: `/personnel/${t!.id}`,
+      body: { [PERSON_FIELD[a.set]]: t!.was?.[PERSON_FIELD[a.set]] },
+      version: v.records[0]?.version,
+    }),
+    describe: (a, t) => {
+      const field = PERSON_FIELD[a.set];
+      const already = t!.was?.[field] === a.set;
+      return `${already ? 'Keep' : 'Mark'} ${t!.label} ${a.set.replace('_', ' ')}${already ? '; that is already recorded' : ''}.`;
+    },
+    verify: (r) => {
+      const p = (r ?? {}) as Row;
+      return {
+        state: 'saved',
+        summary: `${str(p['name'])} is ${str(p['dutyStatus']).replace('_', ' ')} and ${str(p['availability'])}.`,
+        records: [
+          {
+            kind: 'personnel',
+            id: str(p['id']),
+            label: str(p['name']),
+            version: ver(p['version']),
+          },
+        ],
       };
     },
   }),

@@ -44,6 +44,7 @@ interface Execution {
   undoUntil: string | null;
   undoneBy: string | null;
   reversalOf: string | null;
+  command: { name: string; confirmation: string; reversal: string } | null;
   commands: { name: string; enabled: boolean; allowed: boolean }[];
 }
 
@@ -1418,5 +1419,96 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
     ).toBe(team);
     expect((await command('field', '/message Nobody-Team hello')).status).toBe('not_found');
     await phases([1, 2, 3]);
+  });
+
+  it("CMD-14, Section 30.2 phase 3: a person's duty status or availability is set with one tap and undone to what the plan saw; two matches ask which; contacts are never read; a role without the update is refused", async () => {
+    await phases([1, 2, 3]);
+    const [eli, eliMae] = await withTenant(dbWorker, { tenantId: county }, async (trx) => {
+      const ids: string[] = [];
+      for (const name of [`Exercise Eli Park ${run}`, `Exercise Eli Park-Mae ${run}`])
+        ids.push(
+          (
+            await trx
+              .insertInto('cg.personnel')
+              .values({
+                tenant_id: county,
+                name,
+                department: 'Public Works',
+                availability: 'assigned',
+                duty_status: 'on_duty',
+              })
+              .returning('id')
+              .executeTakeFirstOrThrow()
+          ).id,
+        );
+      return ids;
+    });
+    const entry = (id: string) =>
+      dbWorker
+        .selectFrom('cg.personnel')
+        .select(['availability', 'duty_status', 'version'])
+        .where('id', '=', id)
+        .executeTakeFirstOrThrow();
+    const contactReads = () =>
+      dbWorker
+        .selectFrom('cg.audit_event')
+        .select((eb) => eb.fn.countAll<string>().as('n'))
+        .where('action', '=', 'personnel.read')
+        .where('target_id', 'in', [eli!, eliMae!])
+        .executeTakeFirstOrThrow();
+
+    // Two people match: the window asks which; the console sends the choice as personId.
+    const which = await command('field', '/person Eli Park unavailable');
+    expect(which.status, which.message).toBe('clarify');
+    expect(which.options.map((o) => [o.kind, o.id]).sort()).toEqual(
+      [
+        ['personnel', eli],
+        ['personnel', eliMae],
+      ].sort(),
+    );
+    const plan = await command('field', '/person Eli Park unavailable', { personId: eli });
+    expect(plan.status, plan.message).toBe('awaiting_confirmation');
+    expect(plan.command).toMatchObject({ confirmation: 'one_tap', reversal: 'undo_15_min' });
+    expect(plan.plan?.description).toBe(
+      `Mark Exercise Eli Park ${run}, Public Works (on duty, assigned) unavailable.`,
+    );
+    const done = await confirm('field', plan);
+    expect(done.body['status'], JSON.stringify(done.body)).toBe('succeeded');
+    expect(done.body['message']).toBe(`Exercise Eli Park ${run} is on duty and unavailable.`);
+    expect(await entry(eli!)).toMatchObject({
+      availability: 'unavailable',
+      duty_status: 'on_duty',
+    });
+
+    // Undo puts back what the plan saw ("assigned"), not a guess.
+    const undone = await call('field', 'POST', `/commands/${plan.id}/undo`, {
+      executionId: randomUUID(),
+    });
+    expect(undone.status, JSON.stringify(undone.body)).toBe(200);
+    expect(undone.body['status']).toBe('succeeded');
+    expect(await entry(eli!)).toMatchObject({ availability: 'assigned' });
+
+    // In Spanish, an exact full name needs no question; a change in between makes the plan stale.
+    const off = await command('field', `/persona Exercise Eli Park-Mae ${run} fuera de turno`);
+    expect(off.status, off.message).toBe('awaiting_confirmation');
+    expect(off.command?.name).toBe('person.status');
+    await withTenant(dbWorker, { tenantId: county }, (trx) =>
+      trx
+        .updateTable('cg.personnel')
+        .set({ department: 'Public Works, Roads' })
+        .where('id', '=', eliMae!)
+        .execute(),
+    );
+    const stale = await confirm('field', off);
+    expect(stale.status, JSON.stringify(stale.body)).toBe(409);
+    expect(stale.body['code']).toBe('plan_stale');
+    expect((await entry(eliMae!)).duty_status).toBe('on_duty');
+
+    // The plan and its re-check read the list, which never decrypts or audits a contact.
+    expect(Number((await contactReads()).n)).toBe(0);
+    // A role without personnel.update is refused before anything is planned.
+    expect((await command('mc', `/person Exercise Eli Park ${run} available`)).status).toBe(
+      'denied',
+    );
   });
 });

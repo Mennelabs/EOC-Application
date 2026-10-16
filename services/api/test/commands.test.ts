@@ -48,6 +48,7 @@ describe('the command catalog', () => {
   it('Section 30.2: phases 1 and 2 are on by default; status changes are phase 3', () => {
     expect([...DEFAULT_PHASES]).toEqual([1, 2]);
     expect(CATALOG.find((c) => c.name === 'mission.status')?.phase).toBe(3);
+    expect(CATALOG.find((c) => c.name === 'person.status')?.phase).toBe(3);
     expect(CATALOG.filter((c) => c.phase === 1).every((c) => c.kind !== 'change')).toBe(true);
   });
 
@@ -124,6 +125,25 @@ describe('shorthand', () => {
       command: 'people.find',
       args: { availability: 'available', onDuty: true, skill: 'motosierra' },
     });
+    // CMD-14: the longest status phrase at the end wins; "assigned" comes from assignments only.
+    expect(parse('/person Dana Ruiz unavailable')).toEqual({
+      ok: true,
+      command: 'person.status',
+      args: { set: 'unavailable' },
+      ref: 'Dana Ruiz',
+      refKind: 'personnel',
+    });
+    expect(parse('/persona Dana Ruiz no disponible')).toMatchObject({
+      args: { set: 'unavailable' },
+      ref: 'Dana Ruiz',
+    });
+    expect(parse('/persona Dana fuera de turno')).toMatchObject({
+      args: { set: 'off_duty' },
+      ref: 'Dana',
+    });
+    expect(parse('/person Dana on duty')).toMatchObject({ args: { set: 'on_duty' }, ref: 'Dana' });
+    expect(parse('/person Dana assigned')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/person available')).toMatchObject({ ok: false, error: 'usage' });
     expect(parse('/reports new flagged')).toMatchObject({
       command: 'reports.find',
       args: { state: 'submitted', flagged: true },

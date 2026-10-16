@@ -57,6 +57,8 @@ const VERBS: Record<string, string> = {
   personnel: 'people',
   personas: 'people',
   personal: 'people',
+  person: 'person',
+  persona: 'person',
   reports: 'reports',
   reportes: 'reports',
   report: 'report',
@@ -184,6 +186,24 @@ const AVAILABILITY: Record<string, string> = {
   unavailable: 'unavailable',
   no_disponible: 'unavailable',
 };
+
+/**
+ * CMD-14: what the window may set on a person's roster entry, by the last
+ * words of the command. "Assigned" is not here: it comes from an assignment.
+ */
+const PERSON_SETTINGS: Record<string, string> = {
+  available: 'available',
+  disponible: 'available',
+  unavailable: 'unavailable',
+  no_disponible: 'unavailable',
+  on_duty: 'on_duty',
+  de_turno: 'on_duty',
+  en_turno: 'on_duty',
+  off_duty: 'off_duty',
+  fuera_de_turno: 'off_duty',
+  libre: 'off_duty',
+};
+const PERSON_USAGE = '/person <name> <available|unavailable|on duty|off duty>';
 
 /** CMD-15: the review queue's states and filters. */
 const REPORT_FILTERS: Record<string, [string, string | boolean]> = {
@@ -619,6 +639,16 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
       if (pairs['department']) args['department'] = pairs['department'];
       if (name.length) args['name'] = name.join(' ');
       return ok('people.find', args);
+    }
+
+    // CMD-14: the longest status phrase at the end wins ("no disponible" before "disponible").
+    case 'person': {
+      for (const n of [3, 2, 1]) {
+        if (words.length <= n) continue;
+        const set = PERSON_SETTINGS[words.slice(-n).map(norm).join('_')];
+        if (set) return ok('person.status', { set }, words.slice(0, -n).join(' '), 'personnel');
+      }
+      return usage('Whom, and what should their roster entry say?', PERSON_USAGE);
     }
 
     case 'reports': {

@@ -181,6 +181,10 @@ export const COMMAND_EVAL_CATALOG: { usage: string; title: string }[] = [
   },
   { usage: '/mission <reference> assign <person>', title: 'Assign a person to a mission' },
   {
+    usage: '/person <name> <available|unavailable|on duty|off duty>',
+    title: "Change a person's duty status or availability",
+  },
+  {
     usage:
       '/mission <reference> close [disposition:<completed|referred|no_action_needed|unable_to_locate|duplicate|transferred|other>]',
     title: 'Close a mission',

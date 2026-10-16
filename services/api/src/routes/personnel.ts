@@ -102,6 +102,8 @@ export const personnelRoutes: FastifyPluginAsync = async (raw) => {
         // CMD-14: find people by recorded skill, department, name or availability; nothing inferred.
         querystring: listQuery.extend({
           q: z.string().trim().min(1).max(80).optional(),
+          // CMD-09: the command window reads one entry again at confirmation, without contacts.
+          id: z.uuid().optional(),
           skill: z.string().trim().min(1).max(60).optional(),
           department: z.string().trim().min(1).max(80).optional(),
           availability: z.enum(['unavailable', 'available', 'assigned']).optional(),
@@ -129,6 +131,7 @@ export const personnelRoutes: FastifyPluginAsync = async (raw) => {
           .orderBy('name')
           .limit(q.limit)
           .offset(q.offset);
+        if (q.id) x = x.where('id', '=', q.id);
         if (q.q) x = x.where('name', 'ilike', like(q.q));
         if (q.department) x = x.where('department', 'ilike', like(q.department));
         if (q.skill)

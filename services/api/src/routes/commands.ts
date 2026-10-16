@@ -375,6 +375,8 @@ const RECORDS: Record<
     pick?(rows: ListRow[], ref: string): ListRow[];
     /** How the window names this kind of record to a person. */
     noun?: string;
+    /** What the record's changeable fields hold now, kept with the plan for undo. */
+    was?(r: ListRow): Record<string, string>;
   }
 > = {
   mission: {
@@ -458,6 +460,22 @@ const RECORDS: Record<
     // A team's status changes all the time; the message names it, it does not change it.
     unversioned: true,
   },
+  // CMD-14: a person on the roster by name, among the people the caller may see. The list
+  // never carries contact details, so the plan and its re-check read the list, not the
+  // detail route (which would decrypt and audit a contact read nobody asked for).
+  personnel: {
+    list: (ref) => (ref.trim() ? `/personnel?limit=10&q=${encodeURIComponent(ref.trim())}` : null),
+    one: (id) => `/personnel?limit=1&id=${id}`,
+    label: (r) =>
+      `${str(r['name'])}${r['department'] ? `, ${str(r['department'])}` : ''} (${str(r['dutyStatus']).replace('_', ' ')}, ${str(r['availability'])})`,
+    pick: (rows, ref) => {
+      const want = ref.trim().toLowerCase();
+      const exact = rows.filter((r) => str(r['name']).toLowerCase() === want);
+      return exact.length ? exact : rows;
+    },
+    was: (r) => ({ dutyStatus: str(r['dutyStatus']), availability: str(r['availability']) }),
+    noun: 'person on the roster',
+  },
   // CMD-15: a resident's report by its reference code, as the review queue lists it.
   report: {
     list: (ref) =>
@@ -499,6 +517,7 @@ async function resolveTarget(
       id: str(r['id']),
       version: typeof r['version'] === 'number' ? r['version'] : 0,
       label: where.label(r),
+      ...(where.was ? { was: where.was(r) } : {}),
     },
   };
 }
@@ -1408,7 +1427,13 @@ export const commandRoutesWith =
           const here = parsed.ref === ON_SCREEN;
           const r = here
             ? await resolveOnScreen(request, spec.target, b.context)
-            : await resolveTarget(request, spec.target, parsed.ref ?? '', b.targetId);
+            : await resolveTarget(
+                request,
+                spec.target,
+                parsed.ref ?? '',
+                // The clients send a chosen person as personId, whichever role they play.
+                spec.target === 'personnel' ? (b.targetId ?? b.personId) : b.targetId,
+              );
           if (r.kind === 'none')
             return {
               ...head,
@@ -1657,8 +1682,11 @@ export const commandRoutesWith =
             method: 'GET',
             path: RECORDS[plan.target.kind].one(plan.target.id),
           });
-          if (cur.status === 403 || cur.status === 404) throw errors.forbidden();
-          const version = (cur.body as { version?: unknown } | null)?.version;
+          // A list route answers with the one record, or none when it is no longer visible.
+          const body: unknown = Array.isArray(cur.body) ? cur.body[0] : cur.body;
+          if (cur.status === 403 || cur.status === 404 || body === undefined)
+            throw errors.forbidden();
+          const version = (body as { version?: unknown } | null)?.version;
           if (cur.status !== 200 || version !== plan.target.version)
             return stale(`${plan.target.label} changed since this was prepared. Prepare it again.`);
         }

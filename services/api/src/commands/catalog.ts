@@ -16,7 +16,8 @@ import { RECORD_TYPES, RECORD_TYPE_KEYS, type RecordType } from '@cg/reporting';
 
 export type Confirmation = 'none' | 'one_tap' | 'full_review' | 'second_person';
 export type Reversal = 'undo_15_min' | 'compensating' | 'none';
-export type TargetKind = 'mission' | 'need' | 'reminder' | 'check_in' | 'official_report';
+export type TargetKind =
+  'mission' | 'need' | 'reminder' | 'check_in' | 'official_report' | 'report';
 
 /** A resolved record the command acts on, with the version it had when the plan was made. */
 export interface Target {
@@ -116,6 +117,23 @@ const rows = (r: unknown): Row[] => (Array.isArray(r) ? (r as Row[]) : []);
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
 const ver = (v: unknown) => (typeof v === 'number' ? v : undefined);
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** CMD-15, CMD-26: the review state the operation itself returned. */
+const reviewed = (r: unknown, what: string): Verified => {
+  const d = (r ?? {}) as Row;
+  return {
+    state: 'saved',
+    summary: `Report ${str(d['referenceCode'])} ${what}. Verification: ${str(d['verificationLevel']).replace(/_/g, ' ')}.`,
+    records: [
+      {
+        kind: 'report',
+        id: str(d['id']),
+        label: str(d['referenceCode']),
+        version: ver(d['version']),
+      },
+    ],
+  };
+};
 
 /**
  * CMD-16, CMD-26: an export is queued, never "done"; the file is listed where it was asked for
@@ -1069,6 +1087,88 @@ export const CATALOG = [
     },
     describe: () => 'Release needs.',
     verify: () => ({ state: 'saved', summary: '', records: [] }),
+  }),
+
+  // CMD-15: a reviewer takes a report into review (phase 3), and decides it or asks the
+  // resident (phase 4: approvals and messages, reviewed with a reason, RULE-14). The author of
+  // a report never reviews it (A7); the route's own guardrail refuses it.
+  define<Record<string, never>>({
+    name: 'report.claim',
+    version: 1,
+    phase: 3,
+    action: 'report.update',
+    kind: 'change',
+    title: 'Take a report into review',
+    usage: '/report <reference code> review',
+    args: z.object({}),
+    target: 'report',
+    confirmation: 'one_tap',
+    reversal: 'none',
+    sideEffects: 'Marks the report under review. No decision is made and the resident is not told.',
+    request: (_a, t) => ({ method: 'POST', path: `/reports/${t!.id}/claim`, version: t!.version }),
+    describe: (_a, t) => `Take ${t?.label ?? 'the report'} into review. No decision is made.`,
+    verify: (r) => reviewed(r, 'is under review'),
+  }),
+  ...(['approve', 'reject'] as const).map((decision) =>
+    define<{ reason: string; evidenceRefs: string[] }>({
+      name: `report.${decision}`,
+      version: 1,
+      phase: 4,
+      action: 'report.review',
+      kind: 'change',
+      title: decision === 'approve' ? 'Approve a report' : 'Reject a report',
+      usage: `/report <reference code> ${decision} <why> [evidence:<ref>,<ref>]`,
+      args: z.object({
+        reason: z.string().trim().min(3).max(2000),
+        evidenceRefs: z.array(z.string().trim().min(1).max(200)).max(20).default([]),
+      }),
+      target: 'report',
+      confirmation: 'full_review',
+      reversal: 'compensating',
+      sideEffects:
+        decision === 'approve'
+          ? "Records the review decision with your reason and evidence. The report's verification level does not change: a public observation is not a verified assessment until someone verifies it."
+          : 'Records the review decision with your reason and evidence. The report stays on record; reopening it is a new decision.',
+      freeText: ['reason'],
+      request: (a, t) => ({
+        method: 'POST',
+        path: `/reports/${t!.id}/decisions`,
+        version: t!.version,
+        body: { decision, reason: a.reason, evidenceRefs: a.evidenceRefs },
+      }),
+      describe: (a, t) =>
+        `${decision === 'approve' ? 'Approve' : 'Reject'} ${t?.label ?? 'the report'}${a.evidenceRefs.length ? `, citing ${a.evidenceRefs.join(', ')}` : ''}. The verification level stays as it is.`,
+      verify: (r) => reviewed(r, decision === 'approve' ? 'is approved' : 'is rejected'),
+    }),
+  ),
+  define<{ message: string }>({
+    name: 'report.ask',
+    version: 1,
+    phase: 4,
+    action: 'report.review',
+    kind: 'change',
+    title: 'Ask the resident for more information',
+    usage: '/report <reference code> ask <question>',
+    args: z.object({ message: z.string().trim().min(3).max(2000) }),
+    target: 'report',
+    confirmation: 'full_review',
+    reversal: 'compensating',
+    sideEffects:
+      "Marks the report as needing information and sends the resident your question in their language, through the county's number. A sent message cannot be unsent; a correction is a new message.",
+    freeText: ['message'],
+    request: (a, t) => ({
+      method: 'POST',
+      path: `/reports/${t!.id}/decisions`,
+      version: t!.version,
+      body: {
+        decision: 'needs_information',
+        reason: 'More information asked of the resident',
+        message: a.message,
+      },
+    }),
+    describe: (_a, t) =>
+      `Ask the resident who sent ${t?.label ?? 'the report'} for more information. They are sent your question.`,
+    verify: (r) => reviewed(r, 'needs information; the question is queued for the resident'),
   }),
 
   // CMD-16: exports with an explicit scope and period. Section 30.2 lists exports with

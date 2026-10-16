@@ -228,6 +228,41 @@ describe('shorthand', () => {
     expect(parse('claim the food need')).toMatchObject({ ok: false, error: 'unsupported' });
   });
 
+  it('CMD-15: a reviewer takes a report into review, decides it with a reason and evidence, or asks the resident', () => {
+    expect(parse('/report AB12CD review')).toMatchObject({
+      command: 'report.claim',
+      ref: 'AB12CD',
+      refKind: 'report',
+    });
+    expect(parse('/report AB12CD approve photos match evidence:photo-1,visit-2')).toMatchObject({
+      command: 'report.approve',
+      args: { reason: 'photos match', evidenceRefs: ['photo-1', 'visit-2'] },
+    });
+    expect(parse('/reporte AB12CD rechazar reason:"not in the county"')).toMatchObject({
+      command: 'report.reject',
+      args: { reason: 'not in the county', evidenceRefs: [] },
+    });
+    expect(parse('/report AB12CD ask How many people live there?')).toMatchObject({
+      command: 'report.ask',
+      args: { message: 'How many people live there?' },
+    });
+    expect(parse('/report AB12CD')).toMatchObject({
+      command: 'reports.find',
+      args: { reference: 'AB12CD' },
+    });
+    expect(parse('/report AB12CD approve')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/report AB12CD ask')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/report AB12CD delete')).toMatchObject({ ok: false, error: 'usage' });
+    const review = CATALOG.filter((c) => c.name.startsWith('report.'));
+    expect(review.map((c) => [c.name, c.phase, c.confirmation])).toEqual([
+      ['report.claim', 3, 'one_tap'],
+      ['report.approve', 4, 'full_review'],
+      ['report.reject', 4, 'full_review'],
+      ['report.ask', 4, 'full_review'],
+      ['report.export', 3, 'one_tap'],
+    ]);
+  });
+
   it('CMD-16: exports name their scope; a report by number or the latest, PDF unless CSV is asked; a release names its request, kinds and dates', () => {
     expect(parse('/export ida')).toMatchObject({ command: 'ida.export', args: {} });
     expect(parse('/export sitrep 3 csv')).toMatchObject({

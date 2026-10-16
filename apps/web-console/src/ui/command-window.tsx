@@ -160,6 +160,8 @@ const recordHref = (r: { kind: string; id: string }): string | null => {
       return `/console/official-reports/${r.id}`;
     case 'need':
       return '/console/needs';
+    case 'report':
+      return `/console/reports/${r.id}`;
     case 'reminder':
       return '/console/reminders';
     // CMD-16: an export is listed where it was asked for.

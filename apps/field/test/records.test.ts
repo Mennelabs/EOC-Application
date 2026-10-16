@@ -48,4 +48,19 @@ describe('field role modules', () => {
     const mark = moduleByKind.get('search_mark')!;
     expect(missing(mark, { entryType: 'primary' })).toEqual([]);
   });
+
+  it('FL:FR-19: equipment needs its work order and kind; the hours go as a number', () => {
+    const equipment = moduleByKind.get('equipment_use')!;
+    expect(equipment.photos).toBe(false);
+    expect(missing(equipment, { hours: 3 })).toEqual(['missionId', 'equipment']);
+    expect(
+      commandBody(equipment, {
+        missionId: 'm-1',
+        equipment: 'chainsaw',
+        equipmentNote: ' Saw 2 ',
+        hours: 3,
+      }),
+    ).toEqual({ missionId: 'm-1', equipment: 'chainsaw', equipmentNote: 'Saw 2', hours: 3 });
+    expect(equipment.summary({ equipment: 'chainsaw', hours: 3 }, 'es')).toBe('Motosierra: 3 h');
+  });
 });

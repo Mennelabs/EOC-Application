@@ -323,6 +323,30 @@ export interface PeerSupportRequestTable extends Stamped {
   closed_by_requester: Generated<boolean>;
 }
 
+/** FL:FR-19: equipment that ran on a work order, with its hours. */
+export interface EquipmentUseTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  mission_id: Uuid;
+  client_uuid: Uuid;
+  equipment:
+    | 'chainsaw'
+    | 'pump'
+    | 'generator'
+    | 'skid_steer'
+    | 'dump_truck'
+    | 'chipper'
+    | 'pressure_washer'
+    | 'dehumidifier'
+    | 'other';
+  equipment_note: string | null;
+  hours: ColumnType<string, string | number, string | number>;
+  used_on: ColumnType<string, string | undefined, string>;
+  reported_by: Uuid | null;
+  reported_personnel_id: Uuid | null;
+}
+
 /** FL:FR-21/22: one line of a supply request. */
 export interface SupplyRequestLine {
   stockItemId: Uuid;
@@ -3274,6 +3298,7 @@ export interface Database {
   'cg.peer_support_request': PeerSupportRequestTable;
   'cg.field_report': FieldReportTable;
   'cg.supply_request': SupplyRequestTable;
+  'cg.equipment_use': EquipmentUseTable;
   'cg.legal_hold': LegalHoldTable;
   'cg.deletion_log': DeletionLogTable;
   'cg.idempotency_key': IdempotencyKeyTable;

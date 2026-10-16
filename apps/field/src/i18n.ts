@@ -413,6 +413,8 @@ const en = {
   'records.needs': 'Fill in the required answers to save.',
   'records.where': 'Your current position is attached.',
   'records.noSites': 'No sites on this phone yet. Download your area first.',
+  'records.noMissions':
+    'No work orders on this phone. Dispatch assigns them; they arrive when you have signal.',
   'records.site': 'Site',
   'records.helpReport': 'Help them report',
   'records.helpReportBody':
@@ -1110,6 +1112,8 @@ const es: Record<MessageKey, string> = {
   'records.needs': 'Complete las respuestas necesarias para guardar.',
   'records.where': 'Se adjunta su posición actual.',
   'records.noSites': 'Todavía no hay sitios en este teléfono. Descargue su zona primero.',
+  'records.noMissions':
+    'No hay órdenes de trabajo en este teléfono. Despacho las asigna; llegan cuando tenga señal.',
   'records.site': 'Sitio',
   'records.helpReport': 'Ayudarles a reportar',
   'records.helpReportBody':

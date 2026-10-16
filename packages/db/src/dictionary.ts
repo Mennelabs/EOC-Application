@@ -2354,6 +2354,21 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
       d: 'The worker withdrew it themself',
     },
   }),
+  equipment_use: table({
+    event_id: { c: 'internal', r: 'field_records' },
+    mission_id: { c: 'internal', r: 'field_records', d: 'FL:FR-19: the work order it ran on' },
+    client_uuid: { c: 'internal', r: 'field_records', d: 'Idempotency key from the phone' },
+    equipment: { c: 'internal', r: 'field_records', d: 'Kind of equipment' },
+    equipment_note: { c: 'internal', r: 'field_records', d: 'Unit number or what "other" was' },
+    hours: {
+      c: 'internal',
+      r: 'field_records',
+      d: 'Hours it ran that day (FEMA PA equipment hours)',
+    },
+    used_on: { c: 'internal', r: 'field_records' },
+    reported_by: { c: 'internal', r: 'field_records' },
+    reported_personnel_id: { c: 'internal', r: 'field_records' },
+  }),
   supply_request: table({
     site_id: { c: 'internal', r: 'field_records', d: 'FL:FR-21: the site asking' },
     client_uuid: { c: 'internal', r: 'field_records', d: 'Idempotency key from the phone' },

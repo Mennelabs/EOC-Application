@@ -552,6 +552,13 @@ export const actions = {
   'placard.write': a('write', 'placard', 'Record a posted placard'),
   'road_status.read': a('read', 'road_status', 'Read road status'),
   'road_status.write': a('write', 'road_status', 'Set road status'),
+  // FL:FR-19: equipment hours per work order (FEMA PA equipment hours).
+  'equipment_use.read': a('read', 'equipment_use', 'Read equipment used on work orders'),
+  'equipment_use.write': a(
+    'write',
+    'equipment_use',
+    'Log equipment used on a work order and its hours',
+  ),
   // FLD-11: a site's status or a resource seen, from the field; an observation for dispatch.
   'field_report.read': a(
     'read',

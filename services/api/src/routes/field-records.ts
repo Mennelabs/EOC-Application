@@ -979,6 +979,70 @@ const SPECS: Record<string, Spec> = {
     },
   },
 
+  // FL:FR-19: equipment that ran on a work order and its hours that day (FEMA PA equipment
+  // hours); people's hours come from check-in.
+  equipment_use: {
+    table: 'cg.equipment_use',
+    write: 'equipment_use.write',
+    read: 'equipment_use.read',
+    // The event is the work order's.
+    needsEvent: false,
+    orderColumn: 'used_on',
+    filters: { eventId: 'event_id', missionId: 'mission_id', kind: 'equipment' },
+    body: z.object({
+      ...base,
+      missionId: z.uuid(),
+      equipment: z.enum([
+        'chainsaw',
+        'pump',
+        'generator',
+        'skid_steer',
+        'dump_truck',
+        'chipper',
+        'pressure_washer',
+        'dehumidifier',
+        'other',
+      ]),
+      equipmentNote: z.string().max(120).optional(),
+      hours: z.number().gt(0).max(24),
+      usedOn: z.iso.date().optional(),
+    }),
+    async values(b, ctx) {
+      const mission = await ctx.trx
+        .selectFrom('cg.mission')
+        .select(['id', 'event_id'])
+        .where('id', '=', b['missionId'] as string)
+        .executeTakeFirst();
+      if (!mission) throw errors.validation([{ name: 'missionId', message: 'unknown work order' }]);
+      if (b['equipment'] === 'other' && !b['equipmentNote'])
+        throw errors.validation([{ name: 'equipmentNote', message: 'say what the equipment was' }]);
+      return {
+        event_id: mission.event_id,
+        mission_id: mission.id,
+        equipment: b['equipment'],
+        equipment_note: b['equipmentNote'] ?? null,
+        hours: String(b['hours']),
+        ...(b['usedOn'] ? { used_on: b['usedOn'] } : {}),
+        reported_by: ctx.accountId,
+        reported_personnel_id: ctx.personnelId,
+      };
+    },
+    async out(r) {
+      return {
+        ...common(r),
+        eventId: str(r['event_id']),
+        missionId: str(r['mission_id']),
+        equipment: str(r['equipment']),
+        equipmentNote: str(r['equipment_note']),
+        hours: num(r['hours']),
+        usedOn: r['used_on'] instanceof Date ? iso(r['used_on'])!.slice(0, 10) : str(r['used_on']),
+      };
+    },
+    summary: (b) =>
+      `Equipment: ${String(b['equipment']).replace(/_/g, ' ')}, ${String(b['hours'])} h`,
+    activity: 'service',
+  },
+
   // FLD-11: the quick report that is not a hazard: what a worker saw at a site, or a
   // resource they came across. An observation for dispatch, never the site's status of
   // record (only the site's operators confirm that, `site.confirm`).

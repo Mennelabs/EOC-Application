@@ -96,6 +96,7 @@ export const FIELD_COMMANDS: Record<
       'shelter_incident',
       'health_note',
       'field_report',
+      'equipment_use',
     ].map((k) => [
       `record.${k}`,
       { method: 'POST' as const, path: () => `/api/v1/field-records/${k}`, needsTarget: false },

@@ -949,6 +949,80 @@ describe.skipIf(!appUrl || !workerUrl)('frontline role records (database-backed)
     ).toBe(403);
   });
 
+  it('FL:FR-19: equipment that ran on a work order is logged with its hours, once per phone id; the coordinator reads it; other roles cannot log it', async () => {
+    const mission = await dbWorker
+      .selectFrom('cg.mission')
+      .select(['id', 'event_id'])
+      .where('tenant_id', '=', county)
+      .where('event_id', '=', eventId)
+      .executeTakeFirstOrThrow();
+    const clientUuid = randomUUID();
+    const body = {
+      clientUuid,
+      missionId: mission.id,
+      equipment: 'chainsaw',
+      equipmentNote: 'Exercise saw 2',
+      hours: 3,
+    };
+    const logged = await create('crew', 'equipment_use', body);
+    expect(logged).toMatchObject({
+      missionId: mission.id,
+      eventId: mission.event_id,
+      equipment: 'chainsaw',
+      hours: 3,
+    });
+    expect(String(logged['usedOn'])).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect((await create('crew', 'equipment_use', body, 200))['id']).toBe(logged['id']);
+    const bad = async (extra: Json) =>
+      (
+        await call('crew', 'POST', '/api/v1/field-records/equipment_use', {
+          clientUuid: randomUUID(),
+          missionId: mission.id,
+          equipment: 'pump',
+          hours: 2,
+          ...extra,
+        })
+      ).status;
+    expect(await bad({ equipment: 'other' })).toBe(400);
+    expect(await bad({ hours: 25 })).toBe(400);
+    expect(await bad({ missionId: randomUUID() })).toBe(400);
+    expect(await bad({ equipment: 'other', equipmentNote: 'Exercise light tower' })).toBe(201);
+    expect(
+      (
+        await create('roads', 'equipment_use', {
+          clientUuid: randomUUID(),
+          missionId: mission.id,
+          equipment: 'dump_truck',
+          hours: 6,
+        })
+      )['hours'],
+    ).toBe(6);
+
+    const listed = await call(
+      'coordinator',
+      'GET',
+      `/api/v1/field-records/equipment_use?missionId=${mission.id}`,
+    );
+    expect(listed.status, listed.body).toBe(200);
+    expect(listed.json<Json[]>().map((r) => r['id'])).toContain(logged['id']);
+    expect(
+      (
+        await call('coordinator', 'POST', '/api/v1/field-records/equipment_use', {
+          ...body,
+          clientUuid: randomUUID(),
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await call('pio', 'POST', '/api/v1/field-records/equipment_use', {
+          ...body,
+          clientUuid: randomUUID(),
+        })
+      ).status,
+    ).toBe(403);
+  });
+
   it('FL:FR-05, FL:FR-06, FL:FR-09: a road is reported and cleared once; a debris load works out its cubic yards; an inspection keeps illness as a count; a walk-through is kept before and after; other roles cannot', async () => {
     const road = await create('roads', 'road_status', {
       clientUuid: randomUUID(),

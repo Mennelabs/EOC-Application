@@ -653,6 +653,7 @@ const templates: readonly RoleTemplate[] = [
       g('team.read'),
       g('team.status'),
       g('right_of_entry.*'),
+      g('equipment_use.*'), // FL:FR-19
       g('mission.narrative'),
       g('mission.media.add'),
       g('mission.media.read'),
@@ -862,6 +863,7 @@ const templates: readonly RoleTemplate[] = [
       g('mission.*', ['contact', 'location_exact']),
       g('assignment.*'),
       g('dispatch.read'),
+      g('equipment_use.read'), // FL:FR-19
       g('field_report.read'), // FLD-11
       g('field_report.note'),
       g('stream.read'),
@@ -1104,7 +1106,7 @@ const templates: readonly RoleTemplate[] = [
     'road_crew',
     'Public works / road crew',
     'Road status and debris load tickets (FL:FR-05).',
-    ['road_status.*', 'debris_ticket.*'],
+    ['road_status.*', 'debris_ticket.*', 'equipment_use.*'],
   ),
   ...frontline(
     'public_health_inspector',

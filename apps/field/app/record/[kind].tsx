@@ -12,7 +12,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { CheckGroup, ChecklistRow, RadioGroup, Stepper } from '../../src/controls';
-import { useField } from '../../src/field';
+import { useField, type Mission } from '../../src/field';
 import { PhotoStrip } from '../../src/photos';
 import { commandBody, missing, moduleByKind, type FieldKind } from '../../src/records';
 import { SignaturePad } from '../../src/signature';
@@ -66,12 +66,14 @@ export default function RecordScreen() {
   const [landmark, setLandmark] = useState('');
   const [saved, setSaved] = useState(false);
   const [sites, setSites] = useState<Site[]>([]);
+  const [missions, setMissions] = useState<Mission[]>([]);
   const [mine, setMine] = useState<Saved[]>([]);
   const [online, setOnline] = useState<Record<string, unknown>[] | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [formKey, setFormKey] = useState(0);
   useEffect(() => {
     void f.list<Site>('sites').then(setSites);
+    void f.list<Mission>('missions').then(setMissions);
   }, [f]);
   useEffect(() => {
     void f
@@ -193,6 +195,23 @@ export default function RecordScreen() {
         ) : (
           <Body key={fk.key} muted>
             {t('records.noSites')}
+          </Body>
+        );
+      case 'mission':
+        return missions.length ? (
+          <RadioGroup
+            key={fk.key}
+            label={label}
+            options={missions.map((x) => ({
+              value: x.id,
+              label: `${x.reference}${x.summary ? `: ${x.summary.slice(0, 60)}` : ''}`,
+            }))}
+            value={(values[fk.key] as string | undefined) ?? null}
+            onChange={(v) => set(fk.key, v)}
+          />
+        ) : (
+          <Body key={fk.key} muted>
+            {t('records.noMissions')}
           </Body>
         );
       case 'checklist': {

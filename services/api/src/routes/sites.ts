@@ -80,6 +80,8 @@ const siteFields = {
   usng: z.string().max(40).nullable(),
   /** CON-16: the partner organization that runs the site; its staff may read it and confirm status and census. */
   operatorTenantId: z.uuid().nullable(),
+  /** CON-16: the shelter's id in the Red Cross records, so imported counts reach this site. */
+  externalRef: z.string().trim().min(1).max(80).nullable(),
 };
 
 const siteOut = z.object({
@@ -116,6 +118,7 @@ const siteOut = z.object({
   unpublishedAt: z.iso.datetime().nullable(),
   usng: z.string().nullable(),
   operatorTenantId: z.uuid().nullable(),
+  externalRef: z.string().nullable(),
   /** Partner self-posting (2026-10-15): the partner organization that posted the site, if one did. */
   postedBy: z.object({ tenantId: z.uuid(), name: z.string().nullable() }).nullable(),
 });
@@ -228,6 +231,7 @@ export const siteRoutesWith =
         unpublishedAt: iso(r.unpublished_at),
         usng: r.usng,
         operatorTenantId: r.operator_tenant_id,
+        externalRef: r.external_ref,
         postedBy: r.posted_by_tenant_id
           ? { tenantId: r.posted_by_tenant_id, name: r.posted_by_name }
           : null,
@@ -341,6 +345,7 @@ export const siteRoutesWith =
       confirmEveryHours: 'confirm_every_hours',
       usng: 'usng',
       operatorTenantId: 'operator_tenant_id',
+      externalRef: 'external_ref',
     } as const;
 
     type SiteBody = {
@@ -453,6 +458,7 @@ export const siteRoutesWith =
             confirmEveryHours: siteFields.confirmEveryHours.default(12),
             usng: siteFields.usng.optional(),
             operatorTenantId: siteFields.operatorTenantId.optional(),
+            externalRef: siteFields.externalRef.optional(),
           }),
           response: { 201: siteOut },
         },

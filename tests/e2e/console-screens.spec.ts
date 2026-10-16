@@ -474,4 +474,134 @@ test.describe('every console screen, one by one', () => {
     );
     await expectNoViolations(page);
   });
+
+  test('CON-16: mass care loads the Red Cross shelter report; a file listing people is refused; the counts are shown, never who; axe finds nothing', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'mass_care_coordinator',
+      `Mass care ${tag}`,
+      `scr-mc-${testInfo.project.name}`,
+    );
+    await open(page, 'shelters', 'Shelters');
+    await expect(page.getByRole('heading', { name: 'Red Cross shelter counts' })).toBeVisible({
+      timeout: 15_000,
+    });
+    const form = page.getByRole('form', { name: 'Load the Red Cross shelter report' });
+    const id = `${tag}-${testInfo.project.name}`;
+    const when = new Date(Date.now() - 3_600_000).toISOString();
+    // A roster is refused whole, and its names are never shown back.
+    await form.getByLabel('Shelter report (CSV)').setInputFiles({
+      name: 'roster.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(
+        `Shelter ID,Shelter Name,First Name,Last Name\nRC-${id}-1,Exercise Gym,Ana,Ruiz\n`,
+      ),
+    });
+    await expect(form.getByLabel('Shelter id')).toHaveValue('Shelter ID');
+    await form.getByLabel('Reason', { exact: true }).fill('Exercise: morning report');
+    await form.getByRole('button', { name: 'Load the counts' }).click();
+    await expect(page.getByText(/This file has columns about people/)).toBeVisible();
+    await expect(page.getByText('Ruiz')).toHaveCount(0);
+
+    const report = [
+      'Shelter ID,Shelter Name,Status,Overnight Population,Evacuation Capacity,Report Time',
+      `RC-${id}-1,Exercise Gym ${id},Open,42,150,${when}`,
+      `RC-${id}-2,Exercise Church ${id},Full,30,30,${when}`,
+    ].join('\n');
+    await form.getByLabel('Shelter report (CSV)').setInputFiles({
+      name: 'shelters.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(report),
+    });
+    await expect(form.getByLabel('People staying')).toHaveValue('Overnight Population');
+    await expect(form.getByLabel('When it was counted')).toHaveValue('Report Time');
+    await expectNoViolations(page);
+    await form.getByRole('button', { name: 'Load the counts' }).click();
+    await expect(page.getByText('2 counts loaded, 0 already loaded, 0 rows refused')).toBeVisible();
+    const table = page.getByRole('table', {
+      name: 'Red Cross shelter counts, the newest for each shelter',
+    });
+    await expect(table.getByRole('row', { name: new RegExp(`Exercise Gym ${id}`) })).toContainText(
+      '42',
+    );
+    await expect(
+      table.getByRole('row', { name: new RegExp(`Exercise Church ${id}`) }),
+    ).toContainText('full');
+    await expectNoViolations(page);
+    await expectReflow(page);
+  });
+
+  test('CON-02: a director makes a flood event from its template and publishes intake within five minutes; keywords preset, messages drafted, the map opens on its layers; axe finds nothing', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'county_em_director',
+      `Director ${tag}`,
+      `scr-dir-${testInfo.project.name}`,
+    );
+    const started = Date.now();
+    await open(page, 'events', 'Events');
+    const add = page.getByRole('button', { name: 'Add the shipped event templates' });
+    if (await add.isVisible().catch(() => false)) {
+      await add.click();
+      await expect(page.getByText('Created the shipped event templates.')).toBeVisible();
+    }
+    const name = `Exercise flood ${tag} ${testInfo.project.name}`;
+    await page.getByLabel('Name', { exact: true }).fill(name);
+    await page.getByLabel('Template').selectOption({ label: 'Flood' });
+    await expect(page.getByLabel('Hazard')).toHaveValue('flood');
+    await expect(page.getByLabel('Hazard')).toBeDisabled();
+    await expectNoViolations(page);
+    await page.getByRole('button', { name: 'Create draft' }).click();
+    await expect(page.getByText(`Created ${name} as a draft.`)).toBeVisible();
+    await page.getByRole('button', { name: `Open ${name}…` }).click();
+    await expect(page.getByLabel('Intake link')).toHaveValue(
+      `exercise-flood-${tag}-${testInfo.project.name}`,
+    );
+    await expect(page.getByLabel('SMS keywords')).toHaveValue(/DAMAGE/);
+    await page.getByRole('button', { name: 'Open event' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Reason').fill('Exercise: river flood');
+    await dialog.getByRole('button', { name: 'Confirm' }).click();
+    await expect(page.getByText('Event opened. Intake is live.')).toBeVisible();
+    await expect(page.getByText(/2 public safety messages were drafted/)).toBeVisible();
+    expect(Date.now() - started).toBeLessThan(5 * 60_000);
+    await expectNoViolations(page);
+
+    await open(page, 'situation', 'Situation map');
+    await page.getByLabel('Event').selectOption({ label: name });
+    await expect(
+      page.getByText('Layers first shown are those of the Flood template.'),
+    ).toBeVisible();
+    const layers = page.getByRole('group', { name: 'Layers' });
+    await expect(layers.getByRole('button', { name: /^Outages/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(layers.getByRole('button', { name: /^Teams/ })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    await expectNoViolations(page);
+    // Leave the exercise county as it was: the other journeys default to its open events.
+    await open(page, 'events', 'Events');
+    await page
+      .getByRole('row', { name: new RegExp(name) })
+      .getByRole('button', { name: 'Close' })
+      .click();
+    const closing = page.getByRole('dialog');
+    await expect(closing).toBeVisible();
+    await closing.getByLabel('Reason').fill('Exercise over');
+    await closing.getByRole('button', { name: 'Confirm' }).click();
+    await expect(page.getByText(`Closed ${name}.`)).toBeVisible();
+  });
 });

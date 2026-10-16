@@ -110,6 +110,22 @@ export function SituationScreen() {
   const [shade, setShade] = useState<ShadeKey | 'none'>('none');
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<ConsoleMap | null>(null);
+  // CON-02: an event made from a template opens with the template's layers on.
+  const [layersFrom, setLayersFrom] = useState<string | null>(null);
+  useEffect(() => {
+    if (!currentEvent) return;
+    let live = true;
+    api<{ name: string; mapLayers: string[] }>(`/events/${currentEvent}/template`)
+      .then((t) => {
+        if (!live || !t.mapLayers.length) return;
+        setVisible(new Set(t.mapLayers));
+        setLayersFrom(t.name);
+      })
+      .catch(() => live && setLayersFrom(null));
+    return () => {
+      live = false;
+    };
+  }, [currentEvent]);
   useEffect(() => {
     if (!currentEvent) return;
     let live = true;
@@ -264,6 +280,9 @@ export function SituationScreen() {
         </button>
       </Toolbar>
       {error ? <Status kind="error">{error}</Status> : null}
+      {layersFrom ? (
+        <p className="hint">Layers first shown are those of the {layersFrom} template.</p>
+      ) : null}
       <div className="layer-toggles" role="group" aria-label="Layers">
         {LAYERS.map((l) => (
           <button

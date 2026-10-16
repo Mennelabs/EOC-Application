@@ -56,6 +56,7 @@ async function answerUntilReview(
   email: string,
   seen: Set<string>,
   stopAt = 'Check your answers',
+  street = '12 Oak St',
 ) {
   for (let i = 0; i < 40; i++) {
     const heading =
@@ -67,10 +68,15 @@ async function answerUntilReview(
     }
     if (heading.startsWith('Is anyone in danger')) {
       await chooseRadio(page, 'No, everyone is safe');
-    } else if (heading.startsWith('Where is the home')) {
-      await page.getByLabel('Street address or description').fill('12 Oak St');
+    } else if (
+      heading.startsWith('Where is the home') ||
+      heading.startsWith('Where is this place')
+    ) {
+      await page.getByLabel('Street address or description').fill(street);
       await page.getByLabel('City or town').fill('Westwind');
       await page.getByLabel('ZIP code').fill('63001');
+    } else if (heading.startsWith('What is the name of your business')) {
+      await page.getByRole('textbox').first().fill('Exercise Oak Street Apartments');
     } else if (heading.startsWith('How can we reach you')) {
       await page.getByLabel('Email (optional)').fill(email);
       await chooseRadio(page, 'Email');
@@ -267,6 +273,47 @@ test.describe('resident report', () => {
     await expect(page.getByText(/The county will see that this help went wrong/)).toBeVisible();
     // The suggestion is still the resident's to accept or not.
     await expect(page.getByRole('radio', { name: 'Yes, that is right' })).toBeVisible();
+    await expectNoViolations(page);
+  });
+
+  test('ORG-01: a business reports two places in one visit, each its own report; who they are is asked once', async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    const email = `org-${Date.now().toString(36)}@example.org`;
+    const org = 'Exercise Oak Street Apartments';
+    await page.goto('/county/westwind');
+    await pressButton(page, 'I am reporting for a business, landlord or group');
+    const first = new Set<string>();
+    await answerUntilReview(page, email, first, 'Check your answers', '1 Oak St');
+    expect([...first].some((h) => h.startsWith('What is the name of your business'))).toBe(true);
+    await pressButton(page, 'Send my report');
+    await expect(page.getByRole('heading', { name: 'We received your report' })).toBeVisible({
+      timeout: 30_000,
+    });
+    const firstCode = ((await page.locator('.reference').textContent()) ?? '').match(CODE)?.[0];
+    expect(firstCode).toBeTruthy();
+    await expect(page.getByRole('heading', { name: `Other places for ${org}` })).toBeVisible();
+    await expectNoViolations(page);
+
+    // The second place: a new report; the organization and its contact are not asked again.
+    await pressButton(page, `Report another place for ${org}`);
+    const second = new Set<string>();
+    await answerUntilReview(page, email, second, 'Check your answers', '3 Oak St');
+    expect([...second][0]).toMatch(/^Is anyone in danger/);
+    expect([...second].some((h) => h.startsWith('What is the name of your business'))).toBe(false);
+    expect([...second].some((h) => h.startsWith('How can we reach you'))).toBe(false);
+    await expect(page.getByText('3 Oak St')).toBeVisible();
+    await expect(page.getByText(org)).toBeVisible();
+    await pressButton(page, 'Send my report');
+    await expect(page.getByRole('heading', { name: 'We received your report' })).toBeVisible({
+      timeout: 30_000,
+    });
+    const secondCode = ((await page.locator('.reference').textContent()) ?? '').match(CODE)?.[0];
+    expect(secondCode).toBeTruthy();
+    expect(secondCode).not.toBe(firstCode);
+    await expect(page.getByText('Places reported in this visit (2):')).toBeVisible();
+    await expect(page.locator('.codes')).toHaveText(`${firstCode}, ${secondCode}`);
     await expectNoViolations(page);
   });
 

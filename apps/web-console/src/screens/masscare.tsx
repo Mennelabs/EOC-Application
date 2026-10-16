@@ -8,6 +8,9 @@
  *   (cots, needs, pets; access needs only for roles that may see them), hands
  *   over wristband codes, checks guests out, keeps the quiet incident log,
  *   and sends the census to the county as the site's confirmed occupancy.
+ *   Mass care also loads the Red Cross shelter report (CON-16): counts only,
+ *   a file listing people is refused, and a county shelter linked by its Red
+ *   Cross id takes the newest count as its occupancy.
  * - Volunteer reception: a walk-up volunteer registered in one step with the
  *   signed waiver, skills (recorded, not verified), the background-check
  *   status only, a team, a check-in and a badge whose code is shown once.
@@ -55,6 +58,7 @@ interface Site {
   occupancy: number | null;
   operatorTenantId: string | null;
   lastConfirmedAt: string | null;
+  externalRef?: string | null;
 }
 interface Tenant {
   id: string;
@@ -438,6 +442,297 @@ export function SheltersScreen({ me }: { me: { tenantId: string } | null }) {
           )}
         </>
       ) : null}
+      {currentEvent ? (
+        <RedCrossCounts eventId={currentEvent} sites={sites.data ?? []} onLinked={sites.reload} />
+      ) : null}
+    </section>
+  );
+}
+
+interface ShelterCounts {
+  shelters: {
+    externalRef: string;
+    name: string;
+    status: string | null;
+    population: number | null;
+    capacity: number | null;
+    asOf: string;
+    site: { id: string; name: string } | null;
+  }[];
+  totals: { shelters: number; population: number; capacity: number };
+}
+
+/** The column names on the first line of a CSV file, quotes removed. */
+function csvHeader(text: string): string[] {
+  const line = text.replace(/^\uFEFF/, '').split(/\r?\n/, 1)[0] ?? '';
+  const out: string[] = [];
+  let cell = '';
+  let quoted = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i]!;
+    if (ch === '"') {
+      if (quoted && line[i + 1] === '"') {
+        cell += '"';
+        i += 1;
+      } else quoted = !quoted;
+    } else if (ch === ',' && !quoted) {
+      out.push(cell.trim());
+      cell = '';
+    } else cell += ch;
+  }
+  out.push(cell.trim());
+  return out.filter(Boolean);
+}
+
+/**
+ * CON-16: the Red Cross shelter report, counts only. The file stays in the browser until it is
+ * loaded; the server reads only the mapped columns and refuses a file that lists people.
+ */
+function RedCrossCounts({
+  eventId,
+  sites,
+  onLinked,
+}: {
+  eventId: string;
+  sites: Site[];
+  onLinked: () => void;
+}) {
+  const [actions, setActions] = useState<string[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    api<{ actions: string[] }>('/me')
+      .then((m) => live && setActions(m.actions))
+      .catch(() => live && setActions([]));
+    return () => {
+      live = false;
+    };
+  }, []);
+  const mayRead = !!actions?.includes('shelter_count.read');
+  const mayImport = !!actions?.includes('shelter_count.import');
+  const counts = useApi<ShelterCounts>(mayRead ? `/shelter-counts?eventId=${eventId}` : null);
+  const [csv, setCsv] = useState<string | null>(null);
+  const [columns, setColumns] = useState<string[]>([]);
+  const [map, setMap] = useState({
+    externalRef: '',
+    name: '',
+    status: '',
+    population: '',
+    capacity: '',
+    asOf: '',
+  });
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [problems, setProblems] = useState<{ row: number; reason: string }[]>([]);
+  if (!mayRead) return null;
+  const choose = async (file: File | undefined) => {
+    setResult(null);
+    setProblems([]);
+    if (!file) return;
+    const text = await file.text();
+    const cols = csvHeader(text);
+    setCsv(text);
+    setColumns(cols);
+    const guess = (names: string[]) =>
+      cols.find((c) => names.includes(c.toLowerCase().replace(/[^a-z0-9]/g, ''))) ?? '';
+    setMap({
+      externalRef: guess(['shelterid', 'id', 'nssid', 'facilityid', 'shelterno']),
+      name: guess(['sheltername', 'name', 'facilityname']),
+      status: guess(['status', 'shelterstatus']),
+      population: guess([
+        'population',
+        'overnightpopulation',
+        'currentpopulation',
+        'census',
+        'occupancy',
+      ]),
+      capacity: guess(['capacity', 'evacuationcapacity', 'maxcapacity', 'totalcapacity']),
+      asOf: guess(['reporttime', 'reportdate', 'asof', 'date', 'updated', 'lastupdated']),
+    });
+  };
+  const load = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!csv) return;
+    setBusy(true);
+    setResult(null);
+    try {
+      const r = await api<{
+        imported: number;
+        duplicates: number;
+        sitesUpdated: number;
+        rejected: number;
+        problems: { row: number; reason: string }[];
+      }>('/shelter-counts/import', {
+        body: {
+          eventId,
+          csv,
+          mapping: Object.fromEntries(Object.entries(map).filter(([, v]) => v)),
+        },
+        confirmation: { confirmed: true, reason: reason.trim() },
+      });
+      setResult({
+        kind: 'success',
+        text: `${r.imported} counts loaded, ${r.duplicates} already loaded, ${r.rejected} rows refused; ${r.sitesUpdated} county shelters updated.`,
+      });
+      setProblems(r.problems);
+      counts.reload();
+      onLinked();
+    } catch (err) {
+      setResult({ kind: 'error', text: describeFailure(err) });
+    }
+    setBusy(false);
+  };
+  const link = async (siteId: string, externalRef: string) => {
+    const site = sites.find((s) => s.id === siteId);
+    if (!site) return;
+    try {
+      await api(`/sites/${site.id}`, {
+        method: 'PATCH',
+        body: { externalRef },
+        version: site.version,
+      });
+      setResult({
+        kind: 'success',
+        text: `${site.name} is linked to Red Cross shelter ${externalRef}; its next count updates its occupancy.`,
+      });
+      onLinked();
+      counts.reload();
+    } catch (err) {
+      setResult({ kind: 'error', text: describeFailure(err) });
+    }
+  };
+  const select = (k: keyof typeof map, lbl: string, required = false) => (
+    <Field label={lbl}>
+      {({ id }) => (
+        <select
+          id={id}
+          value={map[k]}
+          required={required}
+          onChange={(e) => setMap({ ...map, [k]: e.target.value })}
+        >
+          <option value="">{required ? 'Choose a column' : 'Not in this file'}</option>
+          {columns.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      )}
+    </Field>
+  );
+  const unlinked = sites.filter((s) => !s.externalRef);
+  return (
+    <section aria-labelledby="rc-h">
+      <h2 id="rc-h">Red Cross shelter counts</h2>
+      <p className="hint">
+        Counts from the Red Cross shelter report: how many people stay at each shelter, never who. A
+        county shelter linked by its Red Cross id takes the newest count as its occupancy; its
+        status stays with whoever confirms the site.
+      </p>
+      {result ? <Status kind={result.kind}>{result.text}</Status> : null}
+      {counts.error ? <Status kind="error">{counts.error}</Status> : null}
+      {mayImport ? (
+        <form className="panel" onSubmit={(e) => void load(e)} aria-labelledby="rc-load-h">
+          <h3 id="rc-load-h">Load the Red Cross shelter report</h3>
+          <Field
+            label="Shelter report (CSV)"
+            hint="One row per shelter. A file with columns about people is refused whole."
+          >
+            {({ id, describedBy }) => (
+              <input
+                id={id}
+                aria-describedby={describedBy}
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => void choose(e.target.files?.[0])}
+              />
+            )}
+          </Field>
+          {csv ? (
+            <>
+              <p>Which columns hold what? Every other column is left out.</p>
+              <div className="form-grid">
+                {select('externalRef', 'Shelter id', true)}
+                {select('name', 'Shelter name', true)}
+                {select('status', 'Status')}
+                {select('population', 'People staying')}
+                {select('capacity', 'Capacity')}
+                {select('asOf', 'When it was counted')}
+              </div>
+              <Field label="Reason" hint="Recorded in the audit log, for the whole file.">
+                {({ id, describedBy }) => (
+                  <input
+                    id={id}
+                    aria-describedby={describedBy}
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    required
+                  />
+                )}
+              </Field>
+              <button
+                type="submit"
+                className="primary"
+                disabled={!map.externalRef || !map.name || reason.trim().length < 3 || busy}
+              >
+                Load the counts
+              </button>
+            </>
+          ) : null}
+          {problems.length ? (
+            <DataTable
+              caption="Rows refused"
+              rows={problems}
+              rowKey={(p) => String(p.row)}
+              columns={[
+                { key: 'r', header: 'Row', render: (p) => String(p.row) },
+                { key: 'w', header: 'Why', render: (p) => p.reason },
+              ]}
+            />
+          ) : null}
+        </form>
+      ) : null}
+      {counts.data ? (
+        <p role="status">
+          {counts.data.totals.shelters} Red Cross shelters · {counts.data.totals.population} people
+          staying · capacity {counts.data.totals.capacity}
+        </p>
+      ) : null}
+      <DataTable
+        caption="Red Cross shelter counts, the newest for each shelter"
+        rows={counts.data?.shelters ?? []}
+        rowKey={(c) => c.externalRef}
+        empty="No Red Cross counts loaded for this event."
+        columns={[
+          { key: 'n', header: 'Shelter', render: (c) => `${c.name} (${c.externalRef})` },
+          { key: 's', header: 'Reported status', render: (c) => label(c.status) },
+          { key: 'p', header: 'People staying', render: (c) => c.population ?? '—' },
+          { key: 'c', header: 'Capacity', render: (c) => c.capacity ?? '—' },
+          { key: 't', header: 'Counted', render: (c) => fmt(c.asOf) },
+          {
+            key: 'site',
+            header: 'County shelter',
+            render: (c) =>
+              c.site ? (
+                c.site.name
+              ) : mayImport && unlinked.length ? (
+                <label className="inline">
+                  Link {c.name} to
+                  <select value="" onChange={(e) => void link(e.target.value, c.externalRef)}>
+                    <option value="">Not linked</option>
+                    {unlinked.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                'Not linked'
+              ),
+          },
+        ]}
+      />
     </section>
   );
 }

@@ -147,6 +147,7 @@ interface Event {
   version: number;
   name: string;
   hazardType: string;
+  templateId?: string | null;
   status: 'draft' | 'active' | 'closed';
   intakeSlug: string | null;
   intakeKeywords: string[];
@@ -154,12 +155,37 @@ interface Event {
   closedAt: string | null;
 }
 
+interface EventTemplate {
+  id: string;
+  hazardType: string;
+  name: string;
+  config: { keywords: string[]; mapLayers: string[]; messages: { key: string }[] } | null;
+}
+
+/** An intake link from an event name: lower case, words joined by hyphens. */
+const linkFrom = (name: string) =>
+  name
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 40)
+    .replace(/-+$/, '');
+
 export function EventsScreen() {
   const { rows, error, reload } = useList<Event>('/events');
-  const [form, setForm] = useState({ name: '', hazardType: 'tornado' });
-  const [openForm, setOpenForm] = useState<{ id: string; slug: string; keywords: string } | null>(
-    null,
-  );
+  // CON-02: the county's templates by hazard preset the keywords, map layers and public messages.
+  const templates = useList<EventTemplate>('/event-templates');
+  const [form, setForm] = useState({ name: '', hazardType: 'tornado', templateId: '' });
+  const [openForm, setOpenForm] = useState<{
+    id: string;
+    slug: string;
+    keywords: string;
+    template: string | null;
+  } | null>(null);
+  const [drafted, setDrafted] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const run = async (fn: () => Promise<unknown>, ok: string) => {
     setMsg(null);
@@ -198,9 +224,17 @@ export function EventsScreen() {
                 {e.status === 'draft' ? (
                   <button
                     type="button"
-                    onClick={() => setOpenForm({ id: e.id, slug: '', keywords: '' })}
+                    onClick={() => {
+                      const t = templates.rows?.find((x) => x.id === e.templateId);
+                      setOpenForm({
+                        id: e.id,
+                        slug: linkFrom(e.name),
+                        keywords: t?.config?.keywords.join(' ') ?? '',
+                        template: t?.name ?? null,
+                      });
+                    }}
                   >
-                    Open…
+                    Open {e.name}…
                   </button>
                 ) : null}
                 {e.status === 'active' ? (
@@ -247,6 +281,13 @@ export function EventsScreen() {
                       .filter(Boolean)
                       .map((k) => k.toUpperCase()),
                   },
+                }).then((r) => {
+                  const n = (r as { draftedMessages?: number }).draftedMessages ?? 0;
+                  if (n)
+                    setDrafted(
+                      `${n} public safety ${n === 1 ? 'message was' : 'messages were'} drafted from the template. They are not published: check them on Resources and publish them there.`,
+                    );
+                  return r;
                 }),
               'Event opened. Intake is live.',
             ).then(() => setOpenForm(null));
@@ -265,7 +306,14 @@ export function EventsScreen() {
               />
             )}
           </Field>
-          <Field label="SMS keywords" hint="One per language, e.g. DAMAGE DAÑOS">
+          <Field
+            label="SMS keywords"
+            hint={
+              openForm.template
+                ? `From the ${openForm.template} template; one per language.`
+                : 'One per language, e.g. DAMAGE DAÑOS'
+            }
+          >
             {({ id, describedBy }) => (
               <input
                 id={id}
@@ -287,13 +335,38 @@ export function EventsScreen() {
         </form>
       ) : null}
       <h2>New event</h2>
+      {templates.rows && templates.rows.length === 0 ? (
+        <div className="panel">
+          <p>
+            This county has no event templates yet. The shipped ones (tornado, flood, winter storm,
+            wildfire) can be added and then changed.
+          </p>
+          <button
+            type="button"
+            onClick={() =>
+              void run(
+                () => api('/event-templates/defaults', { body: {} }),
+                'Created the shipped event templates.',
+              ).then(() => templates.reload())
+            }
+          >
+            Add the shipped event templates
+          </button>
+        </div>
+      ) : null}
       <form
         className="form-grid"
         onSubmit={(ev) => {
           ev.preventDefault();
-          void run(() => api('/events', { body: form }), `Created ${form.name} as a draft.`).then(
-            () => setForm({ name: '', hazardType: 'tornado' }),
-          );
+          void run(
+            () =>
+              api('/events', {
+                body: form.templateId
+                  ? { name: form.name, templateId: form.templateId }
+                  : { name: form.name, hazardType: form.hazardType },
+              }),
+            `Created ${form.name} as a draft.`,
+          ).then(() => setForm({ name: '', hazardType: 'tornado', templateId: '' }));
         }}
       >
         <Field label="Name">
@@ -306,11 +379,39 @@ export function EventsScreen() {
             />
           )}
         </Field>
+        <Field
+          label="Template"
+          hint="Sets the hazard, the SMS keywords, the map layers shown first and the safety messages drafted when the event opens."
+        >
+          {({ id, describedBy }) => (
+            <select
+              id={id}
+              aria-describedby={describedBy}
+              value={form.templateId}
+              onChange={(e) => {
+                const t = templates.rows?.find((x) => x.id === e.target.value);
+                setForm({
+                  ...form,
+                  templateId: e.target.value,
+                  hazardType: t?.hazardType ?? form.hazardType,
+                });
+              }}
+            >
+              <option value="">No template</option>
+              {(templates.rows ?? []).map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
         <Field label="Hazard">
           {({ id }) => (
             <select
               id={id}
               value={form.hazardType}
+              disabled={!!form.templateId}
               onChange={(e) => setForm({ ...form, hazardType: e.target.value })}
             >
               {['tornado', 'flood', 'winter_storm', 'wildfire', 'severe_storm', 'other'].map(
@@ -332,6 +433,7 @@ export function EventsScreen() {
       {msg ? (
         <Status kind={/Created|opened|Closed/.test(msg) ? 'success' : 'error'}>{msg}</Status>
       ) : null}
+      {drafted ? <Status kind="info">{drafted}</Status> : null}
     </section>
   );
 }

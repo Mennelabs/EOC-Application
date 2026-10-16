@@ -16,7 +16,7 @@ import { createDb, withTenant, type Database, type MissionTable } from '@cg/db';
 
 type MissionKind = MissionTable['kind'];
 import { openAIDescriptor } from '@cg/ai';
-import { westwindGraph } from '@cg/intake';
+import { EVENT_TEMPLATE_DEFAULTS, westwindGraph } from '@cg/intake';
 import {
   ensureAiRegister,
   ensureIntakeGraph,
@@ -243,6 +243,32 @@ async function ensureAccount(
     })
     .execute();
   return { id: account.id, created: true };
+}
+
+/** CON-02: the shipped event templates by hazard, for each hazard the county has none for yet. */
+async function ensureEventTemplates(trx: Transaction<Database>, tenantId: string): Promise<void> {
+  const have = new Set(
+    (
+      await trx
+        .selectFrom('cg.event_template')
+        .select('hazard_type')
+        .where('tenant_id', '=', tenantId)
+        .execute()
+    ).map((r) => r.hazard_type),
+  );
+  for (const d of EVENT_TEMPLATE_DEFAULTS)
+    if (!have.has(d.hazardType))
+      await trx
+        .insertInto('cg.event_template')
+        .values({
+          tenant_id: tenantId,
+          hazard_type: d.hazardType,
+          name: d.name,
+          config: JSON.stringify(d.config),
+          created_by: SEED_ACTOR_A,
+          updated_by: SEED_ACTOR_A,
+        })
+        .execute();
 }
 
 /** The WESTWIND tornado exercise event with its public intake link and keywords (docs/02, CHN-08). */
@@ -1253,6 +1279,7 @@ export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
       // ADR-0043: OpenAI for every AI function, off until the tenant's languages pass the evaluation.
       await ensureAiRegister(trx, id, openAIDescriptor(), null);
       if (spec.key === 'county') {
+        await ensureEventTemplates(trx, id);
         await ensureExerciseEvent(trx, id);
         await ensureChannelNumber(trx, id);
         await ensureZipCentroids(trx, id);

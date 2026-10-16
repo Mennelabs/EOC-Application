@@ -708,6 +708,10 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
       c: 'internal',
       d: 'Partner self-posting (2026-10-15): the partner organization that posted the site; always its operator',
     },
+    external_ref: {
+      c: 'internal',
+      d: 'CON-16: the shelter id in the Red Cross records, so imported counts reach this site',
+    },
   }),
   zip_centroid: table(
     {
@@ -2570,6 +2574,24 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     noted_at: { c: 'internal', r: 'field_records', d: 'Dispatch read it' },
     noted_by: { c: 'internal', r: 'field_records' },
   }),
+  shelter_count: table(
+    {
+      id: { c: 'internal' },
+      tenant_id: { c: 'internal' },
+      event_id: { c: 'internal', r: 'field_records' },
+      source: { c: 'internal', r: 'field_records', d: 'CON-16: red_cross' },
+      external_ref: { c: 'internal', r: 'field_records', d: 'The shelter id in their records' },
+      shelter_name: { c: 'public', r: 'field_records' },
+      status: { c: 'internal', r: 'field_records', d: 'open, limited, full or closed' },
+      population: { c: 'internal', r: 'field_records', d: 'People staying: a count, never who' },
+      capacity: { c: 'internal', r: 'field_records' },
+      as_of: { c: 'internal', r: 'field_records', d: 'When the Red Cross counted' },
+      site_id: { c: 'internal', r: 'field_records', d: 'The county site with this shelter id' },
+      imported_by: { c: 'internal', r: 'field_records' },
+      created_at: { c: 'internal', r: 'field_records' },
+    },
+    { standard: false },
+  ),
   shared_document: table({
     report_id: { c: 'internal', r: 'photos' },
     client_uuid: { c: 'internal', r: 'photos', d: 'Idempotency key from the phone' },

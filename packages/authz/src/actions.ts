@@ -57,6 +57,8 @@ export const actions = {
 
   'event.read': a('read', 'event', 'Read events'),
   'event.create': a('write', 'event', 'Create an event from a template'),
+  // CON-02: the county's event templates (keywords, map layers, public messages per hazard).
+  'event.template_edit': a('write', 'event', "Add or change the county's event templates"),
   'event.update': a('write', 'event', 'Update event details and footprint'),
   'event.check_in_code': a(
     'write',
@@ -283,6 +285,18 @@ export const actions = {
     'site',
     "Publish or withdraw your organization's own service on the county's public pages",
     { consequential: true, explicit: true },
+  ),
+  // CON-16: shelter counts from the Red Cross records, counts only, never people.
+  'shelter_count.read': a(
+    'read',
+    'shelter_count',
+    'Read shelter counts imported from the Red Cross',
+  ),
+  'shelter_count.import': a(
+    'write',
+    'shelter_count',
+    'Import shelter counts from the Red Cross (counts only, no people)',
+    { consequential: true },
   ),
   'resource.read': a('read', 'resource', 'Read published resources and drafts'),
   'resource.edit': a('write', 'resource', 'Draft or change a resource'),

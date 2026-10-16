@@ -11,7 +11,7 @@ import { text, validateAnswer, type AnswerValue, type QuestionNode } from '@cg/i
 import { useT, type Shell } from '../App.tsx';
 import { Offline, sendAfter, textCode, type IntakeInfo } from '../api/public.ts';
 import type { OutboxItem } from '../intake/outbox.ts';
-import { spellCode, type FlowState } from '../intake/state.ts';
+import { nextPlace, spellCode, type FlowState } from '../intake/state.ts';
 import { ButtonRow, Card, ChoiceGroup, Field, Status } from '../ui/primitives.tsx';
 
 export function Submit({
@@ -79,6 +79,9 @@ export function Submit({
       item={item}
       kiosk={kiosk}
       onMore={() => setAfterMode(true)}
+      onAnotherPlace={(keepContact) =>
+        update((s) => nextPlace(s, info.graph, item.receipt?.referenceCode ?? '', keepContact))
+      }
       onDone={onDone}
     />
   );
@@ -115,6 +118,7 @@ function Confirmation({
   item,
   kiosk,
   onMore,
+  onAnotherPlace,
   onDone,
 }: {
   shell: Shell;
@@ -123,6 +127,7 @@ function Confirmation({
   item: OutboxItem;
   kiosk: boolean;
   onMore: () => void;
+  onAnotherPlace: (keepContact: boolean) => void;
   onDone: () => void;
 }) {
   const t = useT();
@@ -132,6 +137,14 @@ function Confirmation({
   const [phone, setPhone] = useState('');
   const [texted, setTexted] = useState<string | null>(null);
   const [cleared, setCleared] = useState(false);
+  // ORG-01: an organization reports each of its places as a report of its own, one after another.
+  const rel = state.answers['relationship'];
+  const orgAnswer = state.answers['org_name'];
+  const orgName =
+    rel?.kind === 'value' && rel.value === 'organization' && orgAnswer?.kind === 'value'
+      ? String(orgAnswer.value)
+      : null;
+  const places = [...(state.earlierPlaces ?? []), code];
   const contact = state.answers['contact'];
   const gavePhone =
     contact?.kind === 'value' &&
@@ -227,6 +240,23 @@ function Confirmation({
         <li>{t('confirm.next4')}</li>
         {item.receipt?.verificationSuggested ? <li>{t('confirm.verify')}</li> : null}
       </ul>
+      {orgName && !kiosk ? (
+        <Card>
+          <h2>{t('confirm.places', { org: orgName })}</h2>
+          {places.length > 1 ? (
+            <p>
+              {t('confirm.placesSoFar', { count: String(places.length) })}{' '}
+              <span className="codes">{places.join(', ')}</span>
+            </p>
+          ) : null}
+          <p>{t(cleared ? 'confirm.anotherPlaceCleared' : 'confirm.anotherPlaceWhy')}</p>
+          <ButtonRow>
+            <button type="button" className="primary" onClick={() => onAnotherPlace(!cleared)}>
+              {t('confirm.anotherPlace', { org: orgName })}
+            </button>
+          </ButtonRow>
+        </Card>
+      ) : null}
       {!kiosk && info.graph.afterSubmission.length > 0 ? (
         <Card>
           <p>{t('confirm.moreWhy')}</p>

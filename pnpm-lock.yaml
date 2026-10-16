@@ -416,6 +416,9 @@ importers:
 
   packages/reporting:
     dependencies:
+      '@cg/authz':
+        specifier: workspace:*
+        version: link:../authz
       '@cg/db':
         specifier: workspace:*
         version: link:../db

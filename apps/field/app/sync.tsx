@@ -2,16 +2,22 @@
  * On this phone (FLD-13, AC-00B): every command with "On this phone",
  * "Sending", "Received", "Needs a decision" or "Not accepted"; the last
  * sync; "Sync now". A conflict keeps the volunteer's entry; removing it is a
- * deliberate choice.
+ * deliberate choice. The map packages of the volunteer's areas, with their
+ * size (FLD-13).
  */
 import { View } from 'react-native';
 import { useField } from '../src/field';
 import { clock } from '../src/format';
 import { label } from '../src/vocab';
-import { Alert, Body, Button, Card, NavBar, Page, SyncBadge } from '../src/ui';
+import { Alert, Body, Button, Card, Heading, NavBar, Page, SyncBadge } from '../src/ui';
+
+const size = (bytes: number) =>
+  bytes >= 1_048_576
+    ? `${(bytes / 1_048_576).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
 export default function SyncScreen() {
-  const { t, locale, outbox, sync, syncNow, discard } = useField();
+  const { t, locale, outbox, sync, syncNow, discard, maps, mapState } = useField();
   const visible = outbox
     .filter((c) => c.status !== 'received')
     .concat(outbox.filter((c) => c.status === 'received').slice(-5));
@@ -45,6 +51,18 @@ export default function SyncScreen() {
           ) : null}
         </Card>
       ))}
+      {/* FLD-13: the map packages of the volunteer's areas. */}
+      <Card label={t('maps.heading')}>
+        <Heading level={2}>{t('maps.heading')}</Heading>
+        {maps.map((m) => (
+          <Body key={m.areaKey}>{t('maps.item', { area: m.areaKey, size: size(m.bytes) })}</Body>
+        ))}
+        {mapState === 'downloading' ? <Body live>{t('maps.downloading')}</Body> : null}
+        {mapState === 'failed' ? <Alert tone="warn">{t('maps.failed')}</Alert> : null}
+        {maps.length === 0 && mapState !== 'downloading' ? (
+          <Body muted>{t('maps.none')}</Body>
+        ) : null}
+      </Card>
       <NavBar current="sync" />
     </Page>
   );

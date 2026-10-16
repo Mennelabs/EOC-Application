@@ -597,6 +597,32 @@ test.describe('field app (web build)', () => {
         },
       });
 
+    // FLD-13, SCL-13: the phone downloaded the offline map package of its area (an exercise
+    // package here: no regional tiles are built in this stack) and checked it; the map draws the
+    // lots and jobs from the phone's own copy, named in words, with the jobs still listed on Home.
+    await expect(page.getByText(/^Map of area [\w-]+: on this phone, \d+ KB$/).first()).toBeVisible(
+      { timeout: 30_000 },
+    );
+    await page.getByRole('link', { name: 'Home' }).click();
+    await page.getByRole('button', { name: 'Map of my area' }).click();
+    await expect(page.getByRole('heading', { name: 'Map of your area' })).toBeVisible();
+    await expect(page.getByText(/^Jobs on the map: \d+\. Lots: \d+\./)).toBeVisible();
+    const canvas = page.locator('[data-testid="area-map"] canvas');
+    await expect(canvas).toBeVisible({ timeout: 30_000 });
+    await expect(canvas).toHaveAttribute(
+      'aria-label',
+      /^Map of your area: \d+ jobs as yellow circles/,
+    );
+    await expect(page.getByText('Map data © OpenStreetMap contributors')).toBeVisible();
+    await expectNoViolations(page);
+    // Offline, the map still draws from the phone's copy.
+    await context.setOffline(true);
+    await page.getByRole('button', { name: 'Back to my jobs' }).click();
+    await page.getByRole('button', { name: 'Map of my area' }).click();
+    await expect(page.locator('[data-testid="area-map"] canvas')).toBeVisible({ timeout: 30_000 });
+    await context.setOffline(false);
+    await page.getByRole('button', { name: 'Back to my jobs' }).click();
+
     // FL-07, CMD-34: ask or command from the phone; it needs the connection and keeps nothing.
     await page.getByRole('link', { name: 'Home' }).click();
     await page.getByRole('button', { name: 'Ask or command' }).click();

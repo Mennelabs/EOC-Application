@@ -40,11 +40,13 @@ import {
   ApiError,
   OfflineError,
   type AreaOptions,
+  type AreaPackage,
   type CheckIn,
   type Me,
   type VoiceDraft,
 } from './api';
 import { takePhoto } from './camera';
+import { downloadMap, hasMap, keepOnlyMaps, type StoredMap } from './maps';
 import * as auth from './auth';
 import { loadConfig, type FieldConfig } from './config';
 import { deviceLocale, LocaleContext, translate, type Locale, type MessageKey } from './i18n';
@@ -121,6 +123,9 @@ interface FieldState {
   hazards: HazardArea[];
   areaSummary: { assignments: number; parcels: number; hazards: number; asOf: string } | null;
   areaState: 'idle' | 'downloading' | 'ready' | 'failed';
+  /** FLD-13: the offline map packages on this phone, and how the last download went. */
+  maps: StoredMap[];
+  mapState: 'none' | 'downloading' | 'ready' | 'failed';
   /** County choices from the area package; defaults until one is downloaded. */
   options: AreaOptions;
   sync: SyncStatus;
@@ -265,6 +270,8 @@ export function FieldProvider({ children }: { children: ReactNode }) {
   const [hazards, setHazards] = useState<HazardArea[]>([]);
   const [areaSummary, setAreaSummary] = useState<FieldState['areaSummary']>(null);
   const [areaState, setAreaState] = useState<FieldState['areaState']>('idle');
+  const [maps, setMaps] = useState<StoredMap[]>([]);
+  const [mapState, setMapState] = useState<FieldState['mapState']>('none');
   const [options, setOptions] = useState<AreaOptions>(defaultOptions);
   const [sync, setSync] = useState<SyncStatus>(emptySync);
   const [outbox, setOutbox] = useState<OutboxCommand[]>([]);
@@ -335,6 +342,8 @@ export function FieldProvider({ children }: { children: ReactNode }) {
     setTimer(timerRaw ? (JSON.parse(timerRaw) as TimerState) : null);
     const area = await s.getMeta('area');
     setAreaSummary(area ? (JSON.parse(area) as FieldState['areaSummary']) : null);
+    const kept = await s.getMeta('maps');
+    setMaps(kept ? (JSON.parse(kept) as StoredMap[]) : []);
     const opts = await s.getMeta('options');
     setOptions(
       opts ? { ...defaultOptions, ...(JSON.parse(opts) as Partial<AreaOptions>) } : defaultOptions,
@@ -507,6 +516,52 @@ export function FieldProvider({ children }: { children: ReactNode }) {
     [refresh, kick],
   );
 
+  /**
+   * FLD-13: the map packages of the areas this phone was given, downloaded once per version and
+   * checked against their hash; a package that fails keeps the one already here, if any.
+   */
+  const loadMaps = async (offers: AreaPackage['maps']) => {
+    const s = store.current;
+    if (!s) return;
+    const raw = await s.getMeta('maps');
+    const had = raw ? (JSON.parse(raw) as StoredMap[]) : [];
+    const ready = offers.filter(
+      (o) => o.available && o.url && o.sha256 && o.version !== null && o.bounds && o.bytes,
+    );
+    const kept: StoredMap[] = [];
+    let failed = false;
+    if (ready.length) setMapState('downloading');
+    for (const o of ready) {
+      const same = had.find(
+        (h) => h.areaKey === o.areaKey && h.version === o.version && h.sha256 === o.sha256,
+      );
+      if (same && (await hasMap(same))) {
+        kept.push(same);
+        continue;
+      }
+      try {
+        kept.push(
+          await downloadMap({
+            areaKey: o.areaKey,
+            url: o.url!,
+            sha256: o.sha256!,
+            version: o.version!,
+            bytes: o.bytes!,
+            bounds: o.bounds!,
+          }),
+        );
+      } catch {
+        failed = true;
+        const older = had.find((h) => h.areaKey === o.areaKey);
+        if (older && (await hasMap(older))) kept.push(older);
+      }
+    }
+    await keepOnlyMaps(kept);
+    await s.setMeta('maps', JSON.stringify(kept));
+    setMaps(kept);
+    setMapState(failed ? 'failed' : kept.length ? 'ready' : 'none');
+  };
+
   /** The area package written to the phone; its cursor, or null when it could not be read. */
   const loadArea = async (): Promise<number | null> => {
     const s = store.current;
@@ -546,6 +601,8 @@ export function FieldProvider({ children }: { children: ReactNode }) {
       );
       setAreaState('ready');
       cursor = pkg.cursor;
+      // The maps come after the records: the lists work while they download.
+      void loadMaps(pkg.maps);
     } catch {
       setAreaState('failed');
     }
@@ -946,6 +1003,8 @@ export function FieldProvider({ children }: { children: ReactNode }) {
     hazards,
     areaSummary,
     areaState,
+    maps,
+    mapState,
     options,
     sync,
     outbox,

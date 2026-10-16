@@ -17,6 +17,8 @@ tests/load/out/
 apps/field/android/
 apps/field/ios/
 apps/field/expo-env.d.ts
+# MapLibre's worker files, copied in by apps/field/scripts/maplibre-worker.mjs
+apps/field/public/maplibre/
 
 # Python bytecode (tools/reqindex)
 __pycache__/

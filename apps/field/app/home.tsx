@@ -147,6 +147,7 @@ export default function Home() {
       <Card label={t('home.tools')}>
         <Heading level={2}>{t('home.tools')}</Heading>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <Button kind="secondary" label={t('map.open')} onPress={() => router.push('/map')} />
           {f.can('command.use') ? (
             <Button
               kind="secondary"

@@ -637,10 +637,10 @@
     ""
   ],
   "FLD-13": [
-    "partial",
-    "outbox states on this phone / sending / received (field-core), GET /field/area, duplicate_of flag for a second record on a parcel (routes/field-assessments.ts); offline map packages: the worker cuts one per parcel area from the regional tiles (services/worker/src/maps/pmtiles.ts, jobs/maps.ts, cg.map_package 0104) and /field/area offers each with its size, hash and bounds",
-    "packages/field-core/test/sync.test.ts (outbox), services/api/test/dispatch-sync.db.test.ts (area package; batch applied twice), services/api/test/fieldwork.db.test.ts (second record flagged, not merged), tests/integration/layer4.int.test.ts, tests/e2e/field.spec.ts; services/worker/test/pmtiles.test.ts, services/worker/test/maps.db.test.ts (cut per area, recorded, audited, cut again only on change, removed with its lots)",
-    "The phone does not yet download the packages or draw a tile map; it draws the lots of its area from their outlines on \"Is this the property?\" (FLD-04)."
+    "pass",
+    "outbox states on this phone / sending / received (field-core), GET /field/area, duplicate_of flag for a second record on a parcel (routes/field-assessments.ts); offline map packages: the worker cuts one per parcel area from the regional tiles (services/worker/src/maps/pmtiles.ts, jobs/maps.ts, cg.map_package 0104) and /field/area offers each with its size, hash and bounds; the phone downloads each package once per version, checks it against its hash and keeps it (apps/field/src/maps.ts, maps.native.ts), lists it under Area maps on \"On this phone\", and draws it with MapLibre (app/map.tsx; area-map.tsx on the web build, area-map.native.tsx with MapLibre React Native) with the lots, jobs and the volunteer's position",
+    "packages/field-core/test/sync.test.ts (outbox), services/api/test/dispatch-sync.db.test.ts (area package; batch applied twice), services/api/test/fieldwork.db.test.ts (second record flagged, not merged), tests/integration/layer4.int.test.ts, tests/e2e/field.spec.ts; services/worker/test/pmtiles.test.ts, services/worker/test/maps.db.test.ts (cut per area, recorded, audited, cut again only on change, removed with its lots); packages/field-core/test/area-map.test.ts; tests/e2e/field.spec.ts (the package listed on \"On this phone\", the map drawn from the phone's copy, offline too, axe)",
+    "MapLibre React Native drawing from the phone's file is checked on a device by a person (the web build is tested); in this stack the package is an exercise one, without streets (MAP_EXERCISE)."
   ],
   "FLD-14": [
     "pass",

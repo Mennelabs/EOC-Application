@@ -168,7 +168,7 @@ Alerts never switch a feature off. `docs/ai-rmf.md` maps all of this to the NIST
 
 **Photos.** Where the county switches it on, reviewers see an "AI suggestion — not verified" degree of damage after the FEMA matrix. They set the degree themselves, and their agreement is recorded. The review queue puts people's needs first and the suggestion second. A photo that looks the same as one on another report is flagged for a person.
 
-Maps (SCL-13) are opt-in because the first build downloads the Missouri OpenStreetMap extract: set `COMPOSE_PROFILES=maps` in `.env` for the geocoder and run `docker compose --profile maps-build run --rm tiles-build` once for vector tiles.
+Maps (SCL-13) are opt-in because the first build downloads the Missouri OpenStreetMap extract: set `COMPOSE_PROFILES=maps` in `.env` for the geocoder and run `docker compose --profile maps-build run --rm tiles-build` once for vector tiles. With the geocoder running, set `GEOCODER_URL=http://geocoder:8080` in `.env` so the mission intake's address suggestions add OpenStreetMap matches to the county's parcels (BRD:FR-03.02); without it, suggestions come from the parcels alone.
 
 Behind a corporate proxy that inspects TLS, pass its CA to the builds: `docker compose build --build-arg HTTPS_PROXY=... ` and `--secret id=extra_ca,src=/path/ca.pem` (see `infra/node/Dockerfile`).
 

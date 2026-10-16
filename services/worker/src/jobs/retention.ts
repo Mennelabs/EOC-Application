@@ -194,6 +194,14 @@ export const SWEEPS: readonly Sweep[] = [
       'coalesce((select n.event_id from cg.need n where n.id = need_id), (select r.event_id from cg.report r where r.id = report_id))',
     keptBy: [{ table: 'referral', column: 'share_grant_id' }],
   },
+  // FL:FR-06: health notices once ended (or never approved), with who was told of them.
+  {
+    category: 'publications',
+    table: 'health_notice',
+    clock: 'coalesce(ended_at, approved_at, created_at)',
+    finished: "status in ('ended', 'draft')",
+    children: [{ table: 'health_notice_recipient', column: 'notice_id' }],
+  },
   {
     category: 'publications',
     table: 'publication',

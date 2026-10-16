@@ -328,13 +328,13 @@
     "partial",
     "per-event intake slug, keywords and graph version (routes/events.ts /intake, apps/web-console/src/screens/intake.tsx)",
     "services/api/test/reports.db.test.ts (event intake facts), tests/e2e/console.spec.ts (intake setup with the QR code)",
-    "Hazard templates presetting map layers and public messages arrive with layers 3 and 8."
+    "The event template table exists and an event stores its template, but nothing applies a template's presets (map layers, public messages, keywords); the hazard type chooses the intake branches. No test times opening an event in under 5 minutes."
   ],
   "CON-05": [
     "partial",
-    "review queue with need-signal order and filters (routes/reports.ts, apps/web-console/src/screens/review.tsx)",
-    "services/api/test/reports.db.test.ts (queue order and filters), tests/e2e/console.spec.ts (review journey)",
-    "Field-team routing is layer 4."
+    "review queue with need-signal order and filters (routes/reports.ts, apps/web-console/src/screens/review.tsx); layer 4: verification results sync from the offline field app (routes/field-sync.ts, apps/field)",
+    "services/api/test/reports.db.test.ts (queue order and filters), tests/e2e/console.spec.ts (review journey), services/api/test/fieldwork.db.test.ts (A7, DCL:DEC-02/03: linked report becomes field verified), tests/e2e/field.spec.ts (saved offline, then sent)",
+    "Routing from the review queue is not built: there is no \"send to the field\" review decision and no route suggestion grouping the reports that need a visit; teams get field work through dispatch."
   ],
   "CON-10": [
     "pass",
@@ -433,10 +433,10 @@
     ""
   ],
   "BRD:FR-11.06": [
-    "partial",
-    "channel_of_origin and review_state explicit on every report",
-    "services/api/test/reports.db.test.ts",
-    "Approved public resources (\"Find help\") arrive in layer 3."
+    "pass",
+    "channel_of_origin and review_state explicit on every report; layer 3: approved public resources on Find help, published only when every text is human-reviewed (public/help.ts, routes/resources.ts publish)",
+    "services/api/test/reports.db.test.ts, services/api/test/help.db.test.ts (resources publish only when every text is human-reviewed; lists published, non-confidential sites and current resources), tests/e2e/help.spec.ts (lists open sites first)",
+    ""
   ],
   "BRD:FR-11.07": [
     "pass",
@@ -688,14 +688,14 @@
   "BRD:FR-10.04": [
     "partial",
     "utilities, access, needs, displacement (tonight), evidence (photos)",
-    "packages/intake/test/graph.test.ts, services/worker/test/intake.db.test.ts",
-    "Cost estimates are not asked of residents (DEC-02); assessor estimates arrive with the field app."
+    "packages/intake/test/graph.test.ts, services/worker/test/intake.db.test.ts, services/api/test/fieldwork.db.test.ts (FLD-08, DCL:DEC-17: what the app sends is accepted), tests/e2e/field.spec.ts (offline capture)",
+    "Utilities, access, needs, displacement and evidence are captured and tested; residents are not asked for cost estimates (DEC-02) and the field app has no per-home estimate field; only Public Assistance sites carry an estimated cost. docs/05 marks this row \"Covered\", which overstates it."
   ],
   "BRD:FR-10.05": [
-    "partial",
-    "review_state vs verification_level; unknown vs value in every answer",
-    "tests/integration/layer2.int.test.ts (AC-10A), services/api/test/reports.db.test.ts",
-    "Estimates vs verified costs arrive with field findings (layer 4)."
+    "pass",
+    "review_state vs verification_level; unknown vs value in every answer; layer 6: Public Assistance costs keep estimate against verified (cg.pa_site.cost_basis, routes/declaration.ts); field findings are records of their own beside the resident report (cg.field_assessment)",
+    "tests/integration/layer2.int.test.ts (AC-10A), services/api/test/reports.db.test.ts, services/api/test/declaration.db.test.ts (rolls public damage up by category: estimate against verified cost), services/api/test/fieldwork.db.test.ts (an assessment from the phone links the resident report without changing it), packages/reporting/test/counting.test.ts (a home owner's report stands over a witness observation)",
+    "Per-home dollar estimates are not collected (BRD:FR-10.04); estimates against verified costs exist for Public Assistance sites."
   ],
   "BRD:FR-10.06": [
     "pass",

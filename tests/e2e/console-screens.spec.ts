@@ -13,7 +13,9 @@
  * taken in the console waits for a second person (BRD:FR-13.01). A role refused a
  * field screen still hears its heading before the reason (WCAG 1.3.1, 2.4.6).
  * A walk-up volunteer signs up on their own phone through the desk code and
- * reception registers them (FL:FR-20).
+ * reception registers them (FL:FR-20). A health notice is approved by someone
+ * other than its drafter and shows on Find help for its ZIP until lifted
+ * (FL:FR-06).
  */
 import { expect, test, type Page } from '@playwright/test';
 import { expectNoViolations, expectReflow, onboard } from './support/console.ts';
@@ -35,6 +37,8 @@ const SCREENS: [path: string, heading: string][] = [
   ['replay', 'Board replay'],
   ['shelters', 'Shelters'],
   ['reception', 'Volunteer reception'],
+  ['health-notices', 'Health notices'],
+  ['parcels', 'Parcels and routes'],
   ['reminders', 'Reminders'],
   ['devices', 'Field devices'],
   ['field-messages', 'Messages to the field'],
@@ -294,5 +298,180 @@ test.describe('every console screen, one by one', () => {
     await visitor.goto(`${link.pathname}${link.search}`);
     await expect(visitor.getByRole('alert')).toContainText('This sign-up code has closed.');
     await visitor.close();
+  });
+
+  test('FL:FR-06: public health drafts a boil-water notice; the drafter cannot approve it; someone else does; it shows on Find help for the ZIP in English and Spanish until lifted; axe finds nothing', async ({
+    page,
+    context,
+    browser,
+  }, testInfo) => {
+    test.setTimeout(300_000);
+    await onboard(
+      page,
+      context,
+      'public_health_inspector',
+      `Health ${tag}`,
+      `scr-health-${testInfo.project.name}`,
+    );
+    await open(page, 'health-notices', 'Health notices');
+    const title = `Boil water ${tag}-${testInfo.project.name}`;
+    await page.getByLabel('Area, as the public reads it').fill('Exercise Cedar Ridge water system');
+    await page.getByLabel('ZIP codes').fill('63002');
+    await page.getByLabel('Title in English').fill(title);
+    await page
+      .getByLabel('Notice in English')
+      .fill('Boil tap water for one minute before drinking or cooking.');
+    await page
+      .getByLabel('Título en español')
+      .fill(`Hierva el agua ${tag}-${testInfo.project.name}`);
+    await page
+      .getByLabel('Aviso en español')
+      .fill('Hierva el agua de la llave un minuto antes de beberla o cocinar.');
+    await page.getByRole('button', { name: 'Save the draft' }).click();
+    await expect(page.getByText('Draft saved.')).toBeVisible();
+    const row = page.getByRole('row').filter({ hasText: title });
+    await expect(row).toContainText('waiting for a second person');
+    await row.getByRole('button', { name: `Check reach of ${title}` }).click();
+    await expect(row).toContainText(/\d+ by text, \d+ by email, \d+ cannot be reached/);
+    await expectNoViolations(page);
+    // ADM-05 G4: whoever drafted it cannot approve it.
+    // ADM-05 G4 refuses before any reason is asked.
+    await row.getByRole('button', { name: `Approve and publish ${title}` }).click();
+    await expect(page.getByRole('alert')).toBeVisible();
+    await expect(row).toContainText('waiting for a second person');
+
+    // A second person approves it with a reason.
+    const otherContext = await browser.newContext();
+    const other = await otherContext.newPage();
+    await onboard(
+      other,
+      otherContext,
+      'public_information_officer',
+      `Health approver ${tag}`,
+      `scr-health2-${testInfo.project.name}`,
+    );
+    await open(other, 'health-notices', 'Health notices');
+    const otherRow = other.getByRole('row').filter({ hasText: title });
+    await otherRow.getByRole('button', { name: `Approve and publish ${title}` }).click();
+    const dialog = other.getByRole('dialog');
+    await dialog.getByLabel(/reason/i).fill('Exercise: water main break confirmed');
+    await dialog.getByRole('button', { name: 'Confirm' }).click();
+    await expect(other.getByText(`"${title}" is published`)).toBeVisible();
+    await expect(otherRow).toContainText('In force');
+
+    // The public page shows it first for the ZIP, in either language.
+    const visitor = await context.newPage();
+    await visitor.goto('/county/help?near=63002');
+    const notices = visitor.getByRole('region', { name: 'Health notices' });
+    await expect(notices.getByRole('heading', { name: title })).toBeVisible();
+    await expect(notices).toContainText('For your area');
+    await expectNoViolations(visitor);
+    await visitor.goto('/county/help?near=63002&lang=es');
+    await expect(
+      visitor
+        .getByRole('region', { name: 'Avisos de salud' })
+        .getByRole('heading', { name: `Hierva el agua ${tag}-${testInfo.project.name}` }),
+    ).toBeVisible();
+    await expectNoViolations(visitor);
+
+    // Lifted, it leaves the page.
+    await open(other, 'health-notices', 'Health notices');
+    await otherRow.getByRole('button', { name: `Lift ${title}` }).click();
+    const lift = other.getByRole('dialog');
+    await lift.getByLabel(/reason/i).fill('Exercise: water tests clear');
+    await lift.getByRole('button', { name: 'Confirm' }).click();
+    await expect(other.getByText(`"${title}" has ended (lifted)`)).toBeVisible();
+    await visitor.goto('/county/help?near=63002');
+    await expect(visitor.getByRole('heading', { name: title })).toHaveCount(0);
+    await visitor.close();
+    await otherContext.close();
+  });
+
+  test('CON-17, SCL-13: the GIS lead loads parcels and a route area from GeoJSON with a reason; the counts and the area are shown; axe finds nothing', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'planning_gis_lead',
+      `GIS ${tag}`,
+      `scr-gis-${testInfo.project.name}`,
+    );
+    await open(page, 'parcels', 'Parcels and routes');
+    const id = `${tag}-${testInfo.project.name}`;
+    // Two synthetic parcels far from the exercise county's grid, at a spot of this run and project.
+    const base = -91 - (Date.now() % 997) * 0.002 - (testInfo.project.name === 'phone' ? 0.001 : 0);
+    const square = (lon: number) => ({
+      type: 'Polygon',
+      coordinates: [
+        [
+          [lon, 37.5],
+          [lon + 0.0002, 37.5],
+          [lon + 0.0002, 37.5002],
+          [lon, 37.5002],
+          [lon, 37.5],
+        ],
+      ],
+    });
+    const parcels = {
+      type: 'FeatureCollection',
+      features: [0, 1].map((i) => ({
+        type: 'Feature',
+        properties: { PIN: `E2E-${id}-${i}`, SITEADDR: `${i + 1} Exercise Test Ln`, ZIP: '63099' },
+        geometry: square(base + i * 0.0003),
+      })),
+    };
+    await page.getByLabel('Parcel layer (GeoJSON)').setInputFiles({
+      name: 'parcels.geojson',
+      mimeType: 'application/geo+json',
+      buffer: Buffer.from(JSON.stringify(parcels)),
+    });
+    await expect(page.getByText('2 features in the file.')).toBeVisible();
+    await expect(page.getByLabel('Parcel id')).toHaveValue('PIN');
+    await expect(page.getByLabel('Street address')).toHaveValue('SITEADDR');
+    await page
+      .getByRole('form', { name: 'Load parcels' })
+      .getByLabel('Reason', { exact: true })
+      .fill('Exercise: county parcel layer');
+    await expectNoViolations(page);
+    await page.getByRole('button', { name: 'Load 2 parcels' }).click();
+    await expect(page.getByText('2 parcels added, 0 updated, 0 refused.')).toBeVisible();
+
+    const routes = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: { ROUTE_NAME: `Test Lane ${id}` },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [
+              [
+                [base - 0.0001, 37.4995],
+                [base + 0.0006, 37.4995],
+                [base + 0.0006, 37.5005],
+                [base - 0.0001, 37.5005],
+                [base - 0.0001, 37.4995],
+              ],
+            ],
+          },
+        },
+      ],
+    };
+    await page.getByLabel('Route areas (GeoJSON)').setInputFiles({
+      name: 'routes.geojson',
+      mimeType: 'application/geo+json',
+      buffer: Buffer.from(JSON.stringify(routes)),
+    });
+    await expect(page.getByLabel('Property that names each route')).toHaveValue('ROUTE_NAME');
+    await page.getByLabel('Reason for the routes').fill('Exercise: verification routes');
+    await page.getByRole('button', { name: 'Load 1 route areas' }).click();
+    const loaded = page.getByRole('table', { name: 'Route areas loaded' });
+    await expect(loaded.getByRole('row').filter({ hasText: `Test Lane ${id}` })).toContainText(
+      /Test Lane \S+2Not opened/,
+    );
+    await expectNoViolations(page);
   });
 });

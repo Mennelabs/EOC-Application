@@ -130,7 +130,7 @@
     "partial",
     ".github/workflows/ci.yml (lint, typecheck, unit, integration, e2e with axe, Semgrep, Trivy filesystem and images including cjis-api and cjis-web, SPDX SBOMs for api and cjis-api, the platform and enclave migration drills); actions pinned to commit SHAs (ADR-0019)",
     "CI on every push",
-    "Threat models per feature, DAST and signed release builds are not in CI yet."
+    "Threat models per feature, DAST and signed release builds are not in CI yet, and SBOMs are built on every push rather than kept per release (there is no release workflow)."
   ],
   "GATE-01": [
     "pass",

@@ -595,6 +595,10 @@ export interface LocationTable extends Stamped {
   state: string | null;
   postal: string | null;
   landmark: string | null;
+  /** BRD:FR-03.01: the nearest cross streets, a field of their own. */
+  cross_streets: string | null;
+  verified_at: TsNullable;
+  verified_by: Uuid | null;
   note: string | null;
   no_fixed_address: Generated<boolean>;
   geom: ColumnType<unknown, unknown, unknown> | null;
@@ -2655,6 +2659,50 @@ export interface FacilityUpdateLinkTable {
   created_at: TsGen;
 }
 
+/** FL:FR-06: a targeted boil-water, do-not-use-water or safety notice. */
+export interface HealthNoticeTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid | null;
+  kind: 'boil_water' | 'do_not_use_water' | 'safety';
+  title_en: string;
+  body_en: string;
+  title_es: string | null;
+  body_es: string | null;
+  area_label: string;
+  zips: Generated<string[]>;
+  center: ColumnType<unknown, unknown, unknown> | null;
+  radius_m: number | null;
+  status: ColumnType<
+    'draft' | 'active' | 'ended',
+    'draft' | 'active' | 'ended' | undefined,
+    'draft' | 'active' | 'ended'
+  >;
+  expires_at: TsNullable;
+  approved_by: Uuid | null;
+  approved_at: TsNullable;
+  ended_by: Uuid | null;
+  ended_at: TsNullable;
+  end_reason: 'lifted' | 'withdrawn' | null;
+  tell_ended: Generated<boolean>;
+  sent_sms: Generated<number>;
+  sent_email: Generated<number>;
+  sent_at: TsNullable;
+  ended_sent_sms: Generated<number>;
+  ended_sent_email: Generated<number>;
+  ended_sent_at: TsNullable;
+}
+
+/** FL:FR-06: a resident told of a notice, once per phase. */
+export interface HealthNoticeRecipientTable {
+  tenant_id: Uuid;
+  notice_id: Uuid;
+  party_id: Uuid;
+  phase: 'issued' | 'ended';
+  channel: 'sms' | 'email';
+  created_at: TsGen;
+}
+
 /** FL:FR-20: a self-registration link reception opens for an event. */
 export interface VolunteerSignupLinkTable {
   id: Generated<Uuid>;
@@ -3446,6 +3494,8 @@ export interface Database {
   'cg.right_of_entry': RightOfEntryTable;
   'cg.volunteer_registration': VolunteerRegistrationTable;
   'cg.volunteer_signup_link': VolunteerSignupLinkTable;
+  'cg.health_notice': HealthNoticeTable;
+  'cg.health_notice_recipient': HealthNoticeRecipientTable;
   'cg.volunteer_signup': VolunteerSignupTable;
   'cg.stock_item': StockItemTable;
   'cg.interpreter_request': InterpreterRequestTable;

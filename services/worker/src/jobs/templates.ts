@@ -27,7 +27,9 @@ export type TemplateName =
   | 'facility_recheck'
   | 'facility_recheck_owner'
   | 'discovery_digest'
-  | 'discovery_alert';
+  | 'discovery_alert'
+  | 'health_notice'
+  | 'health_notice_ended';
 
 export const TEMPLATE_NAMES: readonly TemplateName[] = [
   'confirmation',
@@ -52,6 +54,9 @@ export const TEMPLATE_NAMES: readonly TemplateName[] = [
   'facility_recheck_owner',
   'discovery_digest',
   'discovery_alert',
+  // FL:FR-06: a health notice for the resident's area, and its end.
+  'health_notice',
+  'health_notice_ended',
 ];
 
 export interface TemplateVars {
@@ -85,6 +90,8 @@ export interface TemplateVars {
   version?: string;
   approver?: string;
   channels?: string;
+  /** FL:FR-06: the area a health notice covers, in words. */
+  area?: string;
 }
 
 export interface Rendered {
@@ -133,6 +140,10 @@ const EN = {
       `${v.county} Emergency Mgmt: resource discovery found ${v.count ?? 'some'} place(s) for the registry. Review them in the console's discovery queue.`,
     discovery_alert: (v: TemplateVars) =>
       `${v.county} Emergency Mgmt: a possible resource near unmet need: ${v.site ?? 'a place'} (${v.kind ?? 'place'}). Review it in the discovery queue; nothing is added until someone decides.`,
+    health_notice: (v: TemplateVars) =>
+      `${v.county} health notice for your area: ${v.title ?? 'see the details'}. ${v.url ? `Details: ${v.url} ` : ''}Reply STOP to opt out.`,
+    health_notice_ended: (v: TemplateVars) =>
+      `${v.county}: the health notice for your area has ended (${v.title ?? 'see the details'}). ${v.url ? `Details: ${v.url} ` : ''}Reply STOP to opt out.`,
     resource_attention: (v: TemplateVars) =>
       `${v.county} Emergency Mgmt: the public resource "${v.title ?? ''}" ${v.what ?? 'needs attention'}.`,
     contact_reverify: (v: TemplateVars) =>
@@ -240,6 +251,20 @@ const EN = {
         `${v.site ?? 'A place'} (${v.kind ?? 'place'}) was found by ${v.county}'s resource discovery (${v.what ?? 'a source'}). It is within 3 km of open requests for food or a place to stay in the active event.\n\n` +
         `It is not in the facility registry. Review it now in the console's discovery queue and qualify it in or out. Nothing is added until someone decides.\n`,
     }),
+    health_notice: (v: TemplateVars) => ({
+      subject: `${v.county}: ${v.title ?? 'a health notice for your area'}`,
+      body:
+        `${v.county} public health issued this notice for ${v.area ?? 'your area'}:\n\n${v.title ?? ''}\n\n${v.text ?? ''}\n\n` +
+        (v.url ? `It is also on the county's help page: ${v.url}\n\n` : '') +
+        `You get this because you reported damage or asked for help at an address in this area. This message does not send emergency help. If you are in danger now, call 911.\n`,
+    }),
+    health_notice_ended: (v: TemplateVars) => ({
+      subject: `${v.county}: notice ended: ${v.title ?? 'health notice for your area'}`,
+      body:
+        `${v.county} public health has ended the notice "${v.title ?? ''}" for ${v.area ?? 'your area'}${v.what ? ` (${v.what})` : ''}.\n\n` +
+        (v.url ? `See the county's help page for anything still in force: ${v.url}\n\n` : '') +
+        `This message does not send emergency help. If you are in danger now, call 911.\n`,
+    }),
     facility_recheck_owner: (v: TemplateVars) => ({
       subject: `${v.county}: please re-check ${v.site ?? 'your facility'} in the facility registry`,
       body:
@@ -330,6 +355,10 @@ const ES: typeof EN = {
       `Manejo de Emergencias de ${v.county}: la búsqueda de recursos encontró ${v.count ?? 'algunos'} lugar(es) para el registro. Revíselos en la cola de búsqueda de la consola.`,
     discovery_alert: (v) =>
       `Manejo de Emergencias de ${v.county}: un posible recurso cerca de necesidades sin atender: ${v.site ?? 'un lugar'} (${v.kind ?? 'lugar'}). Revíselo en la cola de búsqueda; nada se agrega hasta que alguien decida.`,
+    health_notice: (v) =>
+      `${v.county}, aviso de salud para su zona: ${v.title ?? 'vea los detalles'}. ${v.url ? `Detalles: ${v.url} ` : ''}Responda ALTO para no recibir mensajes.`,
+    health_notice_ended: (v) =>
+      `${v.county}: terminó el aviso de salud para su zona (${v.title ?? 'vea los detalles'}). ${v.url ? `Detalles: ${v.url} ` : ''}Responda ALTO para no recibir mensajes.`,
     resource_attention: (v) =>
       `Manejo de Emergencias de ${v.county}: el recurso público "${v.title ?? ''}" ${v.what ?? 'necesita atención'}.`,
     contact_reverify: (v) =>
@@ -436,6 +465,20 @@ const ES: typeof EN = {
       body:
         `${v.site ?? 'Un lugar'} (${v.kind ?? 'lugar'}) fue encontrado por la búsqueda de recursos de ${v.county} (${v.what ?? 'una fuente'}). Está a menos de 3 km de solicitudes abiertas de comida o de un lugar donde quedarse en el evento activo.\n\n` +
         `No está en el registro de instalaciones. Revíselo ahora en la cola de búsqueda de la consola y acéptelo o descártelo. Nada se agrega hasta que alguien decida.\n`,
+    }),
+    health_notice: (v) => ({
+      subject: `${v.county}: ${v.title ?? 'un aviso de salud para su zona'}`,
+      body:
+        `Salud pública de ${v.county} emitió este aviso para ${v.area ?? 'su zona'}:\n\n${v.title ?? ''}\n\n${v.text ?? ''}\n\n` +
+        (v.url ? `También está en la página de ayuda del condado: ${v.url}\n\n` : '') +
+        `Recibe esto porque reportó daños o pidió ayuda en una dirección de esta zona. Este mensaje no envía ayuda de emergencia. Si está en peligro ahora, llame al 911.\n`,
+    }),
+    health_notice_ended: (v) => ({
+      subject: `${v.county}: terminó el aviso: ${v.title ?? 'aviso de salud para su zona'}`,
+      body:
+        `Salud pública de ${v.county} terminó el aviso "${v.title ?? ''}" para ${v.area ?? 'su zona'}${v.what ? ` (${v.what})` : ''}.\n\n` +
+        (v.url ? `Vea en la página de ayuda del condado lo que sigue vigente: ${v.url}\n\n` : '') +
+        `Este mensaje no envía ayuda de emergencia. Si está en peligro ahora, llame al 911.\n`,
     }),
     facility_recheck_owner: (v) => ({
       subject: `${v.county}: revise ${v.site ?? 'su instalación'} en el registro de instalaciones`,

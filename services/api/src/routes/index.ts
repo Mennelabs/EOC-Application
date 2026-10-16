@@ -53,6 +53,9 @@ import { sharedRoutes } from './shared.ts';
 import { situationRoutes } from './situation.ts';
 import { tenantRoutes } from './tenants.ts';
 import { volunteerRoutes } from './volunteers.ts';
+import { healthNoticeRoutes } from './health-notices.ts';
+import { geocodeRoutes, type GeocodeDeps } from './geocode.ts';
+import { parcelRoutes } from './parcels.ts';
 
 /** What the server gives the routes that talk to the broker, object storage or the AI provider (absent in tests: poll fallback, no map extracts). */
 export interface RouteDeps {
@@ -69,6 +72,7 @@ export interface RouteDeps {
   commands?: CommandDeps;
   drafting?: DraftingDeps;
   scribe?: ScribeDeps;
+  geocode?: GeocodeDeps;
 }
 
 /** Route plugins mounted under /api/v1. Each layer adds its modules here. */
@@ -95,6 +99,12 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   missionRoutesWith(deps.missions),
   rosterRoutes,
   volunteerRoutes,
+  // FL:FR-06: targeted health notices, approved by a second person.
+  healthNoticeRoutes,
+  // BRD:FR-03.02: address suggestions and reverse geocoding, parcels first.
+  geocodeRoutes(deps.geocode),
+  // CON-17, SCL-13: the county's parcels and route areas from its GIS.
+  parcelRoutes,
   fieldOpsRoutes,
   fieldAssessmentRoutes,
   fieldVoiceRoutes(deps.fieldVoice),

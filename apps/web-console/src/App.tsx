@@ -45,6 +45,8 @@ import { ReportDetailScreen, ReviewQueueScreen } from './screens/review.tsx';
 import { PublicationsScreen, SitesScreen } from './screens/sites.tsx';
 import { PublicRecordsScreen } from './screens/public-records.tsx';
 import { FindSurvivorScreen } from './screens/find-survivor.tsx';
+import { HealthNoticesScreen } from './screens/health-notices.tsx';
+import { ParcelsScreen } from './screens/parcels.tsx';
 import { CommandWindow } from './ui/command-window.tsx';
 import { ConfirmDialog, Field, Status } from './ui/primitives.tsx';
 import { formatTime, setDisplayZone } from './ui/time.ts';
@@ -81,6 +83,7 @@ const routes = [
   { path: '/console/badges', label: 'Badges', layer: 4 },
   { path: '/console/reminders', label: 'Reminders', layer: 4 },
   { path: '/console/peer-support', label: 'Peer support', layer: 4 },
+  { path: '/console/health-notices', label: 'Health notices', layer: 4 },
   { path: '/console/devices', label: 'Field devices', layer: 4 },
   { path: '/console/declaration', label: 'Declaration data', layer: 6 },
   { path: '/console/joint-assessment', label: 'Joint assessment', layer: 6 },
@@ -89,6 +92,7 @@ const routes = [
   { path: '/console/metrics', label: 'Metrics', layer: 6 },
   { path: '/console/equity', label: 'Equity', layer: 6 },
   { path: '/console/reference-data', label: 'Reference data', layer: 6 },
+  { path: '/console/parcels', label: 'Parcels and routes', layer: 4 },
   { path: '/console/fema-mappings', label: 'FEMA form mappings', layer: 6 },
   { path: '/console/integrations', label: 'API keys and webhooks', layer: 6 },
   { path: '/console/facilities', label: 'Facility registry', layer: 7 },
@@ -269,6 +273,10 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <SheltersScreen me={me} />;
       case '/console/reception':
         return <VolunteerReceptionScreen />;
+      case '/console/health-notices':
+        return <HealthNoticesScreen />;
+      case '/console/parcels':
+        return <ParcelsScreen />;
       case '/console/roster':
         return <RosterScreen />;
       case '/console/net-control':

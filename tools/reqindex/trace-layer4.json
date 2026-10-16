@@ -85,16 +85,16 @@
     "The test proves the manual path; the command window path is layer 7."
   ],
   "BRD:FR-03.01": [
-    "partial",
-    "cg.location (line1, unit, city, postal, landmark, precision, source, parcel_id, usng; 0012) and mission location_state verified/approximate/manual/unknown (0030); routes/missions.ts saveLocation",
-    "services/api/test/missions.db.test.ts (CALL-01 location), services/api/test/fieldwork.db.test.ts (server-computed USNG)",
-    "Cross streets are folded into the landmark text and there is no verification-time column."
+    "pass",
+    "cg.location (line1, unit, city, postal, landmark, precision, source, parcel_id, usng; 0012) with cross_streets, verified_at and verified_by (0098); mission location_state verified/approximate/manual/unknown (0030); routes/missions.ts saveLocation keeps cross streets apart and records when and by whom a verified place was saved; the mission detail shows them",
+    "services/api/test/missions.db.test.ts (CALL-01 location), services/api/test/fieldwork.db.test.ts (server-computed USNG), services/api/test/geocode.db.test.ts (BRD:FR-03.01: cross streets apart from the landmark; a verified place records when)",
+    ""
   ],
   "BRD:FR-03.02": [
     "partial",
-    "self-hosted geocoder from layer 3 (console sites form); parcel snap gives the address of record on the phone (packages/field-core/src/geo.ts)",
-    "packages/field-core/test/geo.test.ts (parcel snapping)",
-    "The mission intake form has no address suggestions or reverse geocoding yet; cross-street enrichment is not built."
+    "routes/geocode.ts: GET /geocode/suggest (every typed word, the county's parcels first as the address of record, then the self-hosted Nominatim when GEOCODER_URL is set) and GET /geocode/reverse (the parcel at a point, else Nominatim); maps off means parcels only (SCL-06); the console mission intake finds the address, lists matches to choose from, and finds the address at coordinates the caller reads out (screens/missions.tsx); parcel snap gives the address of record on the phone (packages/field-core/src/geo.ts)",
+    "services/api/test/geocode.db.test.ts (BRD:FR-03.02); tests/e2e/console-l4.spec.ts (the intake finds 100 Cedar Drive from 'Cedar Drive 100 Harmon' and takes it as the address of record); packages/field-core/test/geo.test.ts (parcel snapping)",
+    "Optional cross-street enrichment is not built: cross streets are typed by the call-taker. Nominatim runs only with the maps profile."
   ],
   "BRD:FR-03.03": [
     "pass",
@@ -805,10 +805,10 @@
     "Debris pickup from resident reports is not linked; the Waze update is deferred (Waze for Cities agreement, plan §11) and its file stand-in is not built."
   ],
   "FL:FR-06": [
-    "partial",
-    "inspection with checklist answers and illness as an aggregate count only (0033, routes/field-records.ts)",
-    "services/api/test/fieldrecords.db.test.ts (FL:FR-06: an inspection keeps illness as a count; the table has no person column; the PIO refused)",
-    "Targeted boil-water and safety notices are not built."
+    "pass",
+    "inspection with checklist answers and illness as an aggregate count only (0033, routes/field-records.ts); targeted health notices: migration 0097 (cg.health_notice, cg.health_notice_recipient), routes/health-notices.ts (draft, reach as counts, approve by a second person with a reason, end as lifted or withdrawn), worker jobs/health-notices.ts (each resident in the area who agreed to be contacted told once, in their language; the end told to the same residents), templates health_notice and health_notice_ended, public/health-notices.ts on Find help with the visitor's area first, web-help notices section, console screens/health-notices.tsx",
+    "services/api/test/fieldrecords.db.test.ts (FL:FR-06: an inspection keeps illness as a count; the table has no person column; the PIO refused); services/api/test/health-notices.db.test.ts; services/worker/test/templates.test.ts; tests/e2e/console-screens.spec.ts (FL:FR-06)",
+    "Plan reading 30: a text only with SMS opt-in, an email only when email is how the resident asked to be reached; reach is counts only; the drafter never approves."
   ],
   "FL:FR-08": [
     "pass",

@@ -2,6 +2,7 @@
  * Outbox topic handlers. Each is idempotent: a redelivered message finds the
  * work already done and records nothing new (BRD:FR-00.06).
  */
+import { healthNoticeSend } from './health-notices.ts';
 import { reportSeverity } from './severity.ts';
 import { roleTemplates } from '@cg/authz';
 import { openAIDescriptor } from '@cg/ai';
@@ -262,6 +263,7 @@ export const topicHandlers: Record<string, TopicHandler> = {
   'export.requested': exportRequested, // DEC-11, DEC-12, SEC-18
   'equity.evaluate': equityEvaluate, // EQ-12, CON-07
   'ai.evaluate': aiEvaluate, // AIG-08, ADR-0043
+  'health_notice.send': healthNoticeSend, // FL:FR-06
 };
 
 // ---- schedules --------------------------------------------------------------

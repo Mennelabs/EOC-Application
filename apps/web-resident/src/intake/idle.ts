@@ -50,3 +50,9 @@ export class IdleTimer {
 
 /** The kiosk confirmation: two minutes without a touch, warned 20 seconds before. */
 export const KIOSK_CONFIRMATION = { ms: 120_000, warnMs: 20_000 } as const;
+
+/**
+ * An open "my report" (AC-A07, ACC-41): ten minutes without a touch or key closes it, warned a
+ * minute before, so a shared computer does not keep it readable for the token's 30 minutes.
+ */
+export const MY_REPORT_IDLE = { ms: 10 * 60_000, warnMs: 60_000 } as const;

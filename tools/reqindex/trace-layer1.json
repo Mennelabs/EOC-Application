@@ -185,9 +185,9 @@
   ],
   "BRD:FR-18.03": [
     "partial",
-    "Every intake question carries \"Why we ask\" and \"For example\" in English and Spanish (packages/intake/src/graphs/westwind.ts) under a reading-grade and tone lint (lint.ts); public resources publish only when each text is marked human-reviewed (routes/resources.ts); definitions are versioned with a reason (routes/definitions.ts); column definitions in packages/db/src/dictionary.ts; field job aids are human-reviewed: approved by someone other than the last editor before phones show them (routes/job-aids.ts)",
+    "Every intake question carries \"Why we ask\" and \"For example\" in English and Spanish (packages/intake/src/graphs/westwind.ts) under a reading-grade and tone lint (lint.ts); public resources publish only when each text is marked human-reviewed (routes/resources.ts); definitions are versioned with a reason (routes/definitions.ts); column definitions in packages/db/src/dictionary.ts; field job aids are human-reviewed: approved by someone other than the last editor before phones show them (routes/job-aids.ts); known limitations for counties and the help desk, built from the open traceability notes (docs/operations/known-limitations.md, draft of 2026-10-16 for Adam's review)",
     "packages/intake/test/graph.test.ts (one example and one reason per question in each language), packages/intake/test/lint.test.ts, services/api/test/help.db.test.ts (resources publish only when every text is human-reviewed), services/api/test/definitions.db.test.ts, services/api/test/reports.db.test.ts (question graphs: draft, string rules, publish with confirmation), services/api/test/job-aids.db.test.ts",
-    "Not built: a page of known limitations; a question graph is published by its author with no second reviewer; console screens have no field-definition help. Job aids now need a second person's approval (2026-10-16)."
+    "Not built: a question graph is published by its author with no second reviewer; console screens have no field-definition help. The known-limitations page is a draft until Adam reviews it. Job aids need a second person's approval (2026-10-16)."
   ],
   "BRD:FR-18.04": [
     "partial",

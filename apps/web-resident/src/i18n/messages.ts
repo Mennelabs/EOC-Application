@@ -269,6 +269,10 @@ const en = {
   'my.copyReady': 'Your copy was downloaded.',
   'my.copyFailed': 'We could not make your copy just now. Try again in a few minutes.',
   'my.signOut': 'Close my report',
+  'my.idleWarning':
+    'For your privacy, this report closes in one minute unless you are still using it.',
+  'my.closedIdle':
+    'Your report was closed after 10 minutes without use, to keep it private on a shared device. Open it again with your reference number.',
   'my.photos': 'Add photos',
   'my.photosHint':
     'Photos of the damage help the county see what happened. Take them only when it is safe.',
@@ -559,6 +563,10 @@ const es: Record<MessageId, string> = {
   'my.copyReady': 'Su copia se descargó.',
   'my.copyFailed': 'No pudimos hacer su copia ahora. Intente de nuevo en unos minutos.',
   'my.signOut': 'Cerrar mi reporte',
+  'my.idleWarning':
+    'Por su privacidad, este reporte se cierra en un minuto si ya no lo está usando.',
+  'my.closedIdle':
+    'Su reporte se cerró tras 10 minutos sin uso, para protegerlo en un dispositivo compartido. Ábralo de nuevo con su número de referencia.',
   'my.photos': 'Añadir fotos',
   'my.photosHint':
     'Las fotos del daño ayudan al condado a ver qué pasó. Tómelas solo cuando sea seguro.',

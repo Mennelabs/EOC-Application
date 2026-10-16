@@ -645,6 +645,51 @@ test.describe('resident report', () => {
     await pressButton(page, 'Back to checking my report');
     await expect(page.getByRole('heading', { name: 'Check or change my report' })).toBeVisible();
   });
+
+  test('AC-A07, WCAG 2.2.1: an open report closes after 10 minutes without use, warned a minute before; "I need more time" keeps it open', async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    await page.clock.install();
+    const email = `idle-${Date.now().toString(36)}@example.org`;
+    await page.goto('/county/westwind');
+    await pressButton(page, 'Start');
+    await answerUntilReview(page, email, new Set());
+    await pressButton(page, 'Send my report');
+    await expect(page.getByRole('heading', { name: 'We received your report' })).toBeVisible({
+      timeout: 30_000,
+    });
+    const code = ((await page.locator('.reference').textContent()) ?? '').match(CODE)?.[0];
+    expect(code).toBeTruthy();
+    await mailFor(email, 'damage report');
+    await page.goto('/county/my-report');
+    await page.getByLabel('Reference number').fill(code!);
+    await page.getByLabel('Phone number or email on the report').fill(email);
+    await pressButton(page, 'Send me a code');
+    const otp = (await mailFor(email, 'one-time code')).match(/\b(\d{6})\b/)?.[1];
+    expect(otp).toBeTruthy();
+    await page.getByLabel('One-time code').fill(otp!);
+    await pressButton(page, 'Open my report');
+    await expect(page.getByText(code!)).toBeVisible({ timeout: 15_000 });
+    // Nine minutes without a touch or key: the warning, with a way to stay.
+    const warning = page.getByRole('alert').filter({ hasText: 'closes in one minute' });
+    await page.clock.fastForward('09:05');
+    await expect(warning).toBeVisible();
+    await expectNoViolations(page);
+    await pressButton(page, 'I need more time');
+    await expect(warning).toHaveCount(0);
+    await expect(page.getByText(code!)).toBeVisible();
+    // Left again: warned, then closed, and the lookup screen says why.
+    await page.clock.fastForward('09:05');
+    await expect(warning).toBeVisible();
+    await page.clock.fastForward('01:00');
+    await expect(
+      page.getByText(/Your report was closed after 10 minutes without use/),
+    ).toBeVisible();
+    await expect(page.getByText(code!)).toHaveCount(0);
+    expect(await page.evaluate(() => sessionStorage.getItem('cg.resident'))).toBeNull();
+    await expectNoViolations(page);
+  });
   test("AC-A04: nothing needs a voice: the help line takes texts and relay calls, and the danger screen says to text 911 even in a county's own wording, in Spanish too", async ({
     page,
   }) => {

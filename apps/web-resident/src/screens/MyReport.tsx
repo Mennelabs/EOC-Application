@@ -28,6 +28,7 @@ import {
 } from '../api/public.ts';
 import { preparePhoto } from '../intake/photos.ts';
 import { ButtonRow, Card, Field, Status } from '../ui/primitives.tsx';
+import { IdleTimer, MY_REPORT_IDLE } from '../intake/idle.ts';
 import { useIntake } from './useIntake.ts';
 import { text } from '@cg/intake';
 
@@ -107,6 +108,42 @@ export function MyReport({ shell, tenant }: { shell: Shell; tenant: string }) {
       );
     }
   };
+  // AC-A07, ACC-41, WCAG 2.2.1: an open report closes after a while without use, warned first,
+  // with "I need more time"; the lookup screen then says why.
+  const [idleWarning, setIdleWarning] = useState(false);
+  const [closedIdle, setClosedIdle] = useState(false);
+  const idle = useRef<IdleTimer | null>(null);
+  useEffect(() => {
+    if (!token) return;
+    const timer = new IdleTimer({
+      ...MY_REPORT_IDLE,
+      onWarn: () => setIdleWarning(true),
+      onExpire: () => {
+        setIdleWarning(false);
+        setClosedIdle(true);
+        setToken(null);
+        setReport(null);
+        try {
+          sessionStorage.removeItem('cg.resident');
+        } catch {
+          // nothing stored
+        }
+      },
+    });
+    idle.current = timer;
+    const touched = () => {
+      setIdleWarning(false);
+      timer.touch();
+    };
+    timer.touch();
+    for (const e of ['pointerdown', 'keydown', 'input'] as const)
+      document.addEventListener(e, touched, true);
+    return () => {
+      timer.stop();
+      for (const e of ['pointerdown', 'keydown', 'input'] as const)
+        document.removeEventListener(e, touched, true);
+    };
+  }, [token]);
   const close = () => {
     setToken(null);
     setReport(null);
@@ -162,6 +199,7 @@ export function MyReport({ shell, tenant }: { shell: Shell; tenant: string }) {
     return (
       <main id="main" tabIndex={-1}>
         <h1>{t('my.heading')}</h1>
+        {closedIdle ? <Status kind="info">{t('my.closedIdle')}</Status> : null}
         <p>{t('my.body')}</p>
         {!sent ? (
           <form
@@ -311,6 +349,20 @@ export function MyReport({ shell, tenant }: { shell: Shell; tenant: string }) {
   return (
     <main id="main" tabIndex={-1}>
       <h1>{t('my.heading')}</h1>
+      {idleWarning ? (
+        <div role="alert" className="status warn">
+          <p>{t('my.idleWarning')}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setIdleWarning(false);
+              idle.current?.touch();
+            }}
+          >
+            {t('kiosk.moreTime')}
+          </button>
+        </div>
+      ) : null}
       <Card>
         <p className="reference">{report.referenceCode}</p>
         <p>

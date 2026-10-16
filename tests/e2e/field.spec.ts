@@ -5,8 +5,8 @@
  * code, saves a quick report while offline ("On this phone") that is
  * received once the signal returns, reports how a site looks for dispatch
  * (FLD-11), checks stock and sends the resupply draft (FL:FR-21, FL:FR-22),
- * matches a lost pet and reads the shelter census (FL:FR-08; both with
- * answers stubbed), records a damage assessment with the
+ * matches a lost pet and reads the shelter census (FL:FR-08), works a
+ * canteen stop (FL:FR-17; all three with answers stubbed), records a damage assessment with the
  * details FEMA asks for, asks the command window for its reminders, opens
  * the conversation note-taker (consent in Spanish; AI off here), uses live
  * translation (medical refused; off here) and asks for an interpreter, presses
@@ -117,6 +117,7 @@ test.describe('field app (web build)', () => {
             'stock.write',
             'pet_intake.read',
             'pet_intake.write',
+            'canteen_stop.write',
           ],
         },
       });
@@ -428,6 +429,65 @@ test.describe('field app (web build)', () => {
     await expect(page.getByText('Marked as gone home.')).toBeVisible();
     expect(petSteps[1]!.url).toContain(`/pet_intake/${homeward.id}/reunite`);
     await expectNoViolations(page);
+
+    // FL:FR-17: a canteen stop checked in, meals counted, checked out with what is left and an
+    // allergen note. The lead's role holds no canteen grant, so for this step the command upload
+    // is stubbed and the queued commands are read; the API runs in fieldrecords.db.test.ts.
+    const uploaded: { id: string; kind: string; body: Record<string, unknown> }[] = [];
+    await page.route('**/api/v1/field/commands', (route) => {
+      const req = route.request().postDataJSON() as { commands: typeof uploaded };
+      uploaded.push(...req.commands);
+      return route.fulfill({
+        json: {
+          results: req.commands.map((c) => ({
+            id: c.id,
+            kind: c.kind,
+            result: 'applied',
+            status: 200,
+            record: null,
+          })),
+          device: null,
+        },
+      });
+    });
+    await page.getByRole('link', { name: 'Home' }).click();
+    await page.getByRole('button', { name: 'Canteen route' }).click();
+    await expect(page.getByRole('heading', { name: 'Canteen route', level: 1 })).toBeVisible();
+    await expect(
+      page.getByText('Your route is not on this phone. Name each stop as you arrive.'),
+    ).toBeVisible();
+    await page.getByRole('textbox', { name: 'Stop', exact: true }).fill('Exercise Pine Park lot');
+    await expectNoViolations(page);
+    await page.getByRole('button', { name: 'Check in at this stop' }).click();
+    await expect(page.getByText('Checked in at Exercise Pine Park lot.')).toBeVisible();
+    await page.getByRole('button', { name: '+10 meals' }).click();
+    await page.getByRole('button', { name: '+1 meal', exact: true }).click();
+    await expect(page.getByText('Meals served here: 11')).toBeVisible();
+    await page
+      .getByRole('textbox', { name: 'Supplies left on the truck' })
+      .fill('40 meals, 3 cases of water');
+    await page
+      .getByRole('textbox', { name: 'Allergen note (optional)' })
+      .fill('Chili contains peanuts');
+    await expectNoViolations(page);
+    await page.getByRole('button', { name: 'Check out of this stop' }).click();
+    await expect(page.getByText('Checked out of Exercise Pine Park lot: 11 meals.')).toBeVisible();
+    await expect
+      .poll(
+        () => uploaded.find((c) => c.kind === 'record.canteen_stop.check_out')?.body['mealsServed'],
+        {
+          timeout: 30_000,
+        },
+      )
+      .toBe(11);
+    const arrival = uploaded.find((c) => c.kind === 'record.canteen_stop')!;
+    expect(arrival.body).toMatchObject({ stopName: 'Exercise Pine Park lot' });
+    expect(uploaded.find((c) => c.kind === 'record.canteen_stop.check_out')!.body).toMatchObject({
+      stopClientUuid: arrival.id,
+      suppliesLeft: '40 meals, 3 cases of water',
+      allergenNote: 'Chili contains peanuts',
+    });
+    await page.unroute('**/api/v1/field/commands');
 
     // FLD-08, DCL:DEC-17: an assessment with the damage seen and the details FEMA asks for
     // (depth in feet and inches, renter, flood insurance, utilities out) is received as entered;

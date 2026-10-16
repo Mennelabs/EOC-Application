@@ -496,6 +496,17 @@ export function MissionDetailScreen({ id }: { id: string }) {
     | null
   >(null);
   const [hazards, setHazards] = useState<MissionHazard[] | null>(null);
+  // FL:FR-19: equipment that ran on this work order (null when the role does not read it).
+  const [equipment, setEquipment] = useState<
+    | {
+        id: string;
+        equipment: string;
+        equipmentNote: string | null;
+        hours: number;
+        usedOn: string;
+      }[]
+    | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -514,6 +525,9 @@ export function MissionDetailScreen({ id }: { id: string }) {
     api<typeof people>(`/missions/${id}/people`)
       .then((r) => live && setPeople(r))
       .catch(() => live && setPeople(null));
+    api<NonNullable<typeof equipment>>(`/field-records/equipment_use?missionId=${id}&limit=200`)
+      .then((r) => live && setEquipment(r))
+      .catch(() => live && setEquipment(null));
     return () => {
       live = false;
     };
@@ -785,6 +799,31 @@ export function MissionDetailScreen({ id }: { id: string }) {
           />
         </>
       )}
+      {equipment ? (
+        <>
+          <h2>Equipment used</h2>
+          <p className="hint">
+            Logged by the crew on the phone, hours per day: what FEMA Public Assistance asks for
+            equipment. People&rsquo;s hours come from check-in.
+          </p>
+          <DataTable
+            caption={`Equipment on this work order: ${equipment.reduce((n, e) => n + e.hours, 0)} hours in all`}
+            rows={equipment}
+            rowKey={(e) => e.id}
+            empty="None logged."
+            columns={[
+              {
+                key: 'what',
+                header: 'Equipment',
+                render: (e) =>
+                  `${label(e.equipment)}${e.equipmentNote ? ` (${e.equipmentNote})` : ''}`,
+              },
+              { key: 'day', header: 'Day', render: (e) => e.usedOn },
+              { key: 'hours', header: 'Hours', render: (e) => String(e.hours) },
+            ]}
+          />
+        </>
+      ) : null}
       <h2>Assignments</h2>
       <DataTable
         caption="Who holds this mission"

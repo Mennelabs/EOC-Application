@@ -775,10 +775,10 @@
     "Donated equipment is not logged; the FEMA PA claim output is layer 6."
   ],
   "FL:FR-01": [
-    "partial",
-    "search_mark with FEMA mark code, team, occupants, hazards and USNG (0033, routes/field-records.ts); apps/field/app/record/[kind].tsx",
-    "services/api/test/fieldrecords.db.test.ts (FL:FR-01)",
-    "There is no 'searched' map layer yet."
+    "pass",
+    "search_mark with FEMA mark code, team, occupants, hazards and USNG (0033, routes/field-records.ts); apps/field/app/record/[kind].tsx; a \"Searched\" layer on the situation map from the search marks, with the painted mark code and \"outside only\" for exterior searches, for roles that read search marks (routes/situation.ts, screens/situation.tsx)",
+    "services/api/test/fieldrecords.db.test.ts (FL:FR-01), services/api/test/fieldrecords.db.test.ts (FL:FR-01, CON-03: the searched layer and road reports among closures, not available to a role that reads neither), tests/e2e/console-l4.spec.ts (the Searched layer toggle, with axe)",
+    ""
   ],
   "FL:FR-02": [
     "pass",
@@ -829,16 +829,16 @@
     ""
   ],
   "FL:FR-17": [
-    "partial",
-    "meal counter per site or route (apps/field/app/counters.tsx, service logs)",
-    "services/api/test/fieldwork.db.test.ts (FL-06 counters)",
-    "Stop check-in and check-out, supplies left, allergen notes and the route to the next stop are not built."
+    "pass",
+    "meal counter per site or route (apps/field/app/counters.tsx, service logs); canteen stops: check-in at a stop on the route and check-out with the meals served there, the supplies left on the truck and an allergen note about the food, the check-out naming the check-in by the phone's id so both work offline (0093 cg.canteen_stop, routes/field-records.ts canteen_stop and /canteen_stop/check-out, record.canteen_stop.check_out); the field canteen screen counts meals at the stop and shows the next stop of the route with directions (apps/field/app/canteen.tsx, apps/field/src/canteen.ts)",
+    "services/api/test/fieldwork.db.test.ts (FL-06 counters), services/api/test/fieldrecords.db.test.ts (FL:FR-17: check-in and check-out in one offline batch, a resend changes nothing, an unknown stop not found, only the crew checks out, a PIO refused), apps/field/test/canteen.test.ts (next stop of the route), tests/e2e/field.spec.ts (canteen stop worked on the phone, the check-out naming its check-in, with axe; upload stubbed for the lead's role)",
+    "Plan reading 27: the allergen note is about the food, never who has an allergy."
   ],
   "FL:FR-19": [
-    "partial",
-    "cleanup work orders as missions; right_of_entry signed on the phone with landlord consent for renters, signer and signature encrypted (0033, routes/field-records.ts, apps/field/app/release/[id].tsx)",
-    "services/api/test/fieldrecords.db.test.ts (FL:FR-19)",
-    "Hours come from check-in; equipment used per work order is not logged."
+    "pass",
+    "cleanup work orders as missions; right_of_entry signed on the phone with landlord consent for renters, signer and signature encrypted (0033, routes/field-records.ts, apps/field/app/release/[id].tsx); equipment that ran on a work order with its hours per day, logged on the phone against one of the crew's work orders (0092 cg.equipment_use, routes/field-records.ts equipment_use, apps/field/src/records.ts with a work-order picker) and listed with its total on the mission page (screens/missions.tsx)",
+    "services/api/test/fieldrecords.db.test.ts (FL:FR-19), services/api/test/fieldrecords.db.test.ts (FL:FR-19: equipment logged once per phone id, its event from the work order, \"other\" needs what it was, at most 24 hours a day, the coordinator reads, other roles cannot log), apps/field/test/records.test.ts (FL:FR-19 form), tests/e2e/console-l4.spec.ts (Equipment used on the work order, with axe)",
+    "Hours worked by people come from check-in."
   ],
   "FL:FR-20": [
     "partial",

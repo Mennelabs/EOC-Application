@@ -1,5 +1,5 @@
 /**
- * Layer 4 console journeys (layer-4 plan §9; CALL-01, DSP-01/02/03/04/07, FLD-11,
+ * Layer 4 console journeys (layer-4 plan §9; CALL-01, DSP-01/02/03/04/07, FLD-11, FL:FR-19,
  * AC-06C, CON-03, PER-01, DSP-10, BDG-01, ACC-07): a field coordinator takes
  * a phone request as a mission, assigns it from the dispatch board with the
  * keyboard only (a conflict needs a recorded reason and the confirmation dialog), acknowledges any open
@@ -50,6 +50,12 @@ test.describe('layer 4 console', () => {
     const heading = page.getByRole('heading', { level: 1, name: /M-\d+/ });
     await expect(heading).toBeVisible({ timeout: 30_000 });
     const reference = /M-\d+/.exec((await heading.innerText()) ?? '')![0];
+    // FL:FR-19: the work order lists the equipment the crew logs on the phone, with its hours.
+    await expect(
+      page.getByRole('table', { name: 'Equipment on this work order: 0 hours in all' }),
+    ).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Equipment used', level: 2 })).toBeVisible();
+    await expect(page.getByText('None logged.')).toBeVisible();
     await expectNoViolations(page);
 
     // DSP-07: an open alert takes over the board until someone acknowledges it.
@@ -239,5 +245,11 @@ test.describe('layer 4 console', () => {
     await page.goto('/console/situation');
     const reports = page.getByRole('button', { name: /^Reports/ });
     await expect(reports).toHaveAttribute('aria-pressed', /true|false/, { timeout: 30_000 });
+    // FL:FR-01: where search marks were left, so no block is searched twice.
+    await expect(page.getByRole('button', { name: /^Searched/ })).toHaveAttribute(
+      'aria-pressed',
+      /true|false/,
+    );
+    await expectNoViolations(page);
   });
 });

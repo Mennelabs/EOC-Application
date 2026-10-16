@@ -979,6 +979,116 @@ const SPECS: Record<string, Spec> = {
     },
   },
 
+  // FL:FR-17: a canteen crew arrives at a stop on its route; the check-out (below) names
+  // this record by the phone's id, so both work without signal.
+  canteen_stop: {
+    table: 'cg.canteen_stop',
+    write: 'canteen_stop.write',
+    read: 'canteen_stop.read',
+    needsEvent: true,
+    orderColumn: 'arrived_at',
+    filters: { eventId: 'event_id', missionId: 'mission_id' },
+    body: z.object({
+      ...base,
+      missionId: z.uuid().optional(),
+      /** A public place: a park, a church lot, a street corner; never a household. */
+      stopName: z.string().min(1).max(120),
+      position: point.optional(),
+      arrivedAt: z.iso.datetime().optional(),
+    }),
+    async values(b, ctx) {
+      const p = b['position'] as z.infer<typeof point> | undefined;
+      return {
+        event_id: ctx.eventId,
+        mission_id: b['missionId'] ?? null,
+        stop_name: b['stopName'],
+        geom: p ? sql`ST_SetSRID(ST_MakePoint(${p.lon}, ${p.lat}), 4326)` : null,
+        ...(b['arrivedAt'] ? { arrived_at: new Date(b['arrivedAt'] as string) } : {}),
+        reported_by: ctx.accountId,
+        reported_personnel_id: ctx.personnelId,
+      };
+    },
+    async out(r) {
+      return {
+        ...common(r),
+        eventId: str(r['event_id']),
+        missionId: str(r['mission_id']),
+        stopName: str(r['stop_name']),
+        arrivedAt: date(r['arrived_at']),
+        departedAt: date(r['departed_at']),
+        mealsServed: num(r['meals_served']),
+        suppliesLeft: str(r['supplies_left']),
+        allergenNote: str(r['allergen_note']),
+      };
+    },
+    summary: (b) => `Canteen stop: ${String(b['stopName'])}`,
+    activity: 'status',
+  },
+
+  // FL:FR-19: equipment that ran on a work order and its hours that day (FEMA PA equipment
+  // hours); people's hours come from check-in.
+  equipment_use: {
+    table: 'cg.equipment_use',
+    write: 'equipment_use.write',
+    read: 'equipment_use.read',
+    // The event is the work order's.
+    needsEvent: false,
+    orderColumn: 'used_on',
+    filters: { eventId: 'event_id', missionId: 'mission_id', kind: 'equipment' },
+    body: z.object({
+      ...base,
+      missionId: z.uuid(),
+      equipment: z.enum([
+        'chainsaw',
+        'pump',
+        'generator',
+        'skid_steer',
+        'dump_truck',
+        'chipper',
+        'pressure_washer',
+        'dehumidifier',
+        'other',
+      ]),
+      equipmentNote: z.string().max(120).optional(),
+      hours: z.number().gt(0).max(24),
+      usedOn: z.iso.date().optional(),
+    }),
+    async values(b, ctx) {
+      const mission = await ctx.trx
+        .selectFrom('cg.mission')
+        .select(['id', 'event_id'])
+        .where('id', '=', b['missionId'] as string)
+        .executeTakeFirst();
+      if (!mission) throw errors.validation([{ name: 'missionId', message: 'unknown work order' }]);
+      if (b['equipment'] === 'other' && !b['equipmentNote'])
+        throw errors.validation([{ name: 'equipmentNote', message: 'say what the equipment was' }]);
+      return {
+        event_id: mission.event_id,
+        mission_id: mission.id,
+        equipment: b['equipment'],
+        equipment_note: b['equipmentNote'] ?? null,
+        hours: String(b['hours']),
+        ...(b['usedOn'] ? { used_on: b['usedOn'] } : {}),
+        reported_by: ctx.accountId,
+        reported_personnel_id: ctx.personnelId,
+      };
+    },
+    async out(r) {
+      return {
+        ...common(r),
+        eventId: str(r['event_id']),
+        missionId: str(r['mission_id']),
+        equipment: str(r['equipment']),
+        equipmentNote: str(r['equipment_note']),
+        hours: num(r['hours']),
+        usedOn: r['used_on'] instanceof Date ? iso(r['used_on'])!.slice(0, 10) : str(r['used_on']),
+      };
+    },
+    summary: (b) =>
+      `Equipment: ${String(b['equipment']).replace(/_/g, ' ')}, ${String(b['hours'])} h`,
+    activity: 'service',
+  },
+
   // FLD-11: the quick report that is not a hazard: what a worker saw at a site, or a
   // resource they came across. An observation for dispatch, never the site's status of
   // record (only the site's operators confirm that, `site.confirm`).
@@ -1662,6 +1772,75 @@ export const fieldRecordRoutes =
             .where('id', '=', self.id)
             .executeTakeFirstOrThrow();
           return SPECS['pet_intake']!.out(updated as unknown as Row, ctx);
+        });
+      },
+    );
+
+    // FL:FR-17: the crew leaves a stop. It names the check-in by the phone's id, so it works
+    // offline before the server has seen either; a resend changes nothing.
+    app.post(
+      '/field-records/canteen_stop/check-out',
+      {
+        schema: {
+          tags: ['field'],
+          body: z.object({
+            stopClientUuid: z.uuid(),
+            departedAt: z.iso.datetime().optional(),
+            mealsServed: z.number().int().min(0).max(100_000).optional(),
+            suppliesLeft: z.string().max(300).optional(),
+            /** About the food, never who has an allergy (plan reading 27). */
+            allergenNote: z.string().max(300).optional(),
+          }),
+          response: { 200: outAny },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        const decision = await request.authorize('canteen_stop.write', {
+          type: 'canteen_stop',
+          tenantId: s.tenantId,
+        });
+        const b = request.body;
+        return request.tx(async (trx) => {
+          const ctx = await context(request, trx);
+          let x = trx
+            .selectFrom('cg.canteen_stop')
+            .selectAll()
+            .where('client_uuid', '=', b.stopClientUuid)
+            .forUpdate();
+          if (decision.recordScope === 'own') x = x.where('created_by', '=', s.accountId);
+          const stop = await x.executeTakeFirst();
+          if (!stop) throw errors.notFound();
+          if (stop.departed_at) return SPECS['canteen_stop']!.out(stop as unknown as Row, ctx);
+          const departed = b.departedAt ? new Date(b.departedAt) : new Date();
+          if (departed < stop.arrived_at)
+            throw errors.validation([
+              { name: 'departedAt', message: 'the crew left before it arrived' },
+            ]);
+          const updated = await trx
+            .updateTable('cg.canteen_stop')
+            .set({
+              departed_at: departed,
+              meals_served: b.mealsServed ?? null,
+              supplies_left: b.suppliesLeft ?? null,
+              allergen_note: b.allergenNote ?? null,
+              updated_by: s.accountId,
+            })
+            .where('id', '=', stop.id)
+            .returningAll()
+            .executeTakeFirstOrThrow();
+          await request.audit(trx, {
+            action: 'canteen_stop.write',
+            targetType: 'canteen_stop',
+            targetId: stop.id,
+            changes: {
+              fields: [
+                { name: 'departed', to: 'yes' },
+                { name: 'meals_served', to: b.mealsServed ?? null },
+              ],
+            },
+          });
+          return SPECS['canteen_stop']!.out(updated as unknown as Row, ctx);
         });
       },
     );

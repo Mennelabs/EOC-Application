@@ -35,7 +35,7 @@ import {
 } from '@cg/field-core';
 import { ApiError, errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
-import { iso, listQuery, uuidParam } from './helpers.ts';
+import { iso, listQuery, occurredAtOf, uuidParam } from './helpers.ts';
 
 type Trx = Transaction<Database>;
 
@@ -604,6 +604,7 @@ export const fieldAssessmentRoutes: FastifyPluginAsync = async (instance) => {
       const s = account(request);
       await request.authorize('service_log.write', { type: 'service_log', tenantId: s.tenantId });
       const b = request.body;
+      const occurredAt = occurredAtOf(b.occurredAt);
       const { row, created } = await request.tx(async (trx) => {
         const existing = await trx
           .selectFrom('cg.service_log')
@@ -636,11 +637,13 @@ export const fieldAssessmentRoutes: FastifyPluginAsync = async (instance) => {
             team_id: open?.team_id ?? null,
             personnel_id: me.person?.id ?? null,
             note: b.note ?? null,
-            occurred_at: b.occurredAt ? new Date(b.occurredAt) : new Date(),
+            occurred_at: occurredAt ?? new Date(),
             created_by: s.accountId,
           })
-          .returning(['id', 'kind', 'count'])
+          .returning(['id', 'kind', 'count', 'occurred_at'])
           .executeTakeFirstOrThrow();
+        // AC-08A: the activity log (ICS 214) shows the service when it was given,
+        // not when a phone that was offline sent it.
         await trx
           .insertInto('cg.activity_entry')
           .values({
@@ -648,6 +651,7 @@ export const fieldAssessmentRoutes: FastifyPluginAsync = async (instance) => {
             event_id: eventId,
             personnel_id: me.person?.id ?? null,
             team_id: open?.team_id ?? null,
+            occurred_at: inserted.occurred_at,
             kind: 'service',
             summary: `${b.count} ${b.kind.replace(/_/g, ' ')}`,
             ref_kind: 'service_log',

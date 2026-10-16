@@ -26,7 +26,15 @@ import { decide, type FieldDescriptor } from '@cg/authz';
 import type { Database } from '@cg/db';
 import { ApiError, errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
-import { classifierFor, iso, listQuery, pickDefined, stamped, uuidParam } from './helpers.ts';
+import {
+  classifierFor,
+  iso,
+  listQuery,
+  occurredAtOf,
+  pickDefined,
+  stamped,
+  uuidParam,
+} from './helpers.ts';
 
 type MissionRow = Selectable<Database['cg.mission']>;
 type AssignmentRow = Selectable<Database['cg.assignment']>;
@@ -197,6 +205,8 @@ const timelineOut = z.object({
   amendsEventId: z.uuid().nullable(),
   detail: z.record(z.string(), z.unknown()),
   occurredAt: z.iso.datetime(),
+  /** AC-08A: when the server recorded it; later than occurredAt for an entry made after the fact. */
+  recordedAt: z.iso.datetime(),
 });
 
 const missionOut = z.object({
@@ -960,6 +970,7 @@ export const missionRoutesWith =
             amendsEventId: e.amends_event_id,
             detail: (e.detail as Record<string, unknown>) ?? {},
             occurredAt: iso(e.occurred_at)!,
+            recordedAt: iso(e.created_at)!,
           })),
         };
       },
@@ -1704,6 +1715,7 @@ export const missionRoutesWith =
         await request.authorize('mission.narrative', resourceOf(s, current), { asNotFound: true });
         assertUnlocked(current, s.accountId);
         const b = request.body;
+        const occurredAt = occurredAtOf(b.occurredAt);
         const row = await run(request, scope, async (trx) => {
           if (b.amendsEventId) {
             const target = await trx
@@ -1727,7 +1739,7 @@ export const missionRoutesWith =
               actor_account_id: s.accountId,
               body: b.body,
               amends_event_id: b.amendsEventId ?? null,
-              ...(b.occurredAt ? { occurred_at: new Date(b.occurredAt) } : {}),
+              ...(occurredAt ? { occurred_at: occurredAt } : {}),
             })
             .returningAll()
             .executeTakeFirstOrThrow();
@@ -1754,6 +1766,7 @@ export const missionRoutesWith =
           amendsEventId: row.amends_event_id,
           detail: (row.detail as Record<string, unknown>) ?? {},
           occurredAt: iso(row.occurred_at)!,
+          recordedAt: iso(row.created_at)!,
         });
       },
     );

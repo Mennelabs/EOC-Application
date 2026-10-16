@@ -32,7 +32,15 @@ import type { Database } from '@cg/db';
 import { ApiError, errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
 import { configValue } from '../public/submit.ts';
-import { classifierFor, enqueueOutbox, iso, listQuery, stamped, uuidParam } from './helpers.ts';
+import {
+  classifierFor,
+  enqueueOutbox,
+  iso,
+  listQuery,
+  occurredAtOf,
+  stamped,
+  uuidParam,
+} from './helpers.ts';
 
 type Trx = Transaction<Database>;
 type HazardRow = Selectable<Database['cg.hazard']>;
@@ -259,6 +267,8 @@ const activityOut = z.object({
   personnelId: z.uuid().nullable(),
   teamId: z.uuid().nullable(),
   occurredAt: z.iso.datetime(),
+  /** AC-08A: when the server recorded it (later than occurredAt for an entry made after the fact). */
+  recordedAt: z.iso.datetime(),
   kind: z.string(),
   summary: z.string(),
   refKind: z.string().nullable(),
@@ -269,6 +279,8 @@ const significantOut = z.object({
   id: z.uuid(),
   eventId: z.uuid(),
   occurredAt: z.iso.datetime(),
+  /** AC-08A: when the server recorded it (later than occurredAt for an entry made after the fact). */
+  recordedAt: z.iso.datetime(),
   kind: z.string(),
   summary: z.string(),
   missionId: z.uuid().nullable(),
@@ -2484,6 +2496,7 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
         personnelId: a.personnel_id,
         teamId: a.team_id,
         occurredAt: iso(a.occurred_at)!,
+        recordedAt: iso(a.created_at)!,
         kind: a.kind,
         summary: a.summary,
         refKind: a.ref_kind,
@@ -2516,6 +2529,7 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
         eventId: request.body.eventId,
       });
       const b = request.body;
+      const occurredAt = occurredAtOf(b.occurredAt);
       const row = await request.tx(async (trx) => {
         const own = b.personnelId
           ? null
@@ -2539,7 +2553,7 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
             kind: 'note',
             summary: b.summary,
             actor_account_id: s.accountId,
-            ...(b.occurredAt ? { occurred_at: new Date(b.occurredAt) } : {}),
+            ...(occurredAt ? { occurred_at: occurredAt } : {}),
           } as Insertable<Database['cg.activity_entry']>)
           .returningAll()
           .executeTakeFirstOrThrow();
@@ -2550,6 +2564,7 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
         personnelId: row.personnel_id,
         teamId: row.team_id,
         occurredAt: iso(row.occurred_at)!,
+        recordedAt: iso(row.created_at)!,
         kind: row.kind,
         summary: row.summary,
         refKind: row.ref_kind,
@@ -2593,6 +2608,7 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
         id: e.id,
         eventId: e.event_id,
         occurredAt: iso(e.occurred_at)!,
+        recordedAt: iso(e.created_at)!,
         kind: e.kind,
         summary: e.summary,
         missionId: e.mission_id,
@@ -2628,6 +2644,7 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
         eventId: request.body.eventId,
       });
       const b = request.body;
+      const occurredAt = occurredAtOf(b.occurredAt);
       const row = await request.tx((trx) =>
         trx
           .insertInto('cg.significant_event')
@@ -2639,7 +2656,7 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
             mission_id: b.missionId ?? null,
             team_id: b.teamId ?? null,
             actor_account_id: s.accountId,
-            ...(b.occurredAt ? { occurred_at: new Date(b.occurredAt) } : {}),
+            ...(occurredAt ? { occurred_at: occurredAt } : {}),
           } as Insertable<Database['cg.significant_event']>)
           .returningAll()
           .executeTakeFirstOrThrow(),
@@ -2648,6 +2665,7 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
         id: row.id,
         eventId: row.event_id,
         occurredAt: iso(row.occurred_at)!,
+        recordedAt: iso(row.created_at)!,
         kind: row.kind,
         summary: row.summary,
         missionId: row.mission_id,

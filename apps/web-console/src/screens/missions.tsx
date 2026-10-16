@@ -65,7 +65,15 @@ interface Mission {
     body: string | null;
     narrativeRole: string | null;
     occurredAt: string;
+    recordedAt?: string;
   }[];
+}
+
+/** AC-08A: an entry recorded more than a minute after it happened says when it was recorded. */
+function recordedLater(e: { occurredAt: string; recordedAt?: string }): string {
+  if (!e.recordedAt) return '';
+  const late = new Date(e.recordedAt).getTime() - new Date(e.occurredAt).getTime();
+  return late > 60_000 ? ` (recorded ${fmt(e.recordedAt)})` : '';
 }
 
 export const KINDS = [
@@ -841,7 +849,8 @@ export function MissionDetailScreen({ id }: { id: string }) {
       <ol>
         {(m.timeline ?? []).map((e) => (
           <li key={e.id}>
-            {fmt(e.occurredAt)} — {label(e.kind)}
+            {fmt(e.occurredAt)}
+            {recordedLater(e)} — {label(e.kind)}
             {e.toState ? `: ${label(e.fromState)} → ${label(e.toState)}` : ''}
             {e.narrativeRole ? ` (${label(e.narrativeRole)})` : ''}
             {e.body ? ` — ${e.body}` : ''}

@@ -10,6 +10,8 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { RadioGroup } from '../src/controls';
+import { codeFrom } from '../src/format';
+import { Scanner } from '../src/scanner';
 import { useField } from '../src/field';
 import type { MessageKey } from '../src/i18n';
 import { problem } from '../src/online';
@@ -28,10 +30,13 @@ interface Candidate {
   channel: string;
 }
 
+type Mode = 'code' | 'phone' | 'address';
+
 export default function Find() {
   const f = useField();
   const { t, locale } = f;
-  const [mode, setMode] = useState<'phone' | 'address'>('phone');
+  const [mode, setMode] = useState<Mode>(f.can('report.read') ? 'code' : 'phone');
+  const [typed, setTyped] = useState('');
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [sent, setSent] = useState(false);
@@ -58,6 +63,29 @@ export default function Find() {
     }
   };
 
+  const byCode = (raw: string) =>
+    run(async () => {
+      const ref = codeFrom(raw);
+      const rows = await f.online<
+        {
+          id: string;
+          referenceCode: string;
+          submittedAt: string;
+          channelOfOrigin: string;
+          reviewState: string;
+        }[]
+      >(`/reports?limit=5&reference=${encodeURIComponent(ref)}`);
+      setFound(
+        rows.map((r) => ({
+          reportId: r.id,
+          referenceCode: r.referenceCode,
+          submittedAt: r.submittedAt,
+          channel: r.channelOfOrigin,
+          reviewState: r.reviewState,
+        })),
+      );
+      if (!rows.length) setMessage({ tone: 'warn', text: t('find.codeUnknown') });
+    });
   const text = () =>
     run(async () => {
       await f.send('POST', '/survivor-lookup/phone', { phone: phone.trim() });
@@ -98,17 +126,29 @@ export default function Find() {
         label={t('find.how')}
         value={mode}
         onChange={(v) => {
-          setMode(v as 'phone' | 'address');
+          setMode(v as Mode);
           setMessage(null);
           setFound(null);
           setCandidates(null);
         }}
         options={[
+          ...(f.can('report.read') ? [{ value: 'code', label: t('find.byCode') }] : []),
           { value: 'phone', label: t('find.byPhone') },
           { value: 'address', label: t('find.byAddress') },
         ]}
       />
-      {mode === 'phone' ? (
+      {mode === 'code' ? (
+        <>
+          {/* FL-01: the QR code on their confirmation or card; typing it always works too. */}
+          <Scanner onCode={(c) => void byCode(c)} />
+          <Field label={t('find.typeCode')} value={typed} onChange={setTyped} autoComplete="off" />
+          <Button
+            label={t('find.open')}
+            disabled={busy || typed.trim().length < 8}
+            onPress={() => void byCode(typed)}
+          />
+        </>
+      ) : mode === 'phone' ? (
         <>
           <Field label={t('find.phone')} value={phone} onChange={setPhone} autoComplete="off" />
           <Button

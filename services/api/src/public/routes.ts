@@ -153,7 +153,7 @@ export const publicRoutes =
     }
 
     // Public "Find help": sites, resources, feeds, widget and media sheet (PUB-*), same tenant hook.
-    await app.register(helpRoutes({ publicBase: deps.publicBase }));
+    await app.register(helpRoutes({ publicBase: deps.publicBase, objects: deps.objects }));
     // FL:FR-05, Q-04: the Waze for Cities closure feed, when the county has switched it on.
     await app.register(wazeFeedRoutes);
     // REC-01: a place offered through the public form waits for county approval.

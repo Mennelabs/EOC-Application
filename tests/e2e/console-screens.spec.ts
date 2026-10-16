@@ -15,7 +15,8 @@
  * A walk-up volunteer signs up on their own phone through the desk code and
  * reception registers them (FL:FR-20). A health notice is approved by someone
  * other than its drafter and shows on Find help for its ZIP until lifted
- * (FL:FR-06).
+ * (FL:FR-06). A resource's picture reaches Find help only with the publish
+ * that approves it, and leaves at once when removed (BRD:FR-16.01).
  */
 import { expect, test, type Page } from '@playwright/test';
 import { BASE, expectNoViolations, expectReflow, onboard } from './support/console.ts';
@@ -694,5 +695,82 @@ test.describe('every console screen, one by one', () => {
     await expectReflow(page);
     await flip('off');
     expect((await fetch(feedUrl)).status).toBe(404);
+  });
+
+  test('BRD:FR-16.01: the PIO adds a picture to a resource; Find help shows it only once published; removed, it is gone; axe finds nothing', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'public_information_officer',
+      `PIO pictures ${tag}`,
+      `scr-thumb-${testInfo.project.name}`,
+    );
+    await open(page, 'resources', 'Resources');
+    const title = `Exercise debris pickup ${tag}-${testInfo.project.name}`;
+    await page.getByLabel('English title').fill(title);
+    await page
+      .getByLabel('English body (HTML)')
+      .fill('<p>Crews pick up storm debris at the curb.</p>');
+    await page.getByLabel('I reviewed the English text').check();
+    await page.getByRole('button', { name: 'Save draft' }).click();
+    await expect(page.getByText(/Resource saved as a draft/)).toBeVisible();
+    const row = page.getByRole('row').filter({ hasText: title });
+    await row.getByRole('button', { name: `Picture for ${title}` }).click();
+    const panel = page.getByRole('region', { name: `Picture for ${title}` });
+    await panel.getByLabel(/Choose a picture/).setInputFiles({
+      name: 'debris.png',
+      mimeType: 'image/png',
+      // A tiny synthetic image; the server crops and re-encodes whatever it gets.
+      buffer: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        'base64',
+      ),
+    });
+    await expect(panel.getByText(/Picture saved, cropped to 3:2/)).toBeVisible();
+    await expect(panel.getByRole('img', { name: `Picture uploaded for ${title}` })).toBeVisible();
+    await expect(row).toContainText('Shown once published');
+    await expectNoViolations(page);
+
+    const publicEntry = async () => {
+      const res = await fetch(`${BASE}/api/public/help/county?lang=en`);
+      const body = (await res.json()) as {
+        resources: { title: string; thumbnailUrl: string | null }[];
+      };
+      return body.resources.find((r) => r.title === title);
+    };
+    expect(await publicEntry()).toBeUndefined();
+    await row.getByRole('button', { name: 'Publish…' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel('Reason').fill('Exercise: debris guidance approved');
+    await dialog.getByRole('button', { name: 'Confirm' }).click();
+    await expect(row).toContainText('Shown to the public');
+    const url = (await publicEntry())?.thumbnailUrl;
+    expect(url).toMatch(/\/thumbnail\.jpg\?v=/);
+    const shown = await fetch(`${BASE}${url}`);
+    expect(shown.status).toBe(200);
+    expect(shown.headers.get('content-type')).toBe('image/jpeg');
+    // On Find help it sits beside the title, decorative: empty alternative text.
+    const visitor = await context.newPage();
+    await visitor.goto('/county/help?lang=en');
+    const item = visitor.locator('.resources li').filter({ hasText: title });
+    await expect(item.locator('img')).toHaveAttribute('alt', '');
+    await visitor.close();
+
+    await panel.getByRole('button', { name: 'Remove the picture' }).click();
+    await expect(panel.getByText('Picture removed, from the public page too.')).toBeVisible();
+    expect((await fetch(`${BASE}${url}`)).status).toBe(404);
+    expect((await publicEntry())?.thumbnailUrl).toBeNull();
+    await expectReflow(page);
+    // Off the county's public list again.
+    await row.getByRole('button', { name: 'Unpublish' }).click();
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel('Reason').fill('Exercise over');
+    await dialog.getByRole('button', { name: 'Confirm' }).click();
+    await expect(row.getByRole('button', { name: 'Publish…' })).toBeVisible();
   });
 });

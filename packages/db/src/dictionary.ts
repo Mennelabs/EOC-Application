@@ -738,6 +738,13 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     published_version: { c: 'internal' },
     published_at: { c: 'public' },
     unpublished_at: { c: 'internal' },
+    thumbnail_key: { c: 'internal', d: 'BRD:FR-16.01: the decorative picture staff uploaded' },
+    thumbnail_at: { c: 'internal' },
+    thumbnail_by: { c: 'internal' },
+    published_thumbnail_key: {
+      c: 'internal',
+      d: 'BRD:FR-16.01: the picture the public sees, set when the resource is published',
+    },
   }),
   resource_text: table({
     resource_id: { c: 'internal' },

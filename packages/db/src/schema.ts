@@ -971,6 +971,11 @@ export interface ResourceTable extends Stamped {
   published_version: number | null;
   published_at: TsNullable;
   unpublished_at: TsNullable;
+  /** BRD:FR-16.01: the decorative picture uploaded; the public sees it once published. */
+  thumbnail_key: string | null;
+  thumbnail_at: TsNullable;
+  thumbnail_by: Uuid | null;
+  published_thumbnail_key: string | null;
 }
 
 export interface ResourceTextTable extends Stamped {

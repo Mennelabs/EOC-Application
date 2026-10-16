@@ -47,7 +47,7 @@ import { peerSupportRoutes } from './peer-support.ts';
 import { supplyRequestRoutes } from './supply-requests.ts';
 import { refdataRoutes, type RefdataDeps } from './refdata.ts';
 import { reportRoutes } from './reports.ts';
-import { resourceRoutes } from './resources.ts';
+import { resourceRoutes, type ResourceDeps } from './resources.ts';
 import { roleRoutes } from './roles.ts';
 import { rosterRoutes } from './roster.ts';
 import { handoverRoutesWith } from './handover.ts';
@@ -72,6 +72,7 @@ export interface RouteDeps {
   fieldRecords?: FieldRecordDeps;
   missions?: MissionDeps;
   personnelPhotos?: PersonnelPhotoDeps;
+  resources?: ResourceDeps;
   refdata?: RefdataDeps;
   metrics?: { productName?: string };
   commands?: CommandDeps;
@@ -127,7 +128,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   dispatchRoutes(deps.dispatch),
   situationRoutes,
   fieldSyncRoutes(deps.fieldSync),
-  resourceRoutes(),
+  resourceRoutes(deps.resources),
   contactRoutes,
   messageRoutes,
   referralRoutes,

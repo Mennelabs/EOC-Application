@@ -10,6 +10,7 @@
  * two minutes PUB-01 allows. Pages are rendered by render.ts from plain data.
  */
 import { publicHealthNotices } from './health-notices.ts';
+import { GetObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
@@ -28,7 +29,7 @@ import {
   type Lang,
 } from './render.ts';
 import { askIntent, matchHelp } from './ask.ts';
-import { publicResources, publicSites, resolveNear } from './sites-view.ts';
+import { publicResources, publicSites, resolveNear, thumbnailTag } from './sites-view.ts';
 import { configValue } from './submit.ts';
 
 export { T, addressText, hoursText, langOf, type Lang } from './render.ts';
@@ -39,12 +40,20 @@ const langQuery = z.object({ lang: z.string().min(2).max(10).default('en') });
 
 const CACHE = 'public, max-age=60, stale-while-revalidate=60';
 const CSP =
-  "default-src 'none'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'";
+  "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; form-action 'none'; base-uri 'none'";
 
 export interface HelpDeps {
   /** The public site's base URL for links in feeds, texts and the widget (the gateway's public host). */
   publicBase?: string | undefined;
+  /** Where resource thumbnails are kept (FR-16.01); absent, none is shown. */
+  objects?: { client: S3Client; bucket: string } | undefined;
 }
+
+/** FR-16.01: the address of a published resource's thumbnail; the tag changes with the picture. */
+export const thumbnailUrl = (tenantSlug: string, resourceSlug: string, tag: string | null) =>
+  tag
+    ? `/api/public/help/${encodeURIComponent(tenantSlug)}/resources/${encodeURIComponent(resourceSlug)}/thumbnail.jpg?v=${encodeURIComponent(tag)}`
+    : null;
 
 export const helpRoutes =
   (deps: HelpDeps = {}): FastifyPluginAsync =>
@@ -115,6 +124,7 @@ export const helpRoutes =
           resources: d.resources.map((r) => ({
             ...r,
             url: `/api/public/help/${encodeURIComponent(d.tenant.slug)}/resources/${encodeURIComponent(r.slug)}?lang=${lang}`,
+            thumbnailUrl: thumbnailUrl(d.tenant.slug, r.slug, r.thumbnail),
           })),
           accessibility: { statement: d.statement, supportPhone: d.helpPhone },
           notices: [T[lang].danger],
@@ -279,8 +289,63 @@ export const helpRoutes =
             safeBodyHtml: sanitizeHtml(text.body_html),
             referenceUrl: r.reference_url,
             updatedAt: new Date(r.updated_at).toISOString(),
+            thumbnailUrl: thumbnailUrl(
+              tenant.slug,
+              r.slug,
+              thumbnailTag(r.published_thumbnail_key),
+            ),
           }),
         );
+      },
+    );
+
+    // FR-16.01, FR-16.02: a resource's thumbnail, only while the resource is published and current.
+    app.get(
+      '/help/:tenant/resources/:slug/thumbnail.jpg',
+      {
+        schema: {
+          tags: ['public help'],
+          params: tenantParam.extend({ slug: z.string().min(1).max(80) }),
+        },
+      },
+      async (request, reply) => {
+        const tenant = tenantOf(request);
+        await request.authorize('help.read', {
+          type: 'help',
+          tenantId: tenant.id,
+          published: true,
+        });
+        const r = await request.tx((trx) =>
+          trx
+            .selectFrom('cg.resource')
+            .select([
+              'published_thumbnail_key',
+              'status',
+              'published_at',
+              'unpublished_at',
+              'expires_at',
+            ])
+            .where('slug', '=', request.params.slug)
+            .executeTakeFirst(),
+        );
+        const current =
+          r &&
+          r.status === 'published' &&
+          r.published_at !== null &&
+          r.unpublished_at === null &&
+          (!r.expires_at || new Date(r.expires_at) > new Date());
+        if (!current || !r.published_thumbnail_key || !deps.objects) throw errors.notFound();
+        const obj = await deps.objects.client
+          .send(
+            new GetObjectCommand({ Bucket: deps.objects.bucket, Key: r.published_thumbnail_key }),
+          )
+          .catch(() => null);
+        if (!obj?.Body) throw errors.notFound();
+        return reply
+          .header('content-type', 'image/jpeg')
+          .header('cache-control', 'public, max-age=300')
+          .header('x-content-type-options', 'nosniff')
+          .send(Buffer.from(await obj.Body.transformToByteArray()));
       },
     );
 

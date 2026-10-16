@@ -47,6 +47,8 @@ interface Resource {
   url: string;
   referenceUrl: string | null;
   expiresAt: string | null;
+  /** FR-16.01: a decorative picture, so it carries no words of its own. */
+  thumbnailUrl?: string | null;
 }
 interface Help {
   tenant: { name: string; slug: string; locales: string[] };
@@ -471,8 +473,22 @@ function render(): void {
     main.append(el('h2', { id: 'resources' }, t.resources));
     const ul = el('ul', { class: 'resources' });
     for (const r of data.resources) {
-      const li = el('li', {}, el('a', { href: r.url }, r.title));
-      if (r.summary) li.append(el('p', {}, r.summary));
+      const text = el('div', {}, el('a', { href: r.url }, r.title));
+      if (r.summary) text.append(el('p', {}, r.summary));
+      const li = el('li', {}, text);
+      if (r.thumbnailUrl) {
+        li.classList.add('with-thumb');
+        li.prepend(
+          el('img', {
+            src: r.thumbnailUrl,
+            alt: '',
+            width: '96',
+            height: '64',
+            loading: 'lazy',
+            decoding: 'async',
+          }),
+        );
+      }
       ul.append(li);
     }
     main.append(ul);

@@ -42,6 +42,8 @@ describe('shipped role templates (ADM-04)', () => {
     // (SEC-13); finding a survivor's report without their code is for frontline readers (FL-02),
     // and documents survivors share are for those who meet them and those who verify (FL-09);
     // a health notice is approved by public health or the county's public voices (FL:FR-06).
+    // A county's subscription is the vendor's record: no county role writes it (SCL-10).
+    // Field guidance is approved by the roles that answer for it, never the last editor (FL-15).
     expect(p.deniedActions.sort()).toEqual([
       'casualty.record',
       'command.bulk',
@@ -50,7 +52,9 @@ describe('shipped role templates (ADM-04)', () => {
       'document.read',
       'facility.approve',
       'health_notice.approve',
+      'job_aid.approve',
       'joint_assessment.validate',
+      'license.write',
       'mission.cji.link',
       'mission.cji.open',
       'official_report.issue',

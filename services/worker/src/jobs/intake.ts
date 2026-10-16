@@ -387,6 +387,18 @@ export async function fileSubmission(ctx: JobContext, input: FilingInput): Promi
           reason: 'answers drafted from free text and confirmed by the resident',
           at,
         });
+      // CHN-06, ACC-46, AC-A09: an entry made for someone records whether they agreed to it.
+      if (payload.assisted)
+        flags.push(
+          payload.assisted.consentRecorded
+            ? { kind: 'assisted_consent', reason: 'entered with the person, who agreed', at }
+            : {
+                kind: 'assisted_no_consent',
+                reason:
+                  'entered for the person without their recorded agreement: confirm with them before sharing',
+                at,
+              },
+        );
       let dupQuery = trx
         .selectFrom('cg.report')
         .select('id')

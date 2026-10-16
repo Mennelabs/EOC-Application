@@ -5,13 +5,15 @@
  * me", what happens next without promising aid, the optional questions, and
  * clearing the device.
  */
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import QRCode from 'qrcode';
 import { text, validateAnswer, type AnswerValue, type QuestionNode } from '@cg/intake';
 import { useT, type Shell } from '../App.tsx';
 import { Offline, sendAfter, textCode, type IntakeInfo } from '../api/public.ts';
+import { IdleTimer, KIOSK_CONFIRMATION } from '../intake/idle.ts';
+import { validationText } from '../intake/validation-text.ts';
 import type { OutboxItem } from '../intake/outbox.ts';
-import { nextPlace, spellCode, type FlowState } from '../intake/state.ts';
+import { FLOW_KEY, nextPlace, spellCode, type FlowState } from '../intake/state.ts';
 import { ButtonRow, Card, ChoiceGroup, Field, Status } from '../ui/primitives.tsx';
 
 export function Submit({
@@ -35,8 +37,22 @@ export function Submit({
 }) {
   const t = useT();
   const [, tick] = useState(0);
-  useEffect(() => shell.outbox.subscribe(() => tick((n) => n + 1)), [shell.outbox]);
-  const item = shell.outbox.find(state.executionId);
+  // Once the county has the report, its receipt stays on screen even after the device copy is
+  // cleared (ACC-41, AC-A07): clearing removes the outbox entry, not what the person is reading.
+  // Before, clearing (by hand, after two minutes, or at once on a kiosk) showed "Not sent yet".
+  const received = (it: OutboxItem | undefined) => (it?.state === 'received' ? it : null);
+  const [receipt, setReceipt] = useState(() => received(shell.outbox.find(state.executionId)));
+  useEffect(
+    () =>
+      shell.outbox.subscribe(() => {
+        const now = received(shell.outbox.find(state.executionId));
+        if (now) setReceipt(now);
+        tick((n) => n + 1);
+      }),
+    [shell.outbox, state.executionId],
+  );
+  const live = shell.outbox.find(state.executionId);
+  const item = live ?? (receipt?.body.executionId === state.executionId ? receipt : undefined);
 
   if (afterMode && item?.state === 'received') {
     return (
@@ -87,6 +103,16 @@ export function Submit({
   );
 }
 
+/**
+ * Shared devices (ACC-41, AC-A07): the answers and every report the county has leave the device.
+ * A report still waiting to send stays, under the key it was saved with (SCL-06, rule 8); before,
+ * clearing wiped the key and the outbox was written again under a new one.
+ */
+async function clearDevice(shell: Shell): Promise<void> {
+  if (await shell.outbox.clearDelivered()) shell.store.remove(FLOW_KEY);
+  else shell.store.clearAll();
+}
+
 function SendState({ item }: { item: OutboxItem | undefined }) {
   const t = useT();
   const state = item?.state ?? 'not_sent';
@@ -103,7 +129,8 @@ function SendState({ item }: { item: OutboxItem | undefined }) {
       </p>
       {state === 'sending' ? <p>{t('send.sending')}</p> : null}
       {state === 'failed' && item?.final ? (
-        <Status kind="error">{t('send.failed', { reason: item.lastError ?? '' })}</Status>
+        // AC-A05: in the resident's language; the server's reason stays in the outbox for support.
+        <Status kind="error">{t('send.failed')}</Status>
       ) : state === 'failed' || state === 'not_sent' ? (
         <p>{t('send.waiting')}</p>
       ) : null}
@@ -159,20 +186,39 @@ function Confirmation({
       .catch(() => setQr(null));
   }, [code, state.tenant]);
 
-  const clear = () => {
-    shell.store.clearAll();
-    void shell.outbox.forget(state.executionId);
-    setCleared(true);
-  };
+  const clear = () => void clearDevice(shell).then(() => setCleared(true));
 
-  // Shared devices: personal answers leave the device after two minutes here (ACC-41); the code stays on screen.
+  // Shared devices: personal answers leave the device after two minutes here (ACC-41); the code
+  // stays on screen. On the kiosk they leave at once, the report having reached the county, and
+  // the screen with the reference number stays until the person presses Done, or two minutes
+  // pass without a touch or a key after a warning they can extend (AC-A03, WCAG 2.2.1).
+  const [warning, setWarning] = useState(false);
+  const idle = useRef<IdleTimer | null>(null);
   useEffect(() => {
-    const ms = kiosk ? 10_000 : 120_000;
-    const timer = setTimeout(() => {
-      clear();
-      if (kiosk) onDone();
-    }, ms);
-    return () => clearTimeout(timer);
+    if (!kiosk) {
+      const timer = setTimeout(clear, 120_000);
+      return () => clearTimeout(timer);
+    }
+    // The kiosk never shows "cleared" (that line is for personal devices), so only the device.
+    void clearDevice(shell);
+    const timer = new IdleTimer({
+      ...KIOSK_CONFIRMATION,
+      onWarn: () => setWarning(true),
+      onExpire: onDone,
+    });
+    idle.current = timer;
+    const touched = () => {
+      setWarning(false);
+      timer.touch();
+    };
+    timer.touch();
+    for (const e of ['pointerdown', 'keydown', 'input'] as const)
+      document.addEventListener(e, touched, true);
+    return () => {
+      timer.stop();
+      for (const e of ['pointerdown', 'keydown', 'input'] as const)
+        document.removeEventListener(e, touched, true);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -189,8 +235,25 @@ function Confirmation({
     <main id="main" tabIndex={-1}>
       {kiosk ? (
         <p className="kiosk" role="status">
-          {t('kiosk.clearing')}
+          {t('kiosk.cleared')}
         </p>
+      ) : null}
+      {kiosk && warning ? (
+        <div className="kiosk" role="alert">
+          <p>{t('kiosk.warning')}</p>
+          <ButtonRow>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => {
+                setWarning(false);
+                idle.current?.touch();
+              }}
+            >
+              {t('kiosk.moreTime')}
+            </button>
+          </ButtonRow>
+        </div>
       ) : null}
       <h1>{t('confirm.heading')}</h1>
       <Card>
@@ -295,6 +358,20 @@ function Confirmation({
         </p>
       ) : null}
       {!kiosk ? <p className="hint">{t('confirm.autoClear')}</p> : null}
+      {kiosk ? (
+        <ButtonRow>
+          <button
+            type="button"
+            className="primary"
+            onClick={() => {
+              idle.current?.stop();
+              onDone();
+            }}
+          >
+            {t('kiosk.done')}
+          </button>
+        </ButtonRow>
+      ) : null}
     </main>
   );
 }
@@ -422,7 +499,11 @@ function AfterQuestion({
   }));
   const commit = (value: AnswerValue) => {
     const errors = validateAnswer(q, value);
-    if (errors.length) return setError(errors[0]!.message);
+    if (errors.length) {
+      // AC-A05: the resident's language, never the engine's English.
+      const shown = validationText(q, errors[0]!);
+      return setError(t(shown.id, shown.values));
+    }
     onAnswer(value);
   };
   let control: ReactNode;
@@ -440,11 +521,13 @@ function AfterQuestion({
   } else if (q.answerType === 'number') {
     control = (
       <Field label={text(q.prompt, locale)} hint={t('number.hint')} error={error ?? undefined}>
-        {({ id }) => (
+        {({ id, describedBy, invalid }) => (
           <input
             id={id}
             type="number"
             inputMode="numeric"
+            aria-describedby={describedBy}
+            aria-invalid={invalid || undefined}
             value={textValue}
             onChange={(e) => setTextValue(e.target.value)}
           />
@@ -454,8 +537,14 @@ function AfterQuestion({
   } else {
     control = (
       <Field label={text(q.prompt, locale)} error={error ?? undefined}>
-        {({ id }) => (
-          <textarea id={id} value={textValue} onChange={(e) => setTextValue(e.target.value)} />
+        {({ id, describedBy, invalid }) => (
+          <textarea
+            id={id}
+            aria-describedby={describedBy}
+            aria-invalid={invalid || undefined}
+            value={textValue}
+            onChange={(e) => setTextValue(e.target.value)}
+          />
         )}
       </Field>
     );

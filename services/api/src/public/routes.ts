@@ -1067,6 +1067,88 @@ export const publicRoutes =
       },
     );
 
+    /**
+     * BRD:FR-01.06: a resident who lost the reference number gives the phone or email on the
+     * report, and the numbers of up to three of their recent reports go to that phone or email
+     * only, never to the screen (the reference opens nothing alone, the contact still has to
+     * answer the one-time code). The answer is the same whether or not anything matched
+     * (RULE-17); one address is slowed down as for lookups, and one contact gets this at most
+     * twice an hour, so the form cannot be used to flood someone's phone.
+     */
+    const recoverLimiter = new WindowCounter(60 * 60_000);
+    app.post(
+      '/intake/:tenant/lookup/recover',
+      {
+        schema: {
+          tags: ['public intake'],
+          params: tenantParam,
+          body: z.object({ contact: z.string().min(3).max(200) }),
+        },
+      },
+      async (request, reply) => {
+        const tenant = tenantOf(request);
+        guessLookups(request);
+        await request.authorize('intake.lookup', { type: 'report', tenantId: tenant.id });
+        const generic = {
+          status: 'sent',
+          message: 'If a report has this phone or email, its reference number is on its way there.',
+        };
+        const raw = request.body.contact.trim();
+        const isEmail = raw.includes('@');
+        const value = isEmail ? raw.toLowerCase() : normalisePhone(raw);
+        if (!value) return reply.code(202).send(generic);
+        const bidx = await app.fieldCrypto.blindIndex(
+          tenant.id,
+          isEmail ? 'email' : 'phone',
+          value,
+        );
+        if (recoverLimiter.hit(`${tenant.id}:${bidx.toString('base64')}`) > 2)
+          return reply.code(202).send(generic);
+        await request.tx(async (trx) => {
+          const matches = await trx
+            .selectFrom('cg.report')
+            .innerJoin('cg.party', 'cg.party.id', 'cg.report.reporter_party_id')
+            .select([
+              'cg.report.id as report_id',
+              'cg.report.reference_code as reference_code',
+              'cg.party.language as language',
+            ])
+            .where('cg.report.tenant_id', '=', tenant.id)
+            .where(isEmail ? 'cg.party.email_bidx' : 'cg.party.phone_bidx', '=', bidx)
+            .where('cg.report.withdrawn_at', 'is', null)
+            .orderBy('cg.report.submitted_at', 'desc')
+            .limit(3)
+            .execute();
+          if (!matches.length) return;
+          const toEnc = (await app.fieldCrypto.encrypt(tenant.id, value)).toString('base64');
+          for (const m of matches) {
+            await enqueueOutbox(
+              trx,
+              tenant.id,
+              'message.send',
+              {
+                // The registered confirmation text: the same words the resident got at first.
+                template: 'confirmation',
+                channel: isEmail ? 'email' : 'sms',
+                toEnc,
+                language: m.language,
+                reportId: m.report_id,
+                variables: { referenceCode: m.reference_code },
+              },
+              null,
+            );
+            await request.audit(trx, {
+              action: 'intake.reference_resent',
+              targetType: 'report',
+              targetId: m.report_id,
+              changes: { fields: [{ name: 'reference', to: 'sent to the contact on the report' }] },
+            });
+          }
+        });
+        return reply.code(202).send(generic);
+      },
+    );
+
     app.post(
       '/intake/:tenant/lookup/verify',
       {

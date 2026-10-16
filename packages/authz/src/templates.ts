@@ -134,6 +134,10 @@ const templates: readonly RoleTemplate[] = [
     description: 'Dana in WESTWIND: how bad is it, where, do we need state and federal help.',
     source: 'cast',
     grants: [
+      // FL-15: job aids for the field; approves those others wrote.
+      g('job_aid.read'),
+      g('job_aid.edit'),
+      g('job_aid.approve'),
       g('reentry_pass.*'), // FL:FR-03
       g('shelter_count.read'), // CON-16
       g('dashboard.read'),
@@ -217,6 +221,9 @@ const templates: readonly RoleTemplate[] = [
     description: 'Priya: which reports are verified and where field teams go next.',
     source: 'cast',
     grants: [
+      // FL-15: writes job aids for the field (damage matrices); another person approves them.
+      g('job_aid.read'),
+      g('job_aid.edit'),
       g('assessment.read'),
       g('assessment.approve'),
       g('dashboard.read'),
@@ -262,6 +269,9 @@ const templates: readonly RoleTemplate[] = [
     description: 'Luis: where people sleep and eat tonight, and how many.',
     source: 'cast',
     grants: [
+      // FL-15: writes job aids for the field (shelter and feeding standards); another person approves them.
+      g('job_aid.read'),
+      g('job_aid.edit'),
       g('need.claim'),
       g('need.assign'),
       g('need.release'),
@@ -861,6 +871,9 @@ const templates: readonly RoleTemplate[] = [
       'Runs the dispatch board for every agency: roster, teams, check-ins, positions, assignments (DSP-09).',
     source: 'field',
     grants: [
+      // FL-15: writes job aids for the field (field checklists); another person approves them.
+      g('job_aid.read'),
+      g('job_aid.edit'),
       g('assessment.read'),
       g('assessment.approve'),
       g('me.read'),
@@ -964,6 +977,10 @@ const templates: readonly RoleTemplate[] = [
       'Overdue teams, help alerts and hazards; sees positions of every checked-in team (DSP-07, FLD-16).',
     source: 'field',
     grants: [
+      // FL-15: writes safety briefings for the field and approves others' job aids.
+      g('job_aid.read'),
+      g('job_aid.edit'),
+      g('job_aid.approve'),
       g('me.read'),
       g('event.read', ['location_exact']),
       g('personnel.read', ['contact']),

@@ -28,7 +28,15 @@ export const platformSchema = baseSchema.extend({
   DATABASE_URL: url,
   AMQP_URL: url,
   S3_ENDPOINT: url,
-  S3_REGION: z.string().default('us-east-1'),
+  /**
+   * SEC-14: data stays in US regions. Object storage in any other region is refused at start
+   * (us-east-1, us-gov-west-1, usgovvirginia…); the database and backups live in the same
+   * deployment, which the government cloud authorization pins (SCL-05).
+   */
+  S3_REGION: z
+    .string()
+    .regex(/^us/i, 'SEC-14: object storage must be in a US region')
+    .default('us-east-1'),
   S3_ACCESS_KEY_ID: z.string().min(1),
   S3_SECRET_ACCESS_KEY: z.string().min(8),
   S3_BUCKET: z.string().min(3),

@@ -75,8 +75,8 @@
   "BRD:FR-08.04": [
     "pass",
     "0006_audit.ts (revokes + triggers); enclave hash chain, immutable for every role, verify and weekly review (packages/cjis-db 0004)",
-    "stack.int.test.ts, tests/drills/audit-tamper.sh, tests/drills/restore-drill.sh; packages/cjis-db/test/enclave.db.test.ts (tamper detected), tests/integration/layer5.int.test.ts (chain verifies)",
-    "Superuser refused by trigger; tamper with trigger disabled detected with first_bad_seq."
+    "services/api/test/audit-immutable.db.test.ts (update, delete and truncate refused for the application and worker roles; the chain still verifies), services/api/test/auditchain.db.test.ts (concurrent writers), tests/drills/audit-tamper.sh (by hand), tests/drills/restore-drill.sh; packages/cjis-db/test/enclave.db.test.ts (tamper detected), tests/integration/layer5.int.test.ts (chain verifies)",
+    "Superuser refused by trigger; tamper with trigger disabled detected with first_bad_seq. stack.int.test.ts was cited here before but has no audit test."
   ],
   "SEC-06": [
     "pass",

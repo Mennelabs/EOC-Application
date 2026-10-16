@@ -10,8 +10,10 @@ export function Help({ shell }: { shell: Shell }) {
       <h1>{t('help.heading')}</h1>
       <Card tone="safety">
         <p>{t('help.911')}</p>
+        <p>{t('help.911text')}</p>
       </Card>
       <p>{t('help.body', { phone })}</p>
+      <p>{t('footer.relay', { phone })}</p>
     </main>
   );
 }

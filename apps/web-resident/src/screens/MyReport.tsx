@@ -7,7 +7,7 @@
  * Photos can be added here to a report started by text, phone or a helper
  * (CHN-09), prepared on the device like intake photos (metadata gone).
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useT, type Shell } from '../App.tsx';
 import {
   ApiFailure,
@@ -15,6 +15,7 @@ import {
   completeUpload,
   correct,
   downloadMyCopy,
+  lookupRecover,
   lookupStart,
   lookupVerify,
   myReport,
@@ -36,6 +37,14 @@ export function MyReport({ shell, tenant }: { shell: Shell; tenant: string }) {
   const [reference, setReference] = useState(params.get('ref') ?? '');
   const [contact, setContact] = useState('');
   const [sent, setSent] = useState(false);
+  // BRD:FR-01.06: a lost reference number is sent again to the contact on the report.
+  const [recover, setRecover] = useState<'closed' | 'open' | 'sent'>('closed');
+  const switched = useRef(false);
+  useEffect(() => {
+    // The screen changes in place: focus goes to its start, as on any new screen (WCAG 2.4.3).
+    if (switched.current) document.getElementById('main')?.focus();
+    switched.current = true;
+  }, [recover]);
   const [code, setCode] = useState('');
   const [token, setToken] = useState<string | null>(() => {
     try {
@@ -68,6 +77,10 @@ export function MyReport({ shell, tenant }: { shell: Shell; tenant: string }) {
       });
   }, [token, tenant]);
 
+  const sendReference = async () => {
+    await lookupRecover(tenant, contact).catch(() => undefined);
+    setRecover('sent'); // the answer is the same either way (RULE-17)
+  };
   const start = async () => {
     setError(null);
     await lookupStart(tenant, reference, contact).catch(() => undefined);
@@ -84,10 +97,13 @@ export function MyReport({ shell, tenant }: { shell: Shell; tenant: string }) {
         // memory only
       }
     } catch (err) {
+      // AC-A05: always the resident's language, never the server's English.
       setError(
         err instanceof ApiFailure && err.status === 401
           ? t('my.codeWrong')
-          : (err as Error).message,
+          : err instanceof ApiFailure && err.status === 429
+            ? t('my.tooMany')
+            : t('my.tryLater'),
       );
     }
   };
@@ -100,6 +116,47 @@ export function MyReport({ shell, tenant }: { shell: Shell; tenant: string }) {
       // nothing stored
     }
   };
+
+  if (!token && recover !== 'closed') {
+    return (
+      <main id="main" tabIndex={-1}>
+        <h1>{t('my.recover.heading')}</h1>
+        {recover === 'open' ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void sendReference();
+            }}
+          >
+            <p>{t('my.recover.body')}</p>
+            <Field label={t('my.contact')}>
+              {({ id }) => (
+                <input
+                  id={id}
+                  type="text"
+                  autoComplete="tel"
+                  value={contact}
+                  onChange={(e) => setContact(e.target.value)}
+                />
+              )}
+            </Field>
+            <ButtonRow>
+              <button type="submit" className="primary" disabled={contact.trim().length < 3}>
+                {t('my.recover.send')}
+              </button>
+            </ButtonRow>
+          </form>
+        ) : (
+          <Status kind="info">{t('my.recover.sent')}</Status>
+        )}
+        <p>
+          <button type="button" className="link" onClick={() => setRecover('closed')}>
+            {t('my.recover.back')}
+          </button>
+        </p>
+      </main>
+    );
+  }
 
   if (!token) {
     return (
@@ -147,6 +204,11 @@ export function MyReport({ shell, tenant }: { shell: Shell; tenant: string }) {
                 {t('my.sendCode')}
               </button>
             </ButtonRow>
+            <p>
+              <button type="button" className="link" onClick={() => setRecover('open')}>
+                {t('my.lost')}
+              </button>
+            </p>
           </form>
         ) : (
           <form
@@ -195,6 +257,13 @@ export function MyReport({ shell, tenant }: { shell: Shell; tenant: string }) {
     report.withdrawnAt ? 'my.status.withdrawn' : `my.status.${report.status}`
   ) as Parameters<typeof t>[0];
   const graph = intake.data?.graph;
+  /** Question ids from a county's request, as the questions' own words in the resident's language. */
+  const askedAbout = (ids: unknown): string[] => {
+    const nodes = [...(graph?.nodes ?? []), ...(graph?.afterSubmission ?? [])];
+    return (Array.isArray(ids) ? ids : [])
+      .map((id) => nodes.find((n) => n.id === id))
+      .flatMap((n) => (n?.kind === 'question' ? [text(n.prompt, shell.locale)] : []));
+  };
   const orgLabel = (v: string) => {
     const o = graph?.consentOrgTypes.find((c) => c.value === v);
     return o ? text(o.label, shell.locale) : v;
@@ -275,9 +344,26 @@ export function MyReport({ shell, tenant }: { shell: Shell; tenant: string }) {
         <section aria-labelledby="q-heading">
           <h2 id="q-heading">{t('my.questions')}</h2>
           <ul>
-            {report.openQuestions.map((q) => (
-              <li key={q.id}>{q.message ?? JSON.stringify(q.questions)}</li>
-            ))}
+            {report.openQuestions.map((q) => {
+              // The questions the county asks about, in the resident's language (AC-A05).
+              const asked = askedAbout(q.questions);
+              return (
+                <li key={q.id}>
+                  {q.message ? <p>{q.message}</p> : null}
+                  {asked.length > 0 ? (
+                    <>
+                      <p>{t('my.questionAbout')}</p>
+                      <ul>
+                        {asked.map((prompt) => (
+                          <li key={prompt}>{prompt}</li>
+                        ))}
+                      </ul>
+                    </>
+                  ) : null}
+                  {!q.message && asked.length === 0 ? <p>{t('my.questionGeneric')}</p> : null}
+                </li>
+              );
+            })}
           </ul>
         </section>
       ) : null}

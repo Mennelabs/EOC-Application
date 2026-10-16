@@ -49,11 +49,13 @@ Controls that every feature relies on are described once, in "Shared controls" b
 
 ## 3. My report and lookup (RES-01/02, SEC-09, RULE-17)
 
-| STRIDE | Threat                                       | Control                                                                                                                                                             | Residual |
-| ------ | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| S      | Guessing a reference number to read a report | The same answer whether or not the details match. A six-digit code is sent to the contact on file, with at most five tries per code and a window limit per address. | —        |
-| S      | Stolen resident token                        | Signed with HMAC, bound to one tenant and one report, valid 30 minutes, kept in session storage only                                                                | —        |
-| I      | Contact details shown back                   | Never shown; the PDF copy leaves out how to reach them, household and needs                                                                                         | —        |
+| STRIDE | Threat                                                                                                     | Control                                                                                                                                                                                           | Residual                                                                                           |
+| ------ | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| S      | Guessing a reference number to read a report                                                               | The same answer whether or not the details match. A six-digit code is sent to the contact on file, with at most five tries per code and a window limit per address.                               | —                                                                                                  |
+| S      | Stolen resident token                                                                                      | Signed with HMAC, bound to one tenant and one report, valid 30 minutes, kept in session storage only                                                                                              | —                                                                                                  |
+| I      | Contact details shown back                                                                                 | Never shown; the PDF copy leaves out how to reach them, household and needs                                                                                                                       | —                                                                                                  |
+| I      | Finding out whether a phone or email reported damage, through "Lost your reference number?" (BRD:FR-01.06) | The same answer whether or not a report matches; the reference numbers go only to that phone or email, never to the screen                                                                        | —                                                                                                  |
+| D      | Flooding someone's phone or inbox through the same form                                                    | One address is slowed down as for lookups; one contact gets the numbers at most twice an hour, then the request is answered the same and nothing is sent; at most three reports per message batch | The per-contact count is kept in each API instance's memory, so several instances allow a few more |
 
 ## 4. Text and phone channels (CHN, docs/06)
 
@@ -139,6 +141,13 @@ Controls that every feature relies on are described once, in "Shared controls" b
 - **Forged assertions:** SAML assertions must be signed and are validated against the certificate in the approved metadata. OIDC tokens are validated against the provider's keys, with PKCE.
 - **Hostile metadata:** metadata with a document type declaration or entities is refused before anyone sees it, and Keycloak parses the rest. The API never fetches a URL the administrator types (no server-side request forgery).
 - **Secrets:** the OIDC client secret is encrypted under the tenant key and never returned, logged or audited.
+
+## 15. Subscriptions (SCL-10)
+
+- **A county raising its own tier, or stretching its term:** contracts are written only by the vendor's operator command with the worker role. `license.write` is an explicit action, so a tenant administrator's wildcard grant never reaches it, and no shipped role holds it (`license.test.ts`).
+- **One county reading another's business:** a county sees a state or coalition contract only when it is on it. It learns the holder, tier, term and status, and which of its own jurisdictions are covered; other members are counted, not named. The read widens what the transaction may see to the county's ancestors for that one query and puts it back (migration 0106).
+- **A wrong coverage list:** the database refuses a contract that covers anything outside its holder's members, or one member twice.
+- **Billing used as a switch:** nothing reads a contract except the Subscription view and the operator command (`license.test.ts`), so an expired or cancelled contract can never stop a resident report (`license.db.test.ts`, SCL-06).
 
 ## Dynamic testing (DAST)
 

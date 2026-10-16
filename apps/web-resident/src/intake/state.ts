@@ -58,6 +58,9 @@ export interface FlowState {
   earlierPlaces?: string[];
 }
 
+/** Where the report in progress is kept on the device, encrypted (storage.ts). */
+export const FLOW_KEY = 'flow';
+
 export function newFlow(input: {
   tenant: string;
   event: string;
@@ -189,8 +192,15 @@ export function toSubmission(state: FlowState, graph: QuestionGraph): Submission
       : {}),
     ...(state.channel === 'assisted'
       ? {
+          // CHN-06, AC-A09: the person reporting their own home or organization agrees by
+          // reporting; for someone else's home, only the helper's "yes, they agreed" records it.
           assisted: {
-            consentRecorded: helperConsent?.kind === 'value' && helperConsent.value === 'yes',
+            consentRecorded:
+              relationship === 'own_home' || relationship === 'organization'
+                ? true
+                : relationship === 'helper' &&
+                  helperConsent?.kind === 'value' &&
+                  helperConsent.value === 'yes',
           },
         }
       : {}),

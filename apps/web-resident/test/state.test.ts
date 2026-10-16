@@ -150,4 +150,31 @@ describe('flow state', () => {
     expect(cleared.smsOptIn).toBe(false);
     expect(cleared.earlierPlaces).toEqual(['KXMR-4827', 'PQRS-1234']);
   });
+
+  it('CHN-06, AC-A09: a kiosk entry records the person\'s agreement: their own report agrees by itself; for someone else, only "yes, they agreed"', () => {
+    const kiosk = (relationship: 'own_home' | 'helper' | 'witness' | 'organization') =>
+      newFlow({
+        tenant: 'county',
+        event: 'westwind',
+        language: 'en',
+        channel: 'assisted',
+        graph: westwindGraph,
+        hazards: ['tornado'],
+        relationship,
+      });
+    const consent = (s: ReturnType<typeof kiosk>) => toSubmission(s, westwindGraph).assisted;
+    expect(consent(kiosk('own_home'))).toEqual({ consentRecorded: true });
+    expect(consent(kiosk('organization'))).toEqual({ consentRecorded: true });
+    expect(consent(kiosk('witness'))).toEqual({ consentRecorded: false });
+    expect(consent(kiosk('helper'))).toEqual({ consentRecorded: false });
+    const agreed = answer(kiosk('helper'), 'helper_consent', { kind: 'value', value: 'yes' });
+    expect(consent(agreed)).toEqual({ consentRecorded: true });
+    const notAsked = answer(kiosk('helper'), 'helper_consent', {
+      kind: 'value',
+      value: 'cannot_ask',
+    });
+    expect(consent(notAsked)).toEqual({ consentRecorded: false });
+    // A resident's own web report carries no assisted record at all.
+    expect(toSubmission(start(), westwindGraph).assisted).toBeUndefined();
+  });
 });

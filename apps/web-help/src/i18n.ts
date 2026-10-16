@@ -7,7 +7,8 @@ export const STRINGS = {
     title: 'Find help',
     intro:
       'Open shelters, food, supplies and help sites, from the county. Updated as sites confirm.',
-    danger: 'If anyone is in danger right now, call 911. This page does not send help.',
+    danger:
+      'If anyone is in danger right now, call 911. If you cannot call, text 911 where that works. This page does not send help.',
     notEligibility: 'This page never decides who is eligible for help. It lists where help is.',
     searchLabel: 'Your ZIP code, address or a landmark',
     searchHint: 'Nearest sites come first when we know where you are. We keep nothing you type.',
@@ -185,6 +186,8 @@ export const STRINGS = {
     posterQr:
       'Scan to open the list of open sites. The QR code is never the only way in: the address and phone number are above.',
     helpLine: 'County help line',
+    relay:
+      'Deaf, hard of hearing or unable to speak? Text the help line, or call it through relay by dialing 711.',
     website: 'Website',
     a11yTitle: 'Accessibility',
     a11yContact:
@@ -214,7 +217,8 @@ export const STRINGS = {
     title: 'Encuentre ayuda',
     intro:
       'Albergues, comida, suministros y sitios de ayuda abiertos, según el condado. Se actualiza cuando los sitios confirman.',
-    danger: 'Si alguien está en peligro ahora mismo, llame al 911. Esta página no envía ayuda.',
+    danger:
+      'Si alguien está en peligro ahora mismo, llame al 911. Si no puede llamar, envíe un mensaje al 911 donde funcione. Esta página no envía ayuda.',
     notEligibility: 'Esta página nunca decide quién recibe ayuda. Muestra dónde está la ayuda.',
     searchLabel: 'Su código postal, dirección o un punto de referencia',
     searchHint:
@@ -391,6 +395,8 @@ export const STRINGS = {
     posterQr:
       'Escanee para abrir la lista de sitios abiertos. El código QR nunca es la única entrada: la dirección y el teléfono están arriba.',
     helpLine: 'Línea de ayuda del condado',
+    relay:
+      '¿Es sordo, tiene pérdida auditiva o no puede hablar? Envíe un mensaje a la línea de ayuda, o llame por el servicio de retransmisión marcando 711.',
     website: 'Sitio web',
     a11yTitle: 'Accesibilidad',
     a11yContact:

@@ -42,6 +42,8 @@ import { DiscoveryScreen } from './screens/discovery.tsx';
 import { FemaMappingsScreen } from './screens/fema-mappings.tsx';
 import { IntegrationsScreen } from './screens/integrations.tsx';
 import { SsoScreen } from './screens/sso.tsx';
+import { SubscriptionScreen } from './screens/subscription.tsx';
+import { JobAidsScreen } from './screens/job-aids.tsx';
 import { MetricsScreen } from './screens/metrics.tsx';
 import { JointAssessmentScreen } from './screens/joint-assessment.tsx';
 import { SharedDeclarationsScreen } from './screens/shared-declarations.tsx';
@@ -93,6 +95,7 @@ const routes = [
   { path: '/console/health-notices', label: 'Health notices', layer: 4 },
   { path: '/console/reentry', label: 'Re-entry passes', layer: 4 },
   { path: '/console/devices', label: 'Field devices', layer: 4 },
+  { path: '/console/job-aids', label: 'Job aids', layer: 4 },
   { path: '/console/declaration', label: 'Declaration data', layer: 6 },
   { path: '/console/joint-assessment', label: 'Joint assessment', layer: 6 },
   { path: '/console/shared-declarations', label: 'Shared declaration figures', layer: 6 },
@@ -104,6 +107,7 @@ const routes = [
   { path: '/console/fema-mappings', label: 'FEMA form mappings', layer: 6 },
   { path: '/console/integrations', label: 'API keys and webhooks', layer: 6 },
   { path: '/console/sso', label: 'Single sign-on', layer: 1 },
+  { path: '/console/subscription', label: 'Subscription', layer: 1 },
   { path: '/console/facilities', label: 'Facility registry', layer: 7 },
   { path: '/console/facility-approvals', label: 'Facility approvals', layer: 7 },
   { path: '/console/recommendations', label: 'Recommendations', layer: 7 },
@@ -313,6 +317,10 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <IntegrationsScreen />;
       case '/console/sso':
         return <SsoScreen />;
+      case '/console/subscription':
+        return <SubscriptionScreen />;
+      case '/console/job-aids':
+        return <JobAidsScreen />;
       case '/console/facilities':
         return <FacilitiesScreen />;
       case '/console/facility-approvals':

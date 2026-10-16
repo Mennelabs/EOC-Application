@@ -758,9 +758,9 @@
   ],
   "FL-15": [
     "pass",
-    "cg.job_aid per role and language in the area package (0033, routes/field-sync.ts); apps/field/app/job-aids.tsx renders text only",
-    "apps/field/test/i18n.test.ts (job aid markup becomes plain lines), services/api/test/roster.db.test.ts (seed job aids)",
-    "Seeded job aids are exercise drafts until the county approves them."
+    "cg.job_aid per role and language in the area package (0033, routes/field-sync.ts: approved only; exercise drafts on a synthetic stack, marked unreviewed); routes/job-aids.ts (write as plain text, change, approve by someone other than the last editor with a reason, retire; job-aid-text.ts escapes); console screens/job-aids.tsx; apps/field/app/job-aids.tsx renders text only and says when an aid is not yet reviewed",
+    "services/api/test/job-aids.db.test.ts (draft off the phones, markup escaped, only an approver approves with a reason, never the last editor, a change takes it off the phones, retire, exercise drafts only on a synthetic stack), services/api/test/job-aid-text.test.ts, apps/field/test/i18n.test.ts (job aid markup becomes plain lines), services/api/test/dispatch-sync.db.test.ts (the area package carries job aids), tests/e2e/console-screens.spec.ts (Job aids screen, axe, reflow)",
+    "Before 2026-10-16 a county could not write or approve a job aid; only the seed's exercise drafts existed and every phone showed them (plan reading 51). Existing counties need the job aid grants in their roles. The shipped exercise texts (FEMA matrix, shelter standards) still need the county's review before a real event."
   ],
   "FL-16": [
     "pass",

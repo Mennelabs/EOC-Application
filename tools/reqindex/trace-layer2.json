@@ -536,8 +536,8 @@
   ],
   "CHN-07": [
     "pass",
-    "encrypted local storage with a persistent kiosk key, outbox states, one report per execution id",
-    "apps/web-resident/test/storage.test.ts, outbox.test.ts",
+    "encrypted local storage with a persistent kiosk key, outbox states, one report per execution id; the kiosk's Done hands the next person a clean kiosk, and clearing keeps a report still waiting to send (2026-10-16)",
+    "apps/web-resident/test/storage.test.ts, outbox.test.ts, tests/e2e/resident.spec.ts (AC-A07: kiosk after Done)",
     ""
   ],
   "CHN-08": [
@@ -785,6 +785,6 @@
     "deferred",
     "",
     "",
-    "Unit-by-unit status for property managers arrives with the needs board and missions; ORG-01 multi-property reporting ships now."
+    "Not built: an organization reports each of its places (ORG-01) and the needs board and missions exist, but there is no unit-by-unit status for a property manager's buildings and no right-of-entry consent for cleanup. Asked of Adam in the overnight report."
   ]
 }

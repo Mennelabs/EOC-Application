@@ -62,6 +62,8 @@ import { healthNoticeRoutes } from './health-notices.ts';
 import { geocodeRoutes, type GeocodeDeps } from './geocode.ts';
 import { parcelRoutes } from './parcels.ts';
 import { ssoRoutes, type SsoDeps } from './sso.ts';
+import { licenseRoutes } from './license.ts';
+import { jobAidRoutes } from './job-aids.ts';
 
 /** What the server gives the routes that talk to the broker, object storage or the AI provider (absent in tests: poll fallback, no map extracts). */
 export interface RouteDeps {
@@ -149,6 +151,8 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   equityRoutes,
   integrationRoutes,
   ssoRoutes(deps.sso),
+  licenseRoutes,
+  jobAidRoutes,
   situationAreaRoutes,
   commandRoutesWith(deps.commands),
   commandAliasRoutes,

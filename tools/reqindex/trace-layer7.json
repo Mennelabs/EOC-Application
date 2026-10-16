@@ -384,6 +384,54 @@
     "tests/e2e (axe WCAG 2.2 AA on released screens); layer 7: tests/e2e/help.spec.ts (CMD-19, ACC-31: the ask box answers, the list stays; axe), services/api/test/public-ask.test.ts, services/api/test/help.db.test.ts (CMD-19, AC-C03)",
     "No public task needs a conversation. Professional review of the Spanish strings remains the EQ-07 go-live gate."
   ],
+  "AC-A01": [
+    "partial",
+    "Field errors in text next to the field with role=alert, aria-describedby and aria-invalid (apps/web-resident/src/ui/primitives.tsx, Flow.tsx; the optional questions after sending, screens/Submit.tsx, since 2026-10-16); the address is a form, never a map; the reference code is spelled out for screen readers",
+    "tests/e2e/resident.spec.ts (keyboard only, English: deep link to reference number, axe on every screen; AC-A01/A02/A05: Continue with nothing chosen is announced and fixed by keyboard, an out-of-range number is announced with its range and marked aria-invalid, then corrected), apps/web-resident/test/state.test.ts (spells the reference code, ACC-50), tests/e2e/a11y.spec.ts (keyboard only: Start is reachable and announces status)",
+    "The screen-reader pass is pending a person (docs/a11y/screens/resident-intake.md check 2)."
+  ],
+  "AC-A02": [
+    "partial",
+    "Layout reflows to 320 CSS px; the whole suite also runs on the phone project",
+    "tests/e2e/a11y.spec.ts (ACC-07: reflows at 320 CSS px, welcome), tests/e2e/resident.spec.ts (ACC-07: a question screen reflows at 320 px; AC-A01/A02/A05: a whole report at 320 px, with no sideways scroll on the review, the confirmation and the optional questions)",
+    "My report is not checked at 320 px; 200 % zoom and text spacing are not tested; nothing asserts that controls and required text are still present beyond the steps the test presses."
+  ],
+  "AC-A03": [
+    "partial",
+    "Keyboard only with Tab, Space and Enter; no drag or swipe; 44 px targets (styles.css, axe wcag22aa target size); the kiosk confirmation stays until Done or 2 minutes idle, warned 20 s ahead with \"I need more time\" (apps/web-resident/src/intake/idle.ts; before 2026-10-16 it left after 10 s)",
+    "tests/e2e/resident.spec.ts (the whole report by keyboard), apps/web-resident/test/idle.test.ts (warning, extend, Done)",
+    "Remaining limits: the one-time code lasts 10 minutes, the my-report token 30 minutes, dictation 2 minutes; asking again is always possible."
+  ],
+  "AC-A04": [
+    "pass",
+    "The whole flow is text; dictation is optional and hidden when the county has no AI service; the footer on every resident screen and Help near you (resident app and Find help) say to text the county help line or call it through relay at 711; the danger screen says to text 911 where that works, and adds that line when a county's own emergency wording leaves it out; follow-up and the one-time code go by text or email (2026-10-16)",
+    "tests/e2e/resident.spec.ts (AC-A04: relay line in English and Spanish, text 911 kept under a county's own wording, Help near you; danger: the default wording says to text 911 and it is not said twice; completes by email with no \"Speak instead\"), docs/a11y/checklist.md check 15",
+    "Relay reaches the county only if its help line answers relay calls; that is the county's operation, not the platform's."
+  ],
+  "AC-A05": [
+    "partial",
+    "Every resident string in English and Spanish, type-checked complete (i18n/messages.ts); answer errors are translated from the engine's codes (intake/validation-text.ts), on the questions and on the optional questions after sending; My report's errors, the county's questions and a failed send are shown in the resident's language (2026-10-16; before, some came in English or as the server's reason)",
+    "apps/web-resident/test/validation-text.test.ts (every error on every question of the shipped graph has its English and Spanish message), tests/e2e/resident.spec.ts and a11y.spec.ts (Spanish: the flow switches language; AC-A01/A02/A05: an optional-question error reads in Spanish after switching, never the engine's English)",
+    "Consent and confirmation in Spanish are not exercised end to end. Spanish strings are reviewed drafts; professional review is the EQ-07 gate."
+  ],
+  "AC-A06": [
+    "pass",
+    "The resident app never asks for location: the address is typed; photos are optional with \"Skip photos\", and \"Choose from my photos\" works without the camera; a refused microphone is said in words and typing goes on",
+    "tests/e2e/resident.spec.ts (AC-A06: camera, microphone and location refused with dictation offered; \"Speak instead\" says the microphone is not available, a photo is chosen from the device, the report is sent and numbered), apps/web-resident/test/photos.test.ts",
+    ""
+  ],
+  "AC-A07": [
+    "partial",
+    "Answers encrypted under a session key; \"Clear my answers\" and an automatic clear after 2 minutes on a personal device; on the kiosk the answers leave the device as soon as the county has the report and Done hands over a clean kiosk; pausing removes the flow; \"Close my report\" removes the token. Fixed 2026-10-16: clearing showed \"Not sent yet\" in place of the reference number, clearing wrote the outbox again under a new key, and the kiosk's Done opened the personal welcome page; a report still waiting to send is kept when the device is cleared (SCL-06)",
+    "tests/e2e/resident.spec.ts (AC-A07: after \"Clear my answers\" no stored key or answers remain and the next person starts clean; on the kiosk after Done nothing of the report is in what the device keeps, read with its own key, nor on screen, nor one step back), apps/web-resident/test/outbox.test.ts (clearing keeps a report still waiting, leaves nothing when none waits), apps/web-resident/test/storage.test.ts, apps/web-resident/test/idle.test.ts",
+    "The my-report token stays up to 30 minutes in the tab unless the person closes it; the kiosk keeps its device key so unsent reports survive a restart (CHN-07)."
+  ],
+  "AC-A09": [
+    "pass",
+    "Questions helper_name, helper_consent (required) and subject_name; the contact question is asked of the helper as the helper and never of the person helped; the worker files separate helper and subject parties, the subject with no contact; lookup matches only the reporter's contact; an assisted entry records on the report, for the reviewer, whether the person agreed (flags assisted_consent or assisted_no_consent; the kiosk derives it from the relationship and the helper's answer, 2026-10-16)",
+    "tests/e2e/resident.spec.ts (AC-A09: \"I am helping someone else report\" by keyboard, the helper's name, \"I cannot ask them right now\", the person's name and the helper's contact in that order, both names on the review; only the helper's email gets a one-time code and opens the report, another address gets none), packages/intake/test/graph.test.ts (HLP-01), services/worker/test/intake.db.test.ts (separate affected-person party), services/api/test/reports.db.test.ts (assisted intake; the helper cannot approve it), apps/web-resident/test/state.test.ts (the kiosk's consent record)",
+    "What a helper may see later follows DEC-10."
+  ],
   "AC-A08": [
     "pass",
     "layer 7: the Find help ask box uses fixed rules, no model, and sits beside the list and the form without replacing them (apps/web-help/src/main.ts, services/api/src/public/ask.ts); the resident form's questions and guidance stand without AI, extraction suggestions are optional (layer 2)",
@@ -825,7 +873,7 @@
   "GATE-08": [
     "partial",
     "",
-    "docs/plans/layer-7-gates.md and layer-7-gate-08.md: every AI feature against confirmation, scope, injection defences, verified results and manual fallback, with the tests; J2 added the off and failing paths for review translation, extraction, scribe, field translation, discovery, declaration and public drafting, the hand-over refusal, the classifier and the detector; 2026-10-16: scribe.db.test.ts (the note model failing), fieldwork.db.test.ts FLD-09 (the voice draft provider failing), packages/ai/test/ai.test.ts (GATE-08: hidden instructions for the scribe note, drafting, translation and the damage classifier in the evaluation set; a provider that follows one fails), tests/e2e/resident.spec.ts (GATE-08: each answer from the words waits for a yes; only a yes is submitted), tests/e2e/field.spec.ts (each drafted field waits for the volunteer; only the one used changes the assessment); drafting.db.test.ts and console-l7.spec.ts (PUB-14: AI radio audio cleared for air only once played to the end, with a reason)",
-    "Remaining: the sensitive-region detector has no image-borne injection case (bounded: a person clears every photo before the FEMA package); discovery's injection test is the route test, not an evaluation case."
+    "docs/plans/layer-7-gates.md and layer-7-gate-08.md: every AI feature against confirmation, scope, injection defences, verified results and manual fallback, with the tests; J2 added the off and failing paths for review translation, extraction, scribe, field translation, discovery, declaration and public drafting, the hand-over refusal, the classifier and the detector; 2026-10-16: scribe.db.test.ts (the note model failing), fieldwork.db.test.ts FLD-09 (the voice draft provider failing), packages/ai/test/ai.test.ts (GATE-08: hidden instructions for the scribe note, drafting, translation, the damage classifier, the sensitive-region detector (an exercise plate under a sign saying the photo is already redacted) and discovery (a listed place's name telling it to report every listed place closed) in the evaluation set; a provider that follows one fails), tests/e2e/resident.spec.ts (GATE-08: each answer from the words waits for a yes; only a yes is submitted), tests/e2e/field.spec.ts (each drafted field waits for the volunteer; only the one used changes the assessment); drafting.db.test.ts and console-l7.spec.ts (PUB-14: AI radio audio cleared for air only once played to the end, with a reason)",
+    "Every AI feature now has its hidden-instruction case in the evaluation set. Remaining: the two newest (the detector's plate under a sign, discovery's listed name, added 2026-10-16) have run only against the test double; the live run with the provider's key (live.test.ts, AIG-08) is still to be done by someone who holds it."
   ]
 }

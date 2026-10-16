@@ -24,6 +24,7 @@ import type { Database } from '@cg/db';
 import { ApiError, errors } from '../errors.ts';
 import { fieldCommandResults } from '../plugins/metrics.ts';
 import { enqueueOutbox, iso, uuidParam } from './helpers.ts';
+import { statusesOnPhones } from './job-aids.ts';
 
 type Trx = Transaction<Database>;
 
@@ -767,6 +768,8 @@ export const fieldSyncRoutes =
                   title: z.string(),
                   bodyHtml: z.string(),
                   version: z.number().int(),
+                  /** False for an exercise draft nobody in the county has approved yet. */
+                  reviewed: z.boolean(),
                 }),
               ),
               /** Tenant choices the field screens follow: ask tribal ownership where the tenant has tribal lands (DCL:DEC-17). */
@@ -964,8 +967,20 @@ export const fieldSyncRoutes =
             .execute();
           const jobAids = await trx
             .selectFrom('cg.job_aid')
-            .select(['id', 'key', 'role_key', 'lang', 'kind', 'title', 'body_html', 'version'])
-            .where('status', 'in', ['approved', 'exercise_draft'])
+            .select([
+              'id',
+              'key',
+              'role_key',
+              'lang',
+              'kind',
+              'title',
+              'body_html',
+              'version',
+              'status',
+            ])
+            // FL-15, BRD:FR-18.03: phones carry only what the county approved (exercise drafts on a
+            // synthetic stack, marked unreviewed).
+            .where('status', 'in', statusesOnPhones(app.dataMode))
             .where('lang', '=', q.lang)
             .where((eb) =>
               eb.or([
@@ -1076,6 +1091,7 @@ export const fieldSyncRoutes =
               title: j.title,
               bodyHtml: j.body_html,
               version: j.version,
+              reviewed: j.status === 'approved',
             })),
           };
         });

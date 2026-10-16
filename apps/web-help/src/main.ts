@@ -538,6 +538,8 @@ function render(): void {
           el('a', { href: `tel:${phone.replace(/[^\d+]/g, '')}` }, phone),
         )
       : null,
+    // AC-A04: the help line without a voice.
+    phone ? el('p', {}, t.relay) : null,
     el('p', {}, t.textKeyword),
     brand.website && /^https:\/\//.test(brand.website)
       ? el('p', {}, el('strong', {}, `${t.website}: `), el('a', { href: brand.website }, county))

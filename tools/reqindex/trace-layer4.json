@@ -103,10 +103,10 @@
     ""
   ],
   "BRD:FR-03.04": [
-    "partial",
-    "routes/situation.ts and routes/dispatch.ts (authorized layers, positions only for position.read); apps/web-console/src/screens/{dispatch,situation}.tsx (status by letter and shape, a table per layer)",
-    "services/api/test/siteoperator.db.test.ts (CON-03 layers by role), services/api/test/dispatch-sync.db.test.ts (board positions by role), tests/e2e/console-l4.spec.ts (axe on board and situation map)",
-    "The browser spec runs in CI (layers as pressed buttons with a table each, axe on the board and the map); each status's letter and shape (screens/dispatch.tsx STATUS) is not asserted by a test, and the manual non-colour and screen-reader checks are pending a person."
+    "pass",
+    "routes/situation.ts and routes/dispatch.ts (authorized layers, positions only for position.read); apps/web-console/src/screens/{dispatch,situation}.tsx (a table per layer); screens/team-status.ts (each status in words, with its own shape and letter on the marker and badge)",
+    "services/api/test/siteoperator.db.test.ts (CON-03 layers by role), services/api/test/dispatch-sync.db.test.ts (board positions by role), tests/e2e/console-l4.spec.ts (layers as pressed buttons with a table each, axe on board and situation map), apps/web-console/test/team-status.test.ts (no status shares a shape and letter; statuses of one colour differ by shape or letter)",
+    "The manual non-colour and screen-reader checks are pending a person (GATE-03)."
   ],
   "BRD:FR-03.05": [
     "pass",

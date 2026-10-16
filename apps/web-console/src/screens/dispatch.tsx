@@ -16,6 +16,7 @@ import { openStream, type StreamState } from '../api/stream.ts';
 import { DataTable, Status, Toolbar, fmt } from '../ui/primitives.tsx';
 import type { ConsoleMap, MapOutline, MapPoint } from '../ui/map.ts';
 import { fromZoneInput, toZoneInput } from '../ui/time.ts';
+import { STATUS_MARK, STATUS_TEXT, statusMark } from './team-status.ts';
 
 interface Point {
   lat: number;
@@ -153,26 +154,6 @@ interface EventRow {
   status: string;
 }
 
-export const STATUS_TEXT: Record<string, string> = {
-  available: 'Available',
-  en_route: 'En route',
-  on_task: 'On task',
-  break: 'On break',
-  out_of_service: 'Out of service',
-  overdue: 'Overdue check-in',
-};
-/** Shape and a letter for each status, so the board never relies on colour (WCAG 1.4.1). */
-const STATUS_MARK: Record<
-  string,
-  { shape: MapPoint['shape']; mark: string; tone: MapPoint['tone'] }
-> = {
-  available: { shape: 'circle', mark: 'A', tone: 'ok' },
-  en_route: { shape: 'diamond', mark: 'E', tone: 'busy' },
-  on_task: { shape: 'square', mark: 'T', tone: 'busy' },
-  break: { shape: 'circle', mark: 'B', tone: 'info' },
-  out_of_service: { shape: 'square', mark: 'X', tone: 'danger' },
-  overdue: { shape: 'triangle', mark: '!', tone: 'danger' },
-};
 const ALERT_TEXT: Record<string, string> = {
   help_button: 'Help button pressed',
   missed_check_in: 'Missed check-in',
@@ -458,11 +439,7 @@ function BoardMap({ board }: { board: Board }) {
     const out: MapPoint[] = [];
     for (const t of board.teams)
       if (t.position) {
-        const m = STATUS_MARK[t.status ?? ''] ?? {
-          shape: 'circle' as const,
-          mark: '?',
-          tone: 'info' as const,
-        };
+        const m = statusMark(t.status);
         out.push({
           id: t.id,
           lat: t.position.lat,

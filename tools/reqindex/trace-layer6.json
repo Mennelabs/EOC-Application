@@ -338,10 +338,10 @@
     "An outage whose facility is not in the reference data is listed with \"place not known\" rather than placed."
   ],
   "CON-17": [
-    "partial",
-    "offline field app (packages/field-core, apps/field), FEMA degree pictures (apps/field/src/assessment.ts) and FEMA matrix job aids; layer 6: GeoJSON and CSV in the IDA package and the read-only PDA feature service for ArcGIS and QGIS (routes/gis.ts)",
-    "packages/field-core/test/sync.test.ts, apps/field/test/i18n.test.ts (assessment pictures and job aids), services/api/test/integrations.db.test.ts, tests/integration/layer6.int.test.ts",
-    "Survey123-compatible import of routes and parcels is not built; two-way ArcGIS sync is excluded by SCL-13."
+    "pass",
+    "offline field app (packages/field-core, apps/field), FEMA degree pictures (apps/field/src/assessment.ts) and FEMA matrix job aids; layer 6: GeoJSON and CSV in the IDA package and the read-only PDA feature service for ArcGIS and QGIS (routes/gis.ts); import: the county's parcel layer and route areas as GeoJSON from ArcGIS, Survey123/Field Maps or QGIS (routes/parcels.ts: POST /parcels/import with a property mapping, updated by parcel id; POST /parcels/routes/import naming the parcels inside each polygon and opening a draft verification route per area; screens/parcels.tsx)",
+    "packages/field-core/test/sync.test.ts, apps/field/test/i18n.test.ts (assessment pictures and job aids), services/api/test/integrations.db.test.ts, tests/integration/layer6.int.test.ts, services/api/test/parcels.db.test.ts (CON-17, SCL-13, FLD-13), tests/e2e/console-screens.spec.ts (CON-17, SCL-13: the GIS lead loads parcels and a route area)",
+    "Two-way live sync with ArcGIS is excluded by SCL-13: import and export by file and the read-only feature service."
   ],
   "EQ-13": [
     "pass",
@@ -381,8 +381,8 @@
   ],
   "SCL-13": [
     "partial",
-    "MapLibre + self-hosted PMTiles on the public page, loaded only on request (ADR-0029); ZIP centroids; Esri/FEMA by import and export only; layer 6: as amended 2026-10-14 (ADR-0039): public reference data pulled from free federal services with file import for every dataset (packages/refdata; ADR-0041); the situation map's area layers on MapLibre",
-    "tests/e2e/help.spec.ts (map toggle), apps/web-help/src/map.ts, packages/refdata/test, services/worker/test/refdata.db.test.ts, services/api/test/refdata.db.test.ts",
+    "MapLibre + self-hosted PMTiles on the public page, loaded only on request (ADR-0029); ZIP centroids; Esri/FEMA by import and export only; layer 6: as amended 2026-10-14 (ADR-0039): public reference data pulled from free federal services with file import for every dataset (packages/refdata; ADR-0041); the situation map's area layers on MapLibre; counties' parcel data loaded per tenant from their GIS (routes/parcels.ts)",
+    "tests/e2e/help.spec.ts (map toggle), apps/web-help/src/map.ts, packages/refdata/test, services/worker/test/refdata.db.test.ts, services/api/test/refdata.db.test.ts, services/api/test/parcels.db.test.ts",
     "The field app has no map yet (no MapLibre in apps/field) and no job cuts offline map packages: /field/area only says whether one exists (FLD-04, FLD-13). Live pulls were not verified against the federal hosts from this environment (blocked); Adam runs the live check in production (decision 2026-10-15)."
   ],
   "SCL-03": [

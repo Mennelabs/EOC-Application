@@ -38,6 +38,7 @@ const SCREENS: [path: string, heading: string][] = [
   ['shelters', 'Shelters'],
   ['reception', 'Volunteer reception'],
   ['health-notices', 'Health notices'],
+  ['parcels', 'Parcels and routes'],
   ['reminders', 'Reminders'],
   ['devices', 'Field devices'],
   ['field-messages', 'Messages to the field'],
@@ -384,5 +385,93 @@ test.describe('every console screen, one by one', () => {
     await expect(visitor.getByRole('heading', { name: title })).toHaveCount(0);
     await visitor.close();
     await otherContext.close();
+  });
+
+  test('CON-17, SCL-13: the GIS lead loads parcels and a route area from GeoJSON with a reason; the counts and the area are shown; axe finds nothing', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'planning_gis_lead',
+      `GIS ${tag}`,
+      `scr-gis-${testInfo.project.name}`,
+    );
+    await open(page, 'parcels', 'Parcels and routes');
+    const id = `${tag}-${testInfo.project.name}`;
+    // Two synthetic parcels far from the exercise county's grid, at a spot of this run and project.
+    const base = -91 - (Date.now() % 997) * 0.002 - (testInfo.project.name === 'phone' ? 0.001 : 0);
+    const square = (lon: number) => ({
+      type: 'Polygon',
+      coordinates: [
+        [
+          [lon, 37.5],
+          [lon + 0.0002, 37.5],
+          [lon + 0.0002, 37.5002],
+          [lon, 37.5002],
+          [lon, 37.5],
+        ],
+      ],
+    });
+    const parcels = {
+      type: 'FeatureCollection',
+      features: [0, 1].map((i) => ({
+        type: 'Feature',
+        properties: { PIN: `E2E-${id}-${i}`, SITEADDR: `${i + 1} Exercise Test Ln`, ZIP: '63099' },
+        geometry: square(base + i * 0.0003),
+      })),
+    };
+    await page.getByLabel('Parcel layer (GeoJSON)').setInputFiles({
+      name: 'parcels.geojson',
+      mimeType: 'application/geo+json',
+      buffer: Buffer.from(JSON.stringify(parcels)),
+    });
+    await expect(page.getByText('2 features in the file.')).toBeVisible();
+    await expect(page.getByLabel('Parcel id')).toHaveValue('PIN');
+    await expect(page.getByLabel('Street address')).toHaveValue('SITEADDR');
+    await page
+      .getByRole('form', { name: 'Load parcels' })
+      .getByLabel('Reason', { exact: true })
+      .fill('Exercise: county parcel layer');
+    await expectNoViolations(page);
+    await page.getByRole('button', { name: 'Load 2 parcels' }).click();
+    await expect(page.getByText('2 parcels added, 0 updated, 0 refused.')).toBeVisible();
+
+    const routes = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: { ROUTE_NAME: `Test Lane ${id}` },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [
+              [
+                [base - 0.0001, 37.4995],
+                [base + 0.0006, 37.4995],
+                [base + 0.0006, 37.5005],
+                [base - 0.0001, 37.5005],
+                [base - 0.0001, 37.4995],
+              ],
+            ],
+          },
+        },
+      ],
+    };
+    await page.getByLabel('Route areas (GeoJSON)').setInputFiles({
+      name: 'routes.geojson',
+      mimeType: 'application/geo+json',
+      buffer: Buffer.from(JSON.stringify(routes)),
+    });
+    await expect(page.getByLabel('Property that names each route')).toHaveValue('ROUTE_NAME');
+    await page.getByLabel('Reason for the routes').fill('Exercise: verification routes');
+    await page.getByRole('button', { name: 'Load 1 route areas' }).click();
+    const loaded = page.getByRole('table', { name: 'Route areas loaded' });
+    await expect(loaded.getByRole('row').filter({ hasText: `Test Lane ${id}` })).toContainText(
+      /Test Lane \S+2Not opened/,
+    );
+    await expectNoViolations(page);
   });
 });

@@ -55,6 +55,7 @@ import { tenantRoutes } from './tenants.ts';
 import { volunteerRoutes } from './volunteers.ts';
 import { healthNoticeRoutes } from './health-notices.ts';
 import { geocodeRoutes, type GeocodeDeps } from './geocode.ts';
+import { parcelRoutes } from './parcels.ts';
 
 /** What the server gives the routes that talk to the broker, object storage or the AI provider (absent in tests: poll fallback, no map extracts). */
 export interface RouteDeps {
@@ -102,6 +103,8 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   healthNoticeRoutes,
   // BRD:FR-03.02: address suggestions and reverse geocoding, parcels first.
   geocodeRoutes(deps.geocode),
+  // CON-17, SCL-13: the county's parcels and route areas from its GIS.
+  parcelRoutes,
   fieldOpsRoutes,
   fieldAssessmentRoutes,
   fieldVoiceRoutes(deps.fieldVoice),

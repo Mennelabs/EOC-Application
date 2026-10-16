@@ -195,6 +195,9 @@ const templates: readonly RoleTemplate[] = [
       g('declaration.read'),
       // The PDA GIS layer and package for mapping work (DEC-12).
       g('declaration.export'),
+      // CON-17, SCL-13: loads the county's parcels and route areas from its GIS.
+      g('parcel.read'),
+      g('parcel.import'),
       g('outage.write'),
       g('joint_assessment.read'),
       g('metric.read'),

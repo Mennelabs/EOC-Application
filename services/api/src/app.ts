@@ -48,6 +48,8 @@ export type App = Awaited<ReturnType<typeof buildApp>>;
 declare module 'fastify' {
   interface FastifyInstance {
     fieldCrypto: FieldCrypto;
+    /** SCL-12: synthetic (laptops, exercises) or production; some exercise content is shown only in synthetic. */
+    dataMode: 'synthetic' | 'production';
   }
 }
 
@@ -70,6 +72,7 @@ export async function buildApp(opts: AppOptions) {
   app.setErrorHandler(errorHandler);
   if (opts.fieldCrypto) app.decorate('fieldCrypto', opts.fieldCrypto);
   app.decorate('reportDeps', opts.reportDeps ?? {});
+  app.decorate('dataMode', opts.dataMode);
 
   // SCL-09: documented REST API, generated from the same schemas that validate requests.
   await app.register(swagger, {

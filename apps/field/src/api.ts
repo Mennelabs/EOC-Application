@@ -99,7 +99,15 @@ export interface AreaPackage {
     unverified: boolean;
   }[];
   sites: { id: string; name: string; kind: string; status: string }[];
-  jobAids: { id: string; key: string; title: string; bodyHtml: string; lang: string }[];
+  jobAids: {
+    id: string;
+    key: string;
+    title: string;
+    bodyHtml: string;
+    lang: string;
+    /** FL-15: false for an exercise draft the county has not approved. */
+    reviewed?: boolean;
+  }[];
   /** FLD-13: the offline map package of each area, with what the phone checks it against. */
   maps: {
     areaKey: string;

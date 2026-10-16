@@ -5,7 +5,7 @@
  * audit, emergency access, retention) and the layer-3 and layer-4 screens the
  * journeys pass by (resources, partner agreements, board replay, shelters,
  * volunteer reception, reminders, field devices, messages to the field, net
- * control, badges), and the subscription (SCL-10). Each one opens with its
+ * control, badges), the subscription (SCL-10) and job aids (FL-15). Each one opens with its
  * heading, settles without an error, passes axe with WCAG 2.2 AA rules and,
  * on the phone, reflows without sideways scrolling (ACC-07). Some screens
  * also check what they promise: the subscription says resident reports are
@@ -49,6 +49,7 @@ const SCREENS: [path: string, heading: string][] = [
   ['badges', 'Badges'],
   ['roster', 'Roster and check-in'],
   ['subscription', 'Subscription'],
+  ['job-aids', 'Job aids'],
 ];
 
 /** Opens a screen and waits until it has loaded: heading shown, nothing still loading. */
@@ -95,6 +96,15 @@ test.describe('every console screen, one by one', () => {
             '30 days',
           );
           await expect(page.getByText(/null days|0 years/)).toHaveCount(0);
+        }
+
+        if (path === 'job-aids') {
+          // FL-15: the seeded exercise drafts are listed, marked as reaching phones only in
+          // exercises; the administrator writes and changes but does not approve.
+          await expect(
+            page.getByRole('row').filter({ hasText: 'Shelter standards checklist' }).first(),
+          ).toContainText('Exercise draft');
+          await expect(page.getByRole('button', { name: /^Approve / })).toHaveCount(0);
         }
 
         if (path === 'subscription') {

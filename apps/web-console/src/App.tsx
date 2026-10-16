@@ -43,6 +43,7 @@ import { FemaMappingsScreen } from './screens/fema-mappings.tsx';
 import { IntegrationsScreen } from './screens/integrations.tsx';
 import { SsoScreen } from './screens/sso.tsx';
 import { SubscriptionScreen } from './screens/subscription.tsx';
+import { JobAidsScreen } from './screens/job-aids.tsx';
 import { MetricsScreen } from './screens/metrics.tsx';
 import { JointAssessmentScreen } from './screens/joint-assessment.tsx';
 import { SharedDeclarationsScreen } from './screens/shared-declarations.tsx';
@@ -94,6 +95,7 @@ const routes = [
   { path: '/console/health-notices', label: 'Health notices', layer: 4 },
   { path: '/console/reentry', label: 'Re-entry passes', layer: 4 },
   { path: '/console/devices', label: 'Field devices', layer: 4 },
+  { path: '/console/job-aids', label: 'Job aids', layer: 4 },
   { path: '/console/declaration', label: 'Declaration data', layer: 6 },
   { path: '/console/joint-assessment', label: 'Joint assessment', layer: 6 },
   { path: '/console/shared-declarations', label: 'Shared declaration figures', layer: 6 },
@@ -317,6 +319,8 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <SsoScreen />;
       case '/console/subscription':
         return <SubscriptionScreen />;
+      case '/console/job-aids':
+        return <JobAidsScreen />;
       case '/console/facilities':
         return <FacilitiesScreen />;
       case '/console/facility-approvals':

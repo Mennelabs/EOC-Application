@@ -606,9 +606,14 @@ export const actions = {
   'service_log.read': a('read', 'service_log', 'Read service counts'),
   'job_aid.read': a('read', 'job_aid', 'Read job aids for your role'),
   'job_aid.edit': a('write', 'job_aid', 'Draft or change a job aid'),
-  'job_aid.approve': a('admin', 'job_aid', 'Approve a job aid for the county', {
-    consequential: true,
-  }),
+  // FL-15, BRD:FR-18.03: field guidance is human-reviewed: approved by someone other than the
+  // last to change it before any phone shows it; never reached by a wildcard.
+  'job_aid.approve': a(
+    'admin',
+    'job_aid',
+    'Approve a job aid so field phones show it (never one you last changed), or retire one',
+    { consequential: true, explicit: true },
+  ),
   'search_mark.read': a('read', 'search_mark', 'Read search marks and the searched layer'),
   'search_mark.write': a('write', 'search_mark', 'Record a search mark'),
   'placard.read': a('read', 'placard', 'Read posted placards'),
@@ -897,4 +902,6 @@ export const SELF_REVIEW_ACTIONS: readonly string[] = [
   'personnel.photo.approve',
   // FL:FR-06: whoever drafted a health notice does not approve it.
   'health_notice.approve',
+  // FL-15: whoever last changed a job aid does not approve it.
+  'job_aid.approve',
 ];

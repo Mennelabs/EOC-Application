@@ -369,7 +369,18 @@ describe.skipIf(!appUrl || !workerUrl)('health notices (database-backed)', () =>
     expect(job).toHaveLength(1);
 
     await runJob('issued');
+    const versionOf = async () =>
+      (
+        await dbWorker
+          .selectFrom('cg.health_notice')
+          .select('version')
+          .where('id', '=', notice.id)
+          .executeTakeFirstOrThrow()
+      ).version;
+    const once = await versionOf();
     await runJob('issued'); // a redelivery sends nothing twice
+    // ...and leaves the notice as it was, so lifting it is not refused for an unseen change.
+    expect(await versionOf()).toBe(once);
     const sent = await queued('health_notice');
     expect(sent).toHaveLength(2);
     const text = sent.find((m) => m.channel === 'sms')!;

@@ -2,18 +2,22 @@
  * Root layout: the field state provider and the route guard. Signed out →
  * sign-in; signed in but locked → unlock (or choose a PIN); unlocked and not
  * checked in → check-in (settings, "on this phone" and help stay open);
- * after a remote wipe → sign-in with the notice (FLD-02).
+ * after a remote wipe → sign-in with the notice (FLD-02). Screenshots are
+ * blocked on every screen that can show personal details (FLD-02).
  */
 import { Slot, router, usePathname } from 'expo-router';
 import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import { screenshotsAllowed } from '@cg/field-core';
 import { FieldProvider, useField } from '../src/field';
+import { useScreenshotGuard } from '../src/privacy';
 
 const OPEN_WHEN_NOT_CHECKED_IN = ['/check-in', '/settings', '/sync', '/need-help'];
 
 function Guard() {
   const { phase, checkIn, theme } = useField();
   const path = usePathname();
+  useScreenshotGuard(screenshotsAllowed(path));
   useEffect(() => {
     if (phase === 'loading') return;
     const go = (to: string) => {

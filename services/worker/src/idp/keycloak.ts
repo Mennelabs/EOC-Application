@@ -254,7 +254,14 @@ export class KeycloakAdmin {
 
   async ensureUser(
     slug: string,
-    user: { email: string; displayName: string; enabled: boolean; devPassword?: string },
+    user: {
+      email: string;
+      displayName: string;
+      enabled: boolean;
+      devPassword?: string;
+      /** SEC-07: the county signs its staff in, so no local password is set up. */
+      sso?: boolean;
+    },
   ): Promise<string> {
     const found = (await (
       await this.ok('GET', `/${slug}/users?email=${encodeURIComponent(user.email)}&exact=true`)
@@ -272,7 +279,11 @@ export class KeycloakAdmin {
         // Dev seed users get no pending required action: Keycloak refuses
         // direct-grant tokens otherwise. The browser flow still demands a
         // passkey, and registers one on first login when none exists.
-        requiredActions: user.devPassword ? [] : ['UPDATE_PASSWORD', 'webauthn-register'],
+        requiredActions: user.devPassword
+          ? []
+          : user.sso
+            ? ['webauthn-register']
+            : ['UPDATE_PASSWORD', 'webauthn-register'],
         ...(user.devPassword
           ? { credentials: [{ type: 'password', value: user.devPassword, temporary: false }] }
           : {}),
@@ -291,17 +302,163 @@ export class KeycloakAdmin {
     return id;
   }
 
+  /**
+   * SEC-07: the county's identity provider on its realm. A county sign-in
+   * only links to an account the county invited (`cg-first-broker` fails
+   * when no account has the address; nothing is created), and the person's
+   * passkey is asked for after it (`cg-post-broker`), so the county's sign-in
+   * replaces the password, never the passkey.
+   */
+  async ensureSsoProvider(slug: string, spec: SsoProviderSpec): Promise<void> {
+    await this.ensureBrokerFlows(slug);
+    let config: Record<string, string>;
+    if (spec.protocol === 'saml') {
+      // Keycloak parses the metadata itself (signing certificate, addresses, bindings).
+      const form = new FormData();
+      form.append('providerId', 'saml');
+      form.append('file', new Blob([spec.metadata], { type: 'text/xml' }), 'metadata.xml');
+      const res = await fetch(
+        `${this.settings.adminBase}/admin/realms/${slug}/identity-provider/import-config`,
+        {
+          method: 'POST',
+          headers: { authorization: `Bearer ${await this.adminToken()}` },
+          body: form,
+        },
+      );
+      if (!res.ok) throw new Error(`keycloak could not read the SAML metadata: HTTP ${res.status}`);
+      config = samlProviderConfig((await res.json()) as Record<string, string>);
+    } else {
+      config = oidcProviderConfig(spec);
+    }
+    const representation = ssoProviderRepresentation(spec.displayName, spec.protocol, config);
+    const existing = await this.call('GET', `/${slug}/identity-provider/instances/${SSO_ALIAS}`);
+    if (
+      existing.ok &&
+      ((await existing.json()) as { providerId?: string }).providerId === spec.protocol
+    ) {
+      await this.ok('PUT', `/${slug}/identity-provider/instances/${SSO_ALIAS}`, representation);
+    } else {
+      // A provider of the other protocol is replaced; its links go with it.
+      if (existing.ok)
+        await this.ok(
+          'DELETE',
+          `/${slug}/identity-provider/instances/${SSO_ALIAS}`,
+          undefined,
+          [404],
+        );
+      await this.ok('POST', `/${slug}/identity-provider/instances`, representation);
+    }
+    if (spec.protocol === 'saml') {
+      // The SAML NameID (the person's email address) is the user name it links on.
+      const mappers = (await (
+        await this.ok('GET', `/${slug}/identity-provider/instances/${SSO_ALIAS}/mappers`)
+      ).json()) as { name: string }[];
+      if (!mappers.some((m) => m.name === 'email address from NameID'))
+        await this.ok('POST', `/${slug}/identity-provider/instances/${SSO_ALIAS}/mappers`, {
+          name: 'email address from NameID',
+          identityProviderAlias: SSO_ALIAS,
+          identityProviderMapper: 'saml-username-idp-mapper',
+          config: { syncMode: 'INHERIT', template: '${NAMEID}', target: 'LOCAL' },
+        });
+    }
+    // Staff of a county with single sign-on never need a local password: an
+    // invitation still waiting for one asks only for the passkey.
+    await this.dropPendingPasswordSetup(slug);
+  }
+
+  /** Switches the county's provider off; its links stay for when it is on again. */
+  async disableSsoProvider(slug: string): Promise<void> {
+    const existing = await this.call('GET', `/${slug}/identity-provider/instances/${SSO_ALIAS}`);
+    if (!existing.ok) return;
+    const rep = (await existing.json()) as Record<string, unknown>;
+    await this.ok('PUT', `/${slug}/identity-provider/instances/${SSO_ALIAS}`, {
+      ...rep,
+      enabled: false,
+    });
+  }
+
+  private async ensureBrokerFlows(slug: string): Promise<void> {
+    await this.ensureFlow(
+      slug,
+      'cg-first-broker',
+      'A county sign-in links to an invited account only',
+      ['idp-detect-existing-broker-user', 'idp-auto-link'],
+    );
+    await this.ensureFlow(slug, 'cg-post-broker', 'The passkey after the county sign-in (SEC-07)', [
+      'webauthn-authenticator',
+    ]);
+  }
+
+  /** A top-level flow whose executions are all REQUIRED, in this order. Idempotent. */
+  private async ensureFlow(
+    slug: string,
+    alias: string,
+    description: string,
+    providers: string[],
+  ): Promise<void> {
+    const flows = (await (await this.ok('GET', `/${slug}/authentication/flows`)).json()) as {
+      alias: string;
+    }[];
+    if (!flows.some((f) => f.alias === alias))
+      await this.ok('POST', `/${slug}/authentication/flows`, {
+        alias,
+        description,
+        providerId: 'basic-flow',
+        topLevel: true,
+        builtIn: false,
+      });
+    type Exec = { id: string; providerId?: string; requirement: string };
+    const list = async () =>
+      (await (
+        await this.ok('GET', `/${slug}/authentication/flows/${alias}/executions`)
+      ).json()) as Exec[];
+    let execs = await list();
+    for (const provider of providers)
+      if (!execs.some((e) => e.providerId === provider))
+        await this.ok('POST', `/${slug}/authentication/flows/${alias}/executions/execution`, {
+          provider,
+        });
+    execs = await list();
+    for (const e of execs)
+      if (e.requirement !== 'REQUIRED')
+        await this.ok(
+          'PUT',
+          `/${slug}/authentication/flows/${alias}/executions`,
+          { ...e, requirement: 'REQUIRED' },
+          [202],
+        );
+  }
+
+  private async dropPendingPasswordSetup(slug: string): Promise<void> {
+    for (let first = 0; ; first += 100) {
+      const users = (await (
+        await this.ok('GET', `/${slug}/users?first=${first}&max=100&briefRepresentation=false`)
+      ).json()) as { id: string; requiredActions?: string[] }[];
+      for (const u of users)
+        if (u.requiredActions?.includes('UPDATE_PASSWORD'))
+          await this.ok('PUT', `/${slug}/users/${u.id}`, {
+            requiredActions: u.requiredActions.filter((a) => a !== 'UPDATE_PASSWORD'),
+          });
+      if (users.length < 100) break;
+    }
+  }
+
   async setUserEnabled(slug: string, userId: string, enabled: boolean): Promise<void> {
     await this.ok('PUT', `/${slug}/users/${userId}`, { enabled });
     if (!enabled) await this.ok('POST', `/${slug}/users/${userId}/logout`, undefined, [404]);
   }
 
   /** Keycloak sends the invitation (set password, register passkey) through the realm SMTP. */
-  async sendInvitation(slug: string, userId: string, redirectUri: string): Promise<void> {
+  async sendInvitation(
+    slug: string,
+    userId: string,
+    redirectUri: string,
+    sso = false,
+  ): Promise<void> {
     await this.ok(
       'PUT',
       `/${slug}/users/${userId}/execute-actions-email?client_id=cg-console&redirect_uri=${encodeURIComponent(redirectUri)}&lifespan=${7 * 24 * 3600}`,
-      ['UPDATE_PASSWORD', 'webauthn-register'],
+      sso ? ['webauthn-register'] : ['UPDATE_PASSWORD', 'webauthn-register'],
     );
   }
 }
@@ -360,5 +517,79 @@ export function realmTemplate(spec: RealmSpec) {
       starttls: 'false',
     },
     attributes: { cg_tenant_id: spec.tenantId },
+  };
+}
+
+// ---- SEC-07: the county's identity provider --------------------------------
+
+export const SSO_ALIAS = 'county-sso';
+
+export type SsoProviderSpec =
+  | { protocol: 'saml'; displayName: string; metadata: string }
+  | {
+      protocol: 'oidc';
+      displayName: string;
+      issuer: string;
+      authorizationUrl: string;
+      tokenUrl: string;
+      jwksUrl: string;
+      clientId: string;
+      clientSecret: string;
+    };
+
+/** Keycloak's reading of the metadata, with our rules on top: signed assertions, email NameID. */
+export function samlProviderConfig(imported: Record<string, string>): Record<string, string> {
+  return {
+    ...imported,
+    syncMode: 'IMPORT',
+    nameIDPolicyFormat: 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress',
+    principalType: 'SUBJECT',
+    postBindingResponse: 'true',
+    postBindingAuthnRequest: 'true',
+    validateSignature: 'true',
+    wantAssertionsSigned: 'true',
+    wantAuthnRequestsSigned: 'true',
+  };
+}
+
+export function oidcProviderConfig(
+  spec: Extract<SsoProviderSpec, { protocol: 'oidc' }>,
+): Record<string, string> {
+  return {
+    syncMode: 'IMPORT',
+    issuer: spec.issuer,
+    authorizationUrl: spec.authorizationUrl,
+    tokenUrl: spec.tokenUrl,
+    jwksUrl: spec.jwksUrl,
+    useJwksUrl: 'true',
+    validateSignature: 'true',
+    clientId: spec.clientId,
+    clientSecret: spec.clientSecret,
+    clientAuthMethod: 'client_secret_post',
+    defaultScope: 'openid email profile',
+    pkceEnabled: 'true',
+    pkceMethod: 'S256',
+  };
+}
+
+export function ssoProviderRepresentation(
+  displayName: string,
+  protocol: 'saml' | 'oidc',
+  config: Record<string, string>,
+) {
+  return {
+    alias: SSO_ALIAS,
+    providerId: protocol,
+    displayName,
+    enabled: true,
+    // The address is not trusted as verified: it only finds the invited account.
+    trustEmail: false,
+    storeToken: false,
+    addReadTokenRoleOnCreate: false,
+    linkOnly: false,
+    hideOnLogin: false,
+    firstBrokerLoginFlowAlias: 'cg-first-broker',
+    postBrokerLoginFlowAlias: 'cg-post-broker',
+    config,
   };
 }

@@ -148,6 +148,8 @@ const app = await buildApp({
     commands: { ai },
     // BRD:FR-03.02: the self-hosted Nominatim when the maps profile runs; parcels answer first.
     geocode: { nominatimUrl: config.GEOCODER_URL },
+    // SEC-07: what the county gives its identity provider names the realm's public address.
+    sso: { idpPublicBase: config.IDP_PUBLIC_BASE },
     drafting: { ai, objects: { client: s3, bucket: config.S3_BUCKET } },
     scribe: { ai, objects: { client: s3, bucket: config.S3_BUCKET } },
     refdata: { objects: { client: s3, bucket: config.S3_BUCKET } },

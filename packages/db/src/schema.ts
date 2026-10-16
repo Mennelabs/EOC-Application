@@ -929,6 +929,38 @@ export interface ReentryCheckTable {
   checked_at: TsGen;
 }
 
+/** SEC-07: a county identity provider configuration, proposed and approved by two administrators. */
+export type TenantSsoStatus = 'proposed' | 'active' | 'declined' | 'replaced' | 'disabled';
+export interface TenantSsoTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  protocol: 'saml' | 'oidc';
+  display_name: string;
+  saml_metadata: string | null;
+  idp_entity_id: string | null;
+  oidc_issuer: string | null;
+  oidc_authorization_url: string | null;
+  oidc_token_url: string | null;
+  oidc_jwks_url: string | null;
+  oidc_client_id: string | null;
+  oidc_client_secret_enc: Buffer | null;
+  status: Generated<TenantSsoStatus>;
+  reason: string;
+  decided_by: Uuid | null;
+  decided_at: TsNullable;
+  decision_reason: string | null;
+  disabled_by: Uuid | null;
+  disabled_at: TsNullable;
+  disabled_reason: string | null;
+  applied_at: TsNullable;
+  apply_error: string | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
 /** FLD-13, SCL-13: the offline map package of one parcel area, cut from the regional tiles. */
 export interface MapPackageTable extends Stamped {
   id: Generated<Uuid>;
@@ -3533,6 +3565,7 @@ export interface Database {
   'cg.reentry_pass': ReentryPassTable;
   'cg.reentry_check': ReentryCheckTable;
   'cg.map_package': MapPackageTable;
+  'cg.tenant_sso': TenantSsoTable;
   'cg.zip_centroid': ZipCentroidTable;
   'cg.resource': ResourceTable;
   'cg.resource_text': ResourceTextTable;

@@ -842,6 +842,18 @@ export const actions = {
     'Ask for, approve or decline (never your own), and disable a webhook',
     { consequential: true, explicit: true },
   ),
+  // SEC-07: sign-in through the county's own identity provider; a second administrator approves (ADM-05).
+  'sso.read': a(
+    'read',
+    'tenant_sso',
+    "See the county's single sign-on settings and what to give its identity provider; never a secret",
+  ),
+  'sso.manage': a(
+    'admin',
+    'tenant_sso',
+    'Propose, approve or decline (never your own), and switch off single sign-on',
+    { consequential: true, explicit: true },
+  ),
 } as const satisfies Record<string, ActionMeta>;
 
 export type ActionKey = keyof typeof actions;

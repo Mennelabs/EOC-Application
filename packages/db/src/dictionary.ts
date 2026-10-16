@@ -2648,6 +2648,40 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     region_stamp: { c: 'internal', d: 'Which build of the regional tiles it was cut from' },
     cut_at: { c: 'internal' },
   }),
+  tenant_sso: table({
+    protocol: { c: 'internal', d: 'SEC-07: saml or oidc' },
+    display_name: {
+      c: 'internal',
+      d: 'The sign-in button staff see, e.g. "Westwind County account"',
+    },
+    saml_metadata: {
+      c: 'internal',
+      d: "The county identity provider's SAML metadata (public by nature)",
+    },
+    idp_entity_id: {
+      c: 'internal',
+      d: "The identity provider's entity id or issuer, shown to administrators",
+    },
+    oidc_issuer: { c: 'internal' },
+    oidc_authorization_url: { c: 'internal' },
+    oidc_token_url: { c: 'internal' },
+    oidc_jwks_url: { c: 'internal' },
+    oidc_client_id: { c: 'internal' },
+    oidc_client_secret_enc: {
+      c: 'restricted',
+      d: 'OIDC client secret, encrypted under the tenant key (SEC-10); never returned',
+    },
+    status: { c: 'internal', d: 'proposed, active, declined, replaced or disabled' },
+    reason: { c: 'internal', d: 'Why it was proposed' },
+    decided_by: { c: 'internal', d: 'Second administrator who approved or declined (ADM-05)' },
+    decided_at: { c: 'internal' },
+    decision_reason: { c: 'internal' },
+    disabled_by: { c: 'internal' },
+    disabled_at: { c: 'internal' },
+    disabled_reason: { c: 'internal' },
+    applied_at: { c: 'internal', d: "When the worker put it in force on the county's realm" },
+    apply_error: { c: 'internal', d: 'Why applying it failed, without secrets' },
+  }),
   shelter_count: table(
     {
       id: { c: 'internal' },

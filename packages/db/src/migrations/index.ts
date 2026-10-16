@@ -103,6 +103,7 @@ import * as m0101 from './0101_reentry_pass.ts';
 import * as m0102 from './0102_resource_thumbnail.ts';
 import * as m0103 from './0103_public_audio_cleared.ts';
 import * as m0104 from './0104_map_package.ts';
+import * as m0105 from './0105_tenant_sso.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -210,4 +211,5 @@ export const migrations: Record<string, Migration> = {
   '0102_resource_thumbnail': m0102,
   '0103_public_audio_cleared': m0103,
   '0104_map_package': m0104,
+  '0105_tenant_sso': m0105,
 };

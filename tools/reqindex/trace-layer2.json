@@ -265,10 +265,10 @@
     ""
   ],
   "ORG-01": [
-    "partial",
-    "organization path per property (org_name, units, employees affected)",
-    "packages/intake/test/graph.test.ts (organization reports buildings with unit counts)",
-    "Each property is one report with its own code; a bulk entry screen for many properties is not built."
+    "pass",
+    "organization path per property (org_name, units, employees affected); the welcome screen's 'I am reporting for a business, landlord or group' start; after each place is received, 'Report another place for <organization>' starts a report of its own (new execution id, its own reference number) with who is reporting and how to reach them carried over and every place question, the safety question first, asked again; the confirmation lists the reference numbers reported in the visit (apps/web-resident/src/intake/state.ts nextPlace, screens/Submit.tsx, screens/Welcome.tsx; plan reading 32)",
+    "packages/intake/test/graph.test.ts (organization reports buildings with unit counts), apps/web-resident/test/state.test.ts (ORG-01: the next place has a new execution id, carries who and contact only, starts at the safety question; a cleared device carries who only), tests/e2e/resident.spec.ts (ORG-01: a business reports two places in one visit, each with its own reference number, the organization and contact asked once, both numbers listed, with axe on desktop and phone)",
+    "Places are reported one after another, each with the full place questions; there is no spreadsheet upload for many properties at once (plan reading 32)."
   ],
   "ACM-01": [
     "pass",

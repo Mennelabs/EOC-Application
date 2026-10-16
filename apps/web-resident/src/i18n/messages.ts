@@ -27,6 +27,7 @@ const en = {
   'start.button': 'Start',
   'start.helper': 'I am helping someone else report',
   'start.witness': 'I saw damage to a home',
+  'start.organization': 'I am reporting for a business, landlord or group',
   'start.myReport': 'Check or change a report I already sent',
   'start.resume': 'Continue a paused report',
   'start.noLink':
@@ -180,6 +181,13 @@ const en = {
   'confirm.verify': 'We may call or text you to check a detail.',
   'confirm.findHelp': 'Find shelter, food and water near you',
   'confirm.myReport': 'Change or stop sharing my report',
+  'confirm.places': 'Other places for {org}',
+  'confirm.placesSoFar': 'Places reported in this visit ({count}):',
+  'confirm.anotherPlace': 'Report another place for {org}',
+  'confirm.anotherPlaceWhy':
+    'Each place gets its own reference number. Your organization and how to reach you are filled in; you answer the questions about the place.',
+  'confirm.anotherPlaceCleared':
+    'Each place gets its own reference number. Your answers were cleared from this device, so you will give your contact details again.',
   'confirm.more': 'Answer a few optional questions',
   'confirm.moreWhy':
     'They help the county plan help for everyone. Your damage report is already saved.',
@@ -262,6 +270,7 @@ const es: Record<MessageId, string> = {
   'start.button': 'Comenzar',
   'start.helper': 'Estoy ayudando a otra persona a reportar',
   'start.witness': 'Vi daños en una casa',
+  'start.organization': 'Reporto para un negocio, arrendador o grupo',
   'start.myReport': 'Ver o cambiar un reporte que ya envié',
   'start.resume': 'Continuar un reporte en pausa',
   'start.noLink':
@@ -419,6 +428,13 @@ const es: Record<MessageId, string> = {
   'confirm.verify': 'Puede que le llamemos o escribamos para confirmar un detalle.',
   'confirm.findHelp': 'Buscar albergue, comida y agua cerca',
   'confirm.myReport': 'Cambiar o dejar de compartir mi reporte',
+  'confirm.places': 'Otros lugares de {org}',
+  'confirm.placesSoFar': 'Lugares reportados en esta visita ({count}):',
+  'confirm.anotherPlace': 'Reportar otro lugar de {org}',
+  'confirm.anotherPlaceWhy':
+    'Cada lugar tiene su propio número de referencia. Su organización y cómo contactarle ya están llenos; usted responde las preguntas sobre el lugar.',
+  'confirm.anotherPlaceCleared':
+    'Cada lugar tiene su propio número de referencia. Sus respuestas se borraron de este dispositivo, así que dará sus datos de contacto otra vez.',
   'confirm.more': 'Responder unas preguntas opcionales',
   'confirm.moreWhy':
     'Ayudan al condado a planear ayuda para todos. Su reporte de daños ya está guardado.',

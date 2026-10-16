@@ -307,10 +307,10 @@
     "Framework and housekeeping deletions in place; record-category sweeps are added as record tables arrive (layer 2+)."
   ],
   "SEC-14": [
-    "designed",
-    "",
-    "",
-    "US-region residency is a deployment property; no training on resident data is enforced by the AI adapter policy (layer 7)."
+    "partial",
+    "packages/config/src/index.ts (S3_REGION must be a US region, or the service does not start); packages/ai/src/registry.ts canEnable (a provider is enabled only when it processes in the US, keeps nothing and never trains: AIG-06); providers/openai.ts OPENAI_COMPLIANCE",
+    "packages/config/test/worker.test.ts (SEC-14: object storage outside a US region is refused at start); packages/ai/test/ai.test.ts (a feature can be enabled only for a compliant, evaluated provider (AIG-06): a non-US provider is refused)",
+    "No resident data trains a model: a provider that may train cannot be enabled at all, which is stricter than the tenant opt-in the requirement allows (no opt-in path is built). Residency in code: object storage and AI processing are held to the US. The database, backups and the cloud account itself are a deployment property of the government cloud (SCL-05)."
   ],
   "SEC-15": [
     "partial",

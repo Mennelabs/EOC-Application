@@ -66,4 +66,12 @@ describe('worker reference-data settings', () => {
       }),
     ).toThrow(ConfigError);
   });
+
+  it('SEC-14: object storage outside a US region is refused at start', () => {
+    expect(loadConfig(workerSchema, env).S3_REGION).toBe('us-east-1');
+    for (const region of ['us-gov-west-1', 'usgovvirginia', 'US-WEST-2'])
+      expect(loadConfig(workerSchema, { ...env, S3_REGION: region }).S3_REGION).toBe(region);
+    for (const region of ['eu-west-1', 'ca-central-1', 'ap-southeast-2'])
+      expect(() => loadConfig(workerSchema, { ...env, S3_REGION: region })).toThrow(ConfigError);
+  });
 });

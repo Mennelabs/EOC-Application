@@ -494,6 +494,42 @@ fieldset {
   .staging-code .actions {
     display: none;
   }
+  .door-hanger-print,
+  .door-hanger-print * {
+    visibility: visible;
+  }
+  .door-hanger-print .actions {
+    display: none;
+  }
+}
+
+/* FL:FR-28: a door hanger, English beside Spanish, each with its own code and the 911 line. */
+.door-hanger {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+.door-hanger-side {
+  border: 2px dashed #111;
+  border-radius: 8px;
+  padding: 1rem;
+  max-width: 18rem;
+  background: #fff;
+  color: #111;
+}
+.door-hanger-county {
+  font-weight: 700;
+}
+.door-hanger-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+.door-hanger-url {
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+}
+.door-hanger-911 {
+  font-weight: 700;
 }
 
 /* FLD-03: the staging check-in sign, the code in large letters beside its QR code. */

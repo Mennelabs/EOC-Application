@@ -31,6 +31,17 @@ test.describe('resident welcome', () => {
     await expectNoViolations(page);
   });
 
+  test('CHN-08: a link from a door hanger or flyer opens the flow in its language', async ({
+    page,
+  }) => {
+    await page.goto('/county/westwind?lang=es');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'es');
+    await expect(
+      page.getByRole('heading', { name: '¿Está en peligro ahora mismo?' }),
+    ).toBeVisible();
+    await expectNoViolations(page);
+  });
+
   test('ADM-03: county name in the header, product name only from config', async ({
     page,
     request,

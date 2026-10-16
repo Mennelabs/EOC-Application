@@ -333,6 +333,33 @@ describe('shorthand', () => {
       ok: false,
       error: 'usage',
     });
+    // CMD-18: the last word says what happens to the account; a role is requested or revoked.
+    expect(parse('/account dana@example.org suspend')).toEqual({
+      ok: true,
+      command: 'account.suspend',
+      args: {},
+      ref: 'dana@example.org',
+      refKind: 'account',
+    });
+    expect(parse('/cuenta Dana Ruiz desactivar')).toMatchObject({
+      command: 'account.deactivate',
+      ref: 'Dana Ruiz',
+    });
+    expect(parse('/role request Mass care coordinator to:"Dana Ruiz"')).toMatchObject({
+      command: 'role.request',
+      args: { role: 'Mass care coordinator' },
+      ref: 'Dana Ruiz',
+      refKind: 'account',
+    });
+    expect(parse('/rol quitar Mass care coordinator from:dana@example.org')).toMatchObject({
+      command: 'role.revoke',
+      ref: 'dana@example.org',
+    });
+    expect(parse('/role request Mass care coordinator')).toMatchObject({
+      ok: false,
+      error: 'usage',
+    });
+    expect(parse('/account Dana delete')).toMatchObject({ ok: false, error: 'usage' });
   });
 
   it('CMD-13, AC-C08: "/mission new" drafts a mission of a known kind; "/message" names a team and the words', () => {

@@ -234,6 +234,14 @@ export const COMMAND_EVAL_CATALOG: { usage: string; title: string }[] = [
     usage: '/report <reference code> ask <question>',
     title: 'Ask the resident for more information',
   },
+  { usage: '/account <name or email> suspend', title: 'Suspend an account' },
+  { usage: '/account <name or email> deactivate', title: 'Deactivate an account' },
+  { usage: '/account <name or email> activate', title: 'Activate an account again' },
+  {
+    usage: '/role request <role> to:<name or email>',
+    title: 'Ask for a role to be given to someone',
+  },
+  { usage: '/role revoke <role> from:<name or email>', title: 'Take a role away from someone' },
   { usage: '/export ida', title: 'Prepare the IDA package' },
   {
     usage: '/export sitrep|briefing [number|latest] [pdf|csv]',

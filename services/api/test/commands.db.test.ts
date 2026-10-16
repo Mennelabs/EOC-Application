@@ -12,7 +12,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import { fakeProvider, type AiProvider } from '@cg/ai';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
@@ -1936,5 +1936,149 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
       await call('admin', 'DELETE', `/missions/${mission.id}/lock`, {});
       await phases([1, 2, 3]);
     }
+  });
+
+  it('CMD-18, ADM-05: administration runs the Accounts and Permissions workflows with a full review; a role is only ever requested for a second administrator to approve; suspending undoes, deactivating does not', async () => {
+    await phases([1, 2, 3, 4]);
+    const reason = { 'x-confirm': 'true', 'x-reason': 'Exercise: left the agency' };
+    // This county's own copy of a shipped role (the seeded county's roles are not this one's).
+    const roleName = `Exercise Shelter lead ${run}`;
+    const roleId = await withTenant(
+      dbWorker,
+      { tenantId: county },
+      async (trx) =>
+        (
+          await trx
+            .insertInto('cg.role')
+            .values({
+              tenant_id: county,
+              key: `exercise_shelter_lead_${run}`,
+              name: roleName,
+              template_key: 'mass_care_coordinator',
+            } as never)
+            .returning('id')
+            .executeTakeFirstOrThrow()
+        ).id,
+    );
+    const [kim, lee] = await withTenant(dbWorker, { tenantId: county }, async (trx) => {
+      const ids: string[] = [];
+      for (const n of ['Kim', 'Lee'])
+        ids.push(
+          (
+            await trx
+              .insertInto('cg.account')
+              .values({
+                tenant_id: county,
+                email: `exercise-${n.toLowerCase()}-${run}@example.org`,
+                display_name: `Exercise ${n} Admin-Test ${run}`,
+                status: 'active',
+              } as never)
+              .returningAll()
+              .executeTakeFirstOrThrow()
+          ).id,
+        );
+      return ids;
+    });
+    const account = (id: string) =>
+      dbWorker
+        .selectFrom('cg.account')
+        .select(['status'])
+        .where('id', '=', id)
+        .executeTakeFirstOrThrow();
+
+    // A role without the administration actions is refused before anything is planned.
+    expect((await command('mc', `/account exercise-kim-${run}@example.org suspend`)).status).toBe(
+      'denied',
+    );
+
+    // Suspend by email: a full review with a reason, then undone within the window.
+    const suspend = await command('admin', `/account exercise-kim-${run}@example.org suspend`);
+    expect(suspend.status, suspend.message).toBe('awaiting_confirmation');
+    expect(suspend.command).toMatchObject({ confirmation: 'full_review', reversal: 'undo_15_min' });
+    expect(suspend.plan?.description).not.toContain('@');
+    expect((await confirm('admin', suspend)).status).toBe(428);
+    expect((await confirm('admin', suspend, reason)).body['status']).toBe('succeeded');
+    expect((await account(kim!)).status).toBe('suspended');
+    const lifecycle = await dbWorker
+      .selectFrom('cg.account_lifecycle')
+      .select(['to_status', 'reason'])
+      .where('account_id', '=', kim!)
+      .execute();
+    expect(lifecycle).toEqual([{ to_status: 'suspended', reason: 'Exercise: left the agency' }]);
+    const undone = await call('admin', 'POST', `/commands/${suspend.id}/undo`, {
+      executionId: randomUUID(),
+    });
+    expect(undone.body['status'], JSON.stringify(undone.body)).toBe('succeeded');
+    expect((await account(kim!)).status).toBe('active');
+
+    // Deactivate by name, in Spanish: for good, so undo says so.
+    const off = await command('admin', `/cuenta Exercise Kim Admin-Test ${run} desactivar`);
+    expect(off.status, off.message).toBe('awaiting_confirmation');
+    expect((await confirm('admin', off, reason)).body['status']).toBe('succeeded');
+    expect((await account(kim!)).status).toBe('deactivated');
+    const noUndo = await call('admin', 'POST', `/commands/${off.id}/undo`, {
+      executionId: randomUUID(),
+    });
+    expect(noUndo.status).toBe(409);
+    expect(noUndo.body['message']).toContain('cannot be activated again');
+
+    // A role is requested, never granted: the request waits for a second administrator.
+    const ask = await command(
+      'admin',
+      `/role request ${roleName} to:"Exercise Lee Admin-Test ${run}"`,
+    );
+    expect(ask.status, ask.message).toBe('awaiting_confirmation');
+    expect(ask.plan?.description).toContain('Nothing is granted until a second administrator');
+    const asked = await confirm('admin', ask, reason);
+    expect(asked.body['status'], JSON.stringify(asked.body)).toBe('succeeded');
+    expect((asked.body['result'] as Execution['result'])?.state).toBe('queued');
+    const pending = await dbWorker
+      .selectFrom('cg.permission_change_request')
+      .select(['kind', 'status', 'payload'])
+      .where('tenant_id', '=', county)
+      .where(sql<boolean>`payload->>'accountId' = ${lee}`)
+      .execute();
+    expect(pending.map((p) => [p.kind, p.status])).toEqual([['assign_role', 'pending']]);
+    expect(
+      await dbWorker
+        .selectFrom('cg.role_assignment')
+        .select('id')
+        .where('account_id', '=', lee!)
+        .execute(),
+    ).toEqual([]);
+
+    // A role they hold is taken away with a reason; one they do not hold is answered.
+    const role = { id: roleId };
+    await withTenant(dbWorker, { tenantId: county }, (trx) =>
+      trx
+        .insertInto('cg.role_assignment')
+        .values({
+          tenant_id: county,
+          account_id: lee!,
+          role_id: role.id,
+          granted_by: randomUUID(),
+          approved_by: randomUUID(),
+        } as never)
+        .execute(),
+    );
+    const revoke = await command(
+      'admin',
+      `/role revoke ${roleName} from:exercise-lee-${run}@example.org`,
+    );
+    expect(revoke.status, revoke.message).toBe('awaiting_confirmation');
+    expect((await confirm('admin', revoke, reason)).body['status']).toBe('succeeded');
+    const held = await dbWorker
+      .selectFrom('cg.role_assignment')
+      .select(['status', 'revoke_reason'])
+      .where('account_id', '=', lee!)
+      .executeTakeFirstOrThrow();
+    expect(held).toEqual({ status: 'revoked', revoke_reason: 'Exercise: left the agency' });
+    const again = await command(
+      'admin',
+      `/role revoke ${roleName} from:exercise-lee-${run}@example.org`,
+    );
+    expect(again.status).toBe('not_found');
+    expect(again.message).toContain('do not hold the role');
+    await phases([1, 2, 3]);
   });
 });

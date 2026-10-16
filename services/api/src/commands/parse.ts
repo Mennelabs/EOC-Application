@@ -82,6 +82,10 @@ const VERBS: Record<string, string> = {
   badge: 'badge',
   credencial: 'badge',
   gafete: 'badge',
+  account: 'account',
+  cuenta: 'account',
+  role: 'role',
+  rol: 'role',
   help: 'help',
   ayuda: 'help',
 };
@@ -254,6 +258,30 @@ const BADGE_OUTCOMES: Record<string, string> = {
   entregada: 'handed_out',
 };
 const BADGE_USAGE = '/badge <person> <printed|failed <why>|handed out>';
+
+/** CMD-18: what the window may do to an account, as the Accounts screen does. */
+const ACCOUNT_STEPS: Record<string, string> = {
+  suspend: 'suspend',
+  suspender: 'suspend',
+  deactivate: 'deactivate',
+  desactivar: 'deactivate',
+  activate: 'activate',
+  reactivate: 'activate',
+  activar: 'activate',
+  reactivar: 'activate',
+};
+const ROLE_STEPS: Record<string, 'request' | 'revoke'> = {
+  request: 'request',
+  give: 'request',
+  solicitar: 'request',
+  pedir: 'request',
+  revoke: 'revoke',
+  remove: 'revoke',
+  quitar: 'revoke',
+  revocar: 'revoke',
+};
+const ROLE_USAGE =
+  '/role request <role> to:<name or email> | /role revoke <role> from:<name or email>';
 
 /** CMD-15: the review queue's states and filters. */
 const REPORT_FILTERS: Record<string, [string, string | boolean]> = {
@@ -851,6 +879,27 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
         });
       }
       return usage('Whose badge, and what happened to it?', BADGE_USAGE);
+    }
+
+    // CMD-18: the last word is what happens to the account; everything before it names it.
+    case 'account': {
+      const step = ACCOUNT_STEPS[norm(words[words.length - 1] ?? '')];
+      const ref = words.slice(0, -1).join(' ').trim();
+      if (!step || !ref)
+        return usage(
+          'Which account, and suspend, deactivate or activate?',
+          '/account <name or email> <suspend|deactivate|activate>',
+        );
+      return ok(`account.${step}`, {}, ref, 'account');
+    }
+
+    // CMD-18: a role is requested (a second administrator approves it) or taken away.
+    case 'role': {
+      const step = ROLE_STEPS[norm(words[0] ?? '')];
+      const role = words.slice(1).join(' ').trim();
+      const who = (step === 'request' ? pairs['to'] : (pairs['from'] ?? pairs['desde'])) ?? '';
+      if (!step || !role || !who.trim()) return usage('Which role, and for whom?', ROLE_USAGE);
+      return ok(`role.${step}`, { role }, who.trim(), 'account');
     }
 
     case 'resources': {

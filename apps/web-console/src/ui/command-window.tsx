@@ -168,6 +168,13 @@ const recordHref = (r: { kind: string; id: string }): string | null => {
       return '/console/personnel';
     case 'resource':
       return '/console/resources';
+    case 'account':
+      return '/console/accounts';
+    // ADM-05: a requested role waits on the second administrator's approvals screen.
+    case 'permission_change_request':
+      return '/console/approvals';
+    case 'role_assignment':
+      return '/console/roles';
     // CMD-16: an export is listed where it was asked for.
     case 'ida_package':
       return '/console/declaration';

@@ -529,6 +529,37 @@ const RECORDS: Record<
     },
     was: (r) => ({ reviewAt: str(r['reviewAt']), expiresAt: str(r['expiresAt']) }),
   },
+  // CMD-18: a staff account by its exact email, or by its name; the plan names it, not the email.
+  account: {
+    list: (ref) => (ref.trim() ? '/accounts?limit=200' : null),
+    one: (id) => `/accounts/${id}`,
+    label: (r) => `${str(r['displayName'])} (${str(r['status'])})`,
+    pick: (rows, ref) => {
+      const want = ref.trim().toLowerCase();
+      const byEmail = rows.filter((r) => str(r['email']).toLowerCase() === want);
+      if (byEmail.length) return byEmail;
+      const exact = rows.filter((r) => str(r['displayName']).toLowerCase() === want);
+      return exact.length
+        ? exact
+        : rows.filter((r) => str(r['displayName']).toLowerCase().includes(want));
+    },
+    noun: 'account',
+  },
+  // CMD-18: a role by its name or key, as the Permissions screen lists them.
+  role: {
+    list: (ref) => (ref.trim() ? '/roles?limit=200' : null),
+    one: (id) => `/roles/${id}`,
+    label: (r) => str(r['name']),
+    pick: (rows, ref) => {
+      const want = ref.trim().toLowerCase();
+      const live = rows.filter((r) => r['status'] === 'active');
+      const exact = live.filter((r) =>
+        [r['name'], r['key']].some((v) => str(v).toLowerCase() === want),
+      );
+      return exact.length ? exact : live.filter((r) => str(r['name']).toLowerCase().includes(want));
+    },
+    unversioned: true,
+  },
   // CMD-15: a resident's report by its reference code, as the review queue lists it.
   report: {
     list: (ref) =>

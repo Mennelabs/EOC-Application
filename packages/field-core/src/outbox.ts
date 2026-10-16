@@ -42,6 +42,8 @@ export const APPEND_ONLY_KINDS = new Set([
   'check_in.start',
   'check_in.end',
   'team.status',
+  // BRD:FR-03.05: what the phone allows, with its time; the server keeps the newest.
+  'check_in.location_permission',
 ]);
 
 export class Outbox {

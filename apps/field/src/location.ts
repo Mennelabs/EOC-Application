@@ -4,7 +4,9 @@
  * field-core's location policy (battery saver, standing still, urgent). The
  * phone uses location.native.ts (expo-location, a background task while
  * checked in, Q-07). Fixes go to the caller, which queues them through the
- * outbox as append-only facts.
+ * outbox as append-only facts. What the phone allows (granted, only while
+ * the app is open, denied, no position to be had) goes to `onPermission`
+ * so dispatch can be told (BRD:FR-03.05).
  */
 import type { LocationPolicy } from '@cg/field-core';
 
@@ -17,6 +19,9 @@ export interface Fix {
   recordedAt: string;
 }
 
+/** BRD:FR-03.05: what the phone lets the app do with location on this shift. */
+export type LocationPermission = 'granted' | 'foreground_only' | 'denied' | 'unavailable';
+
 let watchId: number | null = null;
 let last: Fix | null = null;
 
@@ -27,11 +32,17 @@ export function lastFix(): Fix | null {
 export async function startLocation(
   policy: LocationPolicy,
   onFix: (f: Fix) => void,
+  onPermission: (p: LocationPermission) => void = () => undefined,
 ): Promise<boolean> {
   await stopLocation();
-  if (!policy.enabled || typeof navigator === 'undefined' || !navigator.geolocation) return false;
+  if (!policy.enabled) return false;
+  if (typeof navigator === 'undefined' || !navigator.geolocation) {
+    onPermission('unavailable');
+    return false;
+  }
   watchId = navigator.geolocation.watchPosition(
     (p) => {
+      onPermission('granted');
       last = {
         lat: p.coords.latitude,
         lon: p.coords.longitude,
@@ -42,7 +53,8 @@ export async function startLocation(
       };
       onFix(last);
     },
-    () => undefined, // denied or unavailable: the indicator says so; work goes on without a position
+    // Denied or no position: the phone and dispatch are told; work goes on without a position.
+    (err) => onPermission(err.code === err.PERMISSION_DENIED ? 'denied' : 'unavailable'),
     {
       enableHighAccuracy: policy.accuracy === 'high',
       maximumAge: policy.intervalS * 1000,

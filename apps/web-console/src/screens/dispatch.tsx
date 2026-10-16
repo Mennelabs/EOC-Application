@@ -35,6 +35,8 @@ export interface BoardTeam {
   statusAt: string | null;
   suggestedStatus: string | null;
   checkedInCount: number;
+  /** BRD:FR-03.05: members whose phone blocks location. */
+  locationBlocked: number;
   memberCount: number;
   checkInDueAt: string | null;
   position: (Point & { accuracyM: number | null; recordedAt: string; stale: boolean }) | null;
@@ -983,6 +985,9 @@ export function DispatchScreen() {
                       {t.position
                         ? `${t.position.lat.toFixed(4)}, ${t.position.lon.toFixed(4)}${t.position.stale ? ' (old)' : ''}`
                         : 'Not shared'}
+                      {t.locationBlocked > 0
+                        ? ` · location blocked on ${t.locationBlocked} ${t.locationBlocked === 1 ? 'phone' : 'phones'}`
+                        : ''}
                     </td>
                     <td>
                       {t.assignments.map((a) => `${a.reference} (${label(a.state)})`).join(', ') ||

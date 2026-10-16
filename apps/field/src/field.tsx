@@ -48,7 +48,13 @@ import { takePhoto } from './camera';
 import * as auth from './auth';
 import { loadConfig, type FieldConfig } from './config';
 import { deviceLocale, LocaleContext, translate, type Locale, type MessageKey } from './i18n';
-import { currentFix, startLocation, stopLocation, type Fix } from './location';
+import {
+  currentFix,
+  startLocation,
+  stopLocation,
+  type Fix,
+  type LocationPermission,
+} from './location';
 import { deviceLanguage, loadPrefs, savePrefs } from './prefs';
 import { defaultSettings, themeFor, type Settings, type Theme } from './theme';
 import * as vault from './vault';
@@ -123,6 +129,8 @@ interface FieldState {
   photos: PhotoDoc[];
   timer: TimerState | null;
   fix: Fix | null;
+  /** BRD:FR-03.05: what the phone allows with location on this shift; null until known. */
+  locationPermission: LocationPermission | null;
   policy: LocationPolicy;
   notice: string | null;
   can: (action: string) => boolean;
@@ -263,6 +271,9 @@ export function FieldProvider({ children }: { children: ReactNode }) {
   const [photos, setPhotos] = useState<PhotoDoc[]>([]);
   const [timer, setTimer] = useState<TimerState | null>(null);
   const [fix, setFix] = useState<Fix | null>(null);
+  const [locationPermission, setLocationPermission] = useState<LocationPermission | null>(null);
+  /** The last permission dispatch was told, so the same answer is not queued again. */
+  const toldPermission = useRef<LocationPermission | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [urgent, setUrgent] = useState(false);
 
@@ -450,10 +461,25 @@ export function FieldProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (phase !== 'ready') return;
     let flush: ReturnType<typeof setInterval> | null = null;
-    void startLocation(policy, (f) => {
-      setFix(f);
-      fixes.current.push(f);
-    });
+    void startLocation(
+      policy,
+      (f) => {
+        setFix(f);
+        fixes.current.push(f);
+      },
+      // BRD:FR-03.05: a blocked phone is said to dispatch through the outbox, once per change.
+      (p) => {
+        setLocationPermission(p);
+        if (toldPermission.current === p || !loop.current) return;
+        toldPermission.current = p;
+        void loop.current.outbox
+          .enqueue({
+            kind: 'check_in.location_permission',
+            body: { permission: p, observedAt: new Date().toISOString() },
+          })
+          .then(kick);
+      },
+    );
     if (policy.enabled)
       flush = setInterval(() => {
         const batch = thinFixes(fixes.current, policy, new Date(), distanceM);
@@ -926,6 +952,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
     photos,
     timer,
     fix,
+    locationPermission,
     policy,
     notice,
     can,

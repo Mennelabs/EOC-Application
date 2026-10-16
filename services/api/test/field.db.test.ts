@@ -476,6 +476,119 @@ describe.skipIf(!appUrl || !workerUrl)(
         .execute();
     });
 
+    it('BRD:FR-03.05: an old position is flagged stale; a phone that blocks location is told to dispatch on the check-in and the board, through the field queue; an older answer is ignored', async () => {
+      const county = tenants['county']!;
+      // Someone on the same team whose last position is 40 minutes old.
+      const other = await withTenant(dbWorker, { tenantId: county }, async (trx) => {
+        const p = await trx
+          .insertInto('cg.personnel')
+          .values({ tenant_id: county, name: 'Exercise quiet phone' })
+          .returning('id')
+          .executeTakeFirstOrThrow();
+        const c = await trx
+          .insertInto('cg.check_in')
+          .values({
+            tenant_id: county,
+            personnel_id: p.id,
+            event_id: eventId,
+            team_id: teamId,
+            method: 'console',
+          })
+          .returning('id')
+          .executeTakeFirstOrThrow();
+        const at = new Date(Date.now() - 40 * 60_000);
+        await sql`select cg.ensure_position_partition(${at.toISOString().slice(0, 10)}::date)`.execute(
+          trx,
+        );
+        await trx
+          .insertInto('cg.position')
+          .values({
+            tenant_id: county,
+            check_in_id: c.id,
+            personnel_id: p.id,
+            team_id: teamId,
+            geom: sql`ST_SetSRID(ST_MakePoint(-90.9, 38.79), 4326)`,
+            recorded_at: at,
+            source: 'app',
+          } as never)
+          .execute();
+        return { personnelId: p.id, checkInId: c.id };
+      });
+      try {
+        const latest = (
+          await call('priya', 'GET', `/api/v1/positions/latest?eventId=${eventId}&staleMinutes=15`)
+        ).json<Position[]>();
+        expect(latest.find((p) => p.personnelId === other.personnelId)?.stale).toBe(true);
+        expect(latest.find((p) => p.personnelId === volunteerPersonnelId)?.stale).toBe(false);
+
+        // The phone says it may not read location, through the field queue as the app sends it.
+        const denied = await call('volunteer', 'POST', '/api/v1/field/commands', {
+          commands: [
+            {
+              id: randomUUID(),
+              kind: 'check_in.location_permission',
+              body: { permission: 'denied', observedAt: new Date().toISOString() },
+            },
+          ],
+        });
+        expect(denied.status, denied.body).toBe(200);
+        expect(denied.json<{ results: { result: string }[] }>().results[0]!.result).toBe('applied');
+        const seen = (
+          await call('priya', 'GET', `/api/v1/check-ins?eventId=${eventId}&open=true`)
+        ).json<(CheckIn & { locationPermission: string | null })[]>();
+        expect(seen.find((c) => c.id === checkIn.id)?.locationPermission).toBe('denied');
+        const board = await call('priya', 'GET', `/api/v1/dispatch/board?eventId=${eventId}`);
+        expect(board.status, board.body).toBe(200);
+        const team = board
+          .json<{ teams: { id: string; locationBlocked: number }[] }>()
+          .teams.find((t) => t.id === teamId)!;
+        expect(team.locationBlocked).toBe(1);
+
+        // An answer older than the one kept changes nothing; a newer one clears it.
+        const older = await call(
+          'volunteer',
+          'POST',
+          '/api/v1/check-ins/current/location-permission',
+          {
+            permission: 'granted',
+            observedAt: new Date(Date.now() - 3_600_000).toISOString(),
+          },
+        );
+        expect(older.json<{ locationPermission: string }>().locationPermission).toBe('denied');
+        const granted = await call(
+          'volunteer',
+          'POST',
+          '/api/v1/check-ins/current/location-permission',
+          {
+            permission: 'granted',
+            observedAt: new Date().toISOString(),
+          },
+        );
+        expect(granted.json<{ locationPermission: string }>().locationPermission).toBe('granted');
+        const after = (await call('priya', 'GET', `/api/v1/dispatch/board?eventId=${eventId}`))
+          .json<{ teams: { id: string; locationBlocked: number }[] }>()
+          .teams.find((t) => t.id === teamId)!;
+        expect(after.locationBlocked).toBe(0);
+        // Only the person checked in says it, never someone else.
+        expect(
+          (
+            await call('priya', 'POST', '/api/v1/check-ins/current/location-permission', {
+              permission: 'denied',
+              observedAt: new Date().toISOString(),
+            })
+          ).status,
+        ).toBeGreaterThanOrEqual(400);
+      } finally {
+        await withTenant(dbWorker, { tenantId: county }, (trx) =>
+          trx
+            .updateTable('cg.check_in')
+            .set({ ended_at: new Date(), end_reason: 'coordinator' })
+            .where('id', '=', other.checkInId)
+            .execute(),
+        );
+      }
+    });
+
     it('FLD-03: a coordinator sets or replaces the staging check-in code of an event; a replaced code stops working at once; codes are unique in the county; a role without the grant cannot', async () => {
       const county = tenants['county']!;
       const staging = (

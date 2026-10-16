@@ -87,6 +87,14 @@ export default function Home() {
           </Alert>
         ) : null}
         <Body>{policy.enabled ? `● ${t('home.sharing')}` : `○ ${t('home.notSharing')}`}</Body>
+        {/* BRD:FR-03.05: a phone that blocks location says so here, and dispatch is told. */}
+        {policy.enabled && f.locationPermission === 'denied' ? (
+          <Alert tone="warn">{t('home.locationDenied')}</Alert>
+        ) : policy.enabled && f.locationPermission === 'unavailable' ? (
+          <Alert tone="warn">{t('home.locationUnavailable')}</Alert>
+        ) : policy.enabled && f.locationPermission === 'foreground_only' ? (
+          <Body muted>{t('home.locationForeground')}</Body>
+        ) : null}
         {timer ? (
           <View style={{ gap: 8 }}>
             <Body live>

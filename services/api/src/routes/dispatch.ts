@@ -71,6 +71,8 @@ const boardTeam = z.object({
   checkedInCount: z.number().int(),
   memberCount: z.number().int(),
   checkInDueAt: z.string().nullable(),
+  /** BRD:FR-03.05: members checked in whose phone says it may not read location. */
+  locationBlocked: z.number().int(),
   /** Null when the caller may not read positions or nobody on the team is sharing (DSP-08). */
   position: point
     .extend({ accuracyM: z.number().nullable(), recordedAt: z.string(), stale: z.boolean() })
@@ -664,7 +666,14 @@ export const dispatchRoutes =
           const open = teamIds.length
             ? await trx
                 .selectFrom('cg.check_in')
-                .select(['team_id', sql<string>`count(*)`.as('n')])
+                .select([
+                  'team_id',
+                  sql<string>`count(*)`.as('n'),
+                  // BRD:FR-03.05: sharing on, but the phone says it cannot read location.
+                  sql<string>`count(*) filter (where location_sharing and location_permission in ('denied', 'unavailable'))`.as(
+                    'blocked',
+                  ),
+                ])
                 .where('team_id', 'in', teamIds)
                 .where('ended_at', 'is', null)
                 .groupBy('team_id')
@@ -864,7 +873,8 @@ export const dispatchRoutes =
 
           const teamsOut = teams.map((t): z.infer<typeof boardTeam> => {
             const st = statuses.get(t.id) ?? null;
-            const checkedIn = Number(open.find((o) => o.team_id === t.id)?.n ?? 0);
+            const openRow = open.find((o) => o.team_id === t.id);
+            const checkedIn = Number(openRow?.n ?? 0);
             const due =
               st && checkedIn > 0
                 ? new Date(st.at.getTime() + t.check_in_interval_minutes * 60_000)
@@ -885,6 +895,7 @@ export const dispatchRoutes =
               suggestedStatus:
                 (st?.suggested as (typeof teamStatuses)[number] | null | undefined) ?? null,
               checkedInCount: checkedIn,
+              locationBlocked: Number(openRow?.blocked ?? 0),
               memberCount: Number(members.find((m) => m.team_id === t.id)?.n ?? 0),
               checkInDueAt: iso(due),
               position: positions.get(t.id) ?? null,

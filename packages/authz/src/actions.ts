@@ -46,7 +46,12 @@ export const actions = {
     consequential: true,
   }),
   'license.read': a('read', 'license', 'Read subscription and covered jurisdictions'),
-  'license.write': a('admin', 'license', 'Set subscription tier and term', { consequential: true }),
+  // SCL-10: contracts are the vendor's record, set by the operator command
+  // (services/worker/scripts/license.ts); no county role reaches this through a wildcard.
+  'license.write': a('admin', 'license', 'Set subscription tier and term', {
+    consequential: true,
+    explicit: true,
+  }),
 
   'dsa.read': a('read', 'data_sharing_agreement', 'Read data-sharing agreements'),
   'dsa.create': a('write', 'data_sharing_agreement', 'Draft an agreement with another tenant'),

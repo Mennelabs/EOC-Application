@@ -5,9 +5,11 @@
  * audit, emergency access, retention) and the layer-3 and layer-4 screens the
  * journeys pass by (resources, partner agreements, board replay, shelters,
  * volunteer reception, reminders, field devices, messages to the field, net
- * control, badges). Each one opens with its heading, settles without an
- * error, passes axe with WCAG 2.2 AA rules and, on the phone, reflows without
- * sideways scrolling (ACC-07). Two screens also check what they promise:
+ * control, badges), and the subscription (SCL-10). Each one opens with its
+ * heading, settles without an error, passes axe with WCAG 2.2 AA rules and,
+ * on the phone, reflows without sideways scrolling (ACC-07). Some screens
+ * also check what they promise: the subscription says resident reports are
+ * never counted or capped and shows the state's contract over the county;
  * retention reads in years and days (SEC-13), and an overdue reminder says so
  * in words and a symbol, not by colour or sound (FR-09.05). A badge photo
  * taken in the console waits for a second person (BRD:FR-13.01). A role refused a
@@ -46,6 +48,7 @@ const SCREENS: [path: string, heading: string][] = [
   ['net-control', 'Net control log'],
   ['badges', 'Badges'],
   ['roster', 'Roster and check-in'],
+  ['subscription', 'Subscription'],
 ];
 
 /** Opens a screen and waits until it has loaded: heading shown, nothing still loading. */
@@ -92,6 +95,17 @@ test.describe('every console screen, one by one', () => {
             '30 days',
           );
           await expect(page.getByText(/null days|0 years/)).toHaveCount(0);
+        }
+
+        if (path === 'subscription') {
+          // SCL-10: the state's coalition contract covers the county, and the screen says
+          // resident reports are never counted or capped, whatever the plan.
+          await expect(
+            page.getByRole('heading', { name: 'Resident reports are never counted or capped' }),
+          ).toBeVisible();
+          await expect(
+            page.getByRole('row').filter({ hasText: 'Covered by Missouri (exercise tenant)' }),
+          ).toContainText('State coalition (exercise)');
         }
 
         if (path === 'roster') {

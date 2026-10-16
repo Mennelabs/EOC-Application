@@ -343,10 +343,10 @@
     "Per-tenant configuration without code changes; infrastructure as code for the cloud is deferred (Gov)."
   ],
   "SCL-10": [
-    "partial",
-    "cg.license (0002)",
-    "",
-    "Stored; no metering by design (intake never capped); administration UI later."
+    "pass",
+    "cg.license (0002); 0106 license_coverage() and covers check; routes/license.ts (GET /license, read only); screens/subscription.tsx; worker scripts/license.ts (operator writes, audited); license.write explicit; seed contracts",
+    "services/api/test/license.db.test.ts (coverage through a state contract, other members never named, covers only members, audit, surge of 30 reports accepted with no contract in force); services/api/test/license.test.ts (no code but the view and the operator command reads a contract; no role can write one); tests/e2e/console-screens.spec.ts (axe, reflow)",
+    "Tier, term and covered jurisdictions stored per tenant; a state or coalition contract covers member jurisdictions and the county sees it. Never metered or capped: intake never reads a contract. Tier names and population breakpoints deferred (Section 21, 2026-10-12): the tier is kept as the contract states it."
   ],
   "SCL-11": [
     "pass",

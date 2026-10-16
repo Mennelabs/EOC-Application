@@ -42,6 +42,7 @@ import { DiscoveryScreen } from './screens/discovery.tsx';
 import { FemaMappingsScreen } from './screens/fema-mappings.tsx';
 import { IntegrationsScreen } from './screens/integrations.tsx';
 import { SsoScreen } from './screens/sso.tsx';
+import { SubscriptionScreen } from './screens/subscription.tsx';
 import { MetricsScreen } from './screens/metrics.tsx';
 import { JointAssessmentScreen } from './screens/joint-assessment.tsx';
 import { SharedDeclarationsScreen } from './screens/shared-declarations.tsx';
@@ -104,6 +105,7 @@ const routes = [
   { path: '/console/fema-mappings', label: 'FEMA form mappings', layer: 6 },
   { path: '/console/integrations', label: 'API keys and webhooks', layer: 6 },
   { path: '/console/sso', label: 'Single sign-on', layer: 1 },
+  { path: '/console/subscription', label: 'Subscription', layer: 1 },
   { path: '/console/facilities', label: 'Facility registry', layer: 7 },
   { path: '/console/facility-approvals', label: 'Facility approvals', layer: 7 },
   { path: '/console/recommendations', label: 'Recommendations', layer: 7 },
@@ -313,6 +315,8 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <IntegrationsScreen />;
       case '/console/sso':
         return <SsoScreen />;
+      case '/console/subscription':
+        return <SubscriptionScreen />;
       case '/console/facilities':
         return <FacilitiesScreen />;
       case '/console/facility-approvals':

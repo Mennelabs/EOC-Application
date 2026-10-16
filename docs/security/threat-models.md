@@ -140,6 +140,13 @@ Controls that every feature relies on are described once, in "Shared controls" b
 - **Hostile metadata:** metadata with a document type declaration or entities is refused before anyone sees it, and Keycloak parses the rest. The API never fetches a URL the administrator types (no server-side request forgery).
 - **Secrets:** the OIDC client secret is encrypted under the tenant key and never returned, logged or audited.
 
+## 15. Subscriptions (SCL-10)
+
+- **A county raising its own tier, or stretching its term:** contracts are written only by the vendor's operator command with the worker role. `license.write` is an explicit action, so a tenant administrator's wildcard grant never reaches it, and no shipped role holds it (`license.test.ts`).
+- **One county reading another's business:** a county sees a state or coalition contract only when it is on it. It learns the holder, tier, term and status, and which of its own jurisdictions are covered; other members are counted, not named. The read widens what the transaction may see to the county's ancestors for that one query and puts it back (migration 0106).
+- **A wrong coverage list:** the database refuses a contract that covers anything outside its holder's members, or one member twice.
+- **Billing used as a switch:** nothing reads a contract except the Subscription view and the operator command (`license.test.ts`), so an expired or cancelled contract can never stop a resident report (`license.db.test.ts`, SCL-06).
+
 ## Dynamic testing (DAST)
 
 `tests/e2e/dast.spec.ts` runs against the live stack on every push, as part of the end-to-end suite. It checks:

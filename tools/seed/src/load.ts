@@ -1248,6 +1248,60 @@ async function ensureJobAids(trx: Transaction<Database>, tenantId: string): Prom
   }
 }
 
+/**
+ * SCL-10: the exercise subscriptions (invented terms and tiers). The state's coalition contract
+ * covers its member jurisdictions; Westwind's own earlier contract has expired, so the
+ * Subscription screen shows both, and resident reports go on regardless. Added once.
+ */
+async function ensureLicenses(db: Kysely<Database>, tenantIds: Record<string, string>) {
+  const contracts = [
+    {
+      holder: 'state',
+      tier: 'State coalition (exercise)',
+      population_served: 6_100_000,
+      term_start: '2026-07-01',
+      term_end: '2027-06-30',
+      covers: ['region', 'county', 'city'],
+      status: 'active' as const,
+    },
+    {
+      holder: 'county',
+      tier: 'County, 25,000 to 100,000 people (exercise)',
+      population_served: 48_000,
+      term_start: '2025-07-01',
+      term_end: '2026-06-30',
+      covers: ['city'],
+      status: 'expired' as const,
+    },
+  ];
+  for (const c of contracts) {
+    const holder = tenantIds[c.holder];
+    if (!holder) continue;
+    await withTenant(db, { tenantId: holder }, async (trx) => {
+      const existing = await trx
+        .selectFrom('cg.license')
+        .select('id')
+        .where('tenant_id', '=', holder)
+        .where(sql<boolean>`term_start = ${c.term_start}::date`)
+        .executeTakeFirst();
+      if (existing) return;
+      await trx
+        .insertInto('cg.license')
+        .values({
+          tenant_id: holder,
+          tier: c.tier,
+          population_served: c.population_served,
+          term_start: c.term_start,
+          term_end: c.term_end,
+          covers_tenant_ids: c.covers.map((k) => tenantIds[k]).filter((x): x is string => !!x),
+          status: c.status,
+          created_by: SEED_ACTOR_A,
+        })
+        .execute();
+    });
+  }
+}
+
 export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
   const tenantIds: Record<string, string> = {};
   const accountIds: Record<string, string> = {};
@@ -1311,6 +1365,8 @@ export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
       }
     });
   }
+
+  await ensureLicenses(db, tenantIds);
 
   for (const member of cast) {
     const tenantId = tenantIds[member.tenant];

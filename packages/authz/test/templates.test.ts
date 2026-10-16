@@ -39,11 +39,14 @@ describe('shipped role templates (ADM-04)', () => {
     // posting 2026-10-15, REC-13) and the conversation scribe, which only frontline roles use
     // with a survivor's consent (FL-04). Batches from the command window are for those who
     // coordinate needs (CMD-30); public-records releases are for those who answer the requests
-    // (SEC-13); finding a survivor's report without their code is for frontline readers (FL-02).
+    // (SEC-13); finding a survivor's report without their code is for frontline readers (FL-02),
+    // and documents survivors share are for those who meet them and those who verify (FL-09).
     expect(p.deniedActions.sort()).toEqual([
       'casualty.record',
       'command.bulk',
       'discovery.review',
+      'document.capture',
+      'document.read',
       'facility.approve',
       'joint_assessment.validate',
       'mission.cji.link',

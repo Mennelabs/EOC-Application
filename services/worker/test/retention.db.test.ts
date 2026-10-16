@@ -74,6 +74,7 @@ describe.skipIf(!workerUrl)('retention sweeps by category (database-backed)', ()
         ['sharing', '7 years'],
         ['publications', '7 years'],
         ['field_records', '7 years'],
+        ['sessions', '90 days'],
       ])
         await trx
           .insertInto('cg.retention_policy')
@@ -462,6 +463,31 @@ describe.skipIf(!workerUrl)('retention sweeps by category (database-backed)', ()
           .execute();
       }
 
+      // The field change feed (sessions, 90 days): two old entries and a recent one.
+      for (const [k, at] of [
+        ['feedOld1', ago(120)],
+        ['feedOld2', ago(100)],
+        ['feedNew', ago(1)],
+      ] as const)
+        ids[k] = String(
+          (
+            await trx
+              .insertInto('cg.change_feed')
+              .values({
+                tenant_id: tenantId,
+                scope_kind: 'event',
+                scope_id: eventId,
+                record_type: 'mission',
+                record_id: randomUUID(),
+                record_version: 1,
+                op: 'upsert',
+                created_at: at,
+              })
+              .returning('seq')
+              .executeTakeFirstOrThrow()
+          ).seq,
+        );
+
       // Legal holds: one badge, one event, the safety category, a closed event and a mission.
       for (const scope of [
         { targetType: 'badge', targetId: ids['badgeHeld'] },
@@ -583,6 +609,23 @@ describe.skipIf(!workerUrl)('retention sweeps by category (database-backed)', ()
     expect(await exists('cg.assignment', ids['missionHeldAssignment']!)).toBe(true);
     expect(await exists('cg.mission', ids['missionDone']!)).toBe(true);
 
+    // The change feed: old entries go and the mark says how far, so a phone behind it starts over.
+    const feed = await db
+      .selectFrom('cg.change_feed')
+      .select('seq')
+      .where('tenant_id', '=', tenantId)
+      .execute();
+    const left = feed.map((f) => String(f.seq));
+    expect(left).toContain(ids['feedNew']);
+    expect(left).not.toContain(ids['feedOld1']);
+    expect(left).not.toContain(ids['feedOld2']);
+    const mark = await db
+      .selectFrom('cg.change_feed_pruned')
+      .select('through_seq')
+      .where('tenant_id', '=', tenantId)
+      .executeTakeFirstOrThrow();
+    expect(String(mark.through_seq)).toBe(ids['feedOld2']);
+
     const log = await db
       .selectFrom('cg.deletion_log')
       .select(['data_category', 'target_type', 'deleted_count'])
@@ -598,6 +641,7 @@ describe.skipIf(!workerUrl)('retention sweeps by category (database-backed)', ()
       ['field_records', 'service_log'],
       ['field_records', 'check_in'],
       ['field_records', 'assignment'],
+      ['sessions', 'change_feed'],
     ])
       expect(log.find((l) => l.target_type === table)?.data_category, table).toBe(category);
     expect(log.find((l) => l.target_type === 'safety_alert')).toBeUndefined();

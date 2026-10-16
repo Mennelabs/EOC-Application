@@ -141,6 +141,7 @@ export const photoProcess: TopicHandler = async (ctx, msg) => {
       'status',
       'content_type',
       'bytes',
+      'field_record_type',
     ])
     .where('id', '=', photoId)
     .executeTakeFirst();
@@ -182,7 +183,9 @@ export const photoProcess: TopicHandler = async (ctx, msg) => {
 
   // Sensitive regions through the image interface (PHO-07); never a severity rating (PHO-12).
   // The provider is called outside any transaction: a slow reply holds no connection.
+  // A document a survivor shared (FL-09) is never sent to an AI service.
   const detector = await asSystem(ctx.db, row.tenant_id, async (trx) => {
+    if (row.field_record_type === 'shared_document') return null;
     const feature = await trx
       .selectFrom('cg.ai_use_register')
       .select(['enabled', 'provider'])

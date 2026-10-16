@@ -746,5 +746,9 @@ test.describe('layer 7 console: the command window', () => {
     await expectNoViolations(page);
     await page.getByRole('link', { name: 'Open the report' }).click();
     await expect(page).toHaveURL(/\/console\/reports\//);
+    // FL-09: documents a survivor shared are shown only when asked for, and only to their readers.
+    await page.getByRole('button', { name: 'Show the documents they shared' }).click();
+    await expect(page.getByText('Documents are not shown to your role.')).toBeVisible();
+    await expectNoViolations(page);
   });
 });

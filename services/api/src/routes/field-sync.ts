@@ -359,6 +359,18 @@ export const fieldSyncRoutes =
         const q = request.query;
         const device = await request.tx((trx) => deviceState(trx, s.accountId, q.deviceId));
         return run(request, me, async (trx) => {
+          // SEC-13: changes below the pruned mark are gone; the phone downloads its area again.
+          const pruned = await trx
+            .selectFrom('cg.change_feed_pruned')
+            .select('through_seq')
+            .where('tenant_id', '=', me.tenantId)
+            .executeTakeFirst();
+          if (pruned && q.cursor < Number(pruned.through_seq))
+            throw new ApiError(
+              410,
+              'cursor_expired',
+              'This phone missed changes that are no longer kept. Download your area again.',
+            );
           const missionIds = await myMissionIds(trx, me);
           const eventIds = await myEventIds(trx, me);
           const rows = await trx

@@ -16,7 +16,7 @@ import {
   type SessionContext,
   type SummarySection,
 } from '@cg/intake';
-import { api, describeFailure } from '../api/client.ts';
+import { ApiFailure, api, describeFailure } from '../api/client.ts';
 import { DataTable, Field, Status, Toolbar, fmt } from '../ui/primitives.tsx';
 import { useList } from './admin.tsx';
 import { DEGREES, FEMA_MATRIX, draftDegreeReason, matrixColumn } from './fema-matrix.ts';
@@ -368,6 +368,75 @@ export function ReviewQueueScreen({ navigate }: { navigate: (to: string) => void
 }
 
 // ----------------------------------------------------------------- detail
+
+interface SharedDoc {
+  id: string;
+  kind: 'lease' | 'id' | 'insurance' | 'other';
+  consentMethod: 'spoken' | 'tapped';
+  consentLanguage: string;
+  consentText: string;
+  consentedAt: string;
+  takenBy: string | null;
+  status: string;
+  viewUrl: string | null;
+}
+const DOC_KIND: Record<SharedDoc['kind'], string> = {
+  lease: 'Lease or rental agreement',
+  id: 'ID',
+  insurance: 'Insurance letter',
+  other: 'Another document',
+};
+
+/**
+ * FL-09: documents the survivor chose to share. Shown only when asked for, to roles that hold
+ * document.read; every showing is audited, and each link lasts five minutes.
+ */
+function SharedDocuments({ reportId }: { reportId: string }) {
+  const [docs, setDocs] = useState<SharedDoc[] | 'hidden' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const show = async () => {
+    setError(null);
+    try {
+      setDocs(await api<SharedDoc[]>(`/reports/${reportId}/documents`));
+    } catch (e) {
+      if (e instanceof ApiFailure && e.status === 404) setDocs('hidden');
+      else setError(describeFailure(e));
+    }
+  };
+  return (
+    <section aria-labelledby="docs-h">
+      <h2 id="docs-h">Documents they shared</h2>
+      {docs === null ? (
+        <button type="button" onClick={() => void show()}>
+          Show the documents they shared
+        </button>
+      ) : docs === 'hidden' ? (
+        <p className="hint">Documents are not shown to your role.</p>
+      ) : docs.length === 0 ? (
+        <p>None.</p>
+      ) : (
+        <ul className="plain">
+          {docs.map((d) => (
+            <li key={d.id}>
+              <strong>{DOC_KIND[d.kind]}</strong>, shared {fmt(d.consentedAt)}
+              {d.takenBy ? ` with ${d.takenBy}` : ''}. They{' '}
+              {d.consentMethod === 'spoken' ? 'said' : 'tapped'} yes to: “
+              <span lang={d.consentLanguage}>{d.consentText}</span>”{' '}
+              {d.viewUrl ? (
+                <a href={d.viewUrl} target="_blank" rel="noopener noreferrer">
+                  Open the photo (new tab, link valid five minutes)
+                </a>
+              ) : (
+                <span className="hint">The photo is being prepared ({d.status}).</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {error ? <Status kind="error">{error}</Status> : null}
+    </section>
+  );
+}
 
 export function ReportDetailScreen({
   id,
@@ -722,6 +791,8 @@ export function ReportDetailScreen({
           </ul>
         )}
       </section>
+
+      <SharedDocuments reportId={report.id} />
 
       <Decisions report={report} run={run} sections={sections} photoCount={photos?.length ?? 0} />
 

@@ -259,6 +259,8 @@ export function FieldProvider({ children }: { children: ReactNode }) {
   const store = useRef<FieldStore | null>(null);
   const loop = useRef<SyncLoop | null>(null);
   const photoQueue = useRef<PhotoQueue | null>(null);
+  /** SEC-13: downloads the area again when the server pruned changes this phone missed. */
+  const areaLoader = useRef<(() => Promise<number | null>) | null>(null);
   const api = useRef<Api>(new Api(''));
   const fixes = useRef<Fix[]>([]);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -364,6 +366,8 @@ export function FieldProvider({ children }: { children: ReactNode }) {
       loop.current = new SyncLoop(s, api.current, {
         events: {
           onStatus: (st) => setSync({ ...st }),
+          // SEC-13: changes this phone missed were pruned; its area is downloaded again.
+          onResync: () => areaLoader.current?.() ?? Promise.resolve(null),
           onWipe: () => {
             void vault.wipeVault().then(() => auth.saveSession(null));
             store.current = null;
@@ -467,6 +471,55 @@ export function FieldProvider({ children }: { children: ReactNode }) {
     [refresh, kick],
   );
 
+  /** The area package written to the phone; its cursor, or null when it could not be read. */
+  const loadArea = async (): Promise<number | null> => {
+    const s = store.current;
+    if (!s) return null;
+    setAreaState('downloading');
+    let cursor: number | null = null;
+    try {
+      const pkg = await api.current.area(checkIn?.eventId ?? null, locale);
+      for (const a of pkg.assignments) {
+        await s.put('assignments', {
+          id: a.id,
+          version: a.version,
+          state: a.state,
+          missionId: a.mission.id,
+          reference: a.mission.reference,
+          teamId: a.teamId,
+          personnelId: a.personnelId,
+          syncState: 'received',
+        });
+        await s.put('missions', { ...a.mission, syncState: 'received' });
+      }
+      await s.clear('parcels');
+      for (const p of pkg.parcels) await s.put('parcels', { ...p });
+      for (const h of pkg.hazards) await s.put('hazards', { ...h, syncState: 'received' });
+      for (const x of pkg.sites) await s.put('sites', { ...x });
+      await s.clear('job_aids');
+      for (const j of pkg.jobAids) await s.put('job_aids', { ...j });
+      await s.setMeta('options', JSON.stringify({ ...defaultOptions, ...pkg.options }));
+      await s.setMeta(
+        'area',
+        JSON.stringify({
+          assignments: pkg.assignments.length,
+          parcels: pkg.parcels.length,
+          hazards: pkg.hazards.length,
+          asOf: pkg.asOf,
+        }),
+      );
+      setAreaState('ready');
+      cursor = pkg.cursor;
+    } catch {
+      setAreaState('failed');
+    }
+    await refresh();
+    return cursor;
+  };
+  useEffect(() => {
+    areaLoader.current = loadArea;
+  });
+
   const actions: FieldActions = {
     t,
     async signIn(realm) {
@@ -534,45 +587,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
       }
     },
     async downloadArea() {
-      const s = store.current;
-      if (!s) return;
-      setAreaState('downloading');
-      try {
-        const pkg = await api.current.area(checkIn?.eventId ?? null, locale);
-        for (const a of pkg.assignments) {
-          await s.put('assignments', {
-            id: a.id,
-            version: a.version,
-            state: a.state,
-            missionId: a.mission.id,
-            reference: a.mission.reference,
-            teamId: a.teamId,
-            personnelId: a.personnelId,
-            syncState: 'received',
-          });
-          await s.put('missions', { ...a.mission, syncState: 'received' });
-        }
-        await s.clear('parcels');
-        for (const p of pkg.parcels) await s.put('parcels', { ...p });
-        for (const h of pkg.hazards) await s.put('hazards', { ...h, syncState: 'received' });
-        for (const x of pkg.sites) await s.put('sites', { ...x });
-        await s.clear('job_aids');
-        for (const j of pkg.jobAids) await s.put('job_aids', { ...j });
-        await s.setMeta('options', JSON.stringify({ ...defaultOptions, ...pkg.options }));
-        await s.setMeta(
-          'area',
-          JSON.stringify({
-            assignments: pkg.assignments.length,
-            parcels: pkg.parcels.length,
-            hazards: pkg.hazards.length,
-            asOf: pkg.asOf,
-          }),
-        );
-        setAreaState('ready');
-      } catch {
-        setAreaState('failed');
-      }
-      await refresh();
+      await loadArea();
     },
     async weAreOk() {
       const s = store.current;

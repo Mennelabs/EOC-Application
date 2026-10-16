@@ -457,6 +457,51 @@ describe.skipIf(!appUrl || !workerUrl)('conversation scribe (database-backed)', 
     }
   });
 
+  it('GATE-08, AI-10: when the note model fails after the words were heard, the worker is told to write the note themselves; both calls are recorded and the recording kept', async () => {
+    provider = {
+      ...hearing,
+      llm: {
+        extract: (r) => fakeProvider.llm!.extract(r),
+        scribeNote: async () => {
+          throw new Error('model unavailable');
+        },
+      },
+    };
+    try {
+      const c = (await start('ana')).body['id'] as string;
+      await record('ana', c);
+      const failed = await call('ana', 'POST', `/scribe/sessions/${c}/draft`);
+      expect(failed.status).toBe(503);
+      expect(failed.body).toMatchObject({ code: 'ai_unavailable', retryable: true });
+      expect(String(failed.body['message'])).toContain('write the note yourself');
+      const r = await row(c);
+      expect(r.state).toBe('recorded');
+      expect(r.audio_object_key).not.toBeNull();
+      expect(r.transcript_enc).toBeNull();
+      expect(r.draft_enc).toBeNull();
+      const recorded = await dbWorker
+        .selectFrom('cg.ai_output')
+        .select(['feature', 'outcome'])
+        .where('target_id', '=', c)
+        .orderBy('feature')
+        .execute();
+      expect(recorded).toEqual([
+        { feature: 'scribe.note', outcome: 'error' },
+        { feature: 'scribe.transcription', outcome: 'ok' },
+      ]);
+      // The worker writes the note by hand: confirming works without a draft.
+      const state = await call('ana', 'GET', `/scribe/sessions/${c}`);
+      const typed = await call('ana', 'POST', `/scribe/sessions/${c}/confirm`, {
+        version: state.body['version'],
+        note: { needsHeard: ['Exercise: written by hand after the scribe failed'] },
+      });
+      expect(typed.status, JSON.stringify(typed.body)).toBe(200);
+      expect((await row(c)).audio_object_key).toBeNull();
+    } finally {
+      provider = hearing;
+    }
+  });
+
   it('FL:FR-23: with legal aid turned on, the note is only ever its author’s', async () => {
     await setConfig('scribe.legal_aid', true);
     const s = await start('attorney', { context: 'legal_aid', language: 'en' });

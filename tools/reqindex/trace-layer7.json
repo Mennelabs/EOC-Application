@@ -825,7 +825,7 @@
   "GATE-08": [
     "partial",
     "",
-    "docs/plans/layer-7-gates.md and layer-7-gate-08.md: every AI feature against confirmation, scope, injection defences, verified results and manual fallback, with the tests; J2 added the off and failing paths for review translation, extraction, scribe, field translation, discovery, declaration and public drafting, the hand-over refusal, the classifier and the detector",
-    "Remaining: field.voice_draft provider failure and the scribe note model failure are code only; per-suggestion confirm controls have no UI test; the evaluation suite has injection cases for extraction and the command window only; no image-borne injection test; listening to AI radio audio before air is a procedure."
+    "docs/plans/layer-7-gates.md and layer-7-gate-08.md: every AI feature against confirmation, scope, injection defences, verified results and manual fallback, with the tests; J2 added the off and failing paths for review translation, extraction, scribe, field translation, discovery, declaration and public drafting, the hand-over refusal, the classifier and the detector; 2026-10-16: scribe.db.test.ts (the note model failing), fieldwork.db.test.ts FLD-09 (the voice draft provider failing), packages/ai/test/ai.test.ts (GATE-08: hidden instructions for the scribe note, drafting, translation and the damage classifier in the evaluation set; a provider that follows one fails), tests/e2e/resident.spec.ts (GATE-08: each answer from the words waits for a yes; only a yes is submitted), tests/e2e/field.spec.ts (each drafted field waits for the volunteer; only the one used changes the assessment)",
+    "Remaining: listening to AI radio audio before air is a procedure; the sensitive-region detector has no image-borne injection case (bounded: a person clears every photo before the FEMA package); discovery's injection test is the route test, not an evaluation case."
   ]
 }

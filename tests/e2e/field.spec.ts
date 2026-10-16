@@ -525,7 +525,44 @@ test.describe('field app (web build)', () => {
       .getByRole('radiogroup', { name: 'Is power, water or gas out?' })
       .getByRole('radio', { name: 'Yes' })
       .click();
-    await page.getByLabel('Note (optional)').fill(tag);
+    // GATE-08, FLD-09, INT-13: each field drafted from the volunteer's words waits for a yes or
+    // no; only a yes changes the form. The stack has no AI provider (ADR-0043), so the draft
+    // reply is stood in for; the assessment itself goes to the real server.
+    const voiceDraftId = crypto.randomUUID();
+    await page.route('**/api/v1/field-assessments/draft', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          draftId: voiceDraftId,
+          drafts: [
+            { field: 'seen', value: 'tree_on_home', evidence: 'a tree came down on it' },
+            { field: 'water_inside', value: 'yes', evidence: 'water by the door' },
+          ],
+          injectionSuspected: false,
+          provider: { provider: 'stand-in', model: 'e2e' },
+          notice: 'A computer drafted these from your words. Check each one.',
+        }),
+      }),
+    );
+    const tree = page.getByRole('checkbox', { name: 'Tree on the home', exact: true });
+    await expect(tree).not.toBeChecked();
+    await page
+      .getByLabel('Note (optional)')
+      .fill(`${tag}: a tree came down on it, water by the door`);
+    await page.getByRole('button', { name: 'Fill in from my words' }).click();
+    await expect(page.getByText('You said: “a tree came down on it”')).toBeVisible();
+    await expect(page.getByText('Damage seen: Tree on the home')).toBeVisible();
+    await expect(page.getByText('Water got into the living area')).toBeVisible();
+    // Nothing is used until the volunteer answers each one.
+    await expect(tree).not.toBeChecked();
+    await expectNoViolations(page);
+    await page.getByRole('button', { name: 'Yes, use it' }).first().click();
+    await expect(tree).toBeChecked();
+    await page.getByRole('button', { name: 'No', exact: true }).click();
+    await expect(page.getByText('Used', { exact: true })).toBeVisible();
+    await expect(page.getByText('Not used', { exact: true })).toBeVisible();
+    await page.unroute('**/api/v1/field-assessments/draft');
     await expectNoViolations(page);
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(page.getByText(/Saved on this phone/)).toBeVisible();
@@ -540,14 +577,18 @@ test.describe('field app (web build)', () => {
             degree: string;
             observations: Record<string, unknown>;
           }[];
-          return list.find((a) => a.note === tag) ?? null;
+          return list.find((a) => a.note?.startsWith(tag)) ?? null;
         },
         { timeout: 60_000 },
       )
       .toMatchObject({
         degree: 'minor',
         observations: {
-          seen: ['roof'],
+          seen: ['roof', 'tree_on_home'],
+          // The water draft was turned down: the form keeps what the volunteer had.
+          water_inside: 'unknown',
+          voice_draft: voiceDraftId,
+          voice_used: ['seen:tree_on_home'],
           flood_depth_basement_in: 70,
           flood_depth_crawl_space_in: 4,
           occupancy: 'rent',

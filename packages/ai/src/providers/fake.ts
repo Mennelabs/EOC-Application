@@ -34,7 +34,7 @@ const INFO: ProviderInfo = { provider: 'fake', model: 'keyword-rules', version: 
 
 /** Text that tries to instruct the system rather than describe damage (AIG-02 test cases). */
 const INJECTION =
-  /\b(ignore (all |the )?(previous|above|prior) instructions|system prompt|you are now|approve (this|my) report|mark (this|it) as (approved|destroyed)|developer mode|<\/?(system|instruction)>)\b/i;
+  /\b(ignore (all |the )?(previous|above|prior) instructions|system prompt|you are now|approve (this|my) report|mark (this|it) as (approved|destroyed)|developer mode|<\/?(system|instruction)>|ignora (todas )?las instrucciones (anteriores|previas)|ahora eres|modo (de )?desarrollador|aprueba (este|mi) (informe|reporte))\b/i;
 
 type Rule = { re: RegExp; questionId: string; value: string | string[]; confidence: number };
 
@@ -303,8 +303,12 @@ export class FakeLanguageModel implements LanguageModel {
           text: `${f.label}: ${f.value ?? (request.language === 'es' ? 'aún no se sabe' : 'not known yet')}.`,
           factIds: [f.id],
         }));
+    // AIG-02: a fact whose words try to instruct the model is flagged; the draft check then refuses it.
+    const injectionSuspected = request.facts.some((f) =>
+      INJECTION.test(`${f.label} ${f.value ?? ''}`),
+    );
     return {
-      output: { sentences, injectionSuspected: false },
+      output: { sentences, injectionSuspected },
       provider: INFO,
       latencyMs: performance.now() - started,
     };

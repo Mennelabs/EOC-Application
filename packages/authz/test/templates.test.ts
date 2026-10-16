@@ -40,7 +40,8 @@ describe('shipped role templates (ADM-04)', () => {
     // with a survivor's consent (FL-04). Batches from the command window are for those who
     // coordinate needs (CMD-30); public-records releases are for those who answer the requests
     // (SEC-13); finding a survivor's report without their code is for frontline readers (FL-02),
-    // and documents survivors share are for those who meet them and those who verify (FL-09).
+    // and documents survivors share are for those who meet them and those who verify (FL-09);
+    // a health notice is approved by public health or the county's public voices (FL:FR-06).
     expect(p.deniedActions.sort()).toEqual([
       'casualty.record',
       'command.bulk',
@@ -48,6 +49,7 @@ describe('shipped role templates (ADM-04)', () => {
       'document.capture',
       'document.read',
       'facility.approve',
+      'health_notice.approve',
       'joint_assessment.validate',
       'mission.cji.link',
       'mission.cji.open',

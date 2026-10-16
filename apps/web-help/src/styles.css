@@ -403,3 +403,15 @@ footer {
   padding: 0 1rem;
   margin-block: 0.5rem;
 }
+
+/* FL:FR-06: health notices before the list; a border, not colour alone, sets them apart. */
+.health-notice {
+  border: 2px solid currentColor;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  margin-block: 0.75rem;
+}
+.notice-kind {
+  font-weight: 700;
+  margin: 0;
+}

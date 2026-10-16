@@ -340,6 +340,19 @@ export const actions = {
     'Offer a place for disaster use through the public form; it waits for county approval',
     { public: true },
   ),
+  // FL:FR-06: targeted boil-water and safety notices; a second person approves before anyone is told.
+  'health_notice.read': a('read', 'health_notice', 'Read health notices and who they would reach'),
+  'health_notice.draft': a(
+    'write',
+    'health_notice',
+    'Draft or change a boil-water or safety notice for an area',
+  ),
+  'health_notice.approve': a(
+    'admin',
+    'health_notice',
+    'Approve a health notice, which publishes it and tells residents in its area (never your own draft), or end one',
+    { explicit: true, consequential: true },
+  ),
   // FL:FR-20: a walk-up volunteer signs up through the link reception opened; reception completes it.
   'volunteer.self_register': a(
     'write',
@@ -838,4 +851,6 @@ export const SELF_REVIEW_ACTIONS: readonly string[] = [
   'joint_assessment.validate',
   // BRD:FR-13.01: whoever took a badge photo does not approve it.
   'personnel.photo.approve',
+  // FL:FR-06: whoever drafted a health notice does not approve it.
+  'health_notice.approve',
 ];

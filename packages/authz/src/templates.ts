@@ -369,6 +369,9 @@ const templates: readonly RoleTemplate[] = [
       g('account.*', ['contact']),
       g('personnel.*', ['contact']),
       g('role.read'),
+      // FL:FR-06: approves public health's notices; never one they drafted.
+      g('health_notice.read'),
+      g('health_notice.approve'),
     ],
   },
   {
@@ -389,6 +392,9 @@ const templates: readonly RoleTemplate[] = [
       g('definition.read'),
       g('official_report.read'),
       g('metric.read'),
+      // FL:FR-06: drafts or approves health notices with public health; never their own.
+      g('health_notice.*'),
+      g('health_notice.approve'),
     ],
   },
   {
@@ -1112,8 +1118,8 @@ const templates: readonly RoleTemplate[] = [
   ...frontline(
     'public_health_inspector',
     'Public and environmental health',
-    'Shelter and feeding-site inspections; illness counts in aggregate only (FL:FR-06, EQ-13).',
-    ['inspection.*', 'site.read'],
+    'Shelter and feeding-site inspections; illness counts in aggregate only; targeted boil-water and safety notices, approved by a second person (FL:FR-06, EQ-13).',
+    ['inspection.*', 'site.read', 'health_notice.*', 'health_notice.approve'],
   ),
   ...frontline(
     'animal_services',

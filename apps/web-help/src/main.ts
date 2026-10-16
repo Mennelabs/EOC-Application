@@ -57,6 +57,55 @@ interface Help {
   resources: Resource[];
   accessibility: { statement: string; supportPhone: string | null };
   notices: string[];
+  /** FL:FR-06: notices from public health in force, the visitor's area first. */
+  healthNotices?: HealthNotice[];
+}
+interface HealthNotice {
+  id: string;
+  kind: string;
+  title: string;
+  body: string;
+  lang: string;
+  areaLabel: string;
+  since: string;
+  expiresAt: string | null;
+  here: boolean;
+}
+
+/** FL:FR-06: each notice as an article with its kind, area and dates in words. */
+function healthNoticesSection(t: Strings, notices: HealthNotice[]): HTMLElement | null {
+  if (!notices.length) return null;
+  const fill = (text: string, values: Record<string, string>) =>
+    text.replace(/\{(\w+)\}/g, (_, k: string) => values[k] ?? '');
+  return el(
+    'section',
+    { class: 'health-notices', 'aria-labelledby': 'health-notices-h' },
+    el('h2', { id: 'health-notices-h' }, t.healthNotices),
+    ...notices.map((n) =>
+      el(
+        'article',
+        { class: 'health-notice', 'aria-labelledby': `hn-${n.id}` },
+        el(
+          'p',
+          { class: 'notice-kind' },
+          `${t.noticeKinds[n.kind] ?? n.kind}${n.here ? ` · ${t.forYourArea}` : ''}`,
+        ),
+        el('h3', { id: `hn-${n.id}`, ...(n.lang !== lang ? { lang: n.lang } : {}) }, n.title),
+        el('p', { class: 'hint' }, fill(t.noticeArea, { area: n.areaLabel })),
+        ...n.body
+          .split(/\n\s*\n/)
+          .map((p) => p.trim())
+          .filter(Boolean)
+          .map((p) => el('p', n.lang !== lang ? { lang: n.lang } : {}, p)),
+        el(
+          'p',
+          { class: 'hint' },
+          fill(t.noticeSince, { date: shortTime(n.since) }) +
+            (n.expiresAt ? ` · ${fill(t.noticeUntil, { date: shortTime(n.expiresAt) })}` : ''),
+        ),
+      ),
+    ),
+  );
 }
 interface Config {
   productName?: string;
@@ -291,6 +340,9 @@ function render(): void {
 
   const main = el('main', { id: 'main', tabindex: '-1' });
   app.append(main);
+  // FL:FR-06: health notices before the list, the visitor's area first.
+  const notices = data ? healthNoticesSection(t, data.healthNotices ?? []) : null;
+  if (notices) main.append(notices);
 
   // Search (PUB-07): ZIP, address or landmark; nothing typed is kept.
   const form = el('form', {

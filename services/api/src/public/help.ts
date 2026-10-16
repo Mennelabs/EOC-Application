@@ -9,6 +9,7 @@
  * carry a short public cache so a change reaches every channel inside the
  * two minutes PUB-01 allows. Pages are rendered by render.ts from plain data.
  */
+import { publicHealthNotices } from './health-notices.ts';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
@@ -79,7 +80,9 @@ export const helpRoutes =
         const helpPhone = (await configValue<string>(trx, 'intake.help_phone')) ?? null;
         const statement =
           (await configValue<string>(trx, 'help.accessibility_statement')) ?? T[lang].accessibility;
-        return { tenant, place, sites, resources, helpPhone, statement };
+        // FL:FR-06: boil-water and safety notices in force, the visitor's area first.
+        const healthNotices = await publicHealthNotices(trx, tenant.id, lang, place);
+        return { tenant, place, sites, resources, helpPhone, statement, healthNotices };
       });
     }
 
@@ -115,6 +118,7 @@ export const helpRoutes =
           })),
           accessibility: { statement: d.statement, supportPhone: d.helpPhone },
           notices: [T[lang].danger],
+          healthNotices: d.healthNotices,
           helpUrl: pageUrl(d.tenant.slug, lang),
         };
       },

@@ -2410,6 +2410,47 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     reported_by: { c: 'internal', r: 'field_records' },
     reported_personnel_id: { c: 'internal', r: 'field_records' },
   }),
+  // FL:FR-06: a targeted boil-water, do-not-use-water or safety notice from public health.
+  health_notice: table({
+    event_id: { c: 'internal', r: 'publications' },
+    kind: { c: 'public', r: 'publications', d: 'boil_water, do_not_use_water or safety' },
+    title_en: { c: 'public', r: 'publications' },
+    body_en: { c: 'public', r: 'publications' },
+    title_es: { c: 'public', r: 'publications' },
+    body_es: { c: 'public', r: 'publications' },
+    area_label: { c: 'public', r: 'publications', d: 'The area in words, as the public reads it' },
+    zips: { c: 'public', r: 'publications', d: 'ZIP codes the notice covers' },
+    center: { c: 'public', r: 'publications', d: 'Centre of a circle the notice covers' },
+    radius_m: { c: 'public', r: 'publications' },
+    status: { c: 'internal', r: 'publications', d: 'draft, active or ended' },
+    expires_at: { c: 'public', r: 'publications' },
+    approved_by: { c: 'internal', r: 'publications', d: 'ADM-05 G4: never the drafter' },
+    approved_at: { c: 'internal', r: 'publications' },
+    ended_by: { c: 'internal', r: 'publications' },
+    ended_at: { c: 'internal', r: 'publications' },
+    end_reason: { c: 'internal', r: 'publications', d: 'lifted or withdrawn' },
+    tell_ended: {
+      c: 'internal',
+      r: 'publications',
+      d: 'Whether residents told of the notice are told it ended',
+    },
+    sent_sms: { c: 'internal', r: 'publications', d: 'Texts queued when issued (count only)' },
+    sent_email: { c: 'internal', r: 'publications', d: 'Emails queued when issued (count only)' },
+    sent_at: { c: 'internal', r: 'publications' },
+    ended_sent_sms: { c: 'internal', r: 'publications' },
+    ended_sent_email: { c: 'internal', r: 'publications' },
+    ended_sent_at: { c: 'internal', r: 'publications' },
+  }),
+  // FL:FR-06: who was told of a notice, once per phase; a party and a channel, never a contact.
+  health_notice_recipient: table(
+    {
+      notice_id: { c: 'internal', r: 'comms' },
+      party_id: { c: 'internal', r: 'comms' },
+      phase: { c: 'internal', r: 'comms', d: 'issued or ended' },
+      channel: { c: 'internal', r: 'comms', d: 'sms or email' },
+    },
+    { omit: ['id', 'version', 'created_by', 'updated_at', 'updated_by'] },
+  ),
   // FL:FR-20: a link reception opens for an event; volunteers register themselves through it.
   volunteer_signup_link: table(
     {

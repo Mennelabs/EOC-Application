@@ -805,10 +805,10 @@
     "Debris pickup from resident reports is not linked; the Waze update is deferred (Waze for Cities agreement, plan §11) and its file stand-in is not built."
   ],
   "FL:FR-06": [
-    "partial",
-    "inspection with checklist answers and illness as an aggregate count only (0033, routes/field-records.ts)",
-    "services/api/test/fieldrecords.db.test.ts (FL:FR-06: an inspection keeps illness as a count; the table has no person column; the PIO refused)",
-    "Targeted boil-water and safety notices are not built."
+    "pass",
+    "inspection with checklist answers and illness as an aggregate count only (0033, routes/field-records.ts); targeted health notices: migration 0097 (cg.health_notice, cg.health_notice_recipient), routes/health-notices.ts (draft, reach as counts, approve by a second person with a reason, end as lifted or withdrawn), worker jobs/health-notices.ts (each resident in the area who agreed to be contacted told once, in their language; the end told to the same residents), templates health_notice and health_notice_ended, public/health-notices.ts on Find help with the visitor's area first, web-help notices section, console screens/health-notices.tsx",
+    "services/api/test/fieldrecords.db.test.ts (FL:FR-06: an inspection keeps illness as a count; the table has no person column; the PIO refused); services/api/test/health-notices.db.test.ts; services/worker/test/templates.test.ts; tests/e2e/console-screens.spec.ts (FL:FR-06)",
+    "Plan reading 30: a text only with SMS opt-in, an email only when email is how the resident asked to be reached; reach is counts only; the drafter never approves."
   ],
   "FL:FR-08": [
     "pass",

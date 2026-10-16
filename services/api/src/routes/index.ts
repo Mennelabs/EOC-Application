@@ -53,6 +53,7 @@ import { sharedRoutes } from './shared.ts';
 import { situationRoutes } from './situation.ts';
 import { tenantRoutes } from './tenants.ts';
 import { volunteerRoutes } from './volunteers.ts';
+import { healthNoticeRoutes } from './health-notices.ts';
 
 /** What the server gives the routes that talk to the broker, object storage or the AI provider (absent in tests: poll fallback, no map extracts). */
 export interface RouteDeps {
@@ -95,6 +96,8 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   missionRoutesWith(deps.missions),
   rosterRoutes,
   volunteerRoutes,
+  // FL:FR-06: targeted health notices, approved by a second person.
+  healthNoticeRoutes,
   fieldOpsRoutes,
   fieldAssessmentRoutes,
   fieldVoiceRoutes(deps.fieldVoice),

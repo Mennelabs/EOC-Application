@@ -190,6 +190,17 @@ export const STRINGS = {
       'If something on this page does not work for you, call the help line and we will help another way.',
     language: 'Language',
     updated: 'Page updated',
+    // FL:FR-06: health notices from public health.
+    healthNotices: 'Health notices',
+    forYourArea: 'For your area',
+    noticeArea: 'Area: {area}',
+    noticeSince: 'Since {date}',
+    noticeUntil: 'Until {date}',
+    noticeKinds: {
+      boil_water: 'Boil water before use',
+      do_not_use_water: 'Do not use the tap water',
+      safety: 'Safety notice',
+    } as Record<string, string>,
     offline: 'You are offline. Showing the last list we loaded.',
     loadFailed:
       'We could not load the list right now. Text SHELTER with your ZIP code or call the help line.',
@@ -384,6 +395,16 @@ export const STRINGS = {
       'Si algo en esta página no le funciona, llame a la línea de ayuda y le ayudaremos de otra manera.',
     language: 'Idioma',
     updated: 'Página actualizada',
+    healthNotices: 'Avisos de salud',
+    forYourArea: 'Para su zona',
+    noticeArea: 'Zona: {area}',
+    noticeSince: 'Desde {date}',
+    noticeUntil: 'Hasta {date}',
+    noticeKinds: {
+      boil_water: 'Hierva el agua antes de usarla',
+      do_not_use_water: 'No use el agua de la llave',
+      safety: 'Aviso de seguridad',
+    } as Record<string, string>,
     offline: 'Está sin conexión. Mostramos la última lista cargada.',
     loadFailed:
       'No pudimos cargar la lista ahora. Envíe REFUGIO con su código postal o llame a la línea de ayuda.',

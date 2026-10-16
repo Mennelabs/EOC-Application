@@ -1522,8 +1522,10 @@ export const siteRoutesWith =
      * text or their edit of an AI draft) as an audio file for a Travelers'
      * Information Station loop or an amateur radio net. The file opens by
      * saying the voice is computer-generated. It is kept with the script as
-     * spoken and the provider and model; the PIO listens to it before it goes
-     * on the air. Never a confidential site (PUB-05).
+     * spoken and the provider and model. It can always be played to listen;
+     * it is downloaded for air only after a person with the right to publish
+     * has played it to the end and cleared it, with a reason (GATE-08, AIG-01:
+     * the register's human checkpoint). Never a confidential site (PUB-05).
      */
     const VOICE_NOTICE = {
       en: 'This announcement is read by a computer-generated voice.',
@@ -1541,6 +1543,7 @@ export const siteRoutesWith =
       provider: z.string(),
       model: z.string(),
       createdAt: z.string(),
+      clearedForAir: z.object({ by: z.uuid(), at: z.string() }).nullable(),
     });
     const audioView = (r: Selectable<Database['cg.public_audio']>) => ({
       id: r.id,
@@ -1554,6 +1557,10 @@ export const siteRoutesWith =
       provider: r.provider,
       model: r.model,
       createdAt: new Date(r.created_at).toISOString(),
+      clearedForAir:
+        r.cleared_by && r.cleared_at
+          ? { by: r.cleared_by, at: new Date(r.cleared_at).toISOString() }
+          : null,
     });
     app.post(
       '/alerts/audio',
@@ -1672,9 +1679,72 @@ export const siteRoutesWith =
       },
     );
 
+    /**
+     * GATE-08: clearing for air. The console offers it only once the file has
+     * played to the end; the person says so, and gives a reason. Clearing again
+     * changes nothing.
+     */
+    app.post(
+      '/alerts/audio/:id/clear',
+      {
+        schema: {
+          tags: ['sites'],
+          params: uuidParam,
+          body: z.object({ heardToTheEnd: z.literal(true) }),
+          response: { 200: audioOut },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        const row = await request.tx((trx) =>
+          trx
+            .selectFrom('cg.public_audio')
+            .selectAll()
+            .where('id', '=', request.params.id)
+            .executeTakeFirst(),
+        );
+        if (!row) throw errors.notFound();
+        const site = await load(request, row.site_id);
+        await request.authorize('site.publish', resourceOf(site), { asNotFound: true });
+        if (row.cleared_at) return audioView(row);
+        const { reason } = request.confirmation();
+        const cleared = await request.tx(async (trx) => {
+          const r = await trx
+            .updateTable('cg.public_audio')
+            .set({ cleared_by: s.accountId, cleared_at: new Date(), updated_by: s.accountId })
+            .where('id', '=', row.id)
+            .where('cleared_at', 'is', null)
+            .returningAll()
+            .executeTakeFirst();
+          if (!r) throw errors.conflict(audioView(row));
+          await request.audit(trx, {
+            action: 'site.publish',
+            targetType: 'public_audio',
+            targetId: r.id,
+            reason,
+            changes: {
+              fields: [
+                { name: 'cleared_for_air', to: true },
+                { name: 'sha256', to: r.sha256 },
+              ],
+            },
+          });
+          return r;
+        });
+        return audioView(cleared);
+      },
+    );
+
     app.get(
       '/alerts/audio/:id/file',
-      { schema: { tags: ['sites'], params: uuidParam } },
+      {
+        schema: {
+          tags: ['sites'],
+          params: uuidParam,
+          // Listening is always possible; the file for air waits until it is cleared (GATE-08).
+          querystring: z.object({ for: z.enum(['listening', 'air']).default('air') }),
+        },
+      },
       async (request, reply) => {
         const s = account(request);
         await request.authorize('publication.read', { type: 'publication', tenantId: s.tenantId });
@@ -1686,6 +1756,13 @@ export const siteRoutesWith =
             .executeTakeFirst(),
         );
         if (!row) throw errors.notFound();
+        const forAir = request.query.for === 'air';
+        if (forAir && !row.cleared_at)
+          throw new ApiError(
+            409,
+            'not_cleared',
+            'Play this file to the end and clear it for air before you download it for broadcast.',
+          );
         if (!deps.objects)
           throw new ApiError(503, 'storage_unavailable', 'File storage is not available.');
         const obj = await deps.objects.client.send(
@@ -1697,7 +1774,7 @@ export const siteRoutesWith =
         const name = `${row.form === 'netReadout' ? 'net-readout' : 'radio-loop'}-${row.language}-${new Date(row.created_at).toISOString().slice(0, 10)}.${ext}`;
         return reply
           .header('content-type', row.mime_type)
-          .header('content-disposition', `attachment; filename="${name}"`)
+          .header('content-disposition', `${forAir ? 'attachment' : 'inline'}; filename="${name}"`)
           .header('x-content-sha256', row.sha256)
           .send(Buffer.from(bytes));
       },

@@ -739,15 +739,71 @@ describe.skipIf(!appUrl || !workerUrl)('AI drafting from facts (database-backed)
       headers: { authorization: 'Bearer pio' },
     });
     expect((listed.json() as { id: string }[]).map((x) => x.id)).toEqual([audio.id]);
-    const file = await app.inject({
-      url: `/api/v1/alerts/audio/${audio.id}/file`,
-      headers: { authorization: 'Bearer pio' },
+    // GATE-08, AIG-01: the file can be played to listen at once; for air it waits until a person
+    // who heard it to the end clears it, with a reason.
+    const fileFor = (purpose?: 'listening') =>
+      app.inject({
+        url: `/api/v1/alerts/audio/${audio.id}/file${purpose ? `?for=${purpose}` : ''}`,
+        headers: { authorization: 'Bearer pio' },
+      });
+    const listen = await fileFor('listening');
+    expect(listen.statusCode).toBe(200);
+    expect(listen.headers['content-type']).toBe('audio/wav');
+    expect(listen.headers['content-disposition']).toMatch(/^inline; filename="radio-loop-es-/);
+    expect(listen.rawPayload.subarray(0, 4).toString('ascii')).toBe('RIFF');
+    expect(listen.rawPayload.length).toBe(audio.bytes);
+    const early = await fileFor();
+    expect(early.statusCode).toBe(409);
+    expect((early.json() as { code: string }).code).toBe('not_cleared');
+    expect(made.json()).toMatchObject({ clearedForAir: null });
+    const clear = (
+      who: string,
+      headers: Record<string, string> = {},
+      payload: unknown = { heardToTheEnd: true },
+    ) =>
+      app.inject({
+        method: 'POST',
+        url: `/api/v1/alerts/audio/${audio.id}/clear`,
+        headers: { authorization: `Bearer ${who}`, 'idempotency-key': randomUUID(), ...headers },
+        payload: payload as Record<string, unknown>,
+      });
+    // Only someone who may publish the site clears it; never without saying it was heard, and a reason.
+    expect([403, 404]).toContain(
+      (await clear('author', { 'x-confirm': 'true', 'x-reason': 'x' })).statusCode,
+    );
+    expect(
+      (await clear('pio', { 'x-confirm': 'true', 'x-reason': 'x' }, { heardToTheEnd: false }))
+        .statusCode,
+    ).toBe(400);
+    expect((await clear('pio')).statusCode).toBe(428);
+    const cleared = await clear('pio', {
+      'x-confirm': 'true',
+      'x-reason': 'Played it through: it says what the script says',
     });
+    expect(cleared.statusCode, cleared.body).toBe(200);
+    expect(cleared.json()).toMatchObject({
+      id: audio.id,
+      clearedForAir: { by: subjects['pio']!.accountId, at: expect.any(String) },
+    });
+    // Clearing again changes nothing and records nothing more.
+    expect((await clear('pio', { 'x-confirm': 'true', 'x-reason': 'again' })).json()).toEqual(
+      cleared.json(),
+    );
+    const file = await fileFor();
     expect(file.statusCode).toBe(200);
     expect(file.headers['content-type']).toBe('audio/wav');
-    expect(file.headers['content-disposition']).toContain('radio-loop-es-');
-    expect(file.rawPayload.subarray(0, 4).toString('ascii')).toBe('RIFF');
+    expect(file.headers['content-disposition']).toMatch(/^attachment; filename="radio-loop-es-/);
     expect(file.rawPayload.length).toBe(audio.bytes);
+    const audited = await dbWorker
+      .selectFrom('cg.audit_event')
+      .select(['action', 'reason'])
+      .where('tenant_id', '=', county)
+      .where('target_id', '=', audio.id)
+      .where('action', '=', 'site.publish')
+      .execute();
+    expect(audited).toEqual([
+      { action: 'site.publish', reason: 'Played it through: it says what the script says' },
+    ]);
     const rec = await dbWorker
       .selectFrom('cg.ai_output')
       .select(['outcome', 'target_type', 'target_id', 'language'])

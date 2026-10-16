@@ -626,8 +626,8 @@
   ],
   "PUB-14": [
     "pass",
-    "services/api/src/public/alerts.ts drafts a Travelers' Information Station loop and an ARES/RACES net read-out per site change; POST /alerts/ai-draft (radio_script); POST /alerts/audio speaks an approved script with the AI voice (TextToSpeech, public.speech), saying the voice is computer-generated, kept in cg.public_audio (0067); console 'Radio audio'",
-    "services/api/test/help-units.test.ts (PUB-12, PUB-14), drafting.db.test.ts (PUB-14, AIG-01: off, made, listed, downloaded, recorded), packages/ai/test/openai.test.ts (PUB-14), tests/e2e/console-l7.spec.ts",
+    "services/api/src/public/alerts.ts drafts a Travelers' Information Station loop and an ARES/RACES net read-out per site change; POST /alerts/ai-draft (radio_script); POST /alerts/audio speaks an approved script with the AI voice (TextToSpeech, public.speech), saying the voice is computer-generated, kept in cg.public_audio (0067); the file plays for listening at once and is downloaded for air only once cleared by someone who may publish, after playing it to the end, with a reason (POST /alerts/audio/:id/clear, 0103; GATE-08); console 'Radio audio'",
+    "services/api/test/help-units.test.ts (PUB-12, PUB-14), drafting.db.test.ts (PUB-14, AIG-01, GATE-08: off, made, listed, listened, refused for air until cleared with a reason by the PIO, downloaded, recorded and audited), packages/ai/test/openai.test.ts (PUB-14), tests/e2e/console-l7.spec.ts (PIO journey: Clear off until the file has played to the end, cleared with a reason, downloaded for air, axe)",
     "Scripts and audio in English and Spanish, the launch languages."
   ],
   "CON-12": [
@@ -825,7 +825,7 @@
   "GATE-08": [
     "partial",
     "",
-    "docs/plans/layer-7-gates.md and layer-7-gate-08.md: every AI feature against confirmation, scope, injection defences, verified results and manual fallback, with the tests; J2 added the off and failing paths for review translation, extraction, scribe, field translation, discovery, declaration and public drafting, the hand-over refusal, the classifier and the detector; 2026-10-16: scribe.db.test.ts (the note model failing), fieldwork.db.test.ts FLD-09 (the voice draft provider failing), packages/ai/test/ai.test.ts (GATE-08: hidden instructions for the scribe note, drafting, translation and the damage classifier in the evaluation set; a provider that follows one fails), tests/e2e/resident.spec.ts (GATE-08: each answer from the words waits for a yes; only a yes is submitted), tests/e2e/field.spec.ts (each drafted field waits for the volunteer; only the one used changes the assessment)",
-    "Remaining: listening to AI radio audio before air is a procedure; the sensitive-region detector has no image-borne injection case (bounded: a person clears every photo before the FEMA package); discovery's injection test is the route test, not an evaluation case."
+    "docs/plans/layer-7-gates.md and layer-7-gate-08.md: every AI feature against confirmation, scope, injection defences, verified results and manual fallback, with the tests; J2 added the off and failing paths for review translation, extraction, scribe, field translation, discovery, declaration and public drafting, the hand-over refusal, the classifier and the detector; 2026-10-16: scribe.db.test.ts (the note model failing), fieldwork.db.test.ts FLD-09 (the voice draft provider failing), packages/ai/test/ai.test.ts (GATE-08: hidden instructions for the scribe note, drafting, translation and the damage classifier in the evaluation set; a provider that follows one fails), tests/e2e/resident.spec.ts (GATE-08: each answer from the words waits for a yes; only a yes is submitted), tests/e2e/field.spec.ts (each drafted field waits for the volunteer; only the one used changes the assessment); drafting.db.test.ts and console-l7.spec.ts (PUB-14: AI radio audio cleared for air only once played to the end, with a reason)",
+    "Remaining: the sensitive-region detector has no image-borne injection case (bounded: a person clears every photo before the FEMA package); discovery's injection test is the route test, not an evaluation case."
   ]
 }

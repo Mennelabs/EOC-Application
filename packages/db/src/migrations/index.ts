@@ -101,6 +101,7 @@ import * as m0099 from './0099_field_visit.ts';
 import * as m0100 from './0100_shelter_count.ts';
 import * as m0101 from './0101_reentry_pass.ts';
 import * as m0102 from './0102_resource_thumbnail.ts';
+import * as m0103 from './0103_public_audio_cleared.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -206,4 +207,5 @@ export const migrations: Record<string, Migration> = {
   '0100_shelter_count': m0100,
   '0101_reentry_pass': m0101,
   '0102_resource_thumbnail': m0102,
+  '0103_public_audio_cleared': m0103,
 };

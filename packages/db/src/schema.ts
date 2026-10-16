@@ -2589,6 +2589,9 @@ export interface PublicAudioTable extends Stamped {
   provider: string;
   model: string;
   ai_output_id: Uuid | null;
+  /** PUB-14, GATE-08: who heard the file to the end and cleared it for air. */
+  cleared_by: Uuid | null;
+  cleared_at: TsNullable;
 }
 
 export interface DiscoverySourceTable extends Stamped {

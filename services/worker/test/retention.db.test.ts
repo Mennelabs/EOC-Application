@@ -23,6 +23,8 @@ const bytes = (s: string) => Buffer.from(s);
 describe.skipIf(!workerUrl)('retention sweeps by category (database-backed)', () => {
   let db: Kysely<Database>;
   let tenantId: string;
+  /** The seeded county, read only: its retention categories are the product's defaults. */
+  let seededCounty: string;
   let adminId: string;
   let eventId: string;
   let heldEventId: string;
@@ -42,16 +44,42 @@ describe.skipIf(!workerUrl)('retention sweeps by category (database-backed)', ()
   beforeAll(async () => {
     db = createDb(workerUrl!, 2);
     const seeded = await loadSeed(db);
-    tenantId = seeded.tenants['county']!;
-    adminId = (
+    seededCounty = seeded.tenants['county']!;
+    // A county of its own: the shared seeded county stays as the browser journeys expect it.
+    tenantId = (
       await db
-        .selectFrom('cg.account')
-        .select('id')
-        .where('tenant_id', '=', tenantId)
-        .where('email', '=', 'admin@example.org')
+        .insertInto('cg.tenant')
+        .values({
+          kind: 'county',
+          parent_id: seeded.tenants['region']!,
+          slug: `exercise-retention-${tag}`,
+          name: `Exercise retention county ${tag}`,
+          status: 'provisioning',
+        })
+        .returning('id')
         .executeTakeFirstOrThrow()
     ).id;
+    adminId = randomUUID();
     await tx(async (trx) => {
+      // The product's defaults for the categories swept here (SEC-13).
+      for (const [category, keep] of [
+        ['drafts', '7 days'],
+        ['reminders', '1 year'],
+        ['child_records', '1 year'],
+        ['badges', '3 years'],
+        ['contacts', '3 years'],
+        ['safety', '7 years'],
+      ])
+        await trx
+          .insertInto('cg.retention_policy')
+          .values({
+            tenant_id: tenantId,
+            data_category: category!,
+            keep_for: keep!,
+            rule: 'duration',
+            note: 'Exercise: retention sweep test',
+          })
+          .execute();
       const ev = (name: string) =>
         trx
           .insertInto('cg.event')
@@ -253,6 +281,11 @@ describe.skipIf(!workerUrl)('retention sweeps by category (database-backed)', ()
           .where('id', 'in', holds)
           .execute(),
       );
+    await db
+      ?.updateTable('cg.tenant')
+      .set({ status: 'closed' })
+      .where('id', '=', tenantId)
+      .execute();
     await db?.destroy();
   });
 
@@ -260,7 +293,7 @@ describe.skipIf(!workerUrl)('retention sweeps by category (database-backed)', ()
     const categories = await db
       .selectFrom('cg.retention_policy')
       .select('data_category')
-      .where('tenant_id', '=', tenantId)
+      .where('tenant_id', '=', seededCounty)
       .execute();
     const known = new Set(categories.map((c) => c.data_category));
     for (const s of SWEEPS) expect(known, s.table).toContain(s.category);

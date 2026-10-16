@@ -228,6 +228,36 @@ describe('shorthand', () => {
     expect(parse('claim the food need')).toMatchObject({ ok: false, error: 'unsupported' });
   });
 
+  it('CMD-13, AC-C08: "/mission new" drafts a mission of a known kind; "/message" names a team and the words', () => {
+    expect(parse('/mission new welfare Check on the family at 14 Elm')).toMatchObject({
+      command: 'mission.draft',
+      args: { kind: 'welfare_check', summary: 'Check on the family at 14 Elm' },
+    });
+    expect(parse('/mision nueva escombros Calle 5 bloqueada')).toMatchObject({
+      command: 'mission.draft',
+      args: { kind: 'debris', summary: 'Calle 5 bloqueada' },
+    });
+    expect(parse('/mission new rescue now')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/mission new delivery')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/message FX-1 Water is safe to drink')).toMatchObject({
+      command: 'team.message',
+      ref: 'FX-1',
+      refKind: 'team',
+      args: { text: 'Water is safe to drink' },
+    });
+    expect(parse('/mensaje to:"Field Exercise Team" El agua es potable')).toMatchObject({
+      command: 'team.message',
+      ref: 'Field Exercise Team',
+      args: { text: 'El agua es potable' },
+    });
+    expect(parse('/message FX-1')).toMatchObject({ ok: false, error: 'usage' });
+    const added = CATALOG.filter((c) => ['mission.draft', 'team.message'].includes(c.name));
+    expect(added.map((c) => [c.name, c.phase, c.confirmation, c.kind])).toEqual([
+      ['mission.draft', 1, 'none', 'draft'],
+      ['team.message', 4, 'full_review', 'change'],
+    ]);
+  });
+
   it('CMD-15: a reviewer takes a report into review, decides it with a reason and evidence, or asks the resident', () => {
     expect(parse('/report AB12CD review')).toMatchObject({
       command: 'report.claim',

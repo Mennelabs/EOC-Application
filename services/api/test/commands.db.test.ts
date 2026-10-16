@@ -1327,4 +1327,96 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
     expect(question.message).toBe('¿Cuántas personas viven allí?');
     await phases([1, 2, 3]);
   });
+
+  it('CMD-13, AC-C08: a mission draft runs at once and dispatches nothing; a message to a team is reviewed with a reason and answered as sent, never as delivered', async () => {
+    const draft = await command(
+      'mc',
+      '/mision nueva bienestar Exercise: check on the family at 14 Elm',
+    );
+    expect(draft.status, draft.message).toBe('succeeded');
+    expect(draft.result?.state).toBe('drafted');
+    expect(draft.message).toContain('Nothing is dispatched');
+    const made = await dbWorker
+      .selectFrom('cg.mission')
+      .select(['state', 'kind', 'summary'])
+      .where('id', '=', draft.result!.records[0]!.id)
+      .executeTakeFirstOrThrow();
+    expect(made).toMatchObject({ state: 'draft', kind: 'welfare_check' });
+    // CMD-37: the words live in the mission, not in the execution record.
+    expect(JSON.stringify((await stored(draft.id!)).plan)).not.toContain('14 Elm');
+
+    const team = await withTenant(dbWorker, { tenantId: county }, async (trx) => {
+      const t = (
+        await trx
+          .insertInto('cg.team')
+          .values({
+            tenant_id: county,
+            key: `msg-${run}`,
+            name: `Exercise Cedar Crew ${run}`,
+            callsign: `CC-${run.slice(0, 3)}`,
+          })
+          .returning('id')
+          .executeTakeFirstOrThrow()
+      ).id;
+      for (const n of ['Ada', 'Bo']) {
+        const p = (
+          await trx
+            .insertInto('cg.personnel')
+            .values({ tenant_id: county, name: `Exercise ${n} ${run}` })
+            .returning('id')
+            .executeTakeFirstOrThrow()
+        ).id;
+        await trx
+          .insertInto('cg.team_member')
+          .values({ tenant_id: county, team_id: t, personnel_id: p })
+          .execute();
+      }
+      return t;
+    });
+    const line = `/message to:"Exercise Cedar Crew ${run}" Water at the school is safe to drink.`;
+    await phases([1, 2, 3]);
+    expect((await command('field', line)).status).toBe('unsupported');
+    await phases([1, 2, 3, 4]);
+    const plan = await command('field', line);
+    expect(plan.status, plan.message).toBe('awaiting_confirmation');
+    expect(plan.plan?.target?.id).toBe(team);
+    expect(plan.plan?.description).toContain(
+      'shows as delivered only when their phones confirm it',
+    );
+    expect((await confirm('field', plan)).status).toBe(428);
+    const sent = await confirm('field', plan, {
+      'x-confirm': 'true',
+      'x-reason': 'Exercise: boil-water notice lifted',
+    });
+    expect(sent.body['status'], JSON.stringify(sent.body)).toBe('succeeded');
+    expect((sent.body['result'] as Execution['result'])?.state).toBe('queued');
+    expect(sent.body['message']).toContain('Sent to 2 people');
+    expect(sent.body['message']).toContain('Not yet delivered');
+    expect(sent.body['message']).not.toMatch(/\bdelivered to\b/i);
+    const message = await dbWorker
+      .selectFrom('cg.field_message')
+      .select(['body', 'recipient_count'])
+      .where('id', '=', (sent.body['result'] as Execution['result'])!.records[0]!.id)
+      .executeTakeFirstOrThrow();
+    expect(message).toMatchObject({
+      body: 'Water at the school is safe to drink.',
+      recipient_count: 2,
+    });
+    // AC-C08: "undo that" says a sent message cannot be recalled, rather than pretending to.
+    const undo = await call('field', 'POST', `/commands/${plan.id}/undo`, {
+      executionId: randomUUID(),
+    });
+    expect(undo.status).toBe(409);
+    expect(undo.body['code']).toBe('undo_unavailable');
+    expect(undo.body['message']).toBe(
+      "A sent message cannot be recalled from people's phones. Send a correction as a new message.",
+    );
+    // The first word names the team when to: is not used; a team nobody has is not guessed.
+    expect(
+      (await command('field', `/message CC-${run.slice(0, 3)} Exercise: stand down`)).plan?.target
+        ?.id,
+    ).toBe(team);
+    expect((await command('field', '/message Nobody-Team hello')).status).toBe('not_found');
+    await phases([1, 2, 3]);
+  });
 });

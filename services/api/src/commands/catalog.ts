@@ -17,7 +17,7 @@ import { RECORD_TYPES, RECORD_TYPE_KEYS, type RecordType } from '@cg/reporting';
 export type Confirmation = 'none' | 'one_tap' | 'full_review' | 'second_person';
 export type Reversal = 'undo_15_min' | 'compensating' | 'none';
 export type TargetKind =
-  'mission' | 'need' | 'reminder' | 'check_in' | 'official_report' | 'report';
+  'mission' | 'need' | 'reminder' | 'check_in' | 'official_report' | 'report' | 'team';
 
 /** A resolved record the command acts on, with the version it had when the plan was made. */
 export interface Target {
@@ -104,6 +104,8 @@ export interface CommandSpec<A = Record<string, unknown>> {
    */
   freeText?: string[];
   request(args: A, target: Target | null, ctx: OpContext): OpRequest;
+  /** AC-C08: what "undo" answers when the change cannot be taken back, in this command's words. */
+  undoUnavailable?: string;
   /** Undo from what the plan targeted and what the operation verified; never from free text. */
   undo?(args: A, target: Target | null, verified: Verified): OpRequest;
   describe(args: A, target: Target | null): string;
@@ -111,6 +113,19 @@ export interface CommandSpec<A = Record<string, unknown>> {
 }
 
 const MISSION_STATES = ['open', 'en_route', 'on_scene', 'cleared'] as const;
+const MISSION_KINDS = [
+  'welfare_check',
+  'verification_route',
+  'cleanup_work_order',
+  'delivery',
+  'outreach_sweep',
+  'site_staffing',
+  'search',
+  'road_clearance',
+  'traffic_control',
+  'debris',
+  'other',
+] as const;
 
 type Row = Record<string, unknown>;
 const rows = (r: unknown): Row[] => (Array.isArray(r) ? (r as Row[]) : []);
@@ -1087,6 +1102,98 @@ export const CATALOG = [
     },
     describe: () => 'Release needs.',
     verify: () => ({ state: 'saved', summary: '', records: [] }),
+  }),
+
+  // CMD-13, Section 30.2 phase 1: a mission draft for the open event; nothing is dispatched.
+  define<{ kind: (typeof MISSION_KINDS)[number]; summary: string }>({
+    name: 'mission.draft',
+    version: 1,
+    phase: 1,
+    action: 'mission.create',
+    kind: 'draft',
+    title: 'Draft a mission',
+    usage: '/mission new <kind> <what is needed>',
+    args: z.object({
+      kind: z.enum(MISSION_KINDS),
+      summary: z.string().trim().min(3).max(500),
+    }),
+    needsEvent: true,
+    confirmation: 'none',
+    reversal: 'none',
+    sideEffects:
+      'Creates a draft mission in the open event. Nothing is dispatched until someone opens it on the missions screen.',
+    freeText: ['summary'],
+    request: (a, _t, ctx) => ({
+      method: 'POST',
+      path: '/missions',
+      body: {
+        eventId: ctx.eventId,
+        kind: a.kind,
+        source: 'staff',
+        summary: a.summary,
+        save: 'draft',
+      },
+    }),
+    describe: (a) =>
+      `Draft a ${a.kind.replace(/_/g, ' ')} mission in the open event with what you typed. Nothing is dispatched.`,
+    verify: (r) => {
+      const d = (r ?? {}) as Row;
+      return {
+        state: 'drafted',
+        summary: `Mission ${str(d['reference'])} drafted. Nothing is dispatched until it is opened on the missions screen.`,
+        records: [
+          {
+            kind: 'mission',
+            id: str(d['id']),
+            label: str(d['reference']),
+            version: ver(d['version']),
+          },
+        ],
+      };
+    },
+  }),
+
+  // AC-C08, Section 30.2 phase 4 (outbound messages): a message to a team's phones, reviewed
+  // with a reason. It is answered as sent, never as delivered: delivery is each phone's receipt.
+  define<{ text: string }>({
+    name: 'team.message',
+    version: 1,
+    phase: 4,
+    action: 'field_message.send',
+    kind: 'change',
+    title: 'Message a team in the field',
+    usage: '/message <team> <text>',
+    args: z.object({ text: z.string().trim().min(1).max(1000) }),
+    target: 'team',
+    needsEvent: true,
+    confirmation: 'full_review',
+    reversal: 'compensating',
+    sideEffects:
+      "Sends the message to each team member's phone, in the field app or by text where they have no app. A sent message cannot be unsent; a correction is a new message.",
+    freeText: ['text'],
+    undoUnavailable:
+      "A sent message cannot be recalled from people's phones. Send a correction as a new message.",
+    request: (a, t, ctx) => ({
+      method: 'POST',
+      path: '/field-messages',
+      body: {
+        eventId: ctx.eventId,
+        kind: 'message',
+        body: a.text,
+        audience: { kind: 'team', teamId: t!.id },
+      },
+    }),
+    describe: (_a, t) =>
+      `Send what you typed to ${t?.label ?? 'the team'}. It shows as delivered only when their phones confirm it.`,
+    verify: (r) => {
+      const d = (r ?? {}) as Row;
+      const n = typeof d['recipientCount'] === 'number' ? d['recipientCount'] : 0;
+      return {
+        state: 'queued',
+        summary: `Sent to ${plural(n, 'person', 'people')}. Not yet delivered: the messages screen shows each phone's receipt as it arrives.`,
+        records: [{ kind: 'field_message', id: str(d['id']) }],
+      };
+    },
   }),
 
   // CMD-15: a reviewer takes a report into review (phase 3), and decides it or asks the

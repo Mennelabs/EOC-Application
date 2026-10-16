@@ -443,6 +443,21 @@ const RECORDS: Record<
     },
     noun: 'issued report',
   },
+  // AC-C08: a team by its name, call sign or key, among the teams the person may see.
+  team: {
+    list: () => '/teams?limit=200',
+    one: (id) => `/teams/${id}`,
+    label: (r) => `${str(r['name'])}${r['callsign'] ? ` (${str(r['callsign'])})` : ''}`,
+    pick: (rows, ref) => {
+      const want = ref.toLowerCase();
+      const exact = rows.filter((r) =>
+        [r['name'], r['callsign'], r['key']].some((v) => str(v).toLowerCase() === want),
+      );
+      return exact.length ? exact : rows.filter((r) => str(r['name']).toLowerCase().includes(want));
+    },
+    // A team's status changes all the time; the message names it, it does not change it.
+    unversioned: true,
+  },
   // CMD-15: a resident's report by its reference code, as the review queue lists it.
   report: {
     list: (ref) =>
@@ -1817,9 +1832,10 @@ export const commandRoutesWith =
           throw new ApiError(
             409,
             'undo_unavailable',
-            spec?.reversal === 'compensating'
-              ? 'This cannot be undone here. Correct it on the screen with a new entry; the original stays in the history.'
-              : 'Undo is no longer available for this.',
+            spec?.undoUnavailable ??
+              (spec?.reversal === 'compensating'
+                ? 'This cannot be undone here. Correct it on the screen with a new entry; the original stays in the history.'
+                : 'Undo is no longer available for this.'),
           );
         const plan = original.plan as unknown as Plan;
         const req = spec.undo(plan.args, plan.target, stored.verified);

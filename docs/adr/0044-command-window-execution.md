@@ -64,3 +64,9 @@ The executor lives in the API process and adds no service. The language model si
 - The decision's own reason and evidence references go to the review decision row, as on the review screen. The reason and the question are free text, so the execution keeps only their digests once run (CMD-37).
 - A decision never changes the verification level, and the plan says so. A public observation stays an observation until someone verifies it.
 - The author of a report never reviews it (A7). The route's guardrail refuses it, from the window as from the screen.
+
+## Addendum 2026-10-16: mission drafts and team messages (CMD-13, AC-C08)
+
+- `/mission new <kind> <what is needed>` drafts a mission in the open event. It is phase 1 (a draft), runs at once and dispatches nothing. The words are kept in the mission, never in the execution record.
+- `/message <team> <text>` sends a field message to a team's phones. It is phase 4 (outbound messages) with the full review and a reason. It is answered as sent with the number of people, never as delivered; delivery is each phone's receipt on the messages screen.
+- A command can name its own answer when it cannot be undone (`undoUnavailable`). For a sent message, "undo" says it cannot be recalled from people's phones and that a correction is a new message (AC-C08).

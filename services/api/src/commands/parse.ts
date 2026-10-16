@@ -61,6 +61,8 @@ const VERBS: Record<string, string> = {
   reportes: 'reports',
   report: 'report',
   reporte: 'report',
+  message: 'message',
+  mensaje: 'message',
   resources: 'resources',
   recursos: 'resources',
   contacts: 'contacts',
@@ -280,6 +282,42 @@ const CONTACT_TYPES: Record<string, string> = {
   enlace: 'liaison',
 };
 
+/** CMD-13: the kinds of mission a draft can be, in English and Spanish. */
+const MISSION_KINDS: Record<string, string> = {
+  welfare_check: 'welfare_check',
+  welfare: 'welfare_check',
+  bienestar: 'welfare_check',
+  verification_route: 'verification_route',
+  verification: 'verification_route',
+  verificacion: 'verification_route',
+  cleanup_work_order: 'cleanup_work_order',
+  cleanup: 'cleanup_work_order',
+  limpieza: 'cleanup_work_order',
+  delivery: 'delivery',
+  entrega: 'delivery',
+  outreach_sweep: 'outreach_sweep',
+  outreach: 'outreach_sweep',
+  alcance: 'outreach_sweep',
+  site_staffing: 'site_staffing',
+  staffing: 'site_staffing',
+  personal_de_sitio: 'site_staffing',
+  search: 'search',
+  busqueda: 'search',
+  road_clearance: 'road_clearance',
+  road: 'road_clearance',
+  despeje: 'road_clearance',
+  traffic_control: 'traffic_control',
+  traffic: 'traffic_control',
+  trafico: 'traffic_control',
+  debris: 'debris',
+  escombros: 'debris',
+  other: 'other',
+  otra: 'other',
+  otro: 'other',
+};
+const NEW_WORDS = new Set(['new', 'nueva', 'nuevo']);
+const MISSION_DRAFT_USAGE = `/mission new <${[...new Set(Object.values(MISSION_KINDS))].join('|')}> <what is needed>`;
+
 /** CMD-15: what a reviewer does to one report, in English and Spanish. */
 const REPORT_ACTIONS: Record<string, 'claim' | 'approve' | 'reject' | 'ask'> = {
   review: 'claim',
@@ -404,6 +442,14 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
     }
 
     case 'mission': {
+      // CMD-13, Section 30.2 phase 1: a mission draft; nothing is dispatched.
+      if (NEW_WORDS.has(norm(words[0] ?? ''))) {
+        const kind = MISSION_KINDS[norm(words[1] ?? '')];
+        if (!kind) return usage('What kind of mission?', MISSION_DRAFT_USAGE);
+        const summary = (pairs['text'] ?? words.slice(2).join(' ')).trim();
+        if (summary.length < 3) return usage('What is needed?', MISSION_DRAFT_USAGE);
+        return ok('mission.draft', { kind, summary });
+      }
       const [first, sub, ...rest] = words;
       const ref = onScreen(first);
       if (!ref) return usage('Which mission? Give its number.', '/mission <number>');
@@ -589,6 +635,15 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
           );
       }
       return ok('reports.find', args);
+    }
+
+    // AC-C08, Section 30.2 phase 4: a message to a team's phones; the first word (or to:) names the team.
+    case 'message': {
+      const to = (pairs['to'] ?? words[0] ?? '').trim();
+      const text = (pairs['text'] ?? (pairs['to'] ? words : words.slice(1)).join(' ')).trim();
+      if (!to || !text)
+        return usage('Which team, and what should it say?', '/message <team> <text>');
+      return ok('team.message', { text }, to, 'team');
     }
 
     // CMD-15: take a report into review, decide it, or ask the resident; never two at once.

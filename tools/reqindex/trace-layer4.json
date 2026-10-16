@@ -106,7 +106,7 @@
     "partial",
     "routes/situation.ts and routes/dispatch.ts (authorized layers, positions only for position.read); apps/web-console/src/screens/{dispatch,situation}.tsx (status by letter and shape, a table per layer)",
     "services/api/test/siteoperator.db.test.ts (CON-03 layers by role), services/api/test/dispatch-sync.db.test.ts (board positions by role), tests/e2e/console-l4.spec.ts (axe on board and situation map)",
-    "Text equivalents and non-colour cues are checked only by the browser spec, which has not passed CI yet."
+    "The browser spec runs in CI (layers as pressed buttons with a table each, axe on the board and the map); each status's letter and shape (screens/dispatch.tsx STATUS) is not asserted by a test, and the manual non-colour and screen-reader checks are pending a person."
   ],
   "BRD:FR-03.05": [
     "pass",
@@ -136,7 +136,7 @@
     "partial",
     "mission intake is plain form fields (screens/missions.tsx); the phone's locate screen has search, lot list, nudge buttons and a landmark note (apps/field/app/locate.tsx); every map layer has a table",
     "tests/e2e/console-l4.spec.ts (mission intake with axe), tests/e2e/field.spec.ts",
-    "Only browser specs (not yet passed CI) and the manual screen-reader pass check it."
+    "The browser specs run in CI (a mission located by typed address against the county's parcels, layers as tables); the manual screen-reader pass is pending a person."
   ],
   "BRD:FR-04.01": [
     "pass",

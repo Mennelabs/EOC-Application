@@ -97,7 +97,7 @@ Everything in the stack is synthetic or the WESTWIND exercise (SCL-12).
 
 ## Readings taken in favour of privacy and safety (flagged for you)
 
-The plan's §12 lists all 22. The newest:
+The plan's §12 lists all 23. The newest:
 
 - a legal aid organization's referral responses share only the status;
 - resident dictation goes through the county's provider or not at all;
@@ -109,6 +109,7 @@ The plan's §12 lists all 22. The newest:
 - field records are counted from the day their event closes, so an open event's records never expire (SEC-13).
 - a resident's complaint about computer help is one of four fixed reasons, with no words, and changes nothing in their report; more than 10% of a feature's recent outputs drawing one raises an alert (AIG-09);
 - the approved time zone is the county's own: the console shows and reads times on the county's clock with the zone named, and an entry can be dated back but not ahead (BRD:FR-00.08, AC-08A);
+- a worker's request for peer support is seen only by the peer-support role, holds no words, and is deleted 30 days after it closes (FL-16);
 - the roster is swept the records period after a person was archived, and every record that still names them keeps them (SEC-13).
 
 ## Questions for you (defaults in force)

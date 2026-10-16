@@ -136,7 +136,7 @@ interface FieldActions {
   unlock(pin: string): Promise<{ ok: boolean; triesLeft?: number }>;
   unlockWithBiometrics(): Promise<boolean>;
   biometrics(): Promise<boolean>;
-  checkInWithCode(code: string, share: boolean): Promise<string | null>;
+  checkInWithCode(code: string, share: boolean, scanned?: boolean): Promise<string | null>;
   downloadArea(): Promise<void>;
   weAreOk(): Promise<void>;
   acknowledgeAssignment(id: string): Promise<void>;
@@ -174,6 +174,11 @@ interface FieldActions {
     photoIds?: string[];
   }): Promise<void>;
   logService(kind: string, count: number, siteId?: string): Promise<void>;
+  /** FL-16: ask privately for peer support; queued like any other record while offline. */
+  askPeerSupport(
+    reachBy: 'call' | 'text' | 'in_person',
+    reachWhen: 'now' | 'after_shift',
+  ): Promise<void>;
   census(siteId: string, occupancy: number, status?: string): Promise<void>;
   needDone(needId: string, note: string, photoIds?: string[]): Promise<void>;
   /** Online lists the phone does not keep (needs held by the crew's organization). */
@@ -223,7 +228,7 @@ export function useField(): FieldState & FieldActions {
   return v;
 }
 
-const defaultOptions: AreaOptions = { tribalOwnership: false };
+const defaultOptions: AreaOptions = { tribalOwnership: false, restAfterHours: 12 };
 
 const emptySync: SyncStatus = {
   phase: 'idle',
@@ -553,7 +558,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
       return true;
     },
     biometrics: () => vault.biometricsAvailable(),
-    async checkInWithCode(code, share) {
+    async checkInWithCode(code, share, scanned = false) {
       const s = store.current;
       if (!s) return 'locked';
       try {
@@ -561,6 +566,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
         const ci = await api.current.checkIn({
           eventCode: code.trim(),
           locationSharing: share,
+          method: scanned ? 'qr' : 'event_code',
           ...(deviceId ? { deviceId } : {}),
         });
         await s.setMeta('checkin', JSON.stringify(ci));
@@ -820,6 +826,9 @@ export function FieldProvider({ children }: { children: ReactNode }) {
           ...(input.position ? { position: input.position } : {}),
         },
       });
+    },
+    async askPeerSupport(reachBy, reachWhen) {
+      await enqueue({ kind: 'peer_support.request', body: { reachBy, reachWhen } });
     },
     async logService(kind, count, siteId) {
       await enqueue({

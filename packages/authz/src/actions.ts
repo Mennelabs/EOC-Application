@@ -58,6 +58,11 @@ export const actions = {
   'event.read': a('read', 'event', 'Read events'),
   'event.create': a('write', 'event', 'Create an event from a template'),
   'event.update': a('write', 'event', 'Update event details and footprint'),
+  'event.check_in_code': a(
+    'write',
+    'event',
+    'Set or replace the staging check-in code people scan or type to check in',
+  ),
   'event.open': a('write', 'event', 'Open an event and publish its intake link and keyword', {
     consequential: true,
   }),
@@ -471,6 +476,22 @@ export const actions = {
     'Read people involved (restricted details by category)',
   ),
   'mission.person.edit': a('write', 'mission_person', 'Add, change or remove a person involved'),
+  // FL-16: a private request for peer support. The worker asks; only the peer-support role reads.
+  'peer_support.request': a(
+    'write',
+    'peer_support_request',
+    'Ask privately for peer support, see and withdraw your own request',
+  ),
+  'peer_support.read': a(
+    'read',
+    'peer_support_request',
+    'Read peer-support requests and how to reach the people who asked',
+  ),
+  'peer_support.update': a(
+    'write',
+    'peer_support_request',
+    'Mark a peer-support request contacted or closed',
+  ),
   'mission.media.read': a(
     'read',
     'mission_media',

@@ -199,6 +199,14 @@ export const SWEEPS: readonly Sweep[] = [
     finished: "state in ('resolved', 'false_alarm') and resolved_at is not null",
     eventOf: 'event_id',
   },
+  // FL-16: a closed peer-support request; an open or contacted one never expires.
+  {
+    category: 'peer_support',
+    table: 'peer_support_request',
+    clock: 'closed_at',
+    finished: "status = 'closed' and closed_at is not null",
+    eventOf: 'event_id',
+  },
   // Field records (SEC-13), after the safety alerts and communications that point at
   // check-ins and assignments, and leaves before what they point at.
   fieldRecord('shift_handover'),

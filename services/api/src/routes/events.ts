@@ -3,9 +3,11 @@
  * invite partner tenants, close with a reason. Missions (layer 4) and reports
  * (layer 2) hang off these.
  */
+import { randomBytes } from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import { sql } from 'kysely';
 import { diffForAudit } from '@cg/audit';
 import { errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
@@ -28,6 +30,8 @@ const eventOut = z.object({
   status: z.enum(['draft', 'active', 'closed']),
   intakeSlug: z.string().nullable(),
   intakeKeywords: z.array(z.string()),
+  /** FLD-03: the staging code people scan (as a QR code) or type to check in. */
+  checkInCode: z.string().nullable(),
   openedAt: z.iso.datetime().nullable(),
   closedAt: z.iso.datetime().nullable(),
   closeReason: z.string().nullable(),
@@ -45,6 +49,7 @@ type EventRow = {
   status: 'draft' | 'active' | 'closed';
   intake_slug: string | null;
   intake_keywords: string[];
+  check_in_code: string | null;
   opened_at: Date | null;
   closed_at: Date | null;
   close_reason: string | null;
@@ -62,6 +67,7 @@ const toEvent = (r: EventRow): z.infer<typeof eventOut> => ({
   status: r.status,
   intakeSlug: r.intake_slug,
   intakeKeywords: r.intake_keywords,
+  checkInCode: r.check_in_code,
   openedAt: iso(r.opened_at),
   closedAt: iso(r.closed_at),
   closeReason: r.close_reason,
@@ -72,6 +78,14 @@ const slug = z
   .min(2)
   .max(40)
   .regex(/^[a-z0-9][a-z0-9-]*$/, 'lowercase letters, digits and hyphens');
+
+/** FLD-03: letters and digits that cannot be mistaken for one another (no 0/O, 1/I/L, 2/Z, 5/S, 8/B, 6/G). */
+const CODE_ALPHABET = 'ACDEFHJKMNPRTUVWXY3479';
+
+/** A new six-character staging code, read off a sign or a phone without confusion. */
+export function newCheckInCode(): string {
+  return Array.from(randomBytes(6), (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
+}
 
 /** SMS keywords are single words, upper-cased, letters only (docs/06). */
 const keyword = z
@@ -282,6 +296,76 @@ export const eventRoutes: FastifyPluginAsync = async (raw) => {
           targetId: row.id,
           targetVersion: row.version,
           changes: diffForAudit(current, row, classifierFor('event')),
+        });
+        return row;
+      });
+      return toEvent(updated);
+    },
+  );
+
+  /**
+   * FLD-03: set or replace the event's staging check-in code. Without a code a new
+   * one is made; a replaced code stops working at once, so a printed sign that
+   * leaked can be retired. Codes are unique within the county.
+   */
+  app.post(
+    '/events/:id/check-in-code',
+    {
+      config: { requiresVersion: true },
+      schema: {
+        tags: ['events'],
+        params: uuidParam,
+        body: z.object({
+          code: z
+            .string()
+            .trim()
+            .min(4)
+            .max(12)
+            .regex(/^[A-Za-z0-9]+$/, 'letters and digits only')
+            .optional(),
+        }),
+        response: { 200: eventOut },
+      },
+    },
+    async (request) => {
+      const s = request.subject;
+      if (s.kind !== 'account') throw errors.unauthorized();
+      const expected = request.expectedVersion();
+      const current = await load(request, request.params.id);
+      await request.authorize(
+        'event.check_in_code',
+        { type: 'event', id: current.id, tenantId: current.tenant_id, eventId: current.id },
+        { asNotFound: true },
+      );
+      if (current.status === 'closed') throw errors.conflict(toEvent(current));
+      const code = (request.body.code ?? newCheckInCode()).toUpperCase();
+      const updated = await request.tx(async (trx) => {
+        const taken = await trx
+          .selectFrom('cg.event')
+          .select('id')
+          .where(sql`upper(check_in_code)`, '=', code)
+          .where('id', '<>', current.id)
+          .executeTakeFirst();
+        if (taken)
+          throw errors.validation([{ name: 'code', message: 'another event uses this code' }]);
+        const row = assertUpdated(
+          await trx
+            .updateTable('cg.event')
+            .set({ check_in_code: code, updated_by: s.accountId })
+            .where('id', '=', current.id)
+            .where('version', '=', expected)
+            .returningAll()
+            .executeTakeFirst(),
+          toEvent(current),
+        );
+        await request.audit(trx, {
+          action: 'event.check_in_code',
+          targetType: 'event',
+          targetId: row.id,
+          targetVersion: row.version,
+          changes: {
+            fields: [{ name: 'check_in_code', to: current.check_in_code ? 'replaced' : 'set' }],
+          },
         });
         return row;
       });

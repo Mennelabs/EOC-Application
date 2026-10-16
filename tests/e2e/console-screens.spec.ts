@@ -37,6 +37,7 @@ const SCREENS: [path: string, heading: string][] = [
   ['field-messages', 'Messages to the field'],
   ['net-control', 'Net control log'],
   ['badges', 'Badges'],
+  ['roster', 'Roster and check-in'],
 ];
 
 /** Opens a screen and waits until it has loaded: heading shown, nothing still loading. */
@@ -85,6 +86,14 @@ test.describe('every console screen, one by one', () => {
           await expect(page.getByText(/null days|0 years/)).toHaveCount(0);
         }
 
+        if (path === 'roster') {
+          // FLD-03: the staging check-in code, with its QR code and the code in letters beside it.
+          const panel = page.getByRole('region', { name: 'Staging check-in code' });
+          await expect(panel).toBeVisible();
+          const qr = panel.getByRole('img', { name: /^Check-in code / });
+          if (await qr.count()) await expect(panel.locator('.staging-code-text')).not.toBeEmpty();
+        }
+
         if (path === 'reminders') {
           // FR-09.05: an overdue reminder says so in words, with a symbol hidden from
           // screen readers; nothing depends on colour or sound.
@@ -127,6 +136,8 @@ test.describe('every console screen, one by one', () => {
     for (const [path, heading] of [
       ['field-messages', 'Messages to the field'],
       ['net-control', 'Net control log'],
+      // FL-16: peer-support requests are for the peer-support role only.
+      ['peer-support', 'Peer support'],
     ] as const) {
       await page.goto(`/console/${path}`);
       await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible({
@@ -135,5 +146,32 @@ test.describe('every console screen, one by one', () => {
       await expect(page.getByRole('alert')).toContainText('You do not have permission');
       await expectNoViolations(page);
     }
+  });
+
+  test('FL-16: the peer-support role opens its list of private requests; axe finds nothing', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'crisis_counselor',
+      `Peer ${tag}`,
+      `scr-peer-${testInfo.project.name}`,
+    );
+    await open(page, 'peer-support', 'Peer support');
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    // A county with nobody waiting shows a sentence, not an empty table.
+    await expect(
+      page
+        .getByRole('table', { name: 'Open requests, oldest first' })
+        .or(page.getByText('Nobody is waiting.')),
+    ).toBeVisible();
+    await expect(
+      page.getByText('their lead, dispatch and coordinators are not told'),
+    ).toBeVisible();
+    await expectNoViolations(page);
+    if (testInfo.project.name === 'phone') await expectReflow(page);
   });
 });

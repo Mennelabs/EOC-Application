@@ -17,6 +17,8 @@
  * what their organization owns or is assigned to (DSP-09).
  */
 import { randomBytes } from 'node:crypto';
+import { GetObjectCommand, type S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { sql, type Insertable, type Selectable, type Transaction } from 'kysely';
@@ -346,7 +348,16 @@ const notAllowed = (from: string, to: string) =>
 /** Where browsers reach the CJIS enclave (ADR-0038); absent: the link carries no address. */
 export interface MissionDeps {
   cjisPublicUrl?: string;
+  /** AC-07B: stored media leave only as short-lived signed links, never by their key. */
+  objects?: { client: Pick<S3Client, 'send'>; presignClient?: S3Client; bucket: string };
 }
+
+/** AC-07B: how long a signed media link lasts. */
+export const MEDIA_LINK_SECONDS = 60;
+
+/** AC-07B: the only place a mission's own stored files may live; any other key is refused. */
+export const missionMediaPrefix = (tenantId: string, missionId: string): string =>
+  `missions/${tenantId}/${missionId}/`;
 
 /** A random 256-bit opaque reference, 43 base64url characters (migration 0041). */
 export const newCjiRef = (): string => randomBytes(32).toString('base64url');
@@ -2129,7 +2140,25 @@ export const missionRoutesWith =
           throw errors.validation([
             { name: 'photoId', message: 'a photo or an object reference is needed' },
           ]);
+        // AC-07B: a reference is to this mission's own files, never a key the caller names.
+        if (b.objectKey && !b.objectKey.startsWith(missionMediaPrefix(scope.tenantId, current.id)))
+          throw errors.validation([
+            { name: 'objectKey', message: "not one of this mission's stored files" },
+          ]);
         const row = await run(request, scope, async (trx) => {
+          if (b.photoId) {
+            // Row security limits this to the county's own photos.
+            const photo = await trx
+              .selectFrom('cg.photo')
+              .select('id')
+              .where('id', '=', b.photoId)
+              .where('tenant_id', '=', scope.tenantId)
+              .executeTakeFirst();
+            if (!photo)
+              throw errors.validation([
+                { name: 'photoId', message: "not one of this county's photos" },
+              ]);
+          }
           const inserted = await trx
             .insertInto('cg.mission_media')
             .values({
@@ -2168,6 +2197,98 @@ export const missionRoutesWith =
           return inserted;
         });
         return reply.code(201).send(mediaToOut(row));
+      },
+    );
+
+    /**
+     * AC-07B: the one way to fetch a mission's stored file. It must belong to this
+     * mission and not be removed; restricted media, and a photo whose faces, plates
+     * and documents are not yet blurred, go only to the evidence category. Anything
+     * else answers as not found, the same as a wrong id. What comes back is a link
+     * that expires in a minute, never the stored key. Every download is audited.
+     */
+    app.get(
+      '/missions/:id/media/:mediaId/download',
+      {
+        schema: {
+          tags: ['missions'],
+          params: uuidParam.extend({ mediaId: z.uuid() }),
+          response: { 200: z.object({ url: z.string(), expiresAt: z.iso.datetime() }) },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        const scope = await scopeOf(request);
+        const current = await load(request, scope, request.params.id);
+        const decision = await request.authorize(
+          'mission.media.read',
+          {
+            type: 'mission_media',
+            id: current.id,
+            tenantId: s.tenantId,
+            eventId: current.event_id,
+            heldBySubject: current.held ?? false,
+            fields: [{ name: 'restricted', category: 'evidence', classification: 'restricted' }],
+          },
+          { asNotFound: true },
+        );
+        const evidence = decision.fields.includes('restricted');
+        const found = await run(request, scope, async (trx) => {
+          const media = await trx
+            .selectFrom('cg.mission_media')
+            .selectAll()
+            .where('id', '=', request.params.mediaId)
+            .where('mission_id', '=', current.id)
+            .where('removed_at', 'is', null)
+            .executeTakeFirst();
+          const photo = media?.photo_id
+            ? await trx
+                .selectFrom('cg.photo')
+                .select(['status', 'blur_status', 'derivative_keys'])
+                .where('id', '=', media.photo_id)
+                .executeTakeFirst()
+            : undefined;
+          return { media, photo };
+        });
+        const { media, photo } = found;
+        if (!media || (media.access_class === 'restricted' && !evidence)) throw errors.notFound();
+        let key: string | undefined;
+        let restricted = media.access_class === 'restricted';
+        if (media.photo_id) {
+          if (!photo) throw errors.notFound();
+          // Until faces, plates and documents are blurred, a photo stays with the evidence category.
+          if (photo.blur_status !== 'applied') {
+            if (!evidence) throw errors.notFound();
+            restricted = true;
+          }
+          if (photo.status !== 'processed')
+            throw new ApiError(409, 'not_ready', 'This photo is still being processed.');
+          key = (photo.derivative_keys as Record<string, string> | null)?.['review'];
+        } else if (media.object_key?.startsWith(missionMediaPrefix(scope.tenantId, current.id))) {
+          key = media.object_key;
+        }
+        const objects = deps.objects;
+        if (!key || !objects) throw errors.notFound();
+        const url = await getSignedUrl(
+          (objects.presignClient ?? objects.client) as unknown as Parameters<
+            typeof getSignedUrl
+          >[0],
+          new GetObjectCommand({ Bucket: objects.bucket, Key: key }),
+          { expiresIn: MEDIA_LINK_SECONDS },
+        );
+        await run(request, scope, (trx) =>
+          request.audit(trx, {
+            tenantId: scope.tenantId,
+            action: 'mission.media.read',
+            targetType: 'mission_media',
+            targetId: media.id,
+            ...(restricted ? { classificationRead: ['evidence'] } : {}),
+          }),
+        );
+        return {
+          url,
+          expiresAt: new Date(Date.now() + MEDIA_LINK_SECONDS * 1000).toISOString(),
+        };
       },
     );
 

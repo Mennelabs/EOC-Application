@@ -476,6 +476,87 @@ describe.skipIf(!appUrl || !workerUrl)(
         .execute();
     });
 
+    it('FLD-03: a coordinator sets or replaces the staging check-in code of an event; a replaced code stops working at once; codes are unique in the county; a role without the grant cannot', async () => {
+      const county = tenants['county']!;
+      const staging = (
+        await dbWorker
+          .insertInto('cg.event')
+          .values({
+            tenant_id: county,
+            name: `Exercise staging ${randomUUID().slice(0, 8)}`,
+            hazard_type: 'flood',
+            status: 'active',
+            opened_at: new Date(),
+          })
+          .returning('id')
+          .executeTakeFirstOrThrow()
+      ).id;
+      const version = async () =>
+        (await call('priya', 'GET', `/api/v1/events/${staging}`)).json<{
+          version: number;
+          checkInCode: string | null;
+        }>();
+      expect((await version()).checkInCode).toBeNull();
+      const setCode = (who: string, body: Record<string, unknown>, v: number) =>
+        call(who, 'POST', `/api/v1/events/${staging}/check-in-code`, body, {
+          'if-match': String(v),
+        });
+      // Letters and digits only; another event's code is refused.
+      expect((await setCode('priya', { code: 'stage-42' }, (await version()).version)).status).toBe(
+        400,
+      );
+      const clash = await setCode('priya', { code: 'westwind' }, (await version()).version);
+      expect(clash.status).toBe(400);
+      expect(clash.body).toContain('another event uses this code');
+      // A role without the grant: the event answers as not found.
+      expect((await setCode('pio', {}, (await version()).version)).status).toBe(404);
+
+      const typed = await setCode('priya', { code: 'Stage42' }, (await version()).version);
+      expect(typed.status, typed.body).toBe(200);
+      expect(typed.json<{ checkInCode: string }>().checkInCode).toBe('STAGE42');
+      // The code is recognised however it is typed (this volunteer is already checked in elsewhere).
+      expect(
+        (await call('volunteer', 'POST', '/api/v1/check-ins', { eventCode: 'stage42' })).status,
+      ).toBe(409);
+
+      // A new code, made without typing one: six letters and digits that cannot be confused.
+      const fresh = await setCode('coordinator', {}, (await version()).version);
+      expect(fresh.status, fresh.body).toBe(200);
+      const made = fresh.json<{ checkInCode: string }>().checkInCode;
+      expect(made).toMatch(/^[ACDEFHJKMNPRTUVWXY3479]{6}$/);
+      // The replaced code no longer finds the event; the new one does.
+      const retired = await call('volunteer', 'POST', '/api/v1/check-ins', {
+        eventCode: 'STAGE42',
+      });
+      expect(retired.status).toBe(400);
+      expect(
+        (await call('volunteer', 'POST', '/api/v1/check-ins', { eventCode: made })).status,
+      ).toBe(409);
+      // A stale version is refused; a closed event keeps its code.
+      expect((await setCode('priya', {}, 1)).status).toBe(409);
+      await dbWorker
+        .updateTable('cg.event')
+        .set({ status: 'closed', closed_at: new Date(), close_reason: 'Exercise over' })
+        .where('id', '=', staging)
+        .execute();
+      expect((await setCode('priya', {}, (await version()).version)).status).toBe(409);
+      const trail = await dbWorker
+        .selectFrom('cg.audit_event')
+        .select(['changes', 'actor_account_id'])
+        .where('tenant_id', '=', county)
+        .where('action', '=', 'event.check_in_code')
+        .where('target_id', '=', staging)
+        .orderBy('seq')
+        .execute();
+      expect(trail.map((a) => JSON.stringify(a.changes))).toEqual([
+        expect.stringContaining('"set"'),
+        expect.stringContaining('"replaced"'),
+      ]);
+      // The code itself never goes into the audit record.
+      expect(JSON.stringify(trail)).not.toContain(made);
+      expect(JSON.stringify(trail)).not.toContain('STAGE42');
+    });
+
     it('DSP-07: a silent team turns overdue once and raises one alert; "we are OK" clears it; an unacknowledged dispatch alerts after the window (DSP-04)', async () => {
       // Nothing yet: the team checked in moments ago.
       await watchFieldSafety(worker);

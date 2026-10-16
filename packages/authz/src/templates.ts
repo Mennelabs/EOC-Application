@@ -64,6 +64,8 @@ function frontline(
         g('activity.read'),
         g('field.sync'),
         g('field.command'),
+        // FL-16: anyone in the field may ask, privately, for peer support.
+        g('peer_support.request'),
         g('field.photo'),
         g('field.area'),
         ...own.map((x) => (typeof x === 'string' ? g(x) : x)),
@@ -465,6 +467,8 @@ const templates: readonly RoleTemplate[] = [
       g('team.manage'),
       g('check_in.read'),
       g('check_in.manage'),
+      // FLD-03: the staging check-in code and its QR.
+      g('event.check_in_code'),
       g('device.read'),
       g('badge.*'),
       g('volunteer_registration.*'),
@@ -562,6 +566,8 @@ const templates: readonly RoleTemplate[] = [
       g('activity.read'),
       g('field.sync'),
       g('field.command'),
+      // FL-16: anyone in the field may ask, privately, for peer support.
+      g('peer_support.request'),
       g('field.photo'),
       g('field.area'),
       g('check_in.create'),
@@ -604,6 +610,8 @@ const templates: readonly RoleTemplate[] = [
       g('activity.read'),
       g('field.sync'),
       g('field.command'),
+      // FL-16: anyone in the field may ask, privately, for peer support.
+      g('peer_support.request'),
       g('field.photo'),
       g('field.area'),
       g('check_in.create'),
@@ -657,6 +665,8 @@ const templates: readonly RoleTemplate[] = [
       g('activity.read'),
       g('field.sync'),
       g('field.command'),
+      // FL-16: anyone in the field may ask, privately, for peer support.
+      g('peer_support.request'),
       g('field.photo'),
       g('field.area'),
     ],
@@ -690,6 +700,8 @@ const templates: readonly RoleTemplate[] = [
       g('activity.read'),
       g('field.sync'),
       g('field.command'),
+      // FL-16: anyone in the field may ask, privately, for peer support.
+      g('peer_support.request'),
       g('field.photo'),
       g('field.area'),
       g('check_in.create'),
@@ -729,6 +741,8 @@ const templates: readonly RoleTemplate[] = [
       g('activity.read'),
       g('field.sync'),
       g('field.command'),
+      // FL-16: anyone in the field may ask, privately, for peer support.
+      g('peer_support.request'),
       g('field.photo'),
       g('field.area'),
     ],
@@ -749,6 +763,9 @@ const templates: readonly RoleTemplate[] = [
       g('mission.narrative'),
       { action: 'hazard.read', events: 'assigned' },
       g('job_aid.read'),
+      // FL-16: peer-support requests are counseling data; the category comes with the template key.
+      g('peer_support.read'),
+      g('peer_support.update'),
     ],
   },
   {
@@ -818,6 +835,8 @@ const templates: readonly RoleTemplate[] = [
       g('me.read'),
       g('tenant.read'),
       g('event.read', ['location_exact']),
+      // FLD-03: the staging check-in code and its QR.
+      g('event.check_in_code'),
       g('dashboard.read'),
       g('personnel.read', ['contact']),
       g('personnel.update'),
@@ -999,6 +1018,8 @@ const templates: readonly RoleTemplate[] = [
       g('activity.read'),
       g('field.sync'),
       g('field.command'),
+      // FL-16: anyone in the field may ask, privately, for peer support.
+      g('peer_support.request'),
       g('field.photo'),
       g('field.area'),
       g('scribe.use'), // FL-04: with the survivor's consent
@@ -1037,6 +1058,8 @@ const templates: readonly RoleTemplate[] = [
       g('activity.read'),
       g('field.sync'),
       g('field.command'),
+      // FL-16: anyone in the field may ask, privately, for peer support.
+      g('peer_support.request'),
       g('field.photo'),
       g('field.area'),
       g('scribe.use'), // FL-04: with the survivor's consent

@@ -107,6 +107,8 @@ export interface AreaPackage {
 
 export interface AreaOptions {
   tribalOwnership: boolean;
+  /** FL-16: hours on shift after which the phone reminds the worker to rest. */
+  restAfterHours: number;
 }
 
 export interface VoiceDraft {
@@ -188,8 +190,14 @@ export class Api implements FieldApi, PhotoApi {
     return this.call<{ id: string; status: string }>('POST', '/devices', input);
   }
 
-  checkIn(input: { eventCode: string; deviceId?: string; locationSharing: boolean }) {
-    return this.call<CheckIn>('POST', '/check-ins', { ...input, method: 'event_code' });
+  /** FLD-03: `qr` when the staging code was scanned, `event_code` when typed. */
+  checkIn(input: {
+    eventCode: string;
+    deviceId?: string;
+    locationSharing: boolean;
+    method?: 'qr' | 'event_code';
+  }) {
+    return this.call<CheckIn>('POST', '/check-ins', { method: 'event_code', ...input });
   }
 
   async openCheckIn(): Promise<CheckIn | null> {

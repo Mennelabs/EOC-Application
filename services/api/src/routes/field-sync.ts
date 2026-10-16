@@ -26,6 +26,9 @@ import { enqueueOutbox, iso, uuidParam } from './helpers.ts';
 
 type Trx = Transaction<Database>;
 
+/** FL-16: hours on shift before the phone reminds a worker to rest, unless the county sets another. */
+export const DEFAULT_REST_HOURS = 12;
+
 /** The commands a phone may replay, each mapped to the console's own route (plan §3 "same validation, authorization and idempotency"). */
 export const FIELD_COMMANDS: Record<
   string,
@@ -67,6 +70,12 @@ export const FIELD_COMMANDS: Record<
     needsTarget: false,
   },
   'service_log.record': { method: 'POST', path: () => '/api/v1/service-logs', needsTarget: false },
+  // FL-16: a private request for peer support, queued like any other while offline.
+  'peer_support.request': {
+    method: 'POST',
+    path: () => '/api/v1/peer-support',
+    needsTarget: false,
+  },
   'need.done': { method: 'POST', path: (id) => `/api/v1/needs/${id}/done`, needsTarget: true },
   'site.census': { method: 'POST', path: (id) => `/api/v1/sites/${id}/confirm`, needsTarget: true },
   // Layer 4 task J: frontline role records (routes/field-records.ts), one command per kind.
@@ -515,7 +524,12 @@ export const fieldSyncRoutes =
             const payload: Record<string, unknown> = { ...c.body };
             // Records keyed by the phone's id take the command id, so the record and the command agree (FLD-13).
             if (
-              (['safety_alert.raise', 'assessment.record', 'service_log.record'].includes(c.kind) ||
+              ([
+                'safety_alert.raise',
+                'assessment.record',
+                'service_log.record',
+                'peer_support.request',
+              ].includes(c.kind) ||
                 /^record\.[a-z_]+$/.test(c.kind)) &&
               !payload['clientUuid']
             )
@@ -731,7 +745,11 @@ export const fieldSyncRoutes =
                 }),
               ),
               /** Tenant choices the field screens follow: ask tribal ownership where the tenant has tribal lands (DCL:DEC-17). */
-              options: z.object({ tribalOwnership: z.boolean() }),
+              options: z.object({
+                tribalOwnership: z.boolean(),
+                /** FL-16: hours on shift after which the phone reminds the worker to rest. */
+                restAfterHours: z.number(),
+              }),
               /** SCL-13, plan §5: the map extract cut from the self-hosted tiles when one exists; pins work without it (SCL-06). */
               maps: z.array(
                 z.object({
@@ -926,6 +944,20 @@ export const fieldSyncRoutes =
             .where('tenant_id', '=', me.tenantId)
             .where('key', '=', 'field.tribal_ownership')
             .executeTakeFirst();
+          // FL-16: the county's rest limit (12 hours unless set); a person's own lower limit wins.
+          const rest = await trx
+            .selectFrom('cg.tenant_config')
+            .select('value')
+            .where('tenant_id', '=', me.tenantId)
+            .where('key', '=', 'field.rest_after_hours')
+            .executeTakeFirst();
+          const own = await trx
+            .selectFrom('cg.personnel')
+            .select('hours_limit')
+            .where('id', '=', me.personnelId)
+            .executeTakeFirst();
+          const countyRest =
+            typeof rest?.value === 'number' && rest.value > 0 ? rest.value : DEFAULT_REST_HOURS;
           return {
             cursor: Number(head.seq),
             eventId,
@@ -991,7 +1023,13 @@ export const fieldSyncRoutes =
                   : null,
               services: x.services,
             })),
-            options: { tribalOwnership: tribal?.value === true },
+            options: {
+              tribalOwnership: tribal?.value === true,
+              restAfterHours:
+                own?.hours_limit && own.hours_limit > 0
+                  ? Math.min(own.hours_limit, countyRest)
+                  : countyRest,
+            },
             jobAids: jobAids.map((j) => ({
               id: j.id,
               key: j.key,

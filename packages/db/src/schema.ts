@@ -305,6 +305,24 @@ export interface PgInterval {
   milliseconds?: number;
 }
 
+/** FL-16: a private request for peer support; only the peer-support role reads it. */
+export interface PeerSupportRequestTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  personnel_id: Uuid;
+  event_id: Uuid | null;
+  client_uuid: Uuid;
+  reach_by: 'call' | 'text' | 'in_person';
+  reach_when: 'now' | 'after_shift';
+  status: Generated<'open' | 'contacted' | 'closed'>;
+  requested_at: TsGen;
+  contacted_at: TsNullable;
+  contacted_by: Uuid | null;
+  closed_at: TsNullable;
+  closed_by: Uuid | null;
+  closed_by_requester: Generated<boolean>;
+}
+
 export interface RetentionPolicyTable extends Stamped {
   tenant_id: Uuid;
   data_category: string;
@@ -3198,6 +3216,7 @@ export interface Database {
   'cg.data_dictionary': DataDictionaryTable;
   'cg.tenant_key': TenantKeyTable;
   'cg.retention_policy': RetentionPolicyTable;
+  'cg.peer_support_request': PeerSupportRequestTable;
   'cg.legal_hold': LegalHoldTable;
   'cg.deletion_log': DeletionLogTable;
   'cg.idempotency_key': IdempotencyKeyTable;

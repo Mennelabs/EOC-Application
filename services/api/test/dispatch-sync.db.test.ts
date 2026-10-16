@@ -96,7 +96,7 @@ interface Area {
   sites: unknown[];
   jobAids: { key: string }[];
   maps: { areaKey: string; available: boolean; url: string | null }[];
-  options: { tribalOwnership: boolean };
+  options: { tribalOwnership: boolean; restAfterHours: number };
 }
 interface Assignment {
   id: string;
@@ -857,8 +857,8 @@ describe.skipIf(!appUrl || !workerUrl)(
       expect(outlines.parcels[0]!.geometry).toBeDefined();
       expect((await call('pio', 'GET', `/api/v1/field/area`)).status).toBe(403);
       // DCL:DEC-17: the tribal ownership question is asked only where the county turns it on.
-      const tribal = async (value: boolean) => {
-        const url = `/api/v1/tenants/${tenants['county']!}/config/field.tribal_ownership`;
+      const setConfig = async (key: string, value: unknown) => {
+        const url = `/api/v1/tenants/${tenants['county']!}/config/${key}`;
         const held = await call('admin', 'GET', url);
         const res = await call(
           'admin',
@@ -867,7 +867,7 @@ describe.skipIf(!appUrl || !workerUrl)(
           { value },
           {
             'x-confirm': 'true',
-            'x-reason': 'Exercise: county includes tribal trust land',
+            'x-reason': 'Exercise: county field settings',
             ...(held.status === 200
               ? { 'if-match': `"${held.json<{ version: number }>().version}"` }
               : {}),
@@ -878,9 +878,19 @@ describe.skipIf(!appUrl || !workerUrl)(
           .options;
       };
       try {
-        expect(await tribal(true)).toEqual({ tribalOwnership: true });
+        expect(await setConfig('field.tribal_ownership', true)).toMatchObject({
+          tribalOwnership: true,
+        });
       } finally {
-        expect(await tribal(false)).toEqual({ tribalOwnership: false });
+        expect(await setConfig('field.tribal_ownership', false)).toMatchObject({
+          tribalOwnership: false,
+        });
+      }
+      // FL-16: the county's rest limit reaches the phone; 12 hours unless the county sets one.
+      try {
+        expect((await setConfig('field.rest_after_hours', 10)).restAfterHours).toBe(10);
+      } finally {
+        expect((await setConfig('field.rest_after_hours', 12)).restAfterHours).toBe(12);
       }
       // The administrator wipes the device (consequential): the phone learns it on its next sync.
       // The administrator reads the device's current version (every contact touches it) and wipes it.

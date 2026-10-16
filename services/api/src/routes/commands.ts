@@ -415,8 +415,15 @@ const RECORDS: Record<
     was?(r: ListRow): Record<string, string>;
   }
 > = {
+  // DSP-04: a mission by its number, or by words of its place ("Willow Bend lot 41") among the
+  // open missions whose location the person may see.
   mission: {
-    list: (ref) => `/missions?limit=10&reference=${encodeURIComponent(ref)}`,
+    list: (ref) =>
+      /^m-?\d{1,7}$/i.test(ref.trim())
+        ? `/missions?limit=10&reference=${encodeURIComponent(ref.trim())}`
+        : ref.trim().length >= 3
+          ? `/missions?limit=10&open=true&place=${encodeURIComponent(ref.trim())}`
+          : null,
     one: (id) => `/missions/${id}`,
     label: (r) => `${str(r['reference'])} (${str(r['state']).replace('_', ' ')})`,
   },
@@ -1687,7 +1694,14 @@ export const commandRoutesWith =
             method: 'GET',
             path: spec.within.path(planArgs, target),
           });
-          let found = res.status === 200 && Array.isArray(res.body) ? (res.body as ListRow[]) : [];
+          let found =
+            res.status !== 200
+              ? []
+              : spec.within.rowsOf
+                ? (spec.within.rowsOf(res.body) as ListRow[])
+                : Array.isArray(res.body)
+                  ? (res.body as ListRow[])
+                  : [];
           if (spec.within.pick) found = spec.within.pick(found, planArgs);
           if (found.length !== 1)
             return {
@@ -1696,7 +1710,8 @@ export const commandRoutesWith =
               message: found.length ? spec.within.many(planArgs) : spec.within.none(planArgs),
             };
           planArgs[spec.within.idArg] = str(found[0]!['id']);
-          planArgs[spec.within.versionArg] = found[0]!['version'];
+          if (spec.within.versionArg) planArgs[spec.within.versionArg] = found[0]!['version'];
+          if (spec.within.keep) Object.assign(planArgs, spec.within.keep(found[0]!));
         }
 
         let eventId: string | null = null;

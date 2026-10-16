@@ -117,10 +117,14 @@ export interface CommandSpec<A = Record<string, unknown>> {
    */
   within?: {
     path(args: A, target: Target | null): string;
+    /** The rows of a response that is not a plain list; each needs an `id`. */
+    rowsOf?(body: unknown): Record<string, unknown>[];
     /** Narrows the listed rows to the ones the command can act on. */
     pick?(rows: Record<string, unknown>[], args: A): Record<string, unknown>[];
     idArg: string;
-    versionArg: string;
+    versionArg?: string;
+    /** What else of the row the plan shows and keeps (a name, the reasons it was chosen). */
+    keep?(row: Record<string, unknown>): Record<string, unknown>;
     none(args: A): string;
     many(args: A): string;
   };
@@ -195,6 +199,14 @@ type Row = Record<string, unknown>;
 const rows = (r: unknown): Row[] => (Array.isArray(r) ? (r as Row[]) : []);
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
 const ver = (v: unknown) => (typeof v === 'number' ? v : undefined);
+/** Lower case without accents, for matching a typed skill against names and credentials. */
+const fold = (s: string) =>
+  s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** CMD-17, CMD-26: the date the resource itself now holds. */
@@ -1010,6 +1022,84 @@ export const CATALOG = [
         state: 'saved',
         summary: list.length
           ? `Assigned; the assignment is ${str(list[0]!['state']).replace('_', ' ')}.`
+          : 'Nothing was assigned.',
+        records: list.map((x) => ({
+          kind: 'assignment',
+          id: str(x['id']),
+          version: ver(x['version']),
+        })),
+      };
+    },
+  }),
+  // DSP-04: "send the nearest chainsaw team to M-00041" (or to a mission named by its place).
+  // The team is the dispatch board's best suggestion, among teams whose name or credentials
+  // carry the skill; the plan shows why it was suggested and any caution, and the dispatcher
+  // confirms. The assignment then goes to the team's phones and needs their acknowledgement.
+  define({
+    name: 'mission.assign_nearest',
+    version: 1,
+    phase: 3,
+    action: 'assignment.create',
+    kind: 'change',
+    title: 'Send the nearest qualified available team to a mission',
+    usage: '/mission <number or "place"> send nearest [<skill>] team',
+    args: z.object({
+      skill: z.string().min(1).max(60).optional(),
+      teamId: z.uuid().optional(),
+      team: z.string().max(200).optional(),
+      reasons: z.array(z.string().max(300)).max(12).optional(),
+      cautions: z.array(z.string().max(300)).max(12).optional(),
+    }),
+    target: 'mission',
+    within: {
+      path: (_a, t) => `/dispatch/suggest?missionId=${t!.id}&limit=20`,
+      rowsOf: (body) =>
+        rows((body as { suggestions?: unknown } | null)?.suggestions).map((s) => ({
+          ...s,
+          id: s['teamId'],
+        })),
+      // Best first, as the board ranks them; only the one at the top is offered.
+      pick: (list, a) => {
+        const want = a.skill ? fold(a.skill) : null;
+        const fit = want
+          ? list.filter((r) =>
+              [str(r['name']), ...(Array.isArray(r['credentials']) ? r['credentials'] : [])].some(
+                (v) => fold(str(v)).includes(want),
+              ),
+            )
+          : list;
+        return fit.slice(0, 1);
+      },
+      idArg: 'teamId',
+      keep: (r) => ({
+        team: str(r['name']),
+        reasons: Array.isArray(r['reasons']) ? r['reasons'].map(str) : [],
+        cautions: Array.isArray(r['cautions']) ? r['cautions'].map(str) : [],
+      }),
+      none: (a) =>
+        a.skill
+          ? `No active ${a.skill} team can be suggested for this mission. Pick one on the dispatch board.`
+          : 'No active team can be suggested for this mission. Pick one on the dispatch board.',
+      many: () => 'More than one team was suggested. Pick one on the dispatch board.',
+    },
+    confirmation: 'one_tap',
+    reversal: 'compensating',
+    freeText: ['skill'],
+    sideEffects:
+      "Assigns the suggested team with the same checks as the dispatch board. The team's phones are told and must acknowledge it; one not acknowledged in time raises an alert.",
+    request: (a, t) => ({
+      method: 'POST',
+      path: `/missions/${t!.id}/assignments`,
+      body: { resources: [{ kind: 'team', id: a.teamId }] },
+    }),
+    describe: (a, t) =>
+      `Send ${a.team ?? 'the suggested team'} to mission ${t!.label}: the best suggestion${a.skill ? ` among ${a.skill} teams` : ''}${a.reasons?.length ? ` (${a.reasons.join('; ')})` : ''}.${a.cautions?.length ? ` Caution: ${a.cautions.join('; ')}.` : ''}`,
+    verify: (r) => {
+      const list = rows(r);
+      return {
+        state: 'saved',
+        summary: list.length
+          ? `Sent; the assignment is ${str(list[0]!['state']).replace('_', ' ')} until the team acknowledges it.`
           : 'Nothing was assigned.',
         records: list.map((x) => ({
           kind: 'assignment',

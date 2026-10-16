@@ -2081,4 +2081,97 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
     expect(again.message).toContain('do not hold the role');
     await phases([1, 2, 3]);
   });
+
+  it('DSP-04: "send the nearest chainsaw team" to a mission named by its number or its place plans the best-suggested team with its reasons; the dispatcher confirms; the assignment waits for the team', async () => {
+    await phases([1, 2, 3]);
+    const m = await call('calltaker', 'POST', '/missions', {
+      eventId,
+      kind: 'debris',
+      source: 'call',
+      priority: 'high',
+      urgency: 'now',
+      summary: 'Exercise: tree across the drive.',
+      requiredCredentials: ['chainsaw'],
+      location: {
+        line1: `Lot 41, Exercise Willow Bend ${run}`,
+        city: 'Harmon City',
+        postal: '63001',
+        position: { lat: 38.79, lon: -90.905 },
+        state: 'approximate',
+      },
+    });
+    expect(m.status, JSON.stringify(m.body)).toBe(201);
+    const id = m.body['id'] as string;
+    const ref = m.body['reference'] as string;
+    const [saw, debris] = await withTenant(dbWorker, { tenantId: county }, async (trx) => {
+      const ids: string[] = [];
+      for (const [key, name, held] of [
+        [`saw-${run}`, `Exercise Oak Crew ${run}`, 'chainsaw'],
+        [`deb-${run}`, `Exercise Debris Crew ${run}`, null],
+      ] as const) {
+        const t = (
+          await trx
+            .insertInto('cg.team')
+            .values({ tenant_id: county, event_id: eventId, key, name })
+            .returning('id')
+            .executeTakeFirstOrThrow()
+        ).id;
+        await trx
+          .insertInto('cg.team_status')
+          .values({ tenant_id: county, team_id: t, status: 'available', source: 'console' })
+          .execute();
+        const p = (
+          await trx
+            .insertInto('cg.personnel')
+            .values({ tenant_id: county, name: `Exercise member of ${name}` })
+            .returning('id')
+            .executeTakeFirstOrThrow()
+        ).id;
+        await trx
+          .insertInto('cg.team_member')
+          .values({ tenant_id: county, team_id: t, personnel_id: p })
+          .execute();
+        if (held)
+          await trx
+            .insertInto('cg.credential')
+            .values({ tenant_id: county, personnel_id: p, kind: held, status: 'verified' } as never)
+            .execute();
+        ids.push(t);
+      }
+      return ids;
+    });
+
+    // By place: the words of its address find it among the open missions.
+    const plan = await command(
+      'field',
+      `/mission "Exercise Willow Bend ${run} lot 41" send nearest chainsaw team`,
+    );
+    expect(plan.status, plan.message).toBe('awaiting_confirmation');
+    expect(plan.command).toMatchObject({ name: 'mission.assign_nearest', confirmation: 'one_tap' });
+    expect(plan.plan?.description).toContain(`Send Exercise Oak Crew ${run} to mission ${ref}`);
+    expect(plan.plan?.description).toContain('holds chainsaw');
+    expect(plan.plan?.description).toContain('Caution: nobody checked in');
+    // A skill no team has is answered, never guessed.
+    const boat = await command('field', `/mission ${ref} send nearest boat team`);
+    expect(boat.status).toBe('not_found');
+    expect(boat.message).toContain('No active boat team can be suggested');
+    // A place no open mission has is not found.
+    expect(
+      (await command('field', `/mission "Nowhere Exercise ${run}" send nearest team`)).status,
+    ).toBe('not_found');
+
+    const done = await confirm('field', plan);
+    expect(done.body['status'], JSON.stringify(done.body)).toBe('succeeded');
+    expect(done.body['message']).toContain('until the team acknowledges it');
+    const held = await dbWorker
+      .selectFrom('cg.assignment')
+      .select(['team_id', 'state'])
+      .where('mission_id', '=', id)
+      .execute();
+    expect(held).toEqual([{ team_id: saw, state: expect.not.stringMatching(/^acknowledged$/) }]);
+    expect(held.map((h) => h.team_id)).not.toContain(debris);
+    // Searching missions by place reads their exact location; a role without it is refused.
+    const blind = await call('pio', 'GET', `/missions?place=${encodeURIComponent('Willow Bend')}`);
+    expect([403, 404]).toContain(blind.status);
+  });
 });

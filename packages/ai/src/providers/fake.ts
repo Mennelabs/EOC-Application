@@ -385,6 +385,15 @@ function interpret(text: string, onScreen: 'mission' | 'need' | null): CommandIn
   if (need && /\b(release|liber|suelta)/i.test(t))
     return { shorthand: `/need ${need} release`, question: null };
   if (mission) {
+    // DSP-04: "send the nearest chainsaw team" / "el equipo de motosierra más cercano".
+    const nearest =
+      /\b(?:nearest|closest)\s+(?:(\p{L}+)\s+)?(?:team|crew)\b/iu.exec(text) ??
+      /\bequipo\s+(?:de\s+)?(\p{L}+)?\s*m[aá]s\s+cercano\b/iu.exec(text);
+    if (nearest)
+      return {
+        shorthand: `/mission ${mission} send nearest ${nearest[1] ? `${nearest[1].toLowerCase()} ` : ''}team`,
+        question: null,
+      };
     for (const [re, to] of STATUS_WORDS)
       if (re.test(t)) return { shorthand: `/mission ${mission} status ${to}`, question: null };
     const note = /\b(?:note|nota)\b[:\s]+(.+)$/i.exec(text)?.[1];

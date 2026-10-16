@@ -685,10 +685,10 @@
     "Open needs with no mission sit under the queue with \"Make a mission\" (`POST /needs/:id/mission`); a staffing gap is still a site_staffing mission."
   ],
   "DSP-04": [
-    "partial",
-    "assign by drag or the 'Assign…' button (screens/dispatch.tsx); GET /dispatch/suggest nearest qualified available team with reasons; worker alert when not acknowledged within dispatch.ack_minutes (jobs/field.ts)",
-    "services/api/test/dispatch-sync.db.test.ts (suggestion changes no record), services/api/test/field.db.test.ts (DSP-07: unacknowledged dispatch alerts), tests/e2e/console-l4.spec.ts (keyboard assign)",
-    "The natural-language command window is layer 7 (plan §11)."
+    "pass",
+    "assign by drag or the 'Assign…' button (screens/dispatch.tsx); GET /dispatch/suggest nearest qualified available team with reasons; the command window's mission.assign_nearest (services/api/src/commands/catalog.ts, parse.ts: \"/mission <number or \\\"place\\\"> send nearest [<skill>] team\", English and Spanish) plans the top suggestion with its reasons and cautions for the dispatcher to confirm; missions found by place words through GET /missions?place= (location readers only); worker alert when not acknowledged within dispatch.ack_minutes (jobs/field.ts)",
+    "services/api/test/dispatch-sync.db.test.ts (suggestion changes no record), services/api/test/field.db.test.ts (DSP-07: unacknowledged dispatch alerts), tests/e2e/console-l4.spec.ts (keyboard assign), services/api/test/commands.db.test.ts (DSP-04: by place, the chainsaw team with its reasons, a skill nobody has answered, confirmed into an assignment waiting for acknowledgement), services/api/test/commands.test.ts (DSP-04 parsing), packages/ai/src/evaluation/cases.ts (cmd-en-nearest-team, cmd-es-nearest-team)",
+    "Plain words reach the shorthand through the county's provider (layer 7); a mission named by its place is found among open missions whose address, landmark or cross streets hold every word (layer-7 plan reading 38)."
   ],
   "DSP-05": [
     "pass",

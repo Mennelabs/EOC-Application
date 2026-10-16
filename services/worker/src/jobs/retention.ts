@@ -18,15 +18,25 @@
  * records of an event still open never expire, and a legal hold on the
  * mission or report a field record belongs to keeps it too.
  *
+ * The roster outlives events: a person's entry goes the `records` period
+ * after they were archived, a standing team's after it was archived (an event
+ * team's after its event closed), and a lapsed credential's after it expired
+ * or was revoked. Every record that still points at a person or a team keeps
+ * them, read from the database's own foreign keys at each run, so a link added
+ * later keeps rows rather than breaking the sweep. Their stored files (a badge
+ * photo, a certificate scan) are deleted from object storage first; when the
+ * storage cannot delete, the rows stay.
+ *
  * Position trails, command conversations, scribe audio and reference data
  * have their own sweeps; CJIS data stays in the enclave under its own rules.
  * Not swept here yet: the core records (reports, needs, missions, photos and
  * their free text), whose deletion runs across many linked tables and object
- * storage, and the roster (people, teams, credentials, devices, stock), which
- * outlives events.
+ * storage and waits on the questions in docs/plans/sec-13-core-records.md.
+ * Devices and stock are equipment, not personal data, and follow the core
+ * records they are used for.
  */
 import { randomUUID } from 'node:crypto';
-import { sql, type Transaction } from 'kysely';
+import { sql, type Kysely, type Transaction } from 'kysely';
 import type { Database } from '@cg/db';
 import { allTenantIds, asSystem, systemAudit } from '../system.ts';
 import type { JobContext } from './types.ts';
@@ -50,6 +60,23 @@ export interface Sweep {
   heldWith?: { type: string; id: string }[];
   /** A row naming its related record by type and id columns: a hold on that record keeps it. */
   heldVia?: { typeColumn: string; idColumn: string };
+  /**
+   * Every record that points at a row keeps it (except `children`), read from the database's
+   * foreign keys at each run rather than listed here.
+   */
+  keptByReferences?: boolean;
+  /**
+   * Stored files the rows, or their children, carry: `key` in `table` where `column` is the
+   * row's id. They are deleted from object storage before the rows; without a store that can
+   * delete, the rows stay.
+   */
+  objects?: { table: string; column: string; key: string }[];
+}
+
+/** What a run needs besides the sweep: the links found in the database, and object storage. */
+export interface SweepRun {
+  references: Map<string, { table: string; column: string }[]>;
+  remove?: ((key: string) => Promise<void>) | undefined;
 }
 
 /** When the event a field record belongs to closed; null (never expires) while it is open. */
@@ -63,6 +90,9 @@ const fieldRecord = (table: string, extra: Partial<Sweep> = {}): Sweep => ({
   eventOf: 't.event_id',
   ...extra,
 });
+/** No communications entry names a status report the row's children include. */
+const STATUS_NOT_LOGGED = (column: string) =>
+  `not exists (select 1 from cg.comms_log c join cg.team_status s on s.id = c.team_status_id where s.${column} = t.id)`;
 const MISSION_EVENT = '(select m.event_id from cg.mission m where m.id = t.mission_id)';
 const SITE_EVENT = '(select s.event_id from cg.site s where s.id = t.site_id)';
 
@@ -206,7 +236,9 @@ export const SWEEPS: readonly Sweep[] = [
     heldWith: [{ type: 'mission', id: 't.mission_id' }],
   },
   fieldRecord('check_in', {
-    // The team's status reports made under a check-in are its history.
+    // The team's status reports made under a check-in are its history; one a communications
+    // entry still names keeps the check-in (a county may keep communications longer).
+    finished: STATUS_NOT_LOGGED('check_in_id'),
     children: [{ table: 'team_status', column: 'check_in_id' }],
     keptBy: [
       { table: 'safety_alert', column: 'check_in_id' },
@@ -230,7 +262,78 @@ export const SWEEPS: readonly Sweep[] = [
     eventOf: SITE_EVENT,
     heldWith: [{ type: 'site', id: 't.site_id' }],
   },
+  // The roster (SEC-13), after the field records that name people and teams. A lapsed
+  // credential goes on its own; the rest of a person's go with them.
+  {
+    category: 'field_records',
+    table: 'credential',
+    clock:
+      'case when t.expires_at is not null and t.expires_at < now() then t.expires_at else t.updated_at end',
+    finished:
+      "t.status in ('expired', 'revoked') or (t.expires_at is not null and t.expires_at < now())",
+    keptByReferences: true,
+    objects: [{ table: 'credential', column: 'id', key: 'evidence_key' }],
+  },
+  // A team archived: a standing team counts from then, an event's team from its event's close.
+  {
+    category: 'field_records',
+    table: 'team',
+    clock: `case when t.event_id is null then t.updated_at else ${eventClosed('t.event_id')} end`,
+    finished: `t.status = 'archived' and ${STATUS_NOT_LOGGED('team_id')}`,
+    eventOf: 't.event_id',
+    children: [
+      { table: 'team_member', column: 'team_id' },
+      { table: 'team_status', column: 'team_id' },
+    ],
+    keptByReferences: true,
+  },
+  {
+    category: 'records',
+    table: 'personnel',
+    clock: 't.archived_at',
+    finished: "t.status = 'archived' and t.archived_at is not null",
+    children: [
+      { table: 'credential', column: 'personnel_id' },
+      { table: 'team_member', column: 'personnel_id' },
+    ],
+    keptByReferences: true,
+    objects: [
+      { table: 'personnel', column: 'id', key: 'photo_key' },
+      { table: 'credential', column: 'personnel_id', key: 'evidence_key' },
+    ],
+  },
 ];
+
+/** The records that point at each table, from the database's foreign keys (`keptByReferences`). */
+export async function referencesTo(
+  db: Kysely<Database>,
+  tables: string[],
+): Promise<Map<string, { table: string; column: string }[]>> {
+  const out = new Map<string, { table: string; column: string }[]>();
+  if (!tables.length) return out;
+  const rows = await sql<{
+    from_schema: string;
+    from_table: string;
+    col: string;
+    to_table: string;
+  }>`
+    select fn.nspname as from_schema, fc.relname as from_table, a.attname as col,
+           tc.relname as to_table
+    from pg_constraint c
+    join pg_class fc on fc.oid = c.conrelid
+    join pg_namespace fn on fn.oid = fc.relnamespace
+    join pg_class tc on tc.oid = c.confrelid
+    join pg_namespace tn on tn.oid = tc.relnamespace
+    join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+    where c.contype = 'f' and tn.nspname = 'cg' and tc.relname = any(${tables}::text[])
+    order by 1, 2, 3`.execute(db);
+  for (const r of rows.rows) {
+    const list = out.get(r.to_table) ?? [];
+    list.push({ table: `${r.from_schema}.${r.from_table}`, column: r.col });
+    out.set(r.to_table, list);
+  }
+  return out;
+}
 
 /** Rows per table per tenant per run; the next day takes the rest. */
 export const BATCH = 5000;
@@ -284,6 +387,7 @@ export async function sweepOne(
   sweep: Sweep,
   cutoff: Date,
   holds: Holds,
+  run: SweepRun = { references: new Map() },
 ): Promise<{ count: number; oldest: Date | null; newest: Date | null }> {
   const none = { count: 0, oldest: null, newest: null };
   if (holds.categories.has(sweep.category) || holds.categories.has(`table:${sweep.table}`))
@@ -301,9 +405,19 @@ export async function sweepOne(
           sql`(${sql.raw(sweep.eventOf)} is null or not (${sql.raw(sweep.eventOf)} = any(${holds.events}::uuid[])))`,
         ]
       : []),
-    ...(sweep.keptBy ?? []).map(
+    ...[
+      ...(sweep.keptBy ?? []).map((k) => ({ table: `cg.${k.table}`, column: k.column })),
+      ...(sweep.keptByReferences
+        ? (run.references.get(sweep.table) ?? []).filter(
+            (r) =>
+              !(sweep.children ?? []).some(
+                (c) => r.table === `cg.${c.table}` && r.column === c.column,
+              ),
+          )
+        : []),
+    ].map(
       (k) =>
-        sql`not exists (select 1 from ${sql.raw(`cg.${k.table}`)} r where r.${sql.raw(k.column)} = t.id)`,
+        sql`not exists (select 1 from ${sql.raw(k.table)} r where r.${sql.raw(k.column)} = t.id)`,
     ),
     ...(sweep.heldVia
       ? [...holds.records.entries()].map(
@@ -325,6 +439,18 @@ export async function sweepOne(
     limit ${BATCH}`.execute(trx);
   if (due.rows.length === 0) return none;
   const ids = due.rows.map((r) => r.id);
+  // Stored files first: a file left behind would outlive the record that named it.
+  if (sweep.objects?.length) {
+    const keys: string[] = [];
+    for (const o of sweep.objects) {
+      const found = await sql<{ key: string | null }>`
+        select ${sql.ref(o.key)} as key from ${sql.raw(`cg.${o.table}`)}
+        where ${sql.ref(o.column)} = any(${ids}::uuid[])`.execute(trx);
+      for (const r of found.rows) if (r.key) keys.push(r.key);
+    }
+    if (keys.length && !run.remove) return none;
+    for (const k of keys) await run.remove!(k);
+  }
   for (const c of sweep.children ?? [])
     await sql`delete from ${sql.raw(`cg.${c.table}`)} where ${sql.raw(c.column)} = any(${ids}::uuid[])`.execute(
       trx,
@@ -380,6 +506,10 @@ export async function pruneChangeFeed(
 export async function sweepRetention(ctx: JobContext): Promise<number> {
   const now = ctx.now?.() ?? new Date();
   const executionId = randomUUID();
+  const references = await referencesTo(
+    ctx.db,
+    SWEEPS.filter((x) => x.keptByReferences).map((x) => x.table),
+  );
   let total = 0;
   for (const tenantId of await allTenantIds(ctx.db)) {
     total += await asSystem(ctx.db, tenantId, async (trx) => {
@@ -388,6 +518,7 @@ export async function sweepRetention(ctx: JobContext): Promise<number> {
       let n = 0;
       // The change feed has no id column; it is pruned by sequence (pruneChangeFeed).
       const feed: Sweep = { category: 'sessions', table: 'change_feed', clock: 'created_at' };
+      const run: SweepRun = { references, remove: ctx.objects?.delete?.bind(ctx.objects) };
       for (const sweep of [...SWEEPS, feed]) {
         const d = days.get(sweep.category);
         if (d === undefined || !Number.isFinite(d) || d <= 0) continue;
@@ -395,7 +526,7 @@ export async function sweepRetention(ctx: JobContext): Promise<number> {
         const r =
           sweep === feed
             ? await pruneChangeFeed(trx, tenantId, cutoff, holds)
-            : await sweepOne(trx, tenantId, sweep, cutoff, holds);
+            : await sweepOne(trx, tenantId, sweep, cutoff, holds, run);
         if (r.count === 0) continue;
         n += r.count;
         await trx

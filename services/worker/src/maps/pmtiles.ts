@@ -132,6 +132,8 @@ export interface ArchiveOptions {
   tileCompression: number;
   metadata: Record<string, unknown>;
   bounds: Bbox;
+  /** The zooms the archive declares when it holds no tiles (an exercise package). */
+  zooms?: [number, number];
 }
 
 function u64(view: DataView, at: number, v: number): void {
@@ -184,8 +186,8 @@ export function writeArchive(tiles: Map<number, Uint8Array>, o: ArchiveOptions):
     leaves = Buffer.concat(leafParts);
   }
   const zooms = ids.map((id) => tileIdToZxy(id)[0]);
-  const minZoom = zooms.length ? Math.min(...zooms) : 0;
-  const maxZoom = zooms.length ? Math.max(...zooms) : 0;
+  const minZoom = zooms.length ? Math.min(...zooms) : (o.zooms?.[0] ?? 0);
+  const maxZoom = zooms.length ? Math.max(...zooms) : (o.zooms?.[1] ?? 0);
   const header = Buffer.alloc(HEADER_BYTES);
   header.write('PMTiles', 0, 'ascii');
   header.writeUInt8(3, 7);

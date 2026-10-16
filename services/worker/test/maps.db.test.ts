@@ -207,4 +207,26 @@ describe.skipIf(!workerUrl)('offline map packages (database-backed)', () => {
     expect((await packages()).map((x) => x.area_key)).toEqual(['north']);
     expect(stored.has(south!.object_key)).toBe(false);
   });
+
+  it('FLD-13: in an exercise environment without regional tiles an area gets a street-less package, replaced once real tiles exist', async () => {
+    rmSync(regionPath, { force: true });
+    await tx((trx) => trx.deleteFrom('cg.map_package').where('tenant_id', '=', county).execute());
+    const exercise = { ...ctx, maps: { regionPath, exercise: true } };
+    expect(await cutAreaMaps(exercise, [county])).toBe(1);
+    const [north] = await packages();
+    expect(north).toMatchObject({
+      area_key: 'north',
+      region_stamp: 'exercise',
+      tiles: 0,
+      max_zoom: 14,
+    });
+    const p = new PMTiles(new BufferSource(stored.get(north!.object_key)!));
+    expect(await p.getHeader()).toMatchObject({ minZoom: 0, maxZoom: 14, tileType: 1 });
+    expect(await p.getMetadata()).toMatchObject({ name: 'Exercise map' });
+    expect(await cutAreaMaps(exercise, [county])).toBe(0);
+    // Real tiles arrive: the package is cut from them.
+    writeFileSync(regionPath, region());
+    expect(await cutAreaMaps(exercise, [county])).toBe(1);
+    expect((await packages())[0]!.tiles).toBeGreaterThan(0);
+  });
 });

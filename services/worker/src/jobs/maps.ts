@@ -6,12 +6,15 @@
  * in and out show. A package is cut again only when the regional tiles were
  * rebuilt or the area's lots moved; an area whose lots are gone loses its
  * package. Without regional tiles nothing happens: the phone keeps its list,
- * its lot sketches and addresses (FLD-04).
+ * its lot sketches and addresses (FLD-04). In an exercise environment
+ * (MAP_EXERCISE, never production) an area without regional tiles gets an
+ * exercise package: its box and zooms, no streets, so the phone's map shows
+ * the lots and jobs on a plain background until real tiles are built.
  */
 import { createHash } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import { sql } from 'kysely';
-import { extractArea, type Bbox } from '../maps/pmtiles.ts';
+import { extractArea, writeArchive, type Bbox } from '../maps/pmtiles.ts';
 import { allTenantIds, asSystem, systemAudit } from '../system.ts';
 import type { JobContext } from './types.ts';
 
@@ -20,6 +23,24 @@ export const MARGIN_DEG = 0.01;
 /** The most tiles one package may hold (a county-sized area at street zoom fits well under it). */
 export const MAX_TILES = 50_000;
 export const ATTRIBUTION = '© OpenStreetMap contributors';
+/** The build stamp of exercise packages; real tiles replace them on the next run. */
+export const EXERCISE_STAMP = 'exercise';
+
+/** An exercise package: the box and street zooms, no tiles (MVT, gzip, as the real ones). */
+function exercisePackage(box: Bbox) {
+  const archive = writeArchive(new Map(), {
+    tileType: 1,
+    tileCompression: 2,
+    bounds: box,
+    zooms: [0, 14],
+    metadata: {
+      name: 'Exercise map',
+      description: 'Exercise package: no streets until the county tiles are built (FLD-13)',
+      vector_layers: [],
+    },
+  });
+  return { archive, tiles: 0, minZoom: 0, maxZoom: 14 };
+}
 
 const round = (x: number) => Math.round(x * 1e5) / 1e5;
 
@@ -29,11 +50,15 @@ export async function cutAreaMaps(ctx: JobContext, only?: string[]): Promise<num
   const objects = ctx.objects;
   if (!regionPath || !objects) return 0;
   let regionStamp: string;
+  let haveRegion = true;
   try {
     const s = await stat(regionPath);
     regionStamp = `${s.size}:${Math.round(s.mtimeMs)}`;
   } catch {
-    return 0; // No regional tiles built yet (`docker compose --profile maps-build run --rm tiles-build`).
+    // No regional tiles built yet (`docker compose --profile maps-build run --rm tiles-build`).
+    if (!ctx.maps?.exercise) return 0;
+    haveRegion = false;
+    regionStamp = EXERCISE_STAMP;
   }
   let cut = 0;
   for (const tenantId of only ?? (await allTenantIds(ctx.db))) {
@@ -75,7 +100,9 @@ export async function cutAreaMaps(ctx: JobContext, only?: string[]): Promise<num
         continue;
       let out;
       try {
-        out = await extractArea(regionPath, box, { maxTiles: MAX_TILES, attribution: ATTRIBUTION });
+        out = haveRegion
+          ? await extractArea(regionPath, box, { maxTiles: MAX_TILES, attribution: ATTRIBUTION })
+          : exercisePackage(box);
       } catch (err) {
         ctx.log.warn({ err, tenantId, area: a.area_key }, 'map package not cut');
         continue;

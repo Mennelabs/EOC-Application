@@ -167,7 +167,7 @@ const ctx: JobContext = {
     },
   },
   defaultGraph: westwindGraph,
-  maps: { regionPath: config.MAP_TILES_PATH },
+  maps: { regionPath: config.MAP_TILES_PATH, exercise: config.MAP_EXERCISE },
   devDirectGrant: config.IDP_DEV_DIRECT_GRANT,
   // ADR-0039, SCL-12: recorded synthetic responses unless configured live; only allowlisted hosts.
   refdata: {

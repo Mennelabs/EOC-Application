@@ -133,6 +133,7 @@ services:
       CENSUS_API_KEY: ${CENSUS_API_KEY:-}
       # FLD-13: offline map packages per area are cut from the regional tiles when they exist.
       MAP_TILES_PATH: /srv/tiles/region.pmtiles
+      MAP_EXERCISE: ${MAP_EXERCISE:-true}
     volumes:
       - keys_init:/bao-init:ro
       - tiles:/srv/tiles:ro

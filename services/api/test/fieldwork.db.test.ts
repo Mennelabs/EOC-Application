@@ -192,6 +192,14 @@ describe.skipIf(!appUrl || !workerUrl)('field assessments and counters (database
             .returning('id')
             .executeTakeFirstOrThrow()
         ).id;
+      // A re-run on the same database: the account may still be linked to the person an
+      // earlier run picked; one account belongs to one person.
+      await dbWorker
+        .updateTable('cg.personnel')
+        .set({ account_id: null })
+        .where('account_id', '=', account)
+        .where('id', '<>', member.personnel_id)
+        .execute();
       await dbWorker
         .updateTable('cg.personnel')
         .set({ account_id: account, status: 'active' })
@@ -447,6 +455,51 @@ describe.skipIf(!appUrl || !workerUrl)('field assessments and counters (database
       .where('id', '=', siteId)
       .executeTakeFirstOrThrow();
     expect(site.occupancy).toBe(57);
+  });
+
+  it('AC-08A: a count made offline keeps when it happened beside when it was recorded, in the counter and the activity log; it cannot be dated ahead', async () => {
+    const id = randomUUID();
+    const happened = new Date(Date.now() - 3 * 3_600_000);
+    const late = await command('a1', [
+      {
+        id,
+        kind: 'service_log.record',
+        body: { kind: 'water_case', count: 12, siteId, occurredAt: happened.toISOString() },
+      },
+    ]);
+    expect(late[0]!.result).toBe('applied');
+    const row = await dbWorker
+      .selectFrom('cg.service_log')
+      .select(['id', 'occurred_at', 'created_at'])
+      .where('client_uuid', '=', id)
+      .executeTakeFirstOrThrow();
+    expect(new Date(row.occurred_at).getTime()).toBe(happened.getTime());
+    expect(Date.now() - new Date(row.created_at).getTime()).toBeLessThan(60_000);
+    // The activity log (ICS 214) shows it at the time it was given, and when it was recorded.
+    const entries = await call('priya', 'GET', `/api/v1/activity?eventId=${eventId}&limit=200`);
+    expect(entries.status, entries.body).toBe(200);
+    const entry = entries
+      .json<{ refId: string | null; occurredAt: string; recordedAt: string }[]>()
+      .find((e) => e.refId === row.id);
+    expect(entry, 'the activity entry for the count').toBeDefined();
+    expect(new Date(entry!.occurredAt).getTime()).toBe(happened.getTime());
+    expect(new Date(entry!.recordedAt).getTime()).toBeGreaterThan(happened.getTime() + 3_500_000);
+
+    // A device clock an hour fast cannot date an entry ahead of now.
+    const ahead = await command('a1', [
+      {
+        id: randomUUID(),
+        kind: 'service_log.record',
+        body: {
+          kind: 'water_case',
+          count: 1,
+          siteId,
+          occurredAt: new Date(Date.now() + 3_600_000).toISOString(),
+        },
+      },
+    ]);
+    expect(ahead[0]!.result).not.toBe('applied');
+    expect(ahead[0]!.status).toBe(400);
   });
 
   it('FLD-07, PHO-06: a field photo is ticketed once, uploaded through the gateway, linked to its record and queued for metadata stripping', async () => {

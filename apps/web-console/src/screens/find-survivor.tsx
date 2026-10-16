@@ -10,6 +10,7 @@
 import { useState, type FormEvent } from 'react';
 import { api, describeFailure } from '../api/client.ts';
 import { DataTable, Field, Status, fmt } from '../ui/primitives.tsx';
+import { formatDate } from '../ui/time.ts';
 
 interface Found {
   reportId: string;
@@ -32,7 +33,7 @@ const CHANNEL: Record<string, string> = {
 };
 const how = (c: string) => CHANNEL[c] ?? c;
 const day = (iso: string) =>
-  new Date(iso).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  formatDate(new Date(iso), { weekday: 'long', month: 'long', day: 'numeric' });
 
 type Navigate = (path: string) => void;
 

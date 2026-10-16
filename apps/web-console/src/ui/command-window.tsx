@@ -21,6 +21,7 @@ import {
   useOpenDrafts,
   type ScreenRecord,
 } from './screen-record.ts';
+import { formatTime } from './time.ts';
 
 interface CommandMeta {
   name: string;
@@ -185,8 +186,7 @@ const recordHref = (r: { kind: string; id: string }): string | null => {
   }
 };
 
-const until = (iso: string) =>
-  new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+const until = (iso: string) => formatTime(new Date(iso));
 
 const reversalText = (c: CommandMeta) =>
   c.reversal === 'undo_15_min'

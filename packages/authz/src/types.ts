@@ -96,6 +96,8 @@ export interface AccountSubject {
   tenantPath: string;
   /** county, city, region, state or partner_org: the console picks its workspaces by it (CON-01). */
   tenantKind?: string;
+  /** BRD:FR-00.08: the tenant's approved time zone (IANA name); screens show times in it. */
+  tenantTimeZone?: string;
   status: AccountStatus;
   roles: ResolvedRole[];
   /** Tenants whose signed agreements grant this tenant read access (SCL-01). */

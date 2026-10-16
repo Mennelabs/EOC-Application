@@ -15,6 +15,7 @@ import { api, describeFailure } from '../api/client.ts';
 import { openStream, type StreamState } from '../api/stream.ts';
 import { DataTable, Status, Toolbar, fmt } from '../ui/primitives.tsx';
 import type { ConsoleMap, MapPoint } from '../ui/map.ts';
+import { fromZoneInput, toZoneInput } from '../ui/time.ts';
 
 interface Point {
   lat: number;
@@ -858,10 +859,8 @@ export function ReplayScreen() {
   const { events } = useOpenEvents();
   const [eventId, setEventId] = useState<string | null>(null);
   const currentEvent = eventId ?? events?.[0]?.id ?? null;
-  const local = (d: Date) =>
-    new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-  const [from, setFrom] = useState(() => local(new Date(Date.now() - 4 * 3_600_000)));
-  const [to, setTo] = useState(() => local(new Date()));
+  const [from, setFrom] = useState(() => toZoneInput(new Date(Date.now() - 4 * 3_600_000)));
+  const [to, setTo] = useState(() => toZoneInput(new Date()));
   const [replay, setReplay] = useState<Replay | null>(null);
   const [teams, setTeams] = useState<BoardTeam[]>([]);
   const [step, setStep] = useState(0);
@@ -871,7 +870,7 @@ export function ReplayScreen() {
     try {
       const [r, b] = await Promise.all([
         api<Replay>(
-          `/dispatch/replay?eventId=${currentEvent}&from=${new Date(from).toISOString()}&to=${new Date(to).toISOString()}`,
+          `/dispatch/replay?eventId=${currentEvent}&from=${fromZoneInput(from).toISOString()}&to=${fromZoneInput(to).toISOString()}`,
         ),
         api<Board>(`/dispatch/board?eventId=${currentEvent}`),
       ]);

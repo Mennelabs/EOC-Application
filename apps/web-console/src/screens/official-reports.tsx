@@ -18,6 +18,7 @@ import { DataTable, Field, Status, fmt } from '../ui/primitives.tsx';
 import { EventPicker, useOpenEvents } from './dispatch.tsx';
 import { ExportFile, useExports } from './fema-package.tsx';
 import { PartnerRollupChooser, type RollupValue } from './partner-rollup.tsx';
+import { fromZoneInput, toZoneInput, wallClock } from '../ui/time.ts';
 
 type State = 'draft' | 'reviewed' | 'issued' | 'superseded' | 'withdrawn';
 const STATE_TEXT: Record<State, string> = {
@@ -118,23 +119,19 @@ const inZone = (iso: string, timeZone: string) =>
     timeZoneName: 'short',
   }).format(new Date(iso));
 
-const local = (d: Date) => {
-  const p = (x: number) => String(x).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-};
-
-/** The operational period now: 07:00–19:00 or 19:00–07:00 local (plan §14 question 2, default in force). */
+/**
+ * The operational period now: 07:00–19:00 or 19:00–07:00 on the tenant's clock
+ * (plan §14 question 2, default in force; BRD:FR-00.08), as datetime-local values.
+ */
 function currentPeriod(now = new Date()): { from: string; to: string } {
-  const from = new Date(now);
-  from.setMinutes(0, 0, 0);
-  const h = now.getHours();
-  if (h >= 7 && h < 19) from.setHours(7);
-  else {
-    if (h < 7) from.setDate(from.getDate() - 1);
-    from.setHours(19);
-  }
-  const to = new Date(from.getTime() + 12 * 3_600_000);
-  return { from: local(from), to: local(to) };
+  const w = wallClock(now);
+  const start = w.hour >= 7 && w.hour < 19 ? 7 : 19;
+  // Before 07:00 the night period began at 19:00 the day before.
+  const day = new Date(Date.UTC(w.year, w.month - 1, w.day - (w.hour < 7 ? 1 : 0)));
+  const p = (x: number) => String(x).padStart(2, '0');
+  const from = `${day.getUTCFullYear()}-${p(day.getUTCMonth() + 1)}-${p(day.getUTCDate())}T${p(start)}:00`;
+  const to = toZoneInput(new Date(fromZoneInput(from).getTime() + 12 * 3_600_000));
+  return { from, to };
 }
 
 function useMe() {
@@ -236,9 +233,9 @@ export function OfficialReportsScreen({ navigate }: { navigate: (to: string) => 
         clientUuid: crypto.randomUUID(),
         eventId,
         kind: form.kind,
-        periodFrom: new Date(form.from).toISOString(),
-        periodTo: new Date(form.to).toISOString(),
-        ...(form.cutoff ? { cutoff: new Date(form.cutoff).toISOString() } : {}),
+        periodFrom: fromZoneInput(form.from).toISOString(),
+        periodTo: fromZoneInput(form.to).toISOString(),
+        ...(form.cutoff ? { cutoff: fromZoneInput(form.cutoff).toISOString() } : {}),
         classification: form.classification,
       },
     })

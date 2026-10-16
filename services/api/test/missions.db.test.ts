@@ -538,6 +538,29 @@ describe.skipIf(!appUrl || !workerUrl)('missions and assignments (database-backe
     expect(kinds).toContain('amendment');
     expect(after.timeline!.find((t) => t.kind === 'amendment')?.amendsEventId).toBe(noteId);
     expect(after.timeline!.find((t) => t.kind === 'narrative')?.body).toContain('Door answered');
+
+    // AC-08A: a narrative written after the fact keeps when it happened and when it was
+    // recorded; a time ahead of now is refused.
+    const happened = new Date(Date.now() - 2 * 3_600_000).toISOString();
+    const lateNote = await call('priya', 'POST', `/api/v1/missions/${mission.id}/narratives`, {
+      role: 'responder',
+      body: 'Earlier: checked the neighbour too; no one home.',
+      occurredAt: happened,
+    });
+    expect(lateNote.status, lateNote.body).toBe(201);
+    const late = lateNote.json<{ id: string; occurredAt: string; recordedAt: string }>();
+    expect(late.occurredAt).toBe(happened);
+    expect(new Date(late.recordedAt).getTime()).toBeGreaterThan(Date.now() - 60_000);
+    const listed = (await call('priya', 'GET', `/api/v1/missions/${mission.id}`))
+      .json<{ timeline: { id: string; recordedAt: string }[] }>()
+      .timeline.find((t) => t.id === late.id)!;
+    expect(listed.recordedAt).toBe(late.recordedAt);
+    const ahead = await call('priya', 'POST', `/api/v1/missions/${mission.id}/narratives`, {
+      role: 'responder',
+      body: 'Dated an hour ahead by a fast clock.',
+      occurredAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+    expect(ahead.status).toBe(400);
   });
 
   it('people involved: restricted details by category, behavioural health only for counseling, every restricted read audited (PPL-01, AC-04C, SEC-18)', async () => {

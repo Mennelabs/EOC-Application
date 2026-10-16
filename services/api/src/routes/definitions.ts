@@ -9,6 +9,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { sql } from 'kysely';
 import { diffForAudit } from '@cg/audit';
+import type { PgInterval } from '@cg/db';
 import { errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
 import { classifierFor, iso, stamped, uuidParam } from './helpers.ts';
@@ -51,16 +52,14 @@ const keyParam = z.object({
     .regex(/^[a-z0-9_.-]+$/),
 });
 
-/** Postgres interval text → whole days (what the API exposes). */
-function intervalToDays(v: string | null): number | null {
+/**
+ * A stored interval → whole days (what the API exposes). The driver reads an
+ * interval as an object ({ years: 7 }, { days: 30 }), never as text; a year
+ * counts 365 days and a month 30, matching the audit floor above.
+ */
+export function intervalToDays(v: PgInterval | null): number | null {
   if (!v) return null;
-  const m = /(\d+)\s*year/.exec(v);
-  const d = /(\d+)\s*day/.exec(v);
-  const mons = /(\d+)\s*mon/.exec(v);
-  let days = 0;
-  if (m?.[1]) days += Number(m[1]) * 365;
-  if (mons?.[1]) days += Number(mons[1]) * 30;
-  if (d?.[1]) days += Number(d[1]);
+  const days = (v.years ?? 0) * 365 + (v.months ?? 0) * 30 + (v.days ?? 0);
   return days || null;
 }
 

@@ -388,3 +388,18 @@ footer {
   gap: 0.5rem;
   min-block-size: 44px;
 }
+
+/* FL:FR-20: the code a volunteer shows at the desk, large enough to read across it. */
+.desk-code {
+  font-size: 3rem;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  margin: 0.5rem 0;
+}
+.waiver-text {
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 0 1rem;
+  margin-block: 0.5rem;
+}

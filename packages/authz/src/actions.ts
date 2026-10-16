@@ -340,6 +340,13 @@ export const actions = {
     'Offer a place for disaster use through the public form; it waits for county approval',
     { public: true },
   ),
+  // FL:FR-20: a walk-up volunteer signs up through the link reception opened; reception completes it.
+  'volunteer.self_register': a(
+    'write',
+    'volunteer_signup',
+    'Sign up as a walk-up volunteer through the code at the volunteer desk',
+    { public: true },
+  ),
   'facility.approve': a(
     'admin',
     'facility',

@@ -12,6 +12,8 @@
  * in words and a symbol, not by colour or sound (FR-09.05). A badge photo
  * taken in the console waits for a second person (BRD:FR-13.01). A role refused a
  * field screen still hears its heading before the reason (WCAG 1.3.1, 2.4.6).
+ * A walk-up volunteer signs up on their own phone through the desk code and
+ * reception registers them (FL:FR-20).
  */
 import { expect, test, type Page } from '@playwright/test';
 import { expectNoViolations, expectReflow, onboard } from './support/console.ts';
@@ -213,5 +215,84 @@ test.describe('every console screen, one by one', () => {
     ).toBeVisible();
     await expectNoViolations(page);
     if (testInfo.project.name === 'phone') await expectReflow(page);
+  });
+
+  test('FL:FR-20: a walk-up signs up on their own phone through the desk code, in either language; reception registers them; axe finds nothing', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'volunteer_reception',
+      `Reception ${tag}`,
+      `scr-signup-${testInfo.project.name}`,
+    );
+    await open(page, 'reception', 'Volunteer reception');
+    await page
+      .getByLabel('Waiver text in English (optional)')
+      .fill('Exercise waiver: I volunteer at my own risk.');
+    await page.getByRole('button', { name: 'Open a sign-up code', exact: true }).click();
+    await expect(
+      page.getByRole('img', { name: 'Code that opens the volunteer sign-up' }),
+    ).toBeVisible();
+    const link = new URL((await page.locator('.signup-code .url').textContent())!);
+    await expectNoViolations(page);
+
+    // The volunteer's own phone: no sign-in; Spanish says the waiver is in English.
+    const visitor = await context.newPage();
+    await visitor.goto(`${link.pathname}${link.search}&lang=es`);
+    await expect(
+      visitor.getByRole('heading', { level: 1, name: 'Inscríbase como voluntario' }),
+    ).toBeVisible();
+    await expect(visitor.getByText('El condado dio esta exención en inglés.')).toBeVisible();
+    await expectNoViolations(visitor);
+    await visitor.getByRole('link', { name: 'English' }).click();
+    await expect(
+      visitor.getByRole('heading', { level: 1, name: 'Sign up to volunteer' }),
+    ).toBeVisible();
+    await expect(visitor.getByText('Exercise waiver: I volunteer at my own risk.')).toBeVisible();
+    const who = `Exercise Walkup ${tag}-${testInfo.project.name}`;
+    await visitor.getByLabel('Your full name').fill(who);
+    await visitor.getByLabel('Phone (optional)').fill('+13145550188');
+    await visitor.getByLabel('Chainsaw').check();
+    await visitor.getByLabel('I have read the waiver and I accept it.').check();
+    await visitor.getByRole('button', { name: 'Sign up', exact: true }).click();
+    const code = visitor.locator('#desk-code');
+    await expect(code).toHaveText(/^[2-9A-HJ-NP-Z]{4}$/);
+    await expect(code).toBeFocused();
+    const desk = (await code.textContent())!;
+    await expectNoViolations(visitor);
+
+    // Reception sees the request, never the phone number, and registers it.
+    await open(page, 'reception', 'Volunteer reception');
+    const row = page
+      .getByRole('table', { name: 'Waiting at the desk' })
+      .getByRole('row')
+      .filter({ hasText: desk });
+    await expect(row).toContainText(who);
+    await expect(row).toContainText('Accepted on the phone');
+    await expect(row).not.toContainText('5550188');
+    await expectNoViolations(page);
+    await row.getByRole('button', { name: `Register ${desk}` }).click();
+    await expect(page.getByLabel('Full name')).toHaveValue(who);
+    await expect(page.getByText(`desk code ${desk}`)).toBeVisible();
+    await page.getByRole('button', { name: 'Register', exact: true }).click();
+    await expect(page.getByText(`${who} is registered and checked in.`)).toBeVisible();
+    await expect(page.getByRole('table', { name: 'Registered at reception' })).toContainText(who);
+    await expect(
+      page.getByRole('table', { name: 'Waiting at the desk' }).getByText(desk),
+    ).toHaveCount(0);
+
+    // A closed code says so on the phone.
+    await page
+      .getByRole('button', { name: /^Close the code open until/ })
+      .first()
+      .click();
+    await expect(page.getByText('The sign-up code is closed.')).toBeVisible();
+    await visitor.goto(`${link.pathname}${link.search}`);
+    await expect(visitor.getByRole('alert')).toContainText('This sign-up code has closed.');
+    await visitor.close();
   });
 });

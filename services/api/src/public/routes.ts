@@ -34,6 +34,7 @@ import { RiskScorer, WindowCounter } from './abuse.ts';
 import { aiComplaintRoutes } from './ai-complaint.ts';
 import { dictationOn, dictationRoutes } from './dictation.ts';
 import { facilityRegistrationRoutes } from './facility-registration.ts';
+import { volunteerSignupRoutes } from './volunteer-signup.ts';
 import {
   CODE_DIGITS,
   CODE_LETTERS,
@@ -154,6 +155,8 @@ export const publicRoutes =
     await app.register(helpRoutes({ publicBase: deps.publicBase }));
     // REC-01: a place offered through the public form waits for county approval.
     await app.register(facilityRegistrationRoutes);
+    // FL:FR-20: walk-up volunteers sign up through the code at the desk.
+    await app.register(volunteerSignupRoutes);
     await app.register(dictationRoutes({ ...(deps.ai ? { ai: deps.ai } : {}) }));
     // AIG-09: a resident says the computer help went wrong (fixed reasons, no words).
     await app.register(aiComplaintRoutes);

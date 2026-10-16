@@ -841,10 +841,10 @@
     "Hours worked by people come from check-in."
   ],
   "FL:FR-20": [
-    "partial",
-    "routes/volunteers.ts walk-up registration in one step (person, waiver, skills, background-check status only, team, check-in, badge); screens/masscare.tsx reception",
-    "services/api/test/fieldrecords.db.test.ts (FL:FR-20)",
-    "Staff register the walk-up at the desk; self-registration by QR is not built."
+    "pass",
+    "routes/volunteers.ts walk-up registration in one step (person, waiver, skills, background-check status only, team, check-in, badge), sign-up links, the desk queue and decline; public/volunteer-signup.ts self-registration by QR (waiver read and accepted on the phone when the county gives its text, skills from a fixed list, desk code only); web-help volunteer.ts; screens/masscare.tsx reception with the sign-up desk; migration 0095",
+    "services/api/test/fieldrecords.db.test.ts (FL:FR-20); services/api/test/volunteer-signup.db.test.ts; tests/e2e/console-screens.spec.ts (FL:FR-20)",
+    "Plan reading 29: reception sees the request without the contact; details erased once decided; requests swept as drafts after 7 days."
   ],
   "FL:FR-21": [
     "pass",

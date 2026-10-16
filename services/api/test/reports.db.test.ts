@@ -719,6 +719,110 @@ describe.skipIf(!appUrl || !workerUrl)('staff review routes (database-backed)', 
     expect(facts.json().url).toMatch(/\/county\/westwind$/);
   });
 
+  it('BRD:FR-01.06: a lost reference number goes again to the email on the report, never to the screen; the answer is the same either way; one contact gets it at most twice an hour', async () => {
+    const email = `lost-${randomUUID().slice(0, 8)}@example.org`;
+    const submit = async () => {
+      const executionId = randomUUID();
+      const r = await app.inject({
+        method: 'POST',
+        url: '/api/public/intake/county/westwind/submissions',
+        headers: { 'idempotency-key': executionId },
+        payload: {
+          executionId,
+          channel: 'web',
+          language: 'es',
+          graphKey: westwindGraph.key,
+          graphVersion: westwindGraph.version,
+          relationship: 'own_home',
+          answers: answers({
+            contact: { kind: 'value', value: { email, preferred: 'email' } },
+          }),
+          needs: [],
+          consent: {},
+        },
+      });
+      expect(r.statusCode, r.body).toBe(202);
+      return r.json().referenceCode as string;
+    };
+    const kept = [await submit(), await submit()];
+    const gone = await submit();
+    await sweepStoredSubmissions(worker);
+    // A withdrawn report is not sent again.
+    await withTenant(dbWorker, { tenantId }, (trx) =>
+      trx
+        .updateTable('cg.report')
+        .set({ withdrawn_at: new Date() })
+        .where('reference_code', '=', gone)
+        .execute(),
+    );
+    /** Confirmation messages queued for these codes after outbox id `after`. */
+    const sentFor = async (codes: string[], after: number) =>
+      (
+        await dbWorker
+          .selectFrom('cg.outbox')
+          .select(['id', 'payload'])
+          .where('topic', '=', 'message.send')
+          .where('tenant_id', '=', tenantId)
+          .where('id', '>', after)
+          .execute()
+      )
+        .map(
+          (o) =>
+            o.payload as {
+              template: string;
+              channel: string;
+              language: string;
+              variables: { referenceCode?: string };
+            },
+        )
+        .filter((p) => p.template === 'confirmation' && codes.includes(p.variables.referenceCode!));
+    const last = await dbWorker
+      .selectFrom('cg.outbox')
+      .select((eb) => eb.fn.max('id').as('id'))
+      .executeTakeFirstOrThrow();
+    const before = Number(last.id ?? 0);
+    const recover = (contact: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/public/intake/county/lookup/recover',
+        payload: { contact },
+      });
+    const found = await recover(email.toUpperCase());
+    expect(found.statusCode, found.body).toBe(202);
+    // Nothing on the screen but the same sentence as for an address with no report.
+    expect(found.body).not.toContain(kept[0]);
+    const nobody = await recover(`nobody-${randomUUID().slice(0, 8)}@example.org`);
+    expect(nobody.statusCode).toBe(202);
+    expect(nobody.json()).toEqual(found.json());
+    const sent = await sentFor([...kept, gone], before);
+    expect(sent.map((s) => s.variables.referenceCode).sort()).toEqual([...kept].sort());
+    expect(sent.every((s) => s.channel === 'email' && s.language === 'es')).toBe(true);
+    const ids = await dbWorker
+      .selectFrom('cg.report')
+      .select(['id', 'reference_code'])
+      .where('reference_code', 'in', [...kept, gone])
+      .execute();
+    const audit = await withTenant(dbWorker, { tenantId }, (trx) =>
+      trx
+        .selectFrom('cg.audit_event')
+        .select('target_id')
+        .where('action', '=', 'intake.reference_resent')
+        .where(
+          'target_id',
+          'in',
+          ids.map((r) => r.id),
+        )
+        .execute(),
+    );
+    const codeOf = new Map(ids.map((r) => [r.id, r.reference_code]));
+    expect(audit.map((a) => codeOf.get(a.target_id!)).sort()).toEqual([...kept].sort());
+    // A second ask is sent; a third within the hour is answered the same and sends nothing.
+    await recover(email);
+    const third = await recover(email);
+    expect(third.json()).toEqual(found.json());
+    expect((await sentFor([...kept, gone], before)).length).toBe(4);
+  });
+
   it('BRD:FR-01.06, SEC-09: a one-time code allows five tries, then even the right code is refused; too many lookups from one address wait (429)', async () => {
     // A challenge for the assisted report, with a code the test knows (as the lookup sends one).
     const challenge = async (code: string) =>

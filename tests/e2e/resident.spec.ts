@@ -50,6 +50,13 @@ async function mailFor(address: string, subjectPart: string, attempts = 60): Pro
   throw new Error(`no mail to ${address} about "${subjectPart}"`);
 }
 
+/** How many messages to an address carry this text in their subject. */
+async function mailCount(address: string, subjectPart: string): Promise<number> {
+  const res = await fetch(`${MAIL}/api/v1/search?query=${encodeURIComponent(`to:${address}`)}`);
+  const body = (await res.json()) as { messages: { Subject: string }[] };
+  return body.messages.filter((m) => m.Subject.includes(subjectPart)).length;
+}
+
 /** Answers whatever screen is showing with the keyboard, until the review screen. */
 async function answerUntilReview(
   page: Page,
@@ -602,6 +609,41 @@ test.describe('resident report', () => {
     });
     await pressButton(page, 'Back');
     await expect(page.getByRole('radio', { name: 'No, everyone is safe' })).toBeChecked();
+  });
+
+  test('BRD:FR-01.06: a resident who lost the reference number gets it again at the email on the report, never on the screen', async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    const email = `lost-${Date.now().toString(36)}@example.org`;
+    await page.goto('/county/westwind');
+    await pressButton(page, 'Start');
+    await answerUntilReview(page, email, new Set());
+    await pressButton(page, 'Send my report');
+    await expect(page.getByRole('heading', { name: 'We received your report' })).toBeVisible({
+      timeout: 30_000,
+    });
+    const code = ((await page.locator('.reference').textContent()) ?? '').match(CODE)?.[0];
+    expect(code).toBeTruthy();
+    await mailFor(email, 'damage report');
+    // Later the number is lost: the resident asks for it by the email on the report.
+    await page.goto('/county/my-report');
+    await pressButton(page, 'Lost your reference number?');
+    await expect(
+      page.getByRole('heading', { name: 'Get my reference number again' }),
+    ).toBeVisible();
+    await expectNoViolations(page);
+    await page.getByLabel('Phone number or email on the report').fill(email);
+    await pressButton(page, 'Send my reference number');
+    await expect(page.getByText(/its reference number is on its way there/)).toBeVisible();
+    await expect(page.getByText(code!)).toHaveCount(0);
+    await expectNoViolations(page);
+    // The number comes again to the address on the report, and only there.
+    await expect
+      .poll(() => mailCount(email, code!), { timeout: 90_000, intervals: [2000] })
+      .toBeGreaterThanOrEqual(2);
+    await pressButton(page, 'Back to checking my report');
+    await expect(page.getByRole('heading', { name: 'Check or change my report' })).toBeVisible();
   });
   test("AC-A04: nothing needs a voice: the help line takes texts and relay calls, and the danger screen says to text 911 even in a county's own wording, in Spanish too", async ({
     page,

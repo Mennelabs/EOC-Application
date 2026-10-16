@@ -100,10 +100,10 @@
     "Accounts never deleted (no delete policy); personnel link optional."
   ],
   "BRD:FR-01.06": [
-    "partial",
-    "services/api/src/public/routes.ts lookup/start (reference code and the contact on file, matched by blind index; the same answer either way) and lookup/verify (6-digit code, hashed, 10 minutes, 5 tries; 30 lookups per address, then 429); resident token 30 minutes; apps/web-resident/src/screens/MyReport.tsx",
-    "services/api/test/public.db.test.ts (a reference code alone retrieves nothing; the lookup answer is the same either way), services/api/test/reports.db.test.ts (BRD:FR-01.06, SEC-09: five tries, then even the right code is refused; too many lookups from one address wait), tests/integration/layer2.int.test.ts, tests/e2e/resident.spec.ts (my report through the one-time code, keyboard only, axe)",
-    "The reference code is never treated as a secret: it opens nothing alone. Not built: recovery of a lost reference code or of a changed phone or email; a resident whose report has no contact asks the county's help line. The screen-reader pass is pending a person (docs/a11y/screens/resident-intake.md check 2)."
+    "pass",
+    "services/api/src/public/routes.ts lookup/start (reference code and the contact on file, matched by blind index; the same answer either way) and lookup/verify (6-digit code, hashed, 10 minutes, 5 tries; 30 lookups per address, then 429); resident token 30 minutes; lookup/recover (2026-10-16): a lost reference number is sent again, by the registered confirmation text or email, only to the phone or email on the report, up to three recent reports not withdrawn, the same answer either way, at most twice an hour per contact, audited; apps/web-resident/src/screens/MyReport.tsx (\"Lost your reference number?\")",
+    "services/api/test/public.db.test.ts (a reference code alone retrieves nothing; the lookup answer is the same either way), services/api/test/reports.db.test.ts (BRD:FR-01.06, SEC-09: five tries, then even the right code is refused; too many lookups from one address wait; a lost reference number goes again to the email on the report, never to the screen, withdrawn reports left out, the same answer for an unknown address, a third ask within the hour sends nothing), tests/integration/layer2.int.test.ts, tests/e2e/resident.spec.ts (my report through the one-time code, keyboard only, axe; BRD:FR-01.06: the number comes again by email and is never on the screen, axe)",
+    "The reference code is never treated as a secret: it opens nothing alone. A resident whose phone or email changed, or whose report has no contact, asks the county's help line, where staff find the report without its code (FL-02). The screen-reader pass is pending a person (docs/a11y/screens/resident-intake.md check 2)."
   ],
   "AC-01A": [
     "pass",

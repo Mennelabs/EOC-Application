@@ -297,6 +297,12 @@ export const lookupStart = (tenant: string, referenceCode: string, contact: stri
     body: { referenceCode, contact },
   });
 
+/** BRD:FR-01.06: the reference number goes to the phone or email on the report, never back here. */
+export const lookupRecover = (tenant: string, contact: string) =>
+  call<{ status: string; message: string }>(`/intake/${tenant}/lookup/recover`, {
+    body: { contact },
+  });
+
 export const lookupVerify = (tenant: string, referenceCode: string, code: string) =>
   call<{ token: string; expiresAt: string }>(`/intake/${tenant}/lookup/verify`, {
     body: { referenceCode, code },

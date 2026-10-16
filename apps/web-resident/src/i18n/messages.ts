@@ -224,6 +224,14 @@ const en = {
   'my.contact': 'Phone number or email on the report',
   'my.sendCode': 'Send me a code',
   'my.sent': 'If the details match a report, a code is on its way.',
+  'my.lost': 'Lost your reference number?',
+  'my.recover.heading': 'Get my reference number again',
+  'my.recover.body':
+    'Give the phone number or email on your report. We send the reference number there, never to this screen.',
+  'my.recover.send': 'Send my reference number',
+  'my.recover.sent':
+    'If a report has this phone number or email, its reference number is on its way there. Then enter it here.',
+  'my.recover.back': 'Back to checking my report',
   'my.code': 'One-time code',
   'my.verify': 'Open my report',
   'my.codeWrong': 'That code did not match. Check it and try again, or ask for a new one.',
@@ -506,6 +514,14 @@ const es: Record<MessageId, string> = {
   'my.contact': 'Teléfono o correo del reporte',
   'my.sendCode': 'Enviarme un código',
   'my.sent': 'Si los datos coinciden con un reporte, el código va en camino.',
+  'my.lost': '¿Perdió su número de referencia?',
+  'my.recover.heading': 'Recibir otra vez mi número de referencia',
+  'my.recover.body':
+    'Escriba el teléfono o el correo de su reporte. Le enviamos el número de referencia ahí, nunca a esta pantalla.',
+  'my.recover.send': 'Enviar mi número de referencia',
+  'my.recover.sent':
+    'Si un reporte tiene este teléfono o correo, su número de referencia va en camino. Luego escríbalo aquí.',
+  'my.recover.back': 'Volver a revisar mi reporte',
   'my.code': 'Código de un solo uso',
   'my.verify': 'Abrir mi reporte',
   'my.codeWrong': 'Ese código no coincide. Revíselo e intente de nuevo, o pida otro.',

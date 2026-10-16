@@ -97,7 +97,7 @@ Everything in the stack is synthetic or the WESTWIND exercise (SCL-12).
 
 ## Readings taken in favour of privacy and safety (flagged for you)
 
-The plan's §12 lists all 45. The newest:
+The plan's §12 lists all 46. The newest:
 
 - a legal aid organization's referral responses share only the status;
 - resident dictation goes through the county's provider or not at all;
@@ -134,6 +134,7 @@ The plan's §12 lists all 45. The newest:
 - the AI evaluation hides an instruction for every feature that reads words or pictures (scribe notes, drafts, translations, a photo of a sign), and a provider that follows one cannot be enabled; the failure paths and the per-suggestion confirm screens are tested (GATE-08).
 - AI radio audio is downloaded for air only after someone played it to the end and cleared it with a reason (GATE-08, PUB-14).
 - a county gives residents its agency name per language, website and a readable header colour, with a reason; languages stay those with reviewed pages, English and Spanish kept (ADM-01).
+- the worker cuts an offline map package for each parcel area from the county's own tiles, and the phone's area package offers it with its size and hash (FLD-13, SCL-13).
 
 ## Questions for you (defaults in force)
 

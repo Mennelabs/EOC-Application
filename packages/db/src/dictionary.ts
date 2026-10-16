@@ -2633,6 +2633,21 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     },
     { standard: false },
   ),
+  map_package: table({
+    area_key: { c: 'internal', d: 'FLD-13: the parcel area the package covers' },
+    min_lon: { c: 'public', d: 'The box the package covers (with a margin around the lots)' },
+    min_lat: { c: 'public' },
+    max_lon: { c: 'public' },
+    max_lat: { c: 'public' },
+    min_zoom: { c: 'public' },
+    max_zoom: { c: 'public' },
+    tiles: { c: 'internal' },
+    bytes: { c: 'internal' },
+    sha256: { c: 'internal', d: 'The phone checks its download against this' },
+    object_key: { c: 'internal' },
+    region_stamp: { c: 'internal', d: 'Which build of the regional tiles it was cut from' },
+    cut_at: { c: 'internal' },
+  }),
   shelter_count: table(
     {
       id: { c: 'internal' },

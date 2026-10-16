@@ -929,6 +929,25 @@ export interface ReentryCheckTable {
   checked_at: TsGen;
 }
 
+/** FLD-13, SCL-13: the offline map package of one parcel area, cut from the regional tiles. */
+export interface MapPackageTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  area_key: string;
+  min_lon: number;
+  min_lat: number;
+  max_lon: number;
+  max_lat: number;
+  min_zoom: number;
+  max_zoom: number;
+  tiles: number;
+  bytes: number;
+  sha256: string;
+  object_key: string;
+  region_stamp: string;
+  cut_at: TsGen;
+}
+
 /** CON-16: one shelter's count at one moment, as the Red Cross reported it; no person in it. */
 export interface ShelterCountTable {
   id: Generated<Uuid>;
@@ -3513,6 +3532,7 @@ export interface Database {
   'cg.shelter_count': ShelterCountTable;
   'cg.reentry_pass': ReentryPassTable;
   'cg.reentry_check': ReentryCheckTable;
+  'cg.map_package': MapPackageTable;
   'cg.zip_centroid': ZipCentroidTable;
   'cg.resource': ResourceTable;
   'cg.resource_text': ResourceTextTable;

@@ -47,6 +47,7 @@ import { expireScribeSessions } from './jobs/scribe.ts';
 import { sweepRetention } from './jobs/retention.ts';
 import { notifyDiscovery, runDiscovery } from './jobs/discovery.ts';
 import { remindFacilityRechecks } from './jobs/facilities.ts';
+import { cutAreaMaps } from './jobs/maps.ts';
 import { webhookSchedule } from './jobs/webhooks.ts';
 import { consume, consumeIntake, relayOnce } from './jobs/relay.ts';
 import type { JobContext, Schedule } from './jobs/types.ts';
@@ -166,6 +167,7 @@ const ctx: JobContext = {
     },
   },
   defaultGraph: westwindGraph,
+  maps: { regionPath: config.MAP_TILES_PATH },
   devDirectGrant: config.IDP_DEV_DIRECT_GRANT,
   // ADR-0039, SCL-12: recorded synthetic responses unless configured live; only allowlisted hosts.
   refdata: {
@@ -255,6 +257,14 @@ const schedules: Schedule[] = [
   { name: 'location-geography', everyMs: 60_000, run: assignLocationGeography },
   // EQ-12, CON-07: coverage and gap alerts raised and cleared against the tenant's thresholds.
   { name: 'equity-alerts', everyMs: 15 * 60_000, run: evaluateEquityAlerts },
+  // FLD-13, SCL-13: offline map packages per parcel area, cut again when tiles or lots change.
+  {
+    name: 'maps-cut',
+    everyMs: 15 * 60_000,
+    run: async (c) => {
+      await cutAreaMaps(c);
+    },
+  },
   webhookSchedule, // SCL-09
 ];
 

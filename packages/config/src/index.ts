@@ -139,6 +139,8 @@ export const workerSchema = platformSchema
     REFDATA_CONTACT: optionalString,
     /** Free Census Data API key (a secret; ACS works without one at low volume). */
     CENSUS_API_KEY: optionalString,
+    /** FLD-13, ADR-0015: the regional tiles (`tiles-build`); area packages are cut from them. */
+    MAP_TILES_PATH: z.string().min(1).default('/srv/tiles/region.pmtiles'),
   })
   .superRefine((v, ctx) => {
     // SCL-12: recorded responses are synthetic; a production tenant must never get them.

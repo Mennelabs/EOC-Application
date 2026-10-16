@@ -116,3 +116,12 @@ The plan's §12 lists all 20. The newest:
    - **AI health:** 30% of the last 50.
 5. **Order of the remaining Musts.** By default, next comes the command-window catalog: personnel, damage assessment, resources and contacts, mission assignment, exports, then the open-draft registry and selected-record context. After that: FL-07 voice commands, FL-02, FL-09, REC-01, REC-06, AC-05C and the SEC-13 sweeps. An interpreter joining remotely (FL:FR-24) needs a video service, which is a paid third party: yes or no?
 6. **Dictation now needs the AI service.** Without it, residents type, or use their phone keyboard's own microphone. Is that acceptable?
+7. **What a public-records release withholds (SEC-13).** The requirement names restricted fields. The release also withholds, by default:
+   - sensitive fields, such as mission summaries, need details and message bodies;
+   - security values and residents' reference codes;
+   - links to people and places;
+   - household needs.
+
+   Confidential sites are left out entirely. Each withheld column is listed in REDACTIONS.csv, and a person reviews the file before release. Should sensitive fields stay withheld, or should your county's records rules decide them? Releases are open to the EM director and the PIO, and each person can release only what they may read.
+
+8. **Batches in the command window (CMD-30).** They exist for need claims and releases only, are phase 4 (off until a county turns them on), and need the new action `command.bulk`. Are other batch commands wanted (for example closing missions)?

@@ -1320,6 +1320,20 @@ export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
           .updateTable('cg.personnel')
           .set({ account_id: accountId, updated_by: SEED_ACTOR_A })
           .where('id', '=', person.id)
+          .execute(); // Field roles read missions only in the events they are assigned to (events: 'assigned');
+      // the exercise lead works the WESTWIND exercise, so a held job opens by id (CMD-06).
+      const exercise = await trx
+        .selectFrom('cg.event')
+        .select('id')
+        .where('tenant_id', '=', tenantId)
+        .where('intake_slug', '=', 'westwind')
+        .executeTakeFirst();
+      if (exercise)
+        await trx
+          .updateTable('cg.role_assignment')
+          .set({ scope: JSON.stringify({ eventIds: [exercise.id] }), updated_by: SEED_ACTOR_B })
+          .where('account_id', '=', accountId)
+          .where(sql<boolean>`scope = '{}'::jsonb`)
           .execute();
     });
   }

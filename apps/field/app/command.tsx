@@ -5,8 +5,11 @@
  * words or shorthand; the server answers with a plan and nothing changes
  * until it is confirmed on this screen. It needs a connection: a command is
  * never kept on the phone or sent later by itself, and no history is kept on
- * a phone that may be shared.
+ * a phone that may be shared. Opened from a job, "this" means that job's
+ * mission (CMD-06): it is said on screen and read again by the server under
+ * the person's own permissions.
  */
+import { useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
 import { View } from 'react-native';
 import { ApiError, OfflineError } from '../src/api';
@@ -27,6 +30,8 @@ interface Execution {
 export default function Command() {
   const f = useField();
   const { t } = f;
+  const job = useLocalSearchParams<{ missionId?: string; missionRef?: string }>();
+  const context = job.missionId ? { kind: 'mission', id: job.missionId } : null;
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [current, setCurrent] = useState<Execution | null>(null);
@@ -56,6 +61,7 @@ export default function Command() {
         input: text.trim(),
         remember: false,
         ...chosen.current,
+        ...(context ? { context } : {}),
       }),
     );
   };
@@ -66,6 +72,7 @@ export default function Command() {
     <Page title={t('command.heading')}>
       <Card label={t('command.heading')}>
         <Body>{t('command.hint')}</Body>
+        {context ? <Body>{t('command.thisMeans', { ref: job.missionRef ?? '' })}</Body> : null}
         <Field label={t('command.label')} value={text} onChange={setText} multiline />
         <Button
           label={busy ? t('command.working') : t('command.go')}

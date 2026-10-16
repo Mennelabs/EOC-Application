@@ -83,6 +83,66 @@ test.describe('find help', () => {
     expect(queue.find((c) => c.facilityName === name)?.source).toBe('self_registration');
   });
 
+  test('REC-01: the owner opens the re-check link, sees what the county has, and says nothing changed', async ({
+    page,
+  }) => {
+    // The link's two calls are answered in the browser here; the database test covers the
+    // real link (facilities.db.test.ts): single use, expiry, the approval queue.
+    const token = 'A'.repeat(43);
+    let sent: unknown = null;
+    await page.route(`**/api/public/facilities/county/update/${token}*`, (route) => {
+      if (route.request().method() === 'POST') {
+        sent = route.request().postDataJSON();
+        return route.fulfill({
+          status: 202,
+          json: { received: true, message: 'Thank you.' },
+        });
+      }
+      return route.fulfill({
+        json: {
+          name: 'Exercise Lakeside Lodge',
+          kind: 'commercial',
+          address: { line1: '9 Lake Rd', city: 'Westwind', postal: '63003' },
+          sqft: 5000,
+          ada: true,
+          powerBackup: 'generator',
+          kitchen: true,
+          showers: null,
+          parkingSpaces: 40,
+          truckAccess: null,
+        },
+      });
+    });
+    await page.goto(`/county/help?view=offer&update=${token}`);
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Check your place in the facility registry' }),
+    ).toBeVisible();
+    await expect(page.getByLabel('Name of the place')).toHaveValue('Exercise Lakeside Lodge');
+    await expect(page.getByLabel('Usable floor space (square feet)')).toHaveValue('5000');
+    await expect(
+      page
+        .getByRole('group', { name: 'Accessible to wheelchair users?' })
+        .getByRole('radio', { name: 'Yes' }),
+    ).toBeChecked();
+    await expectNoViolations(page);
+    await page.getByLabel('Your name').fill('Exercise Owner');
+    await page.getByLabel('Email').fill('lodge@example.org');
+    await page.getByLabel('I am allowed to update the details of this place.').check();
+    await page.getByRole('button', { name: 'Nothing has changed' }).click();
+    await expect(page.getByText('The county will mark the entry as checked.')).toBeVisible();
+    expect(sent).toMatchObject({ unchanged: true, submitter: { name: 'Exercise Owner' } });
+    expect(sent).not.toHaveProperty('facility');
+  });
+
+  test('REC-01: a spent or expired re-check link says so and points back', async ({ page }) => {
+    await page.goto(`/county/help?view=offer&update=${'B'.repeat(43)}`);
+    await expect(page.getByRole('alert')).toContainText(
+      'This link has expired or was already used.',
+    );
+    await expect(page.getByRole('link', { name: 'Back to Find help' })).toBeVisible();
+    await expectNoViolations(page);
+  });
+
   test('Spanish switches the whole page (EQ-06)', async ({ page }) => {
     await page.goto('/county/help?lang=es');
     await expect(page.locator('html')).toHaveAttribute('lang', 'es');

@@ -744,7 +744,10 @@ export const facilityRoutes: FastifyPluginAsync = async (base) => {
                 }
               : c.change === 'retire'
                 ? { status: 'retired' }
-                : {},
+                : // REC-01: an owner's re-check, approved, starts the entry's next yearly cycle.
+                  c.source === 'owner_link'
+                  ? { last_confirmed_at: new Date() }
+                  : {},
           );
           name = row.name;
           await request.audit(trx, {

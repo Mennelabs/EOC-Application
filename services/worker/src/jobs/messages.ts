@@ -27,6 +27,11 @@ export const messagePayloadSchema = z.object({
   /** A field message's text fallback names its receipt, which records the message row (DSP-06). */
   fieldReceiptId: z.uuid().optional(),
   variables: z.record(z.string(), z.string()).default({}),
+  /**
+   * Variables that must not sit in the outbox in clear, such as a single-use link (REC-01):
+   * a JSON object encrypted by the sender, merged over `variables` when the message is made.
+   */
+  secretVariablesEnc: z.string().min(1).optional(),
 });
 
 /** Where a resident opens their own report (the resident app serves this path). */
@@ -78,11 +83,17 @@ export const messageSend: TopicHandler = async (ctx, msg) => {
           .where('id', '=', p.partyId)
           .executeTakeFirst()
       : null;
+    const secret = p.secretVariablesEnc
+      ? (JSON.parse(
+          await ctx.crypto.decrypt(tenantId, Buffer.from(p.secretVariablesEnc, 'base64')),
+        ) as Record<string, string>)
+      : {};
     const vars: TemplateVars = {
       county: tenant.name,
       helpPhone: typeof help?.value === 'string' ? help.value : null,
       url: myReportUrl(ctx, tenant.slug),
       ...p.variables,
+      ...secret,
     };
     const rendered = renderTemplate(template, p.language, p.channel, vars);
     const id =

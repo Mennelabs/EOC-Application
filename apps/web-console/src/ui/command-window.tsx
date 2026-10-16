@@ -162,6 +162,11 @@ const recordHref = (r: { kind: string; id: string }): string | null => {
       return '/console/needs';
     case 'reminder':
       return '/console/reminders';
+    // CMD-16: an export is listed where it was asked for.
+    case 'ida_package':
+      return '/console/declaration';
+    case 'public_records':
+      return '/console/public-records';
     default:
       return null;
   }

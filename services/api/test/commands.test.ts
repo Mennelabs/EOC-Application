@@ -228,6 +228,51 @@ describe('shorthand', () => {
     expect(parse('claim the food need')).toMatchObject({ ok: false, error: 'unsupported' });
   });
 
+  it('CMD-16: exports name their scope; a report by number or the latest, PDF unless CSV is asked; a release names its request, kinds and dates', () => {
+    expect(parse('/export ida')).toMatchObject({ command: 'ida.export', args: {} });
+    expect(parse('/export sitrep 3 csv')).toMatchObject({
+      command: 'report.export',
+      ref: 'sitrep 3',
+      refKind: 'official_report',
+      args: { format: 'csv' },
+    });
+    expect(parse('/exportar informe ultimo')).toMatchObject({
+      command: 'report.export',
+      ref: 'sitrep latest',
+      args: { format: 'pdf' },
+    });
+    expect(parse('/export briefing')).toMatchObject({ ref: 'briefing latest' });
+    expect(parse('/export sitrep draft')).toMatchObject({ ok: false, error: 'usage' });
+    expect(
+      parse('/export records PRR-114 reports needs, missions from:2026-10-01 to:2026-10-15'),
+    ).toMatchObject({
+      command: 'public_records.export',
+      args: {
+        requestReference: 'PRR-114',
+        recordTypes: ['reports', 'needs', 'missions'],
+        from: '2026-10-01',
+        to: '2026-10-15',
+      },
+    });
+    expect(parse('/exportar registros solicitud:"PRR 7" reportes cronologia')).toMatchObject({
+      args: { requestReference: 'PRR 7', recordTypes: ['reports', 'mission_timeline'] },
+    });
+    expect(parse('/export records PRR-1')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/export records PRR-1 residents')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/export records PRR-1 needs from:10/01/2026')).toMatchObject({
+      ok: false,
+      error: 'usage',
+    });
+    expect(parse('/export everything')).toMatchObject({ ok: false, error: 'usage' });
+    // Exports are confirmed and never in phase 1; a records release is phase 4 with a full review.
+    const exports = CATALOG.filter((c) => /export/.test(c.name));
+    expect(exports.map((c) => [c.name, c.phase, c.confirmation])).toEqual([
+      ['ida.export', 3, 'one_tap'],
+      ['report.export', 3, 'one_tap'],
+      ['public_records.export', 4, 'full_review'],
+    ]);
+  });
+
   it('CMD-16: a reminder is done only with what was done', () => {
     expect(parse('/reminder generator done')).toMatchObject({ ok: false, error: 'usage' });
     expect(parse('/reminder check generator done refuelled')).toMatchObject({

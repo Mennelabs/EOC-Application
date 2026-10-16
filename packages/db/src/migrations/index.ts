@@ -76,6 +76,10 @@ import * as m0074 from './0074_retire_photo_quality.ts';
 import * as m0075 from './0075_command_partial.ts';
 import * as m0076 from './0076_command_timing.ts';
 import * as m0077 from './0077_retention_delete.ts';
+import * as m0078 from './0078_public_records_export.ts';
+import * as m0079 from './0079_facility_owner_link.ts';
+import * as m0080 from './0080_retention_delete_records.ts';
+import * as m0081 from './0081_retention_delete_field.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -156,4 +160,8 @@ export const migrations: Record<string, Migration> = {
   '0075_command_partial': m0075,
   '0076_command_timing': m0076,
   '0077_retention_delete': m0077,
+  '0078_public_records_export': m0078,
+  '0079_facility_owner_link': m0079,
+  '0080_retention_delete_records': m0080,
+  '0081_retention_delete_field': m0081,
 };

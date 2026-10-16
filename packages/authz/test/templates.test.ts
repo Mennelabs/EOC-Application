@@ -38,7 +38,8 @@ describe('shipped role templates (ADM-04)', () => {
     // them: no wildcard reaches them (DSP-08, SEC-12, DCL:DEC-08, RULE-10, FL:FR-10, partner
     // posting 2026-10-15, REC-13) and the conversation scribe, which only frontline roles use
     // with a survivor's consent (FL-04). Batches from the command window are for those who
-    // coordinate needs (CMD-30).
+    // coordinate needs (CMD-30); public-records releases are for those who answer the requests
+    // (SEC-13).
     expect(p.deniedActions.sort()).toEqual([
       'casualty.record',
       'command.bulk',
@@ -49,6 +50,7 @@ describe('shipped role templates (ADM-04)', () => {
       'mission.cji.open',
       'official_report.issue',
       'position.read',
+      'public_records.export',
       'scribe.read',
       'scribe.use',
       'site.post',

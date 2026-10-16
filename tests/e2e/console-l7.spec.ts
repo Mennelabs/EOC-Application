@@ -12,7 +12,8 @@
  * a note typed but not saved is asked about before the claim runs, kept or
  * discarded (CMD-29, AC-C09); set aside, "this" finds nothing. A batch over 50
  * records waits for the count typed, and a partly done batch names what it
- * did not change (CMD-30).
+ * did not change (CMD-30). An EM director prepares a public-records release
+ * for the event, confirmed with a reason, and downloads it (SEC-13).
  *
  * Recommendations (REC-02–REC-12): mass care asks for a shelter; the top
  * three come with reasons, the fairgrounds lot is set aside as no shelter,
@@ -353,6 +354,45 @@ test.describe('layer 7 console: the command window', () => {
     await page.keyboard.press('Escape');
   });
 
+  test('SEC-13: an EM director prepares a public-records release, confirmed with a reason, and downloads it', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'county_em_director',
+      `EM director records ${tag}`,
+      `l7p-${testInfo.project.name}`,
+    );
+    const reference = `PRR-${tag}-${testInfo.project.name}`;
+    await page.goto('/console/public-records');
+    await expect(page.getByRole('heading', { level: 1, name: 'Records requests' })).toBeVisible();
+    await expect(page.getByText(/withheld, column by column/)).toBeVisible();
+    await expectNoViolations(page);
+    if (testInfo.project.name === 'phone') await expectReflow(page);
+    await page.getByLabel('Request reference').fill(reference);
+    await page.getByRole('checkbox', { name: 'Sites (confidential sites are left out)' }).check();
+    await page.getByRole('checkbox', { name: 'Issued official reports' }).check();
+    await page.getByRole('button', { name: 'Prepare the release…' }).click();
+    // RULE-14: preparing a release is confirmed with a reason.
+    const dialog = page.getByRole('dialog', { name: 'Please confirm' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel('Reason').fill(`Exercise: answering ${reference}`);
+    await dialog.getByRole('button', { name: 'Confirm' }).click();
+    await expect(page.getByText(/The release is being prepared/)).toBeVisible();
+    const row = page
+      .getByRole('table', { name: 'Releases prepared for this event' })
+      .getByRole('row')
+      .filter({ hasText: reference });
+    const get = row.getByRole('button', { name: `Download release ${reference}` });
+    await expect(get).toBeVisible({ timeout: 90_000 });
+    await expectNoViolations(page);
+    const [file] = await Promise.all([page.waitForEvent('download'), get.click()]);
+    expect(file.suggestedFilename()).toMatch(/^public-records-.*\.zip$/);
+  });
+
   test('REC-01: the COAD proposes a facility; county EM approves it in their own browser and re-checks it', async ({
     page,
     context,
@@ -461,6 +501,13 @@ test.describe('layer 7 console: the command window', () => {
       const shown = page.getByRole('region', { name: new RegExp(`^${title}, asked`) });
       await expect(shown).toBeVisible();
       await expect(shown.getByRole('region', { name: table })).toBeVisible();
+      // REC-06: each canteen's crew on the roster is shown and counted against the minimum.
+      if (kind === 'feeding')
+        await expect(
+          shown.getByRole('table', { name: 'Canteens on the roster' }).getByRole('columnheader', {
+            name: 'Crew on the roster',
+          }),
+        ).toBeVisible();
       await expectNoViolations(page);
     }
     await expect(page.getByRole('table', { name: 'Recommendations for this event' })).toContainText(

@@ -371,6 +371,10 @@ const RECORDS: Record<
     label(r: ListRow): string;
     /** No version to compare at confirmation; the operation checks the record's state. */
     unversioned?: boolean;
+    /** Narrows the listed rows to the ones the reference names. */
+    pick?(rows: ListRow[], ref: string): ListRow[];
+    /** How the window names this kind of record to a person. */
+    noun?: string;
   }
 > = {
   mission: {
@@ -391,6 +395,13 @@ const RECORDS: Record<
     list: () => '/reminders?limit=100&open=true&mine=true',
     one: (id) => `/reminders/${id}`,
     label: (r) => `${str(r['title'])} (due ${str(r['dueAt'])})`,
+    pick: (rows, ref) => {
+      const want = ref.toLowerCase();
+      const exact = rows.filter((r) => str(r['title']).toLowerCase() === want);
+      return exact.length
+        ? exact
+        : rows.filter((r) => str(r['title']).toLowerCase().includes(want));
+    },
   },
   // FL-07: "I'm done here" is your own open check-in; it carries no version, and ending it
   // twice is refused by the route itself.
@@ -399,6 +410,38 @@ const RECORDS: Record<
     one: (id) => `/check-ins/${id}`,
     label: (r) => `checked in ${str(r['startedAt']).slice(0, 16).replace('T', ' ')} UTC`,
     unversioned: true,
+    noun: 'check-in',
+  },
+  // CMD-16, RULE-10: "sitrep 3" or "briefing latest"; only what was issued is exported, so a
+  // draft is never found here. "Latest" is the newest issued one in each event.
+  official_report: {
+    list: (ref) => {
+      const kind = ref.split(' ')[0] ?? '';
+      return /^(sitrep|briefing)$/.test(kind) ? `/official-reports?limit=200&kind=${kind}` : null;
+    },
+    one: (id) => `/official-reports/${id}`,
+    label: (r) => {
+      const tz = str(r['timeZone']) || 'UTC';
+      const at = (v: unknown) =>
+        new Intl.DateTimeFormat('en-US', {
+          timeZone: tz,
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        }).format(new Date(str(v)));
+      return `${str(r['title'])} (${str(r['state'])}), ${at(r['periodFrom'])} to ${at(r['periodTo'])}`;
+    },
+    pick: (rows, ref) => {
+      const which = ref.split(' ')[1] ?? 'latest';
+      const issued = rows.filter((r) => r['state'] === 'issued' || r['state'] === 'superseded');
+      if (which !== 'latest') return issued.filter((r) => String(r['sequence']) === which);
+      const newest = new Map<string, ListRow>();
+      for (const r of issued) {
+        const at = newest.get(str(r['eventId']));
+        if (!at || Number(r['sequence']) > Number(at['sequence'])) newest.set(str(r['eventId']), r);
+      }
+      return [...newest.values()];
+    },
+    noun: 'issued report',
   },
 };
 
@@ -415,11 +458,7 @@ async function resolveTarget(
   const res = await op(request, { method: 'GET', path });
   if (res.status !== 200 || !Array.isArray(res.body)) return { kind: 'none' };
   let rows = res.body as ListRow[];
-  if (kind === 'reminder') {
-    const want = ref.toLowerCase();
-    const exact = rows.filter((r) => str(r['title']).toLowerCase() === want);
-    rows = exact.length ? exact : rows.filter((r) => str(r['title']).toLowerCase().includes(want));
-  }
+  if (where.pick) rows = where.pick(rows, ref);
   if (chosen) rows = rows.filter((r) => r['id'] === chosen);
   if (rows.length === 0) return { kind: 'none' };
   if (rows.length > 1)
@@ -1356,13 +1395,13 @@ export const commandRoutesWith =
                     ? b.context?.kind === spec.target
                       ? `The ${spec.target} on your screen is not one you can see now.`
                       : `"This" means the ${spec.target} open on your screen, and none is. Give its ${spec.target === 'mission' ? 'number' : 'reference code'} instead.`
-                    : `No ${spec.target} you can see matches "${parsed.ref ?? ''}".`,
+                    : `No ${RECORDS[spec.target].noun ?? spec.target} you can see matches "${parsed.ref ?? ''}".`,
             };
           if (r.kind === 'many')
             return {
               ...head,
               status: 'clarify',
-              message: `More than one ${spec.target} matches. Which one?`,
+              message: `More than one ${RECORDS[spec.target].noun ?? spec.target} matches. Which one?`,
               options: r.options,
             };
           target = r.target;

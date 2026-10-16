@@ -69,6 +69,11 @@ describe.skipIf(!workerUrl)('retention sweeps by category (database-backed)', ()
         ['badges', '3 years'],
         ['contacts', '3 years'],
         ['safety', '7 years'],
+        ['comms', '7 years'],
+        ['referrals', '7 years'],
+        ['sharing', '7 years'],
+        ['publications', '7 years'],
+        ['field_records', '7 years'],
       ])
         await trx
           .insertInto('cg.retention_policy')
@@ -249,11 +254,221 @@ describe.skipIf(!workerUrl)('retention sweeps by category (database-backed)', ()
           .executeTakeFirstOrThrow()
       ).id;
 
-      // Legal holds: one badge, one event, and the safety category.
+      // The 7-year categories: communications, referrals, sharing, publications.
+      const message = await trx
+        .insertInto('cg.field_message')
+        .values({
+          tenant_id: tenantId,
+          event_id: eventId,
+          body: 'Exercise: road closed at the bridge',
+          audience_kind: 'event',
+          sent_at: ago(3000),
+          created_at: ago(3000),
+        })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      ids['messageOld'] = message.id;
+      await trx
+        .insertInto('cg.field_message_receipt')
+        .values({ tenant_id: tenantId, message_id: message.id, personnel_id: personnelId })
+        .execute();
+      ids['commsOld'] = (
+        await trx
+          .insertInto('cg.comms_log')
+          .values({
+            tenant_id: tenantId,
+            event_id: eventId,
+            net: 'Exercise net',
+            kind: 'message',
+            entry_at: ago(3000),
+          })
+          .returning('id')
+          .executeTakeFirstOrThrow()
+      ).id;
+      const grant = async (k: string) =>
+        (ids[k] = (
+          await trx
+            .insertInto('cg.share_grant')
+            .values({
+              tenant_id: tenantId,
+              to_tenant_id: tenantId,
+              org_type: 'voad',
+              revoked_at: ago(3000),
+            })
+            .returning('id')
+            .executeTakeFirstOrThrow()
+        ).id);
+      await grant('grantGone');
+      await grant('grantReferred');
+      for (const [k, status, g] of [
+        ['referralDone', 'done', null],
+        ['referralOpen', 'open', ids['grantReferred']],
+      ] as const)
+        ids[k] = (
+          await trx
+            .insertInto('cg.referral')
+            .values({
+              tenant_id: tenantId,
+              from_tenant_id: tenantId,
+              to_org_type: 'voad',
+              purpose: 'Exercise: food',
+              opened_by: adminId,
+              status,
+              share_grant_id: g,
+              ...(status === 'done' ? { closed_at: ago(3000) } : {}),
+              updated_at: ago(3000),
+            })
+            .returning('id')
+            .executeTakeFirstOrThrow()
+        ).id;
+      for (const [k, at] of [
+        ['publicationOld', ago(3001)],
+        ['publicationCurrent', ago(3000)],
+      ] as const)
+        ids[k] = (
+          await trx
+            .insertInto('cg.publication')
+            .values({
+              tenant_id: tenantId,
+              subject_kind: 'site',
+              subject_id: siteId,
+              subject_version: 1,
+              snapshot: JSON.stringify({ name: 'Exercise' }),
+              approved_by: adminId,
+              approved_at: at,
+              reason: 'Exercise: published',
+            })
+            .returning('id')
+            .executeTakeFirstOrThrow()
+        ).id;
+
+      // Field records: kept 7 years after their event closes (SEC-13).
+      const closed = async (name: string) =>
+        (
+          await trx
+            .insertInto('cg.event')
+            .values({
+              tenant_id: tenantId,
+              name,
+              hazard_type: 'flood',
+              status: 'closed',
+              opened_at: ago(3100),
+              closed_at: ago(3000),
+            })
+            .returning('id')
+            .executeTakeFirstOrThrow()
+        ).id;
+      const closedId = await closed(`Exercise retention closed ${tag}`);
+      const closedHeldId = await closed(`Exercise retention closed held ${tag}`);
+      for (const [k, ev] of [
+        ['logClosed', closedId],
+        ['logOpen', eventId],
+        ['logHeldEvent', closedHeldId],
+      ] as const)
+        ids[k] = (
+          await trx
+            .insertInto('cg.service_log')
+            .values({
+              tenant_id: tenantId,
+              event_id: ev,
+              client_uuid: randomUUID(),
+              kind: 'meal',
+              personnel_id: personnelId,
+            })
+            .returning('id')
+            .executeTakeFirstOrThrow()
+        ).id;
+      const teamId = (
+        await trx
+          .insertInto('cg.team')
+          .values({ tenant_id: tenantId, key: `retention-${tag}`, name: `Exercise team ${tag}` })
+          .returning('id')
+          .executeTakeFirstOrThrow()
+      ).id;
+      for (const k of ['checkInGone', 'checkInNamed'])
+        ids[k] = (
+          await trx
+            .insertInto('cg.check_in')
+            .values({
+              tenant_id: tenantId,
+              personnel_id: personnelId,
+              event_id: closedId,
+              method: 'event_code',
+              started_at: ago(3050),
+              ended_at: ago(3049),
+              end_reason: 'checked_out',
+            })
+            .returning('id')
+            .executeTakeFirstOrThrow()
+        ).id;
+      ids['teamStatus'] = (
+        await trx
+          .insertInto('cg.team_status')
+          .values({
+            tenant_id: tenantId,
+            team_id: teamId,
+            status: 'available',
+            source: 'app',
+            check_in_id: ids['checkInGone']!,
+          })
+          .returning('id')
+          .executeTakeFirstOrThrow()
+      ).id;
+      // A recent log entry still names the other check-in.
+      await trx
+        .insertInto('cg.comms_log')
+        .values({
+          tenant_id: tenantId,
+          event_id: eventId,
+          net: 'Exercise net',
+          kind: 'check_out',
+          check_in_id: ids['checkInNamed']!,
+          entry_at: ago(1),
+        })
+        .execute();
+      for (const [k, n] of [
+        ['missionDone', 1],
+        ['missionHeld', 2],
+      ] as const) {
+        ids[k] = (
+          await trx
+            .insertInto('cg.mission')
+            .values({
+              tenant_id: tenantId,
+              event_id: closedId,
+              reference: `RET-${tag}-${n}`,
+              kind: 'other',
+              source: 'staff',
+            })
+            .returning('id')
+            .executeTakeFirstOrThrow()
+        ).id;
+        const a = `${k}Assignment`;
+        ids[a] = (
+          await trx
+            .insertInto('cg.assignment')
+            .values({
+              tenant_id: tenantId,
+              mission_id: ids[k]!,
+              resource_kind: 'person',
+              personnel_id: personnelId,
+            })
+            .returning('id')
+            .executeTakeFirstOrThrow()
+        ).id;
+        await trx
+          .insertInto('cg.assignment_event')
+          .values({ tenant_id: tenantId, assignment_id: ids[a]!, kind: 'assigned' })
+          .execute();
+      }
+
+      // Legal holds: one badge, one event, the safety category, a closed event and a mission.
       for (const scope of [
         { targetType: 'badge', targetId: ids['badgeHeld'] },
         { eventId: heldEventId },
         { dataCategory: 'safety' },
+        { eventId: closedHeldId },
+        { targetType: 'mission', targetId: ids['missionHeld'] },
       ])
         holds.push(
           (
@@ -329,6 +544,45 @@ describe.skipIf(!workerUrl)('retention sweeps by category (database-backed)', ()
 
     expect(await exists('cg.safety_alert', ids['safetyOld']!)).toBe(true);
 
+    // 7-year categories: old communications go with their receipts; a finished referral and a
+    // revoked grant go, but a grant an open referral still uses stays; a superseded publication
+    // goes and the one still in force stays.
+    expect(await exists('cg.field_message', ids['messageOld']!)).toBe(false);
+    expect(
+      await db
+        .selectFrom('cg.field_message_receipt')
+        .select('id')
+        .where('message_id', '=', ids['messageOld']!)
+        .execute(),
+    ).toEqual([]);
+    expect(await exists('cg.comms_log', ids['commsOld']!)).toBe(false);
+    expect(await exists('cg.referral', ids['referralDone']!)).toBe(false);
+    expect(await exists('cg.referral', ids['referralOpen']!)).toBe(true);
+    expect(await exists('cg.share_grant', ids['grantGone']!)).toBe(false);
+    expect(await exists('cg.share_grant', ids['grantReferred']!)).toBe(true);
+    expect(await exists('cg.publication', ids['publicationOld']!)).toBe(false);
+    expect(await exists('cg.publication', ids['publicationCurrent']!)).toBe(true);
+
+    // Field records: 7 years after their event closed they go, with their history; an open
+    // event's stay, as do a held event's, a check-in a log entry still names, and the
+    // assignments of a held mission (the missions themselves are core records).
+    expect(await exists('cg.service_log', ids['logClosed']!)).toBe(false);
+    expect(await exists('cg.service_log', ids['logOpen']!)).toBe(true);
+    expect(await exists('cg.service_log', ids['logHeldEvent']!)).toBe(true);
+    expect(await exists('cg.check_in', ids['checkInGone']!)).toBe(false);
+    expect(await exists('cg.team_status', ids['teamStatus']!)).toBe(false);
+    expect(await exists('cg.check_in', ids['checkInNamed']!)).toBe(true);
+    expect(await exists('cg.assignment', ids['missionDoneAssignment']!)).toBe(false);
+    expect(
+      await db
+        .selectFrom('cg.assignment_event')
+        .select('id')
+        .where('assignment_id', '=', ids['missionDoneAssignment']!)
+        .execute(),
+    ).toEqual([]);
+    expect(await exists('cg.assignment', ids['missionHeldAssignment']!)).toBe(true);
+    expect(await exists('cg.mission', ids['missionDone']!)).toBe(true);
+
     const log = await db
       .selectFrom('cg.deletion_log')
       .select(['data_category', 'target_type', 'deleted_count'])
@@ -341,6 +595,9 @@ describe.skipIf(!workerUrl)('retention sweeps by category (database-backed)', ()
       ['child_records', 'child_check_in'],
       ['badges', 'badge'],
       ['contacts', 'partner_contact'],
+      ['field_records', 'service_log'],
+      ['field_records', 'check_in'],
+      ['field_records', 'assignment'],
     ])
       expect(log.find((l) => l.target_type === table)?.data_category, table).toBe(category);
     expect(log.find((l) => l.target_type === 'safety_alert')).toBeUndefined();

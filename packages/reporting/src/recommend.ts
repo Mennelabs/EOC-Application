@@ -54,6 +54,8 @@ export interface PlanningFactors {
   languageNotePct: number;
   /** A chaplain or counselor is suggested where at least this many households asked for someone to talk to. */
   chaplainMinRequests: number;
+  /** People a canteen needs on its crew to serve a stop (REC-06: the partner's declared staff). */
+  canteenMinCrew: number;
   // ---------------------------------------------------------------- POD and walk-up points (REC-07, REC-08)
   /** Share of the people without power who come to a POD on a given day, percent. */
   podDailySharePct: number;
@@ -98,6 +100,7 @@ export const PLANNING_DEFAULTS: PlanningFactors = {
   feedingSiteKm: 1.5,
   feedingCoverageKm: 3,
   languageNotePct: 30,
+  canteenMinCrew: 3,
   chaplainMinRequests: 2,
   podDailySharePct: 50,
   podWaterGalPerPersonDay: 1,

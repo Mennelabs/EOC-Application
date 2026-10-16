@@ -69,6 +69,8 @@ const VERBS: Record<string, string> = {
   checkout: 'checkout',
   check_out: 'checkout',
   salida: 'checkout',
+  export: 'export',
+  exportar: 'export',
   help: 'help',
   ayuda: 'help',
 };
@@ -158,6 +160,11 @@ const KEYS = new Set([
   'category',
   'categoria',
   'postal',
+  'from',
+  'desde',
+  'hasta',
+  'request',
+  'solicitud',
 ]);
 
 /** CMD-14: availability as the roster records it. */
@@ -268,6 +275,39 @@ const CONTACT_TYPES: Record<string, string> = {
   liaison: 'liaison',
   enlace: 'liaison',
 };
+
+/** CMD-16: the exports the window can prepare. */
+const EXPORT_IDA = new Set(['ida', 'ida_package', 'paquete_ida']);
+const EXPORT_RECORDS = new Set(['records', 'public_records', 'registros', 'registros_publicos']);
+const REPORT_KINDS: Record<string, string> = {
+  sitrep: 'sitrep',
+  informe: 'sitrep',
+  briefing: 'briefing',
+  sesion_informativa: 'briefing',
+};
+const LATEST = new Set(['latest', 'last', 'ultimo', 'ultima']);
+/** SEC-13: the kinds of record a public-records release can hold, in either language. */
+const RECORD_TYPE_WORDS: Record<string, string> = {
+  reports: 'reports',
+  reportes: 'reports',
+  needs: 'needs',
+  necesidades: 'needs',
+  missions: 'missions',
+  misiones: 'missions',
+  timeline: 'mission_timeline',
+  mission_timeline: 'mission_timeline',
+  cronologia: 'mission_timeline',
+  sites: 'sites',
+  sitios: 'sites',
+  official_reports: 'official_reports',
+  informes: 'official_reports',
+  field_messages: 'field_messages',
+  mensajes: 'field_messages',
+  comms: 'comms_log',
+  comms_log: 'comms_log',
+  comunicaciones: 'comms_log',
+};
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Separates key:value pairs from the words around them. */
 function split(tokens: string[]): { words: string[]; pairs: Record<string, string> } {
@@ -566,6 +606,51 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
       if (a) args['agency'] = a;
       return ok('contacts.find', args);
     }
+
+    // CMD-16: every export states its scope and its period; nothing is exported unasked.
+    case 'export': {
+      const what = norm(words[0] ?? '');
+      const rest = words.slice(1);
+      if (EXPORT_IDA.has(what)) return ok('ida.export', {});
+      const reportKind = REPORT_KINDS[what];
+      if (reportKind) {
+        let format = 'pdf';
+        let which = 'latest';
+        for (const w of rest) {
+          const n = norm(w);
+          if (n === 'pdf' || n === 'csv') format = n;
+          else if (/^\d{1,4}$/.test(n)) which = String(Number(n));
+          else if (!LATEST.has(n))
+            return usage(`"${w}" is not a report number or format.`, EXPORT_USAGE);
+        }
+        return ok('report.export', { format }, `${reportKind} ${which}`, 'official_report');
+      }
+      if (EXPORT_RECORDS.has(what)) {
+        const reference = (pairs['request'] ?? pairs['solicitud'] ?? rest[0] ?? '').trim();
+        const kinds = pairs['request'] || pairs['solicitud'] ? rest : rest.slice(1);
+        if (!reference) return usage('Which records request does this answer?', EXPORT_USAGE);
+        const recordTypes: string[] = [];
+        for (const w of kinds) {
+          const t = RECORD_TYPE_WORDS[norm(w).replace(/,$/, '')];
+          if (!t)
+            return usage(`"${w}" is not a kind of record that can be released.`, EXPORT_USAGE);
+          if (!recordTypes.includes(t)) recordTypes.push(t);
+        }
+        if (recordTypes.length === 0)
+          return usage('Which kinds of record? For example: reports needs missions.', EXPORT_USAGE);
+        const from = pairs['from'] ?? pairs['desde'];
+        const to = pairs['to'] ?? pairs['hasta'];
+        if ((from && !ISO_DATE.test(from)) || (to && !ISO_DATE.test(to)))
+          return usage('Give dates as YYYY-MM-DD.', EXPORT_USAGE);
+        return ok('public_records.export', {
+          requestReference: reference,
+          recordTypes,
+          ...(from ? { from } : {}),
+          ...(to ? { to } : {}),
+        });
+      }
+      return usage('Export what?', EXPORT_USAGE);
+    }
   }
   return { ok: false, error: 'unsupported', message: 'Not a command here.' };
 }
@@ -581,6 +666,9 @@ export function parseMinutes(s: string): number | null {
   const n = Number(m[1] ?? 0) * 60 + Number(m[2] ?? 0);
   return n > 0 ? n : null;
 }
+
+const EXPORT_USAGE =
+  '/export ida | /export sitrep|briefing [number|latest] [pdf|csv] | /export records <request> <kinds> [from:YYYY-MM-DD] [to:YYYY-MM-DD]';
 
 function parseHours(s: string): number | null {
   const m = /^(\d{1,3})h?$/i.exec(s.trim());

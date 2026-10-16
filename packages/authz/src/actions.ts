@@ -673,6 +673,15 @@ export const actions = {
     'official_report',
     'Export an issued official report as PDF or CSV, drawn from its frozen copy',
   ),
+  // SEC-13: a public-records release, restricted and sensitive details withheld; a records
+  // officer's work. The request route asks for a confirmation and a reason; reading the list
+  // and downloading do not.
+  'public_records.export': a(
+    'export',
+    'public_records',
+    'Prepare a public-records release for an event, with restricted and sensitive details withheld',
+    { explicit: true },
+  ),
 
   // Layer 6 FEMA form mappings (DCL:DEC-12, DEC-15): changed without a release.
   'fema_mapping.read': a('read', 'fema_form_mapping', 'See FEMA form mappings and their versions'),

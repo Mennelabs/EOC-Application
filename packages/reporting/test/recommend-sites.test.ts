@@ -440,3 +440,32 @@ describe('MARC (REC-09)', () => {
     expect(r.whatWouldChange[0]).toContain('Harmon High School gym would lead if its');
   });
 });
+
+describe("feeding: the canteens' declared crews (REC-06)", () => {
+  const cells: DemandCell[] = [
+    { position: { lat: 38.79, lon: -90.87 }, food: 6, languages: {}, pets: 0, talk: 0 },
+  ];
+  const one = (staff: number): Canteen[] => [
+    {
+      teamId: 't9',
+      name: 'Canteen 9',
+      agency: 'Hope Canteen Services',
+      mealsPerHour: 200,
+      staff,
+      skills: [],
+    },
+  ];
+  const run = (staff: number) => recommendFeeding([], cells, one(staff), [], []).stops[0]!;
+
+  it('REC-06: a full crew is a reason; a short crew is a note to add volunteers; no crew is said as unknown', () => {
+    expect(run(3).reasons).toContain('Canteen 9 has a crew of 3');
+    expect(run(2).notes).toContain(
+      'Canteen 9 has 2 people on its crew; a stop needs at least 3: add volunteers before it goes',
+    );
+    expect(run(0).unknown).toContain('the crew for Canteen 9 (nobody is on its roster)');
+  });
+
+  it('REC-12: the engine version names the crew rule', () => {
+    expect(recommendFeeding([], cells, one(3), [], []).engineVersion).toBe('feeding-2');
+  });
+});

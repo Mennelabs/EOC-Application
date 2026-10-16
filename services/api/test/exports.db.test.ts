@@ -52,6 +52,7 @@ const sharp = createRequire(new URL('../../worker/package.json', import.meta.url
 
 interface Export {
   id: string;
+  kind?: string;
   status: string;
   sha256: string | null;
   bytes: number | null;
@@ -269,6 +270,7 @@ describe.skipIf(!appUrl || !workerUrl || !objectsSecret)('exports (database-back
       director: subject('county_em_director', people['director']!),
       author: subject('reporting_planning', people['author']!),
       coordinator: subject('damage_assessment_coordinator'),
+      pio: subject('public_information_officer'),
     };
     const loader: SubjectLoader = {
       async fromBearer(token) {
@@ -530,6 +532,119 @@ describe.skipIf(!appUrl || !workerUrl || !objectsSecret)('exports (database-back
     }
     const listed = await call<Export[]>('author', 'GET', `/official-reports/${issued.id}/exports`);
     expect(listed.body).toHaveLength(2);
+  });
+
+  it('SEC-13: a public-records release is confirmed with a reason, holds only what the person may read, and withholds restricted and sensitive details, addresses and confidential sites', async () => {
+    // A public site and a confidential one (a domestic-violence shelter, for one).
+    await tx((trx) =>
+      trx
+        .insertInto('cg.site')
+        .values([
+          {
+            tenant_id: county,
+            event_id: eventId,
+            kind: 'shelter',
+            name: `Exercise public shelter ${run}`,
+            slug: `exercise-public-${run}`,
+          },
+          {
+            tenant_id: county,
+            event_id: eventId,
+            kind: 'shelter',
+            name: `Exercise confidential shelter ${run}`,
+            slug: `exercise-confidential-${run}`,
+            confidential: true,
+          },
+        ])
+        .execute(),
+    );
+    const body = {
+      clientUuid: randomUUID(),
+      requestReference: `PRR-${run}`,
+      recordTypes: ['reports', 'needs', 'sites', 'official_reports'],
+    };
+    const confirm = { 'x-confirm': 'true', 'x-reason': 'Exercise: answering a records request' };
+    // Not a records officer's action for every role, and confirmed with a reason.
+    expect(
+      (await call('coordinator', 'POST', `/events/${eventId}/public-records`, body)).status,
+    ).toBe(403);
+    expect((await call('director', 'POST', `/events/${eventId}/public-records`, body)).status).toBe(
+      428,
+    );
+    // Default deny: the PIO may release issued reports, not resident reports it cannot read.
+    const pio = await call(
+      'pio',
+      'POST',
+      `/events/${eventId}/public-records`,
+      { ...body, clientUuid: randomUUID() },
+      confirm,
+    );
+    expect(pio.status).toBe(403);
+    expect(JSON.stringify(pio.body)).toContain('reports');
+
+    const asked = await call(
+      'director',
+      'POST',
+      `/events/${eventId}/public-records`,
+      body,
+      confirm,
+    );
+    expect(asked.status, JSON.stringify(asked.body)).toBe(201);
+    expect(asked.body.kind).toBe('public_records');
+    await build(asked.body.id);
+    const ready = await call('director', 'GET', `/exports/${asked.body.id}`);
+    expect(ready.body.status, JSON.stringify(ready.body)).toBe('ready');
+    expect(
+      (ready.body.figures as unknown as { rows: Record<string, number> }).rows['reports'],
+    ).toBe(40);
+    const listed = await call<Export[]>('director', 'GET', `/events/${eventId}/public-records`);
+    expect(listed.body.map((e) => e.id)).toContain(asked.body.id);
+
+    const file = await call('director', 'GET', `/exports/${asked.body.id}/file`);
+    expect(file.status).toBe(200);
+    const files = unzip(file.raw);
+    expect([...files.keys()].sort()).toEqual([
+      'README.txt',
+      'REDACTIONS.csv',
+      'needs.csv',
+      'official_reports.csv',
+      'reports.csv',
+      'sites.csv',
+    ]);
+    const text = [...files.values()].map((b) => b.toString('utf8')).join('\n');
+    expect(text).toContain(`PRR-${run}`);
+    expect(text).toContain(`Exercise public shelter ${run}`);
+    expect(text).not.toContain(`Exercise confidential shelter ${run}`);
+    // No street address, no resident's reference code, no parcel number.
+    const homes = await tx((trx) =>
+      trx
+        .selectFrom('cg.report as r')
+        .innerJoin('cg.location as l', 'l.id', 'r.location_id')
+        .select(['l.line1', 'r.reference_code'])
+        .where('r.event_id', '=', eventId)
+        .execute(),
+    );
+    for (const h of homes) {
+      expect(text).not.toContain(h.line1!);
+      expect(text).not.toContain(h.reference_code!);
+    }
+    expect(text).not.toMatch(/SYN-/);
+    const header = files.get('reports.csv')!.toString('utf8').split('\r\n')[0]!;
+    for (const c of ['answers', 'answers_enc', 'location_id', 'reporter_party_id', 'need_signals'])
+      expect(header.split(',')).not.toContain(c);
+    expect(files.get('REDACTIONS.csv')!.toString('utf8')).toContain('reports,answers,sensitive');
+
+    // Requested, built and downloaded are each in the audit log.
+    const audited = await tx((trx) =>
+      trx
+        .selectFrom('cg.audit_event')
+        .select('action')
+        .where('target_id', '=', asked.body.id)
+        .execute(),
+    );
+    expect(audited.map((a) => a.action)).toEqual(
+      expect.arrayContaining(['public_records.export', 'export.ready', 'export.download']),
+    );
   });
 
   it('fails visibly when there is no file storage', async () => {

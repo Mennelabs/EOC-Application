@@ -14,11 +14,16 @@
  *   row's own history (reminder events, badge events) goes with it;
  * - every deletion is counted in cg.deletion_log and audited, never listed.
  *
+ * Field records are kept for the period after their event closes: a crew's
+ * records of an event still open never expire, and a legal hold on the
+ * mission or report a field record belongs to keeps it too.
+ *
  * Position trails, command conversations, scribe audio and reference data
  * have their own sweeps; CJIS data stays in the enclave under its own rules.
  * Not swept here yet: the core records (reports, needs, missions, photos and
- * their free text) and the field records, whose deletion runs across many
- * linked tables and object storage.
+ * their free text), whose deletion runs across many linked tables and object
+ * storage, and the roster (people, teams, credentials, devices, stock), which
+ * outlives events.
  */
 import { randomUUID } from 'node:crypto';
 import { sql, type Transaction } from 'kysely';
@@ -41,7 +46,23 @@ export interface Sweep {
   children?: { table: string; column: string }[];
   /** Other records that, while they point at a row, keep it. */
   keptBy?: { table: string; column: string }[];
+  /** Records a row belongs to: a legal hold on one of them keeps the row (SQL over its columns). */
+  heldWith?: { type: string; id: string }[];
 }
+
+/** When the event a field record belongs to closed; null (never expires) while it is open. */
+const eventClosed = (eventId: string) =>
+  `(select e.closed_at from cg.event e where e.id = ${eventId})`;
+/** Field records of one event, kept for the period after it closes. */
+const fieldRecord = (table: string, extra: Partial<Sweep> = {}): Sweep => ({
+  category: 'field_records',
+  table,
+  clock: eventClosed('t.event_id'),
+  eventOf: 't.event_id',
+  ...extra,
+});
+const MISSION_EVENT = '(select m.event_id from cg.mission m where m.id = t.mission_id)';
+const SITE_EVENT = '(select s.event_id from cg.site s where s.id = t.site_id)';
 
 /** The sweeps, in an order that lets children go before what they point at. */
 export const SWEEPS: readonly Sweep[] = [
@@ -146,6 +167,58 @@ export const SWEEPS: readonly Sweep[] = [
     finished: "state in ('resolved', 'false_alarm') and resolved_at is not null",
     eventOf: 'event_id',
   },
+  // Field records (SEC-13), after the safety alerts and communications that point at
+  // check-ins and assignments, and leaves before what they point at.
+  fieldRecord('shift_handover'),
+  fieldRecord('service_log', { heldWith: [{ type: 'mission', id: 't.mission_id' }] }),
+  fieldRecord('search_mark', { heldWith: [{ type: 'mission', id: 't.mission_id' }] }),
+  fieldRecord('placard', { heldWith: [{ type: 'report', id: 't.report_id' }] }),
+  fieldRecord('road_status'),
+  fieldRecord('debris_ticket'),
+  fieldRecord('inspection'),
+  fieldRecord('pet_intake'),
+  fieldRecord('interpreter_request', { heldWith: [{ type: 'mission', id: 't.mission_id' }] }),
+  fieldRecord('canvass_visit', {
+    heldWith: [
+      { type: 'mission', id: 't.mission_id' },
+      { type: 'report', id: 't.report_id' },
+    ],
+  }),
+  fieldRecord('field_assessment', {
+    keptBy: [{ table: 'field_assessment', column: 'duplicate_of' }],
+    heldWith: [
+      { type: 'mission', id: 't.mission_id' },
+      { type: 'report', id: 't.report_id' },
+    ],
+  }),
+  {
+    category: 'field_records',
+    table: 'assignment',
+    clock: `(select e.closed_at from cg.mission m join cg.event e on e.id = m.event_id where m.id = t.mission_id)`,
+    eventOf: MISSION_EVENT,
+    children: [{ table: 'assignment_event', column: 'assignment_id' }],
+    keptBy: [
+      { table: 'safety_alert', column: 'assignment_id' },
+      { table: 'field_assessment', column: 'assignment_id' },
+    ],
+    heldWith: [{ type: 'mission', id: 't.mission_id' }],
+  },
+  fieldRecord('check_in', {
+    // The team's status reports made under a check-in are its history.
+    children: [{ table: 'team_status', column: 'check_in_id' }],
+    keptBy: [
+      { table: 'safety_alert', column: 'check_in_id' },
+      { table: 'comms_log', column: 'check_in_id' },
+      { table: 'shift_handover', column: 'check_in_id' },
+    ],
+  }),
+  {
+    category: 'field_records',
+    table: 'site_walkthrough',
+    clock: `(select e.closed_at from cg.site s join cg.event e on e.id = s.event_id where s.id = t.site_id)`,
+    eventOf: SITE_EVENT,
+    heldWith: [{ type: 'site', id: 't.site_id' }],
+  },
 ];
 
 /** Rows per table per tenant per run; the next day takes the rest. */
@@ -221,6 +294,12 @@ export async function sweepOne(
       (k) =>
         sql`not exists (select 1 from ${sql.raw(`cg.${k.table}`)} r where r.${sql.raw(k.column)} = t.id)`,
     ),
+    ...(sweep.heldWith ?? []).flatMap((p) => {
+      const held = [...(holds.records.get(p.type) ?? [])];
+      return held.length
+        ? [sql`(${sql.raw(p.id)} is null or not (${sql.raw(p.id)} = any(${held}::uuid[])))`]
+        : [];
+    }),
   ];
   const due = await sql<{ id: string; clock: Date }>`
     select t.id, ${clock} as clock from ${t} t

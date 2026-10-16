@@ -572,9 +572,9 @@
   ],
   "FLD-02": [
     "partial",
-    "PIN or biometric unlock, encrypted store, ten wrong PINs clear it (apps/field/app/unlock.tsx, src/vault*.ts); cg.field_device and remote wipe of app data (routes/roster.ts, field-sync.ts)",
-    "services/api/test/field.db.test.ts (remote wipe ends the shift), packages/field-core/test/sync.test.ts (wipe clears every collection), services/api/test/dispatch-sync.db.test.ts (wipe rides along on sync)",
-    "Screenshot blocking and reading managed (MDM) app configuration are not built; native behaviour is checked on a device by a person."
+    "PIN or biometric unlock, encrypted store, ten wrong PINs clear it (apps/field/app/unlock.tsx, src/vault*.ts); cg.field_device and remote wipe of app data (routes/roster.ts, field-sync.ts); screenshots and screen recording blocked on every screen except sign-in, unlock, job aids and settings (packages/field-core/src/screens.ts default deny, apps/field/src/privacy.native.ts with expo-screen-capture, app/_layout.tsx)",
+    "services/api/test/field.db.test.ts (remote wipe ends the shift), packages/field-core/test/sync.test.ts (wipe clears every collection), services/api/test/dispatch-sync.db.test.ts (wipe rides along on sync), packages/field-core/test/screens.test.ts (screens with personal details blocked, new screens blocked by default)",
+    "Enrolment and single-app mode are set in the device management system and need no app code; reading managed (MDM) app configuration is not built. The native screenshot block, encrypted stores and wipe are checked on a device by a person."
   ],
   "FLD-03": [
     "pass",

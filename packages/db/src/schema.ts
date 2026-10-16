@@ -512,7 +512,9 @@ export interface ReportFlag {
     | 'duplicate_photo'
     | 'near_duplicate_photo'
     | 'verify_suggested'
-    | 'ai_assisted';
+    | 'ai_assisted'
+    | 'assisted_consent'
+    | 'assisted_no_consent';
   reason: string;
   reportId?: string;
   photoId?: string;

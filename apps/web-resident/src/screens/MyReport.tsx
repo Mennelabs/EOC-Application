@@ -84,10 +84,13 @@ export function MyReport({ shell, tenant }: { shell: Shell; tenant: string }) {
         // memory only
       }
     } catch (err) {
+      // AC-A05: always the resident's language, never the server's English.
       setError(
         err instanceof ApiFailure && err.status === 401
           ? t('my.codeWrong')
-          : (err as Error).message,
+          : err instanceof ApiFailure && err.status === 429
+            ? t('my.tooMany')
+            : t('my.tryLater'),
       );
     }
   };
@@ -195,6 +198,13 @@ export function MyReport({ shell, tenant }: { shell: Shell; tenant: string }) {
     report.withdrawnAt ? 'my.status.withdrawn' : `my.status.${report.status}`
   ) as Parameters<typeof t>[0];
   const graph = intake.data?.graph;
+  /** Question ids from a county's request, as the questions' own words in the resident's language. */
+  const askedAbout = (ids: unknown): string[] => {
+    const nodes = [...(graph?.nodes ?? []), ...(graph?.afterSubmission ?? [])];
+    return (Array.isArray(ids) ? ids : [])
+      .map((id) => nodes.find((n) => n.id === id))
+      .flatMap((n) => (n?.kind === 'question' ? [text(n.prompt, shell.locale)] : []));
+  };
   const orgLabel = (v: string) => {
     const o = graph?.consentOrgTypes.find((c) => c.value === v);
     return o ? text(o.label, shell.locale) : v;
@@ -275,9 +285,26 @@ export function MyReport({ shell, tenant }: { shell: Shell; tenant: string }) {
         <section aria-labelledby="q-heading">
           <h2 id="q-heading">{t('my.questions')}</h2>
           <ul>
-            {report.openQuestions.map((q) => (
-              <li key={q.id}>{q.message ?? JSON.stringify(q.questions)}</li>
-            ))}
+            {report.openQuestions.map((q) => {
+              // The questions the county asks about, in the resident's language (AC-A05).
+              const asked = askedAbout(q.questions);
+              return (
+                <li key={q.id}>
+                  {q.message ? <p>{q.message}</p> : null}
+                  {asked.length > 0 ? (
+                    <>
+                      <p>{t('my.questionAbout')}</p>
+                      <ul>
+                        {asked.map((prompt) => (
+                          <li key={prompt}>{prompt}</li>
+                        ))}
+                      </ul>
+                    </>
+                  ) : null}
+                  {!q.message && asked.length === 0 ? <p>{t('my.questionGeneric')}</p> : null}
+                </li>
+              );
+            })}
           </ul>
         </section>
       ) : null}

@@ -161,6 +161,8 @@ const FLAG_LABEL: Record<string, string> = {
   near_duplicate_photo: 'a photo that looks the same as one on another report',
   verify_suggested: 'verify before acting',
   ai_assisted: 'answers drafted from the resident’s words',
+  assisted_consent: 'entered with the person, who agreed',
+  assisted_no_consent: 'entered for the person without their recorded agreement',
 };
 
 function signals(s: Record<string, boolean>): string {

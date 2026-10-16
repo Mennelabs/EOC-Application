@@ -189,8 +189,15 @@ export function toSubmission(state: FlowState, graph: QuestionGraph): Submission
       : {}),
     ...(state.channel === 'assisted'
       ? {
+          // CHN-06, AC-A09: the person reporting their own home or organization agrees by
+          // reporting; for someone else's home, only the helper's "yes, they agreed" records it.
           assisted: {
-            consentRecorded: helperConsent?.kind === 'value' && helperConsent.value === 'yes',
+            consentRecorded:
+              relationship === 'own_home' || relationship === 'organization'
+                ? true
+                : relationship === 'helper' &&
+                  helperConsent?.kind === 'value' &&
+                  helperConsent.value === 'yes',
           },
         }
       : {}),

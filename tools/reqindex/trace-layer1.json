@@ -100,10 +100,10 @@
     "Accounts never deleted (no delete policy); personnel link optional."
   ],
   "BRD:FR-01.06": [
-    "deferred",
-    "",
-    "",
-    "Residents never have accounts; reference code + one-time code lookup is layer 2 (SEC-09, RES-01)."
+    "partial",
+    "services/api/src/public/routes.ts lookup/start (reference code and the contact on file, matched by blind index; the same answer either way) and lookup/verify (6-digit code, hashed, 10 minutes, 5 tries; 30 lookups per address, then 429); resident token 30 minutes; apps/web-resident/src/screens/MyReport.tsx",
+    "services/api/test/public.db.test.ts (a reference code alone retrieves nothing; the lookup answer is the same either way), services/api/test/reports.db.test.ts (BRD:FR-01.06, SEC-09: five tries, then even the right code is refused; too many lookups from one address wait), tests/integration/layer2.int.test.ts, tests/e2e/resident.spec.ts (my report through the one-time code, keyboard only, axe)",
+    "The reference code is never treated as a secret: it opens nothing alone. Not built: recovery of a lost reference code or of a changed phone or email; a resident whose report has no contact asks the county's help line. The screen-reader pass is pending a person (docs/a11y/screens/resident-intake.md check 2)."
   ],
   "AC-01A": [
     "pass",
@@ -136,10 +136,10 @@
     ""
   ],
   "BRD:FR-08.03": [
-    "deferred",
-    "",
-    "",
-    "Manual operational entries (notes, situation updates) arrive with missions in layer 4; the audit table is already out of their reach."
+    "pass",
+    "routes/missions.ts POST /missions/:id/narratives (mission.narrative; an amendment links to the entry it amends and never edits it); migration 0030 drops update and delete on cg.mission_event; 0006 revokes update, delete and truncate on cg.audit_event, with triggers; issued official reports never change (RULE-10)",
+    "services/api/test/missions.db.test.ts (narratives by role and attributable amendments keep the history), services/api/test/audit-immutable.db.test.ts (an audit record cannot be updated, deleted or truncated by either role; a timeline entry cannot be changed or removed), services/api/test/official-reports.db.test.ts (RULE-10)",
+    ""
   ],
   "BRD:FR-08.04": [
     "pass",
@@ -166,10 +166,10 @@
     "Structural: no deletes, actor ids retained."
   ],
   "AC-08C": [
-    "deferred",
-    "",
-    "",
-    "Undo arrives with the command window (layer 7, CMD-28); audit design already forbids deletion."
+    "pass",
+    "services/api/src/routes/commands.ts: undo is a new command_execution with reversal_of; the original is kept and marked undone_by; audited as command.undo; compensating commands refuse undo (\"correct it on the screen with a new entry; the original stays\")",
+    "services/api/test/commands.db.test.ts (AC-C08, CMD-28: undo is a linked execution, once, inside its window: the original stays, marked undone, and both the execution and the undo are audited), services/api/test/commands.test.ts (CMD-28), tests/e2e/console-l7.spec.ts (a coordinator claims a need through a confirmed plan and undoes it)",
+    ""
   ],
   "BRD:FR-18.01": [
     "pass",
@@ -184,10 +184,10 @@
     ""
   ],
   "BRD:FR-18.03": [
-    "deferred",
-    "",
-    "",
-    "Human-reviewed guidance and field definitions arrive with the intake content (layer 2)."
+    "partial",
+    "Every intake question carries \"Why we ask\" and \"For example\" in English and Spanish (packages/intake/src/graphs/westwind.ts) under a reading-grade and tone lint (lint.ts); public resources publish only when each text is marked human-reviewed (routes/resources.ts); definitions are versioned with a reason (routes/definitions.ts); column definitions in packages/db/src/dictionary.ts",
+    "packages/intake/test/graph.test.ts (one example and one reason per question in each language), packages/intake/test/lint.test.ts, services/api/test/help.db.test.ts (resources publish only when every text is human-reviewed), services/api/test/definitions.db.test.ts, services/api/test/reports.db.test.ts (question graphs: draft, string rules, publish with confirmation)",
+    "Not built: a page of known limitations; field job aids are seeded as exercise drafts with no approval step, and the field app shows them; a question graph is published by its author with no second reviewer; console screens have no field-definition help."
   ],
   "BRD:FR-18.04": [
     "partial",
@@ -209,7 +209,12 @@
   ],
   "AC-18A": ["pass", "", "layer1.int.test.ts (director denied legal holds), templates.test.ts", ""],
   "AC-18B": ["pass", "", "stack.int.test.ts (meta keys)", ""],
-  "AC-18C": ["deferred", "", "", "Product help content is written with the features it describes."],
+  "AC-18C": [
+    "partial",
+    "The command window's /help is generated from the command catalog with what is enabled and allowed (routes/commands.ts, ui/command-window.tsx); the field app's location text says it shares only while the app is open (apps/field/src/i18n.ts); the printing it mentions exists (public poster, badge print outcome)",
+    "services/api/test/commands.db.test.ts (CMD-12: unsupported verbs are answered as unsupported, never as done; disabled commands listed as disabled), tests/e2e/console-l7.spec.ts (/help)",
+    "No test or review checks other help text, job aids or docs for claims of features that are not built; there is no user guide yet."
+  ],
   "NFR-02": [
     "pass",
     "infra/caddy/Caddyfile (TLS, HSTS, CSP), infra/postgres/init.sh (least privilege), zod validation, services/api/src/logging.ts",
@@ -469,10 +474,10 @@
     "Reference code + one-time code lookup is layer 2 (RES-01); residents already have no accounts."
   ],
   "GATE-06": [
-    "deferred",
-    "",
-    "",
-    "Public submissions and resources without staff credentials: layers 2 and 3."
+    "pass",
+    "Public routes under /api/public need no staff token (services/api/src/public/routes.ts): resident intake, my report, Find help, facility self-registration, volunteer sign-up",
+    "tests/e2e/resident.spec.ts (submit and my report with no sign-in), tests/e2e/help.spec.ts (Find help with no sign-in; a place offered through the public form), tests/integration/layer2.int.test.ts, tests/integration/layer3.int.test.ts, services/api/test/public.db.test.ts, services/api/test/help.db.test.ts",
+    ""
   ],
   "GATE-07": ["deferred", "", "", "Official reports and exports: layer 6."],
   "GATE-08": [

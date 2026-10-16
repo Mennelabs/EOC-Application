@@ -29,7 +29,7 @@ import { AuthError, type SubjectLoader } from '../src/auth/subject.ts';
 import { RiskScorer } from '../src/public/abuse.ts';
 import { ReferenceCodeLeaser } from '../src/public/reference-codes.ts';
 import { publicRoutes } from '../src/public/routes.ts';
-import { submitIntake } from '../src/public/submit.ts';
+import { sha, submitIntake } from '../src/public/submit.ts';
 import { TenantResolver } from '../src/public/tenant-resolver.ts';
 import { routes } from '../src/routes/index.ts';
 
@@ -233,12 +233,23 @@ describe.skipIf(!appUrl || !workerUrl)('staff review routes (database-backed)', 
     await sweepStoredSubmissions(worker);
     const filed = await dbWorker
       .selectFrom('cg.report')
-      .select(['id', 'created_by', 'channel_of_origin'])
+      .select(['id', 'created_by', 'channel_of_origin', 'flags'])
       .where('reference_code', '=', assistedCode)
       .executeTakeFirstOrThrow();
     assistedId = filed.id;
     expect(filed.channel_of_origin).toBe('assisted');
     expect(filed.created_by).toBe(subjects['priya']!.accountId);
+    // CHN-06, AC-A09: the person's agreement to the entry is on the record for the reviewer.
+    const kinds = (filed.flags as { kind: string }[]).map((f) => f.kind);
+    expect(kinds).toContain('assisted_consent');
+    expect(kinds).not.toContain('assisted_no_consent');
+    // The resident's own web report carries neither.
+    const own = await dbWorker
+      .selectFrom('cg.report')
+      .select('flags')
+      .where('execution_id', '=', residentId)
+      .executeTakeFirstOrThrow();
+    expect(JSON.stringify(own.flags)).not.toContain('assisted_');
   });
 
   it('the queue puts need signals first, then the oldest (PHO-14, CON-05); filters work', async () => {
@@ -706,5 +717,54 @@ describe.skipIf(!appUrl || !workerUrl)('staff review routes (database-backed)', 
       graph: { key: westwindGraph.key, version: v },
     });
     expect(facts.json().url).toMatch(/\/county\/westwind$/);
+  });
+
+  it('BRD:FR-01.06, SEC-09: a one-time code allows five tries, then even the right code is refused; too many lookups from one address wait (429)', async () => {
+    // A challenge for the assisted report, with a code the test knows (as the lookup sends one).
+    const challenge = async (code: string) =>
+      withTenant(dbWorker, { tenantId }, (trx) =>
+        trx
+          .insertInto('cg.otp_challenge')
+          .values({
+            tenant_id: tenantId,
+            report_id: assistedId,
+            contact_bidx: Buffer.from(randomUUID()),
+            channel: 'sms',
+            code_hash: sha([tenantId, assistedId, code]),
+            expires_at: new Date(Date.now() + 10 * 60_000),
+          })
+          .execute(),
+      );
+    const verify = (code: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/public/intake/county/lookup/verify',
+        payload: { referenceCode: assistedCode, code },
+      });
+    await challenge('246810');
+    for (let i = 0; i < 5; i++) expect((await verify('111111')).statusCode).toBe(401);
+    // The sixth try is refused even with the right code: the challenge is spent.
+    const locked = await verify('246810');
+    expect(locked.statusCode).toBe(401);
+    expect(locked.json().code).toBe('code_invalid');
+    // A new code (the resident asks again) opens it on the first try.
+    await challenge('135790');
+    const opened = await verify('135790');
+    expect(opened.statusCode, opened.body).toBe(200);
+    expect(opened.json().token).toBeTruthy();
+    // Guessing across many lookups from one address is slowed down: 429, retryable.
+    let waited: { statusCode: number; json: () => { code: string; retryable: boolean } } | null =
+      null;
+    for (let i = 0; i < 40 && !waited; i++) {
+      const r = await app.inject({
+        method: 'POST',
+        url: '/api/public/intake/county/lookup/start',
+        payload: { referenceCode: assistedCode, contact: '314-555-0100' },
+      });
+      if (r.statusCode === 429) waited = r;
+      else expect(r.statusCode).toBe(202);
+    }
+    expect(waited, 'the address was slowed down').not.toBeNull();
+    expect(waited!.json()).toMatchObject({ code: 'too_many_attempts', retryable: true });
   });
 });

@@ -384,6 +384,54 @@
     "tests/e2e (axe WCAG 2.2 AA on released screens); layer 7: tests/e2e/help.spec.ts (CMD-19, ACC-31: the ask box answers, the list stays; axe), services/api/test/public-ask.test.ts, services/api/test/help.db.test.ts (CMD-19, AC-C03)",
     "No public task needs a conversation. Professional review of the Spanish strings remains the EQ-07 go-live gate."
   ],
+  "AC-A01": [
+    "partial",
+    "Field errors in text next to the field with role=alert, aria-describedby and aria-invalid (apps/web-resident/src/ui/primitives.tsx, Flow.tsx); the address is a form, never a map; the reference code is spelled out for screen readers",
+    "tests/e2e/resident.spec.ts (keyboard only, English: deep link to reference number, axe on every screen), apps/web-resident/test/state.test.ts (spells the reference code, ACC-50), tests/e2e/a11y.spec.ts (keyboard only: Start is reachable and announces status)",
+    "No end-to-end test raises a validation error and corrects it. The screen-reader pass is pending a person (docs/a11y/screens/resident-intake.md check 2)."
+  ],
+  "AC-A02": [
+    "partial",
+    "Layout reflows to 320 CSS px; the whole suite also runs on the phone project",
+    "tests/e2e/a11y.spec.ts (ACC-07: reflows at 320 CSS px, welcome), tests/e2e/resident.spec.ts (ACC-07: a question screen reflows at 320 px)",
+    "Only the welcome and first question are checked at 320 px, by scroll width; review, confirmation and my report are not; 200 % zoom and text spacing are not tested; nothing asserts that controls and required text are still present."
+  ],
+  "AC-A03": [
+    "partial",
+    "Keyboard only with Tab, Space and Enter; no drag or swipe; 44 px targets (styles.css, axe wcag22aa target size); the kiosk confirmation stays until Done or 2 minutes idle, warned 20 s ahead with \"I need more time\" (apps/web-resident/src/intake/idle.ts; before 2026-10-16 it left after 10 s)",
+    "tests/e2e/resident.spec.ts (the whole report by keyboard), apps/web-resident/test/idle.test.ts (warning, extend, Done)",
+    "Remaining limits: the one-time code lasts 10 minutes, the my-report token 30 minutes, dictation 2 minutes; asking again is always possible."
+  ],
+  "AC-A04": [
+    "partial",
+    "The whole flow is text; dictation is optional and hidden when the county has no AI service; the danger screen says to text 911 where that works; follow-up and the one-time code go by text or email",
+    "tests/e2e/resident.spec.ts (completes by email with no \"Speak instead\"; danger shows the emergency instructions first)",
+    "No mention of relay or TTY services; the danger test checks the heading and the 911 link, not the text-911 line; docs/a11y/checklist.md has no row for AC-A04."
+  ],
+  "AC-A05": [
+    "partial",
+    "Every resident string in English and Spanish, type-checked complete (i18n/messages.ts); answer errors are translated from the engine's codes (intake/validation-text.ts) and My report's errors and the county's questions are shown in the resident's language (2026-10-16; before, some came in English)",
+    "apps/web-resident/test/validation-text.test.ts (every error on every question of the shipped graph has its English and Spanish message), tests/e2e/resident.spec.ts and a11y.spec.ts (Spanish: the flow switches language)",
+    "The Spanish e2e stops at the first question: consent and confirmation in Spanish are not exercised end to end. Spanish strings are reviewed drafts; professional review is the EQ-07 gate."
+  ],
+  "AC-A06": [
+    "partial",
+    "The resident app never asks for location: the address is typed; photos are optional with \"Skip photos\", and \"Choose from my photos\" works without the camera",
+    "tests/e2e/resident.spec.ts (address typed, photos skipped), apps/web-resident/test/photos.test.ts",
+    "No test denies camera, location or microphone permission; check 11 of the resident record is passed by reading the code."
+  ],
+  "AC-A07": [
+    "partial",
+    "Answers encrypted under a session key; \"Clear my answers\" and an automatic clear after 2 minutes on a personal device; on the kiosk the answers leave the device as soon as the county has the report and the screen clears for the next person (idle.ts); pausing removes the flow; \"Close my report\" removes the token",
+    "apps/web-resident/test/storage.test.ts (never stores clear text; unreadable once the session key is gone; clearAll), apps/web-resident/test/idle.test.ts",
+    "No end-to-end test shows that the next person sees nothing; the my-report token stays up to 30 minutes unless the person closes it; the kiosk keeps its device key so unsent reports survive a restart (CHN-07)."
+  ],
+  "AC-A09": [
+    "partial",
+    "Questions helper_name, helper_consent (required) and subject_name; the worker files separate helper and subject parties, the subject with no contact; lookup matches only the reporter's contact; an assisted entry records on the report, for the reviewer, whether the person agreed (flags assisted_consent or assisted_no_consent; the kiosk derives it from the relationship and the helper's answer, 2026-10-16)",
+    "packages/intake/test/graph.test.ts (a helper is kept apart, HLP-01), services/worker/test/intake.db.test.ts (helper report with a separate affected-person party), services/api/test/reports.db.test.ts (assisted intake filed with the helper as recorder and the person's agreement flagged; the helper cannot approve it), apps/web-resident/test/state.test.ts (CHN-06, AC-A09: the kiosk's consent record), tests/e2e/a11y.spec.ts (assisted kiosk banner)",
+    "No end-to-end walk of \"I am helping someone else report\"; the cannot_ask answer is exercised only in the state test; follow-up going only to the helper is by design (lookup by the reporter's contact) but not tested; what a helper may see later follows DEC-10."
+  ],
   "AC-A08": [
     "pass",
     "layer 7: the Find help ask box uses fixed rules, no model, and sits beside the list and the form without replacing them (apps/web-help/src/main.ts, services/api/src/public/ask.ts); the resident form's questions and guidance stand without AI, extraction suggestions are optional (layer 2)",

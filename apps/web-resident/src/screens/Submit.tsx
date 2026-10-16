@@ -5,11 +5,12 @@
  * me", what happens next without promising aid, the optional questions, and
  * clearing the device.
  */
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import QRCode from 'qrcode';
 import { text, validateAnswer, type AnswerValue, type QuestionNode } from '@cg/intake';
 import { useT, type Shell } from '../App.tsx';
 import { Offline, sendAfter, textCode, type IntakeInfo } from '../api/public.ts';
+import { IdleTimer, KIOSK_CONFIRMATION } from '../intake/idle.ts';
 import type { OutboxItem } from '../intake/outbox.ts';
 import { nextPlace, spellCode, type FlowState } from '../intake/state.ts';
 import { ButtonRow, Card, ChoiceGroup, Field, Status } from '../ui/primitives.tsx';
@@ -165,14 +166,38 @@ function Confirmation({
     setCleared(true);
   };
 
-  // Shared devices: personal answers leave the device after two minutes here (ACC-41); the code stays on screen.
+  // Shared devices: personal answers leave the device after two minutes here (ACC-41); the code
+  // stays on screen. On the kiosk they leave at once, the report having reached the county, and
+  // the screen with the reference number stays until the person presses Done, or two minutes
+  // pass without a touch or a key after a warning they can extend (AC-A03, WCAG 2.2.1).
+  const [warning, setWarning] = useState(false);
+  const idle = useRef<IdleTimer | null>(null);
   useEffect(() => {
-    const ms = kiosk ? 10_000 : 120_000;
-    const timer = setTimeout(() => {
-      clear();
-      if (kiosk) onDone();
-    }, ms);
-    return () => clearTimeout(timer);
+    if (!kiosk) {
+      const timer = setTimeout(clear, 120_000);
+      return () => clearTimeout(timer);
+    }
+    // The kiosk never shows "cleared" (that line is for personal devices), so only the device.
+    shell.store.clearAll();
+    void shell.outbox.forget(state.executionId);
+    const timer = new IdleTimer({
+      ...KIOSK_CONFIRMATION,
+      onWarn: () => setWarning(true),
+      onExpire: onDone,
+    });
+    idle.current = timer;
+    const touched = () => {
+      setWarning(false);
+      timer.touch();
+    };
+    timer.touch();
+    for (const e of ['pointerdown', 'keydown', 'input'] as const)
+      document.addEventListener(e, touched, true);
+    return () => {
+      timer.stop();
+      for (const e of ['pointerdown', 'keydown', 'input'] as const)
+        document.removeEventListener(e, touched, true);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -189,8 +214,25 @@ function Confirmation({
     <main id="main" tabIndex={-1}>
       {kiosk ? (
         <p className="kiosk" role="status">
-          {t('kiosk.clearing')}
+          {t('kiosk.cleared')}
         </p>
+      ) : null}
+      {kiosk && warning ? (
+        <div className="kiosk" role="alert">
+          <p>{t('kiosk.warning')}</p>
+          <ButtonRow>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => {
+                setWarning(false);
+                idle.current?.touch();
+              }}
+            >
+              {t('kiosk.moreTime')}
+            </button>
+          </ButtonRow>
+        </div>
       ) : null}
       <h1>{t('confirm.heading')}</h1>
       <Card>
@@ -295,6 +337,20 @@ function Confirmation({
         </p>
       ) : null}
       {!kiosk ? <p className="hint">{t('confirm.autoClear')}</p> : null}
+      {kiosk ? (
+        <ButtonRow>
+          <button
+            type="button"
+            className="primary"
+            onClick={() => {
+              idle.current?.stop();
+              onDone();
+            }}
+          >
+            {t('kiosk.done')}
+          </button>
+        </ButtonRow>
+      ) : null}
     </main>
   );
 }

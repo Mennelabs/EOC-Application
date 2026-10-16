@@ -499,7 +499,25 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
     expect(undone.status, JSON.stringify(undone.body)).toBe(200);
     expect(undone.body).toMatchObject({ status: 'succeeded', reversalOf: original.id });
     expect((await need(needIds[0]!)).status).toBe('open');
-    expect((await stored(original.id!)).undone_by).toBe(undone.body['id']);
+    // AC-08C: the original stays, marked undone by the new execution that reverses it, and the
+    // undo is audited on its own row; nothing is deleted.
+    const kept = await stored(original.id!);
+    expect(kept.undone_by).toBe(undone.body['id']);
+    expect(kept.state).toBe('succeeded');
+    const audited = await withTenant(dbWorker, { tenantId: county }, (trx) =>
+      trx
+        .selectFrom('cg.audit_event')
+        .select(['action', 'target_id'])
+        .where('target_id', 'in', [original.id!, undone.body['id'] as string])
+        .where('action', 'in', ['command.execute', 'command.undo'])
+        .execute(),
+    );
+    expect(audited).toEqual(
+      expect.arrayContaining([
+        { action: 'command.execute', target_id: original.id },
+        { action: 'command.undo', target_id: undone.body['id'] },
+      ]),
+    );
     // The same undo again returns the same execution; a new one is refused.
     const replay = await call('mc', 'POST', `/commands/${original.id}/undo`, { executionId });
     expect(replay.body['id']).toBe(undone.body['id']);

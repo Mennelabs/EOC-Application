@@ -19,6 +19,7 @@ import {
   type StepNode,
 } from '@cg/intake';
 import { useT, type Shell } from '../App.tsx';
+import { validationText } from '../intake/validation-text.ts';
 import {
   ApiFailure,
   Offline,
@@ -487,7 +488,9 @@ function QuestionScreen({
   const commit = (value: AnswerValue) => {
     const errors = validateAnswer(node, value);
     if (errors.length > 0) {
-      setError(errors[0]!.message);
+      // AC-A05: the resident's language, never the engine's English.
+      const shown = validationText(node, errors[0]!);
+      setError(t(shown.id, shown.values));
       return;
     }
     setError(null);

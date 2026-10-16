@@ -13,6 +13,17 @@ import { DataTable, Field, Status, Toolbar, fmt } from '../ui/primitives.tsx';
 import { EventPicker, useOpenEvents } from './dispatch.tsx';
 import { useOpenDraft, useRecordChanged, useScreenRecord } from '../ui/screen-record.ts';
 
+/** BRD:FR-03.02: an address found by the geocoder; a parcel is the county's address of record. */
+interface Place {
+  label: string;
+  line1: string | null;
+  city: string | null;
+  postal: string | null;
+  position: { lat: number; lon: number } | null;
+  source: 'parcel' | 'osm';
+  parcelId: string | null;
+}
+
 interface Assignment {
   id: string;
   version: number;
@@ -44,8 +55,10 @@ interface Mission {
     line1: string | null;
     city: string | null;
     landmark: string | null;
+    crossStreets?: string | null;
     usng: string | null;
     position: { lat: number; lon: number } | null;
+    verifiedAt?: string | null;
   } | null;
   locationState: string;
   lock: { by: string; at: string; reason: string | null } | null;
@@ -252,14 +265,63 @@ function NewMission({
     line1: '',
     city: '',
     landmark: '',
+    crossStreets: '',
+    coordinates: '',
   });
   const [error, setError] = useState<string | null>(null);
-  const set = (k: keyof typeof f, v: string | boolean) => setF((c) => ({ ...c, [k]: v }));
+  // BRD:FR-03.02: a place chosen from the county's parcels is verified; from the map data, approximate.
+  const [place, setPlace] = useState<Place | null>(null);
+  const [suggestions, setSuggestions] = useState<Place[] | null>(null);
+  const [lookup, setLookup] = useState<string | null>(null);
+  const findAddress = async () => {
+    setLookup(null);
+    try {
+      const q = [f.line1.trim(), f.city.trim()].filter(Boolean).join(' ');
+      const found = await api<Place[]>(`/geocode/suggest?q=${encodeURIComponent(q)}`);
+      setSuggestions(found);
+      if (!found.length) setLookup('No address found. Keep what you typed, or add a landmark.');
+    } catch (err) {
+      setLookup(describeFailure(err));
+    }
+  };
+  const atCoordinates = async () => {
+    setLookup(null);
+    const m = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/.exec(f.coordinates);
+    if (!m) {
+      setLookup('Type the coordinates as latitude, longitude, for example 38.79, -90.87.');
+      return;
+    }
+    try {
+      choose(await api<Place>(`/geocode/reverse?lat=${m[1]}&lon=${m[2]}`));
+    } catch {
+      setPlace(null);
+      setLookup('No address is known at those coordinates. The point is kept as approximate.');
+    }
+  };
+  const choose = (p: Place) => {
+    setPlace(p);
+    setSuggestions(null);
+    setF((c) => ({ ...c, line1: p.line1 ?? c.line1, city: p.city ?? c.city }));
+    setLookup(
+      `Using ${p.label} (${p.source === 'parcel' ? "the county's address of record, verified" : 'map data, approximate'}).`,
+    );
+  };
+  const set = (k: keyof typeof f, v: string | boolean) => {
+    setF((c) => ({ ...c, [k]: v }));
+    // A chosen address no longer holds once the address is typed over: its point is not sent.
+    if ((k === 'line1' || k === 'city') && place) {
+      setPlace(null);
+      setLookup(null);
+    }
+  };
   const save = async (mode: 'draft' | 'intake', e?: FormEvent) => {
     e?.preventDefault();
     setError(null);
     try {
-      const hasPlace = f.line1.trim() || f.landmark.trim();
+      const coords = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/.exec(f.coordinates);
+      const position =
+        place?.position ?? (coords ? { lat: Number(coords[1]), lon: Number(coords[2]) } : null);
+      const hasPlace = f.line1.trim() || f.landmark.trim() || position;
       const m = await api<Mission>('/missions', {
         body: {
           eventId,
@@ -286,7 +348,16 @@ function NewMission({
                   ...(f.line1.trim() ? { line1: f.line1.trim() } : {}),
                   ...(f.city.trim() ? { city: f.city.trim() } : {}),
                   ...(f.landmark.trim() ? { landmark: f.landmark.trim() } : {}),
-                  state: 'manual',
+                  ...(f.crossStreets.trim() ? { crossStreets: f.crossStreets.trim() } : {}),
+                  ...(place?.postal ? { postal: place.postal } : {}),
+                  ...(position ? { position } : {}),
+                  // BRD:FR-03.01: a parcel match is verified (its time is kept); a map match or typed point is approximate.
+                  state:
+                    place?.source === 'parcel' && place.line1 === f.line1.trim()
+                      ? 'verified'
+                      : position
+                        ? 'approximate'
+                        : 'manual',
                 },
               }
             : {}),
@@ -364,11 +435,47 @@ function NewMission({
         <legend>Where</legend>
         {text('line1', 'Street address')}
         {text('city', 'City')}
+        <div className="actions" style={{ justifyContent: 'flex-start' }}>
+          <button
+            type="button"
+            onClick={() => void findAddress()}
+            disabled={(f.line1.trim() + f.city.trim()).length < 3}
+          >
+            Find the address
+          </button>
+        </div>
+        {suggestions?.length ? (
+          <ul aria-label="Addresses found" className="plain">
+            {suggestions.map((p) => (
+              <li key={`${p.source}:${p.label}`}>
+                <button type="button" onClick={() => choose(p)}>
+                  Use {p.label} ({p.source === 'parcel' ? 'address of record' : 'map data'})
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {lookup ? <p role="status">{lookup}</p> : null}
+        {text('crossStreets', 'Cross streets (optional)', 'For example: Main St and 4th Ave.')}
         {text(
           'landmark',
           'Landmark when there is no address',
           'For example: blue trailer behind the church on Route 9.',
         )}
+        {text(
+          'coordinates',
+          'Coordinates the caller read out (optional)',
+          'Latitude, longitude, for example 38.79, -90.87.',
+        )}
+        <div className="actions" style={{ justifyContent: 'flex-start' }}>
+          <button
+            type="button"
+            onClick={() => void atCoordinates()}
+            disabled={!f.coordinates.trim()}
+          >
+            Find the address at these coordinates
+          </button>
+        </div>
       </fieldset>
       <fieldset>
         <legend>Caller (private)</legend>
@@ -619,7 +726,9 @@ export function MissionDetailScreen({ id }: { id: string }) {
             ? [m.location.line1, m.location.city, m.location.landmark].filter(Boolean).join(', ') ||
               '—'
             : '—'}
-          {m.location?.usng ? ` · USNG ${m.location.usng}` : ''} ({label(m.locationState)})
+          {m.location?.crossStreets ? ` · near ${m.location.crossStreets}` : ''}
+          {m.location?.usng ? ` · USNG ${m.location.usng}` : ''} ({label(m.locationState)}
+          {m.location?.verifiedAt ? `, verified ${fmt(m.location.verifiedAt)}` : ''})
         </dd>
         {m.caller ? (
           <>

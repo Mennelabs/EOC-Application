@@ -37,6 +37,9 @@ x-node-env: &node-env
   TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
   TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
   WEBHOOK_PUBLIC_BASE: ${WEBHOOK_PUBLIC_BASE:-}
+  # Address suggestions from the self-hosted geocoder when the maps profile runs (BRD:FR-03.02):
+  # set GEOCODER_URL=http://geocoder:8080; empty means the county's parcels only.
+  GEOCODER_URL: ${GEOCODER_URL:-}
   # Abuse protection per address (SEC-17); raise the deny limit only for a load generator on one host.
   PUBLIC_IP_VERIFY_PER_10MIN: ${PUBLIC_IP_VERIFY_PER_10MIN:-20}
   PUBLIC_IP_DENY_PER_10MIN: ${PUBLIC_IP_DENY_PER_10MIN:-120}

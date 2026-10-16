@@ -43,8 +43,18 @@ test.describe('layer 4 console', () => {
     await expectNoViolations(page);
     await page.getByRole('button', { name: 'New request (phone or walk-in)' }).click();
     await page.getByLabel('What is needed').fill(`Exercise: tarp a roof ${tag}`);
-    await page.getByLabel('Street address').fill(`${tag.slice(-3)} Exercise Ln`);
+    // BRD:FR-03.02: an address typed is looked up in the county's parcels, words in any order;
+    // a match is the address of record, verified (FR-03.01). A street the county does not know
+    // is kept as typed.
+    await page.getByLabel('Street address').fill('Cedar Drive 100');
     await page.getByLabel('City').fill('Harmon');
+    await page.getByRole('button', { name: 'Find the address', exact: true }).click();
+    const found = page.getByRole('list', { name: 'Addresses found' });
+    await found.getByRole('button', { name: /^Use 100 Cedar Drive, Harmon City/ }).click();
+    await expect(page.getByText("the county's address of record, verified")).toBeVisible();
+    await expect(page.getByLabel('Street address')).toHaveValue('100 Cedar Drive');
+    await page.getByLabel('Street address').fill(`${tag.slice(-3)} Exercise Ln`);
+    await page.getByLabel('Cross streets (optional)').fill('Exercise Ln and Main St');
     await expectNoViolations(page);
     await page.getByRole('button', { name: 'Save for dispatch' }).click();
     const heading = page.getByRole('heading', { level: 1, name: /M-\d+/ });

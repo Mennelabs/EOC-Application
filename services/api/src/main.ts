@@ -146,6 +146,8 @@ const app = await buildApp({
     },
     fieldVoice: { ai, defaultGraph: westwindGraph },
     commands: { ai },
+    // BRD:FR-03.02: the self-hosted Nominatim when the maps profile runs; parcels answer first.
+    geocode: { nominatimUrl: config.GEOCODER_URL },
     drafting: { ai, objects: { client: s3, bucket: config.S3_BUCKET } },
     scribe: { ai, objects: { client: s3, bucket: config.S3_BUCKET } },
     refdata: { objects: { client: s3, bucket: config.S3_BUCKET } },

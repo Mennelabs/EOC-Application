@@ -595,6 +595,10 @@ export interface LocationTable extends Stamped {
   state: string | null;
   postal: string | null;
   landmark: string | null;
+  /** BRD:FR-03.01: the nearest cross streets, a field of their own. */
+  cross_streets: string | null;
+  verified_at: TsNullable;
+  verified_by: Uuid | null;
   note: string | null;
   no_fixed_address: Generated<boolean>;
   geom: ColumnType<unknown, unknown, unknown> | null;

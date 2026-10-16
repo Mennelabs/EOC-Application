@@ -251,9 +251,12 @@ const missionOut = z.object({
       stateCode: z.string().nullable(),
       postal: z.string().nullable(),
       landmark: z.string().nullable(),
+      crossStreets: z.string().nullable(),
       position: positionIn.nullable(),
       precision: z.string(),
       usng: z.string().nullable(),
+      /** BRD:FR-03.01: when the location was last verified; null unless it is. */
+      verifiedAt: z.iso.datetime().nullable(),
     })
     .nullable(),
   locationState: z.enum(locationStates),
@@ -454,6 +457,8 @@ export const missionRoutesWith =
       address_state: string | null;
       postal: string | null;
       landmark: string | null;
+      cross_streets: string | null;
+      verified_at: Date | null;
       precision: string | null;
       usng: string | null;
       lat: number | string | null;
@@ -474,6 +479,8 @@ export const missionRoutesWith =
           'l.state as address_state',
           'l.postal',
           'l.landmark',
+          'l.cross_streets',
+          'l.verified_at',
           'l.precision',
           'l.usng',
           sql<number | null>`ST_Y(l.geom)`.as('lat'),
@@ -529,12 +536,14 @@ export const missionRoutesWith =
               stateCode: exact ? r.address_state : null,
               postal: r.postal,
               landmark: r.landmark,
+              crossStreets: r.cross_streets,
               position:
                 exact && r.lat !== null && r.lon !== null
                   ? { lat: Number(r.lat), lon: Number(r.lon) }
                   : null,
               precision: r.precision ?? 'unknown',
               usng: exact ? r.usng : null,
+              verifiedAt: iso(r.verified_at),
             }
           : null,
         locationState: r.location_state,
@@ -697,7 +706,11 @@ export const missionRoutesWith =
         city: loc.city ?? null,
         state: loc.stateCode ?? null,
         postal: loc.postal ?? null,
-        landmark: [loc.landmark, loc.crossStreets].filter(Boolean).join(' / ') || null,
+        landmark: loc.landmark ?? null,
+        // BRD:FR-03.01: cross streets are a field of their own; a verified place records when and by whom.
+        cross_streets: loc.crossStreets ?? null,
+        verified_at: state === 'verified' ? new Date() : null,
+        verified_by: state === 'verified' ? accountId : null,
         // AC-03B: a location said to be unknown is never stored as a point, even if one was sent.
         geom:
           loc.position && state !== 'unknown'

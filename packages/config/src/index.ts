@@ -56,6 +56,8 @@ export const platformSchema = baseSchema.extend({
   /** Twilio account for real numbers (docs/06); empty or absent means the simulator (SCL-11 stand-in). */
   TWILIO_ACCOUNT_SID: optionalString,
   TWILIO_AUTH_TOKEN: optionalString,
+  /** BRD:FR-03.02, ADR-0015: the self-hosted Nominatim (maps profile); absent means parcels only. */
+  GEOCODER_URL: z.preprocess((v) => (v === '' ? undefined : v), url.optional()),
   /** The URL Twilio was given for webhooks, when it differs from what the gateway reports (signature check). */
   WEBHOOK_PUBLIC_BASE: z.preprocess((v) => (v === '' ? undefined : v), url.optional()),
   /** Largest photo a resident may upload after client-side compression (PHO-05). */

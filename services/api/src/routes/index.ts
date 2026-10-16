@@ -54,6 +54,7 @@ import { situationRoutes } from './situation.ts';
 import { tenantRoutes } from './tenants.ts';
 import { volunteerRoutes } from './volunteers.ts';
 import { healthNoticeRoutes } from './health-notices.ts';
+import { geocodeRoutes, type GeocodeDeps } from './geocode.ts';
 
 /** What the server gives the routes that talk to the broker, object storage or the AI provider (absent in tests: poll fallback, no map extracts). */
 export interface RouteDeps {
@@ -70,6 +71,7 @@ export interface RouteDeps {
   commands?: CommandDeps;
   drafting?: DraftingDeps;
   scribe?: ScribeDeps;
+  geocode?: GeocodeDeps;
 }
 
 /** Route plugins mounted under /api/v1. Each layer adds its modules here. */
@@ -98,6 +100,8 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   volunteerRoutes,
   // FL:FR-06: targeted health notices, approved by a second person.
   healthNoticeRoutes,
+  // BRD:FR-03.02: address suggestions and reverse geocoding, parcels first.
+  geocodeRoutes(deps.geocode),
   fieldOpsRoutes,
   fieldAssessmentRoutes,
   fieldVoiceRoutes(deps.fieldVoice),

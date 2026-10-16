@@ -512,6 +512,9 @@ const SPECS: Record<string, Spec> = {
         description: str(r['description']),
         status: str(r['status']),
         intakeAt: date(r['intake_at']),
+        releasedAt: date(r['released_at']),
+        /** FL:FR-08: the lost report or found animal a person confirmed as the same pet. */
+        matchedWith: str(r['matched_with']),
       };
     },
     summary: (b) => `Pet intake: ${String(b['species'])}`,
@@ -1440,6 +1443,269 @@ export const fieldRecordRoutes =
           },
           () => [{ name: 'noted', to: 'yes' }],
         ),
+    );
+
+    // ---------------------------------------------------- pets (FL:FR-08)
+    type PetStatus = Database['cg.pet_intake']['status'] extends import('kysely').Generated<infer S>
+      ? S
+      : never;
+    const LOST: PetStatus[] = ['lost_report'];
+    const FOUND: PetStatus[] = ['sheltered', 'found_report'];
+    /** Words a description carries, for suggesting matches: lower case, three letters or more. */
+    const STOP = new Set([
+      'the',
+      'and',
+      'with',
+      'has',
+      'very',
+      'was',
+      'not',
+      'one',
+      'una',
+      'uno',
+      'con',
+      'del',
+      'las',
+      'los',
+      'por',
+      'sin',
+      'que',
+      'muy',
+      'tiene',
+    ]);
+    const words = (text: unknown) =>
+      new Set(
+        String(text ?? '')
+          .toLowerCase()
+          .split(/[^\p{L}\p{N}]+/u)
+          .filter((w) => w.length >= 3 && !STOP.has(w)),
+      );
+
+    // FL:FR-08: how many animals each shelter holds now, by kind of animal.
+    app.get(
+      '/field-records/pet_intake/census',
+      {
+        schema: {
+          tags: ['field'],
+          querystring: z.object({ eventId: z.uuid().optional() }),
+          response: {
+            200: z.array(
+              z.object({
+                siteId: z.uuid().nullable(),
+                siteName: z.string().nullable(),
+                total: z.number().int(),
+                bySpecies: z.record(z.string(), z.number().int()),
+              }),
+            ),
+          },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('pet_intake.read', { type: 'pet_intake', tenantId: s.tenantId });
+        const rows = await request.tx((trx) => {
+          let x = trx
+            .selectFrom('cg.pet_intake as p')
+            .leftJoin('cg.site as s', 's.id', 'p.site_id')
+            .select([
+              'p.site_id',
+              's.name as site_name',
+              'p.species',
+              sql<string>`count(*)`.as('n'),
+            ])
+            .where('p.status', '=', 'sheltered')
+            .where('p.released_at', 'is', null)
+            .groupBy(['p.site_id', 's.name', 'p.species'])
+            .orderBy('s.name')
+            .orderBy('p.species');
+          if (request.query.eventId) x = x.where('p.event_id', '=', request.query.eventId);
+          return x.execute();
+        });
+        const bySite = new Map<
+          string,
+          {
+            siteId: string | null;
+            siteName: string | null;
+            total: number;
+            bySpecies: Record<string, number>;
+          }
+        >();
+        for (const r of rows) {
+          const key = r.site_id ?? 'none';
+          const entry = bySite.get(key) ?? {
+            siteId: r.site_id,
+            siteName: r.site_name,
+            total: 0,
+            bySpecies: {},
+          };
+          entry.total += Number(r.n);
+          entry.bySpecies[r.species] = (entry.bySpecies[r.species] ?? 0) + Number(r.n);
+          bySite.set(key, entry);
+        }
+        return [...bySite.values()];
+      },
+    );
+
+    // FL:FR-08: possible matches for a lost report (animals found or sheltered) or the other
+    // way round, in the same event and kind of animal, with the words the descriptions share.
+    // Only suggestions: a person confirms a match.
+    app.get(
+      '/field-records/pet_intake/:id/candidates',
+      {
+        schema: {
+          tags: ['field'],
+          params: uuidParam,
+          response: {
+            200: z.array(z.object({ record: outAny, shared: z.array(z.string()) })),
+          },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('pet_intake.read', { type: 'pet_intake', tenantId: s.tenantId });
+        return request.tx(async (trx) => {
+          const ctx = await context(request, trx);
+          const self = await trx
+            .selectFrom('cg.pet_intake')
+            .selectAll()
+            .where('id', '=', request.params.id)
+            .executeTakeFirst();
+          if (!self) throw errors.notFound();
+          const lost = LOST.includes(self.status);
+          if (!lost && !FOUND.includes(self.status)) return [];
+          const others = await trx
+            .selectFrom('cg.pet_intake')
+            .selectAll()
+            .where('event_id', '=', self.event_id)
+            .where('id', '<>', self.id)
+            .where('matched_with', 'is', null)
+            .where('status', 'in', lost ? FOUND : LOST)
+            .where(sql<boolean>`lower(species) = lower(${self.species})`)
+            .orderBy('intake_at', 'desc')
+            .limit(100)
+            .execute();
+          const mine = words(self.description);
+          const scored = others
+            .map((o) => ({ o, shared: [...words(o.description)].filter((w) => mine.has(w)) }))
+            .sort((a, b) => b.shared.length - a.shared.length)
+            .slice(0, 10);
+          return Promise.all(
+            scored.map(async ({ o, shared }) => ({
+              record: await SPECS['pet_intake']!.out(o as unknown as Row, ctx),
+              shared,
+            })),
+          );
+        });
+      },
+    );
+
+    // FL:FR-08: a person confirms a lost report and a found or sheltered animal are the same pet.
+    app.post(
+      '/field-records/pet_intake/:id/match',
+      {
+        schema: {
+          tags: ['field'],
+          params: uuidParam,
+          body: z.object({ otherId: z.uuid() }),
+          response: { 200: outAny },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('pet_intake.write', { type: 'pet_intake', tenantId: s.tenantId });
+        return request.tx(async (trx) => {
+          const ctx = await context(request, trx);
+          const pair = await trx
+            .selectFrom('cg.pet_intake')
+            .selectAll()
+            .where('id', 'in', [request.params.id, request.body.otherId])
+            .forUpdate()
+            .execute();
+          const self = pair.find((p) => p.id === request.params.id);
+          const other = pair.find((p) => p.id === request.body.otherId);
+          if (!self || !other || self.id === other.id) throw errors.notFound();
+          const sides = [self, other].map((p) =>
+            LOST.includes(p.status) ? 'lost' : FOUND.includes(p.status) ? 'found' : 'other',
+          );
+          if (sides[0] === sides[1] || sides.includes('other') || self.event_id !== other.event_id)
+            throw new ApiError(
+              409,
+              'not_a_pair',
+              'A match is a lost report and an animal found or sheltered in the same event.',
+            );
+          if (self.matched_with || other.matched_with)
+            throw new ApiError(409, 'already_matched', 'One of these is already matched.');
+          const now = new Date();
+          for (const [a, b] of [
+            [self, other],
+            [other, self],
+          ] as const)
+            await trx
+              .updateTable('cg.pet_intake')
+              .set({
+                matched_with: b.id,
+                matched_at: now,
+                matched_by: s.accountId,
+                updated_by: s.accountId,
+              })
+              .where('id', '=', a.id)
+              .execute();
+          await request.audit(trx, {
+            action: 'pet_intake.write',
+            targetType: 'pet_intake',
+            targetId: self.id,
+            changes: { fields: [{ name: 'matched_with', to: other.id }] },
+          });
+          const updated = await trx
+            .selectFrom('cg.pet_intake')
+            .selectAll()
+            .where('id', '=', self.id)
+            .executeTakeFirstOrThrow();
+          return SPECS['pet_intake']!.out(updated as unknown as Row, ctx);
+        });
+      },
+    );
+
+    // FL:FR-08: the pet went home: both matched records say so.
+    app.post(
+      '/field-records/pet_intake/:id/reunite',
+      { schema: { tags: ['field'], params: uuidParam, response: { 200: outAny } } },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('pet_intake.write', { type: 'pet_intake', tenantId: s.tenantId });
+        return request.tx(async (trx) => {
+          const ctx = await context(request, trx);
+          const self = await trx
+            .selectFrom('cg.pet_intake')
+            .selectAll()
+            .where('id', '=', request.params.id)
+            .forUpdate()
+            .executeTakeFirst();
+          if (!self) throw errors.notFound();
+          if (!self.matched_with)
+            throw new ApiError(409, 'not_matched', 'Confirm the match before the pet goes home.');
+          if (self.status === 'reunited')
+            throw new ApiError(409, 'already_reunited', 'This pet is already home.');
+          const now = new Date();
+          await trx
+            .updateTable('cg.pet_intake')
+            .set({ status: 'reunited', released_at: now, updated_by: s.accountId })
+            .where('id', 'in', [self.id, self.matched_with])
+            .execute();
+          await request.audit(trx, {
+            action: 'pet_intake.write',
+            targetType: 'pet_intake',
+            targetId: self.id,
+            changes: { fields: [{ name: 'status', from: self.status, to: 'reunited' }] },
+          });
+          const updated = await trx
+            .selectFrom('cg.pet_intake')
+            .selectAll()
+            .where('id', '=', self.id)
+            .executeTakeFirstOrThrow();
+          return SPECS['pet_intake']!.out(updated as unknown as Row, ctx);
+        });
+      },
     );
 
     // FL:FR-14: a guest leaves the shelter.

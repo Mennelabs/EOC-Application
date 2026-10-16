@@ -1668,6 +1668,13 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
       status: { c: 'internal', r: 'field_records' },
       intake_at: { c: 'internal', r: 'field_records' },
       released_at: { c: 'internal', r: 'field_records' },
+      matched_with: {
+        c: 'internal',
+        r: 'field_records',
+        d: 'FL:FR-08: the lost report or found animal a person confirmed as the same pet',
+      },
+      matched_at: { c: 'internal', r: 'field_records' },
+      matched_by: { c: 'internal', r: 'field_records' },
       client_uuid: { c: 'internal', r: 'field_records' },
       version: { c: 'internal' },
       created_at: { c: 'internal' },

@@ -664,6 +664,84 @@ describe.skipIf(!appUrl || !workerUrl)('frontline role records (database-backed)
     expect(ticket.status, ticket.body).toBe(201);
   });
 
+  it('FL:FR-08: a lost report is matched to a sheltered animal by a person, from suggestions with shared words; the pet goes home; the shelter census counts what is there', async () => {
+    type Census = { siteId: string | null; total: number; bySpecies: Record<string, number> }[];
+    const census = async () =>
+      (await call('pets', 'GET', `/api/v1/field-records/pet_intake/census?eventId=${eventId}`))
+        .json<Census>()
+        .find((c) => c.siteId === siteId) ?? { siteId, total: 0, bySpecies: {} };
+    const before = await census();
+    // A word only this run's descriptions carry, so animals from earlier runs rank below.
+    const tag = `spot${randomUUID().slice(0, 6)}`;
+    const pet = (body: Json) =>
+      create('pets', 'pet_intake', { clientUuid: randomUUID(), eventId, ...body });
+    const lost = await pet({
+      species: 'dog',
+      status: 'lost_report',
+      ownerReferenceCode: 'ww-7m2p',
+      description: `Brown terrier, red collar, ${tag}, answers to Biscuit`,
+    });
+    const terrier = await pet({
+      siteId,
+      species: 'dog',
+      description: `Small brown terrier with a red collar, ${tag}, very friendly`,
+    });
+    const lab = await pet({ siteId, species: 'dog', description: 'Large black lab' });
+    const cat = await pet({ siteId, species: 'cat', description: 'Brown tabby, red collar' });
+    const after = await census();
+    expect(after.bySpecies['dog'] ?? 0).toBe((before.bySpecies['dog'] ?? 0) + 2);
+    expect(after.bySpecies['cat'] ?? 0).toBe((before.bySpecies['cat'] ?? 0) + 1);
+    expect(after.total).toBe(before.total + 3);
+
+    // Suggestions only: the same kind of animal, most shared words first.
+    const candidates = (
+      await call('pets', 'GET', `/api/v1/field-records/pet_intake/${lost['id']}/candidates`)
+    ).json<{ record: Json; shared: string[] }[]>();
+    expect(candidates[0]!.record['id']).toBe(terrier['id']);
+    expect(candidates[0]!.shared).toEqual(
+      expect.arrayContaining(['brown', 'terrier', 'red', 'collar', tag]),
+    );
+    expect(candidates.map((c) => c.record['id'])).not.toContain(cat['id']);
+
+    const step = (id: unknown, to: string, payload?: Json) =>
+      call('pets', 'POST', `/api/v1/field-records/pet_intake/${String(id)}/${to}`, payload ?? {});
+    expect((await step(lost['id'], 'reunite')).status).toBe(409);
+    const lost2 = await pet({ species: 'dog', status: 'lost_report', description: 'Grey husky' });
+    expect((await step(lost['id'], 'match', { otherId: lost2['id'] })).status).toBe(409);
+    expect(
+      (
+        await call('pio', 'POST', `/api/v1/field-records/pet_intake/${String(lost['id'])}/match`, {
+          otherId: terrier['id'],
+        })
+      ).status,
+    ).toBe(403);
+    const matched = await step(lost['id'], 'match', { otherId: terrier['id'] });
+    expect(matched.status, matched.body).toBe(200);
+    expect(matched.json()['matchedWith']).toBe(terrier['id']);
+    expect((await step(lab['id'], 'match', { otherId: lost['id'] })).status).toBe(409);
+    // A matched animal is no longer suggested for another lost report.
+    const forLost2 = (
+      await call(
+        'pets',
+        'GET',
+        `/api/v1/field-records/pet_intake/${String(lost2['id'])}/candidates`,
+      )
+    ).json<{ record: Json }[]>();
+    expect(forLost2.map((c) => c.record['id'])).not.toContain(terrier['id']);
+
+    const home = await step(terrier['id'], 'reunite');
+    expect(home.status, home.body).toBe(200);
+    expect(home.json()).toMatchObject({ status: 'reunited' });
+    const both = await dbWorker
+      .selectFrom('cg.pet_intake')
+      .select(['id', 'status', 'released_at'])
+      .where('id', 'in', [lost['id'] as string, terrier['id'] as string])
+      .execute();
+    expect(both.every((p) => p.status === 'reunited' && p.released_at)).toBe(true);
+    expect((await step(terrier['id'], 'reunite')).status).toBe(409);
+    expect((await census()).bySpecies['dog'] ?? 0).toBe((before.bySpecies['dog'] ?? 0) + 1);
+  });
+
   it('FL:FR-20, PER-01, BDG-01: a walk-up volunteer is registered in one step, once; skills stay unverified; the badge code is shown once', async () => {
     const clientUuid = randomUUID();
     // A team of its own, so the seeded rosters other suites check stay as seeded.

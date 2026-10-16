@@ -1900,6 +1900,9 @@ export interface PetIntakeTable {
   >;
   intake_at: TsGen;
   released_at: TsNullable;
+  matched_with: Uuid | null;
+  matched_at: TsNullable;
+  matched_by: Uuid | null;
   client_uuid: Uuid | null;
   version: Generated<number>;
   created_at: TsGen;

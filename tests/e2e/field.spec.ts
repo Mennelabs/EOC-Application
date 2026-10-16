@@ -4,7 +4,8 @@
  * field lead of the Field Exercise Team sets a PIN, checks in by the event
  * code, saves a quick report while offline ("On this phone") that is
  * received once the signal returns, reports how a site looks for dispatch
- * (FLD-11), checks stock and sends the resupply draft (FL:FR-21, FL:FR-22,
+ * (FLD-11), checks stock and sends the resupply draft (FL:FR-21, FL:FR-22),
+ * matches a lost pet and reads the shelter census (FL:FR-08; both with
  * answers stubbed), records a damage assessment with the
  * details FEMA asks for, asks the command window for its reminders, opens
  * the conversation note-taker (consent in Spanish; AI off here), uses live
@@ -114,6 +115,8 @@ test.describe('field app (web build)', () => {
             'report.read',
             'stock.read',
             'stock.write',
+            'pet_intake.read',
+            'pet_intake.write',
           ],
         },
       });
@@ -257,6 +260,54 @@ test.describe('field app (web build)', () => {
       });
     });
 
+    // FL:FR-08: the same for the pets screen; matching runs against the database in
+    // fieldrecords.db.test.ts.
+    const lostDog = {
+      id: crypto.randomUUID(),
+      species: 'dog',
+      description: 'Brown terrier, red collar',
+      ownerReferenceCode: 'WW7M2P',
+      status: 'lost_report',
+      matchedWith: null,
+    };
+    const shelteredDog = {
+      ...lostDog,
+      id: crypto.randomUUID(),
+      description: 'Small brown terrier',
+      ownerReferenceCode: null,
+      status: 'sheltered',
+    };
+    const homeward = {
+      ...lostDog,
+      id: crypto.randomUUID(),
+      species: 'cat',
+      description: 'Grey tabby',
+      matchedWith: crypto.randomUUID(),
+    };
+    const petSteps: { url: string; body: unknown }[] = [];
+    await page.route('**/api/v1/field-records/pet_intake**', (route) => {
+      const req = route.request();
+      const url = req.url();
+      if (req.method() === 'POST') {
+        petSteps.push({ url, body: req.postDataJSON() });
+        return route.fulfill({ json: lostDog });
+      }
+      if (url.includes('/census'))
+        return route.fulfill({
+          json: [
+            {
+              siteId: crypto.randomUUID(),
+              siteName: 'Exercise shelter',
+              total: 3,
+              bySpecies: { dog: 2, cat: 1 },
+            },
+          ],
+        });
+      if (url.includes('/candidates'))
+        return route.fulfill({ json: [{ record: shelteredDog, shared: ['brown', 'terrier'] }] });
+      return route.fulfill({ json: [lostDog, homeward] });
+    });
+
     await page.goto('/field/');
     await expect(page.getByRole('heading', { name: 'Choose a PIN for this phone' })).toBeVisible({
       timeout: 30_000,
@@ -356,6 +407,26 @@ test.describe('field app (web build)', () => {
     await expect(
       page.getByRole('heading', { name: 'Exercise tarps', level: 3, exact: true }),
     ).toHaveCount(0);
+    await expectNoViolations(page);
+
+    // FL:FR-08: the shelter census, a lost report matched by a person from a suggestion that
+    // says which words the descriptions share, and a matched pet marked gone home.
+    await page.getByRole('link', { name: 'Home' }).click();
+    await page.getByRole('button', { name: 'Pets: shelters, lost and found' }).click();
+    await expect(page.getByText('Exercise shelter: 3 (Dog 2, Cat 1)')).toBeVisible();
+    await expect(
+      page.getByText('Dog: Brown terrier, red collar · owner’s code WW7M2P'),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Possible matches for this Dog' }).click();
+    await expect(page.getByText('Words in common: brown, terrier')).toBeVisible();
+    await expectNoViolations(page);
+    await page.getByRole('button', { name: 'This is the same pet' }).click();
+    await expect(page.getByText('Match confirmed.')).toBeVisible();
+    expect(petSteps[0]).toMatchObject({ body: { otherId: shelteredDog.id } });
+    expect(petSteps[0]!.url).toContain(`/pet_intake/${lostDog.id}/match`);
+    await page.getByRole('button', { name: 'This Cat went home' }).click();
+    await expect(page.getByText('Marked as gone home.')).toBeVisible();
+    expect(petSteps[1]!.url).toContain(`/pet_intake/${homeward.id}/reunite`);
     await expectNoViolations(page);
 
     // FLD-08, DCL:DEC-17: an assessment with the damage seen and the details FEMA asks for

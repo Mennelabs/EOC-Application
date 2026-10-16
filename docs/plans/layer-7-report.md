@@ -97,7 +97,7 @@ Everything in the stack is synthetic or the WESTWIND exercise (SCL-12).
 
 ## Readings taken in favour of privacy and safety (flagged for you)
 
-The plan's §12 lists all 25. The newest:
+The plan's §12 lists all 26. The newest:
 
 - a legal aid organization's referral responses share only the status;
 - resident dictation goes through the county's provider or not at all;
@@ -113,6 +113,7 @@ The plan's §12 lists all 25. The newest:
 - the roster is swept the records period after a person was archived, and every record that still names them keeps them (SEC-13).
 - a field report of how a site looks, or of a resource seen, is an observation for dispatch to note; it never changes the site's status, which stays with the site's lead (FLD-11).
 - a resupply request started at the reorder point is a draft a person checks and sends; one shortage is asked for once (FL:FR-21, FL:FR-22).
+- a lost pet is matched to an animal found or sheltered by a person, from suggestions that show the words the descriptions share (FL:FR-08).
 
 ## Questions for you (defaults in force)
 

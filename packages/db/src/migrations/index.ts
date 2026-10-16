@@ -89,6 +89,7 @@ import * as m0087 from './0087_ai_complaint.ts';
 import * as m0088 from './0088_peer_support.ts';
 import * as m0089 from './0089_field_report.ts';
 import * as m0090 from './0090_supply_request.ts';
+import * as m0091 from './0091_pet_match.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -182,4 +183,5 @@ export const migrations: Record<string, Migration> = {
   '0088_peer_support': m0088,
   '0089_field_report': m0089,
   '0090_supply_request': m0090,
+  '0091_pet_match': m0091,
 };

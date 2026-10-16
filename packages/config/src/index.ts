@@ -139,6 +139,13 @@ export const workerSchema = platformSchema
     REFDATA_CONTACT: optionalString,
     /** Free Census Data API key (a secret; ACS works without one at low volume). */
     CENSUS_API_KEY: optionalString,
+    /** FLD-13, ADR-0015: the regional tiles (`tiles-build`); area packages are cut from them. */
+    MAP_TILES_PATH: z.string().min(1).default('/srv/tiles/region.pmtiles'),
+    /** Exercise environments only: areas get street-less packages until real tiles exist. */
+    MAP_EXERCISE: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
   })
   .superRefine((v, ctx) => {
     // SCL-12: recorded responses are synthetic; a production tenant must never get them.
@@ -147,6 +154,13 @@ export const workerSchema = platformSchema
         code: 'custom',
         path: ['REFDATA_MODE'],
         message: 'recorded reference data is synthetic; use live or off in production (SCL-12)',
+      });
+    // FLD-13: exercise map packages carry no streets; production phones get real tiles or none.
+    if (v.DATA_CLASSIFICATION_MODE === 'production' && v.MAP_EXERCISE)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['MAP_EXERCISE'],
+        message: 'exercise map packages are for exercise environments only',
       });
   });
 

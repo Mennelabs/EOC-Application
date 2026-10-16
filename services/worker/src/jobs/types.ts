@@ -58,6 +58,8 @@ export interface JobContext {
   linkCheck?: (url: string) => Promise<boolean>;
   /** Reference data sources (ADR-0039); absent means no pulls (imports still work). */
   refdata?: RefdataDeps;
+  /** FLD-13, ADR-0015: where the regional tiles are; area packages are cut from them. */
+  maps?: { regionPath: string; exercise?: boolean };
   /** Outbound webhook sender (SCL-09); HTTPS to public addresses only by default. */
   webhookSender?: WebhookSender;
 }

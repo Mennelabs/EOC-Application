@@ -15,6 +15,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { renderPdf } from '@cg/pdf';
+import { publicBranding, publicNameIn } from '../branding.ts';
 import { errors } from '../errors.ts';
 import { mediaSheetPdf } from './pdf.ts';
 import { sanitizeHtml } from './html.ts';
@@ -63,7 +64,13 @@ export const helpRoutes =
     const tenantOf = (request: FastifyRequest) => {
       const t = (
         request as FastifyRequest & {
-          publicTenant?: { id: string; name: string; locales: string[]; slug: string };
+          publicTenant?: {
+            id: string;
+            name: string;
+            locales: string[];
+            slug: string;
+            branding?: unknown;
+          };
         }
       ).publicTenant;
       if (!t) throw errors.notFound();
@@ -116,7 +123,13 @@ export const helpRoutes =
         const d = await gather(request, lang, request.query.near, request.query.kind);
         reply.header('cache-control', CACHE);
         return {
-          tenant: { name: d.tenant.name, slug: d.tenant.slug, locales: d.tenant.locales },
+          tenant: {
+            name: d.tenant.name,
+            slug: d.tenant.slug,
+            locales: d.tenant.locales,
+            // ADM-01: the county's branding, its known fields only.
+            branding: publicBranding(d.tenant.branding),
+          },
           lang,
           generatedAt: new Date().toISOString(),
           near: d.place,
@@ -267,7 +280,7 @@ export const helpRoutes =
           r.status === 'removed' || r.unpublished_at ? (r.unpublished_at ?? r.updated_at) : null;
         const common = {
           lang,
-          tenantName: tenant.name,
+          tenantName: publicNameIn(tenant.branding, lang) ?? tenant.name,
           tenantSlug: tenant.slug,
           title: text.title,
         };
@@ -508,7 +521,7 @@ export const helpRoutes =
           reply,
           mediaPage({
             lang,
-            tenantName: d.tenant.name,
+            tenantName: publicNameIn(d.tenant.branding, lang) ?? d.tenant.name,
             tenantSlug: d.tenant.slug,
             sites: d.sites,
             resources: d.resources,
@@ -537,7 +550,7 @@ export const helpRoutes =
         const pdf = await renderPdf(
           mediaSheetPdf({
             lang,
-            tenantName: d.tenant.name,
+            tenantName: publicNameIn(d.tenant.branding, lang) ?? d.tenant.name,
             tenantSlug: d.tenant.slug,
             sites: d.sites,
             resources: d.resources,

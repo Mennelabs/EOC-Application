@@ -185,6 +185,7 @@ export const STRINGS = {
     posterQr:
       'Scan to open the list of open sites. The QR code is never the only way in: the address and phone number are above.',
     helpLine: 'County help line',
+    website: 'Website',
     a11yTitle: 'Accessibility',
     a11yContact:
       'If something on this page does not work for you, call the help line and we will help another way.',
@@ -390,6 +391,7 @@ export const STRINGS = {
     posterQr:
       'Escanee para abrir la lista de sitios abiertos. El código QR nunca es la única entrada: la dirección y el teléfono están arriba.',
     helpLine: 'Línea de ayuda del condado',
+    website: 'Sitio web',
     a11yTitle: 'Accesibilidad',
     a11yContact:
       'Si algo en esta página no le funciona, llame a la línea de ayuda y le ayudaremos de otra manera.',

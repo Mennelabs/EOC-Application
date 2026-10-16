@@ -773,6 +773,11 @@ export const fieldSyncRoutes =
                   available: z.boolean(),
                   url: z.string().nullable(),
                   expiresAt: z.iso.datetime().nullable(),
+                  /** FLD-13: what the phone checks its download against, and when it changed. */
+                  bytes: z.number().int().nullable(),
+                  sha256: z.string().nullable(),
+                  version: z.number().int().nullable(),
+                  bounds: z.array(z.number()).length(4).nullable(),
                 }),
               ),
             }),
@@ -1065,18 +1070,30 @@ export const fieldSyncRoutes =
             })),
           };
         });
-        // Map extracts live at maps/areas/<tenant>/<area>.pmtiles; the worker cuts them when tiles exist (§7).
+        // FLD-13: the worker cuts a package per area from the regional tiles (cg.map_package).
+        const packages = pkg.areaKeys.length
+          ? await request.tx((trx) =>
+              trx
+                .selectFrom('cg.map_package')
+                .selectAll()
+                .where('area_key', 'in', pkg.areaKeys)
+                .execute(),
+            )
+          : [];
+        const none = {
+          available: false,
+          url: null,
+          expiresAt: null,
+          bytes: null,
+          sha256: null,
+          version: null,
+          bounds: null,
+        };
         const maps = await Promise.all(
           pkg.areaKeys.map(async (areaKey) => {
-            if (!deps.objects) return { areaKey, available: false, url: null, expiresAt: null };
-            const key = `maps/areas/${me.tenantId}/${areaKey}.pmtiles`;
-            try {
-              await deps.objects.client.send(
-                new HeadObjectCommand({ Bucket: deps.objects.bucket, Key: key }),
-              );
-            } catch {
-              return { areaKey, available: false, url: null, expiresAt: null };
-            }
+            const row = packages.find((p) => p.area_key === areaKey);
+            if (!deps.objects || !row) return { areaKey, ...none };
+            const key = row.object_key;
             const ttl = 3600;
             const url = await getSignedUrl(
               (deps.objects.presignClient ?? deps.objects.client) as unknown as Parameters<
@@ -1090,6 +1107,10 @@ export const fieldSyncRoutes =
               available: true,
               url,
               expiresAt: new Date(Date.now() + ttl * 1000).toISOString(),
+              bytes: row.bytes,
+              sha256: row.sha256,
+              version: row.version,
+              bounds: [row.min_lon, row.min_lat, row.max_lon, row.max_lat],
             };
           }),
         );

@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import { westwindGraph } from '@cg/intake';
 import { getIntake, type IntakeInfo } from '../api/public.ts';
+import { brandFrom, brandStore } from '../intake/brand.ts';
 
 const key = (tenant: string, event: string) => `cg.graph.${tenant}.${event}`;
 
@@ -34,6 +35,10 @@ export function useIntake(tenant: string, event: string, lang: string) {
   const [data, setData] = useState<IntakeInfo | null>(() => cachedIntake(tenant, event));
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(!data);
+  // ADM-01: the page frame shows the county's branding once the page is known.
+  useEffect(() => {
+    if (data?.tenant.name) brandStore.set(brandFrom(data));
+  }, [data]);
   useEffect(() => {
     let alive = true;
     getIntake(tenant, event, lang)

@@ -17,6 +17,7 @@ import {
 import { localStore, type LocalStore } from './intake/storage.ts';
 import { Outbox } from './intake/outbox.ts';
 import type { RuntimeConfig } from './runtime-config.ts';
+import { useBrand } from './intake/brand.ts';
 import { Welcome } from './screens/Welcome.tsx';
 import { Flow } from './screens/Flow.tsx';
 import { MyReport } from './screens/MyReport.tsx';
@@ -41,6 +42,13 @@ export function parseRoute(pathname: string): Route {
   if (second && third === 'kiosk') return { name: 'kiosk', tenant, event: second };
   if (second && third === 'resume') return { name: 'resume', tenant, event: second };
   return { name: 'unknown' };
+}
+
+/** The help line residents are given: the county's own (ADM-01), else the deployment's. */
+export function useHelpPhone(shell: Shell): string {
+  const t = useT();
+  const brand = useBrand();
+  return brand?.helpPhone || shell.config.helpPhone || t('phone.fallback');
 }
 
 export function useT() {
@@ -94,8 +102,11 @@ function useOnline() {
 
 function Layout({ shell, children }: { shell: Shell; children: ReactNode }) {
   const t = useT();
-  const county = shell.config.countyName || t('county.fallback');
-  const phone = shell.config.helpPhone || t('phone.fallback');
+  const brand = useBrand();
+  const county = brand?.name || shell.config.countyName || t('county.fallback');
+  // ADM-01: the agency's own name in this language when the county gave one.
+  const agency = brand?.publicName?.[shell.locale] ?? t('header.agency', { county });
+  const phone = useHelpPhone(shell);
   useEffect(() => {
     document.documentElement.lang = shell.locale;
   }, [shell.locale]);
@@ -104,8 +115,11 @@ function Layout({ shell, children }: { shell: Shell; children: ReactNode }) {
       <a className="skip" href="#main">
         {t('skip.toContent')}
       </a>
-      <header className="banner">
-        <p className="agency">{t('header.agency', { county })}</p>
+      <header
+        className="banner"
+        style={brand?.headerColor ? { background: brand.headerColor, color: '#ffffff' } : undefined}
+      >
+        <p className="agency">{agency}</p>
         <label className="lang">
           <span>{t('language.label')}</span>
           <select value={shell.locale} onChange={(e) => shell.setLocale(e.target.value as Locale)}>
@@ -127,6 +141,11 @@ function Layout({ shell, children }: { shell: Shell; children: ReactNode }) {
         <p>
           {t('footer.noDecision')} {t('footer.talk', { phone })}
         </p>
+        {brand?.website ? (
+          <p>
+            <a href={brand.website}>{t('footer.website', { county: agency })}</a>
+          </p>
+        ) : null}
         {shell.config.productName ? (
           <p className="powered">{t('footer.poweredBy', { product: shell.config.productName })}</p>
         ) : null}
@@ -137,7 +156,7 @@ function Layout({ shell, children }: { shell: Shell; children: ReactNode }) {
 
 function Screens({ shell, route }: { shell: Shell; route: Route }) {
   const t = useT();
-  const phone = shell.config.helpPhone || t('phone.fallback');
+  const phone = useHelpPhone(shell);
   switch (route.name) {
     case 'home': {
       if (shell.config.tenant && shell.config.event)

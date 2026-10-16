@@ -28,6 +28,7 @@ import type { Database } from '@cg/db';
 import { normalisePhone } from '@cg/crypto';
 import { upsertAfterAnswers } from '@cg/db';
 import { validateAnswer, type QuestionGraph, type QuestionNode } from '@cg/intake';
+import { publicBranding } from '../branding.ts';
 import { ApiError, errors } from '../errors.ts';
 import { enqueueOutbox } from '../routes/helpers.ts';
 import { RiskScorer, WindowCounter } from './abuse.ts';
@@ -195,7 +196,12 @@ export const publicRoutes =
           const smsPrivacy = await configValue<string>(trx, 'sms.privacy_url');
           const languages = graph.languages.filter((l) => tenant.locales.includes(l));
           return {
-            tenant: { slug: tenant.slug, name: tenant.name, branding: tenant.branding },
+            // ADM-01: the county's branding, its known fields only.
+            tenant: {
+              slug: tenant.slug,
+              name: tenant.name,
+              branding: publicBranding(tenant.branding),
+            },
             event: {
               id: event.id,
               name: event.name,

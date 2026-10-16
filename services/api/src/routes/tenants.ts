@@ -7,7 +7,9 @@ import type { FastifyPluginAsync } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { diffForAudit } from '@cg/audit';
+import { brandingIn, localeProblem } from '../branding.ts';
 import { errors } from '../errors.ts';
+import { forgetTenant } from '../public/tenant-resolver.ts';
 import { assertUpdated } from '../plugins/versions.ts';
 import {
   classifierFor,
@@ -86,7 +88,8 @@ const patchTenant = z.object({
   timezone: z.string().min(1).optional(),
   locales: z.array(z.string().min(2).max(10)).min(1).optional(),
   securityContactEmail: z.email().nullable().optional(),
-  branding: z.record(z.string(), z.unknown()).optional(),
+  // ADM-01: the known fields only, checked (header contrast, https website).
+  branding: brandingIn.optional(),
   status: z.enum(['active', 'suspended', 'closed']).optional(),
 });
 
@@ -169,6 +172,8 @@ export const tenantRoutes: FastifyPluginAsync = async (raw) => {
       const body = request.body;
       // The parent is the acting tenant: RLS only lets a tenant create its own children.
       await request.authorize('tenant.create_child', { type: 'tenant', tenantId: body.parentId });
+      const localeIssue = localeProblem(body.locales, body.kind);
+      if (localeIssue) throw errors.validation([{ name: 'locales', message: localeIssue }]);
       const { reason } = request.confirmation();
       const row = await request.tx(async (trx) => {
         const parent = await trx
@@ -247,6 +252,12 @@ export const tenantRoutes: FastifyPluginAsync = async (raw) => {
         { asNotFound: true },
       );
       const { reason } = request.confirmation();
+      if (request.body.locales) {
+        // ADM-01, NFR-09: only languages with reviewed catalogs; residents always get English and Spanish.
+        const localeIssue = localeProblem([...new Set(request.body.locales)], current.kind);
+        if (localeIssue) throw errors.validation([{ name: 'locales', message: localeIssue }]);
+        request.body.locales = [...new Set(request.body.locales)];
+      }
       const changes = pickDefined(request.body, {
         name: 'name',
         timezone: 'timezone',
@@ -277,6 +288,8 @@ export const tenantRoutes: FastifyPluginAsync = async (raw) => {
         });
         return result;
       });
+      // The public pages show the change on their next request (ADM-01).
+      forgetTenant(updated.id);
       return toTenant(updated);
     },
   );

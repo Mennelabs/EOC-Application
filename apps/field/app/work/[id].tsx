@@ -92,6 +92,19 @@ export default function Work() {
           />
         </>
       ) : null}
+      {m && f.can('command.use') && f.can('mission.read') ? (
+        // CMD-06: the command screen opened from here takes this job's mission as "this".
+        <Button
+          kind="secondary"
+          label={t('command.aboutJob')}
+          onPress={() =>
+            router.push({
+              pathname: '/command',
+              params: { missionId: m.id, missionRef: m.reference ?? '' },
+            })
+          }
+        />
+      ) : null}
       {m && f.can('mission.person.edit') ? (
         <Button
           kind="secondary"

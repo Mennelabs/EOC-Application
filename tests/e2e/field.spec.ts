@@ -35,6 +35,38 @@ test.describe('field app (web build)', () => {
     }[];
     for (const c of open.filter((c) => !c.endedAt))
       await api(accessToken, `/check-ins/${c.id}/end`, { body: { reason: 'checked_out' } });
+    // CMD-06: dispatch gives the lead's team a job before the shift, so it is on the phone.
+    const dispatcher = await token('county', 'casey.dispatch@example.org');
+    const events = (await api(dispatcher, '/events')).body as { id: string; name: string }[];
+    const westwind = events.find((e) => /westwind/i.test(e.name)) ?? events[0]!;
+    const teams = (await api(dispatcher, '/teams')).body as { id: string; key: string }[];
+    const fieldTeam = teams.find((x) => x.key === 'field-exercise')!;
+    const job = await api(dispatcher, '/missions', {
+      body: {
+        eventId: westwind.id,
+        kind: 'other',
+        source: 'staff',
+        summary: `Exercise: check the culvert on Cedar Ct (${Date.now()})`,
+        location: {
+          line1: '140 Cedar Ct',
+          city: 'Harmon City',
+          position: { lat: 38.795, lon: -90.87 },
+          state: 'approximate',
+        },
+      },
+    });
+    expect(job.status).toBe(201);
+    const jobId = job.body['id'] as string;
+    const jobRef = job.body['reference'] as string;
+    // Other journeys may leave the team booked or out of service; dispatch overrides with a reason.
+    const assigned = await api(dispatcher, `/missions/${jobId}/assignments`, {
+      body: {
+        resources: [{ kind: 'team', id: fieldTeam.id }],
+        overrideReason: 'Exercise: field journey job',
+      },
+      confirm: 'Exercise: field journey job',
+    });
+    expect(assigned.status).toBe(201);
     await context.addInitScript((tok) => {
       sessionStorage.setItem(
         'cgf.session',
@@ -155,6 +187,20 @@ test.describe('field app (web build)', () => {
     await expect(page.getByText(/open reminder|reminders?:/i)).toBeVisible();
     await expectNoViolations(page);
 
+    // CMD-06: opened from a job, "this" means that job's mission, and the screen says so.
+    await page.getByRole('link', { name: 'Home' }).click();
+    const jobCard = page
+      .getByRole('heading', { name: new RegExp(`^${jobRef} `) })
+      .locator('xpath=..');
+    await jobCard.getByRole('button', { name: 'Open' }).click();
+    await page.getByRole('button', { name: 'Ask or command about this job' }).click();
+    await expect(page.getByText(`"This" means mission ${jobRef}`, { exact: false })).toBeVisible();
+    await page.getByLabel('What you need').fill('/mission this');
+    await page.getByRole('button', { name: 'Go', exact: true }).click();
+    await expect(page.getByText(new RegExp(jobRef)).last()).toBeVisible();
+    await expect(page.getByText(/check the culvert on Cedar Ct/).last()).toBeVisible();
+    await expectNoViolations(page);
+
     // FL-04, FL-05, FL-18: the conversation note-taker asks first, in the person's language,
     // and is never for counseling; with no AI provider configured it says so and records nothing.
     await page.getByRole('link', { name: 'Home' }).click();
@@ -217,6 +263,13 @@ test.describe('field app (web build)', () => {
     }[];
     for (const a of alerts.filter((a) => a.kind === 'help_button'))
       await api(staff, `/safety-alerts/${a.id}/acknowledge`, { body: {}, version: a.version });
+    // The exercise job is canceled so the board journeys start quiet too.
+    const current = await api(dispatcher, `/missions/${jobId}`);
+    await api(dispatcher, `/missions/${jobId}/cancel`, {
+      method: 'POST',
+      version: current.body['version'] as number,
+      confirm: 'Exercise job for the field journey (e2e)',
+    });
 
     // FLD-14: check-out ends the shift and clears resident details from the phone.
     await page.getByRole('button', { name: 'Back' }).click();

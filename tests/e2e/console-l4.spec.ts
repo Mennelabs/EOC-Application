@@ -245,5 +245,11 @@ test.describe('layer 4 console', () => {
     await page.goto('/console/situation');
     const reports = page.getByRole('button', { name: /^Reports/ });
     await expect(reports).toHaveAttribute('aria-pressed', /true|false/, { timeout: 30_000 });
+    // FL:FR-01: where search marks were left, so no block is searched twice.
+    await expect(page.getByRole('button', { name: /^Searched/ })).toHaveAttribute(
+      'aria-pressed',
+      /true|false/,
+    );
+    await expectNoViolations(page);
   });
 });

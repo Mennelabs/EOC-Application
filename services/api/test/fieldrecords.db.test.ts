@@ -949,6 +949,43 @@ describe.skipIf(!appUrl || !workerUrl)('frontline role records (database-backed)
     ).toBe(403);
   });
 
+  it('FL:FR-01, CON-03: the situation map shows where search marks were left and roads a crew reported closed, to roles that read them', async () => {
+    const mark = await create('sar', 'search_mark', {
+      clientUuid: randomUUID(),
+      eventId,
+      position: { lat: 38.7961, lon: -90.8722 },
+      entryType: 'exterior_only',
+      occupantsFound: 0,
+      occupantsRemoved: 0,
+      victims: 0,
+    });
+    const road = await create('roads', 'road_status', {
+      clientUuid: randomUUID(),
+      eventId,
+      name: `Exercise Quarry Rd ${randomUUID().slice(0, 4)}`,
+      status: 'impassable',
+      position: { lat: 38.79, lon: -90.88 },
+    });
+    type Layer = {
+      available: boolean;
+      items: { id: string; label: string; detail: string | null }[];
+    };
+    const situation = async (who: string) =>
+      (await call(who, 'GET', `/api/v1/situation?eventId=${eventId}`)).json<{
+        layers: Record<string, Layer>;
+      }>();
+    const sar = await situation('sar');
+    expect(sar.layers['searched']!.available).toBe(true);
+    const shown = sar.layers['searched']!.items.find((i) => i.id === mark['id']);
+    expect(shown).toMatchObject({ label: 'Searched, outside only' });
+    expect(shown!.detail).toContain('EXT');
+    const roads = await situation('roads');
+    expect(roads.layers['roadClosures']!.items.map((i) => i.id)).toContain(road['id']);
+    // A role that reads neither sees the layer as not available, with nothing in it.
+    const health = await situation('health');
+    expect(health.layers['searched']).toEqual({ available: false, items: [] });
+  });
+
   it('FL:FR-19: equipment that ran on a work order is logged with its hours, once per phone id; the coordinator reads it; other roles cannot log it', async () => {
     const mission = await dbWorker
       .selectFrom('cg.mission')

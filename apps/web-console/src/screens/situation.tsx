@@ -46,6 +46,8 @@ const LAYERS: {
   { key: 'teams', title: 'Teams', mark: 'T', shape: 'square', tone: 'ok' },
   { key: 'hazards', title: 'Hazards', mark: 'H', shape: 'triangle', tone: 'danger' },
   { key: 'roadClosures', title: 'Road closures', mark: 'X', shape: 'square', tone: 'danger' },
+  // FL:FR-01: structures searched, so no block is searched twice.
+  { key: 'searched', title: 'Searched', mark: 'SR', shape: 'circle', tone: 'ok' },
   { key: 'outages', title: 'Outages', mark: 'O', shape: 'diamond', tone: 'warn' },
 ];
 const label = (s: string | null) => (s ? s.replace(/_/g, ' ') : '—');

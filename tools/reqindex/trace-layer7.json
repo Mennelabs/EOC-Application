@@ -421,10 +421,10 @@
     ""
   ],
   "AC-A07": [
-    "partial",
-    "Answers encrypted under a session key; \"Clear my answers\" and an automatic clear after 2 minutes on a personal device; on the kiosk the answers leave the device as soon as the county has the report and Done hands over a clean kiosk; pausing removes the flow; \"Close my report\" removes the token. Fixed 2026-10-16: clearing showed \"Not sent yet\" in place of the reference number, clearing wrote the outbox again under a new key, and the kiosk's Done opened the personal welcome page; a report still waiting to send is kept when the device is cleared (SCL-06)",
-    "tests/e2e/resident.spec.ts (AC-A07: after \"Clear my answers\" no stored key or answers remain and the next person starts clean; on the kiosk after Done nothing of the report is in what the device keeps, read with its own key, nor on screen, nor one step back), apps/web-resident/test/outbox.test.ts (clearing keeps a report still waiting, leaves nothing when none waits), apps/web-resident/test/storage.test.ts, apps/web-resident/test/idle.test.ts",
-    "The my-report token stays up to 30 minutes in the tab unless the person closes it; the kiosk keeps its device key so unsent reports survive a restart (CHN-07)."
+    "pass",
+    "Answers encrypted under a session key; \"Clear my answers\" and an automatic clear after 2 minutes on a personal device; on the kiosk the answers leave the device as soon as the county has the report and Done hands over a clean kiosk; pausing removes the flow; \"Close my report\" removes the token, and an open My report closes by itself after 10 minutes without use, warned a minute before with \"I need more time\" (2026-10-16). Fixed 2026-10-16: clearing showed \"Not sent yet\" in place of the reference number, clearing wrote the outbox again under a new key, and the kiosk's Done opened the personal welcome page; a report still waiting to send is kept when the device is cleared (SCL-06)",
+    "tests/e2e/resident.spec.ts (AC-A07: after \"Clear my answers\" no stored key or answers remain and the next person starts clean; on the kiosk after Done nothing of the report is in what the device keeps, read with its own key, nor on screen, nor one step back; AC-A07, WCAG 2.2.1: an open report warns at 9 minutes, \"I need more time\" keeps it, then it closes and the lookup screen says why, with nothing left in session storage), apps/web-resident/test/outbox.test.ts (clearing keeps a report still waiting, leaves nothing when none waits), apps/web-resident/test/storage.test.ts, apps/web-resident/test/idle.test.ts",
+    "The kiosk keeps its device key so unsent reports survive a restart (CHN-07), by design."
   ],
   "AC-A09": [
     "pass",

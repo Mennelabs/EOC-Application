@@ -123,6 +123,58 @@ test.describe('layer 7 console: the command window', () => {
     expect(await statusOf()).toBe('open');
     await expectNoViolations(page);
 
+    // AC-C11, CMD-08, CMD-31: two reminders match, so the window asks; the question is a radio
+    // group answered by keyboard, and the plan it leads to is cancelled by keyboard. Nothing changes.
+    for (const side of ['north', 'south']) {
+      await box.fill(`/remind in 30m Refuel generator ${tag} ${side}`);
+      await box.press('Enter');
+      await expect(dialog.getByRole('heading', { name: 'Check the plan' })).toBeVisible();
+      await dialog.getByRole('button', { name: 'Confirm' }).click();
+      await expect(dialog.getByRole('heading', { name: 'Saved' })).toBeVisible();
+    }
+    await box.fill(`/reminder Refuel generator ${tag} done Exercise: refuelled`);
+    await box.press('Enter');
+    await expect(dialog.getByRole('heading', { name: 'One question first' })).toBeVisible();
+    const which = dialog.getByRole('group', { name: 'Which one?' });
+    await expect(which.getByRole('radio')).toHaveCount(2);
+    await expectNoViolations(page);
+    await which.getByRole('radio').first().focus();
+    await page.keyboard.press('Space');
+    await page.keyboard.press('ArrowDown');
+    await expect(which.getByRole('radio').nth(1)).toBeChecked();
+    const picked = (await which.getByRole('radio').nth(1).locator('xpath=..').innerText()).trim();
+    await dialog.getByRole('button', { name: 'Continue' }).focus();
+    await page.keyboard.press('Enter');
+    await expect(dialog.getByRole('heading', { name: 'Check the plan' })).toBeVisible();
+    await expect(dialog.getByRole('definition').first()).toContainText(
+      picked.includes('south') ? 'south' : 'north',
+    );
+    await dialog.getByRole('button', { name: 'Cancel' }).focus();
+    await page.keyboard.press('Enter');
+    await expect(dialog.getByRole('heading', { name: 'Cancelled' })).toBeVisible();
+    await expectNoViolations(page);
+    await box.fill('/reminders');
+    await box.press('Enter');
+    await expect(dialog.getByRole('heading', { name: 'Found' })).toBeVisible();
+    await expect(dialog).toContainText(`Refuel generator ${tag} north`);
+    await expect(dialog).toContainText(`Refuel generator ${tag} south`);
+
+    // CMD-34: without a connection nothing is sent, nothing changes and nothing is retried later;
+    // the line stays in the box for the person to send again.
+    await page.context().setOffline(true);
+    await box.fill(`/remind in 30m Offline line ${tag}`);
+    await box.press('Enter');
+    await expect(
+      dialog.getByText(/Not sent: the connection dropped\. Nothing changed\./).first(),
+    ).toBeVisible();
+    await expectNoViolations(page);
+    await page.context().setOffline(false);
+    await expect(box).toHaveValue(`/remind in 30m Offline line ${tag}`);
+    await box.fill('/reminders');
+    await box.press('Enter');
+    await expect(dialog.getByRole('heading', { name: 'Found' })).toBeVisible();
+    await expect(dialog).not.toContainText(`Offline line ${tag}`);
+
     // CMD-04: a personal alias for a lookup, shown in the help, used, then removed.
     await dialog.getByText('Aliases', { exact: true }).click();
     await dialog.getByLabel('Alias name').fill('mine');

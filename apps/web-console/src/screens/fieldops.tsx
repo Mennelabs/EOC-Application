@@ -17,6 +17,7 @@
  *   alone; acknowledge, snooze, complete against a note, cancel.
  * - Field devices: last contact and remote wipe of the app's data.
  */
+import { QuietHoursPanel } from './settings.tsx';
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, describeFailure } from '../api/client.ts';
 import { DataTable, Field, Status, Toolbar, fmt } from '../ui/primitives.tsx';
@@ -1383,6 +1384,7 @@ export function RemindersScreen() {
           Set reminder
         </button>
       </form>
+      <QuietHoursPanel />
     </section>
   );
 }

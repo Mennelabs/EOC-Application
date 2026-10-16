@@ -121,6 +121,27 @@ test.describe('every console screen, one by one', () => {
           await row.getByRole('button', { name: 'Complete', exact: true }).click();
           await expect(page.getByRole('status').filter({ hasText: 'Completed.' })).toBeVisible();
           await expect(row).toHaveCount(0);
+          // BRD:FR-09.06: quiet hours for escalation emails, set with a reason and removed.
+          const quiet = page.getByRole('region', { name: 'Quiet hours for escalation emails' });
+          const confirmWith = async (reason: string) => {
+            const dialog = page.getByRole('dialog');
+            await expect(dialog).toBeVisible();
+            await dialog.getByLabel('Reason').fill(reason);
+            await dialog.getByRole('button', { name: 'Confirm' }).click();
+          };
+          if (await quiet.getByRole('button', { name: 'Remove quiet hours' }).isVisible()) {
+            await quiet.getByRole('button', { name: 'Remove quiet hours' }).click();
+            await confirmWith('Exercise: start from none');
+          }
+          await quiet.getByLabel('Quiet from (county time)').fill('22:00');
+          await quiet.getByLabel('Quiet until (county time)').fill('07:00');
+          await quiet.getByRole('button', { name: 'Save quiet hours' }).click();
+          await confirmWith('Exercise: no escalation emails overnight');
+          await expect(quiet.getByText('Quiet hours set: 22:00 to 07:00.')).toBeVisible();
+          await expect(quiet.getByText(/wait from 22:00 to 07:00, county time/)).toBeVisible();
+          await quiet.getByRole('button', { name: 'Remove quiet hours' }).click();
+          await confirmWith('Exercise over');
+          await expect(quiet.getByText('Quiet hours removed.')).toBeVisible();
         }
 
         await expectNoViolations(page);

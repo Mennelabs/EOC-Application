@@ -421,3 +421,107 @@ export function PlanningFactorsScreen() {
     </section>
   );
 }
+
+interface QuietConfig {
+  value: { start?: string; end?: string } | null;
+  version: number;
+}
+
+/**
+ * BRD:FR-09.06: the county's quiet hours for reminder escalation emails, on its own clock. An
+ * escalation that comes due inside them waits until they end; help alerts are never held.
+ */
+export function QuietHoursPanel() {
+  const [me, setMe] = useState<{ tenantId: string; actions: string[] } | null>(null);
+  const [current, setCurrent] = useState<QuietConfig | null>(null);
+  const [form, setForm] = useState({ start: '', end: '' });
+  const [notice, setNotice] = useState<Notice>(null);
+  useEffect(() => {
+    api<{ tenantId: string; actions: string[] }>('/me')
+      .then(async (m) => {
+        setMe(m);
+        if (!m.actions.includes('tenant.config.read')) return;
+        const c = await api<QuietConfig>(
+          `/tenants/${m.tenantId}/config/reminders.quiet_hours`,
+        ).catch(() => null);
+        setCurrent(c);
+        setForm({ start: c?.value?.start ?? '', end: c?.value?.end ?? '' });
+      })
+      .catch(() => undefined);
+  }, []);
+  if (!me || !me.actions.includes('tenant.config.read')) return null;
+  const mayChange = me.actions.includes('tenant.config.write');
+  const set = current?.value?.start && current.value.end ? current.value : null;
+  const save = async (value: { start: string; end: string } | null) => {
+    setNotice(null);
+    try {
+      const saved = await api<QuietConfig>(`/tenants/${me.tenantId}/config/reminders.quiet_hours`, {
+        method: 'PUT',
+        body: { value },
+        ...(current ? { version: current.version } : {}),
+      });
+      setCurrent(saved);
+      setNotice({
+        kind: 'success',
+        text: value ? `Quiet hours set: ${value.start} to ${value.end}.` : 'Quiet hours removed.',
+      });
+    } catch (err) {
+      setNotice({ kind: 'error', text: describeFailure(err) });
+    }
+  };
+  const valid =
+    /^\d{2}:\d{2}$/.test(form.start) && /^\d{2}:\d{2}$/.test(form.end) && form.start !== form.end;
+  return (
+    <section className="panel" aria-labelledby="quiet-h">
+      <h2 id="quiet-h">Quiet hours for escalation emails</h2>
+      <p>
+        {set
+          ? `Escalation emails wait from ${set.start} to ${set.end}, county time, and go out when the quiet hours end.`
+          : 'No quiet hours: escalation emails go out as soon as they are due.'}{' '}
+        Help alerts and missed safety check-ins are never held.
+      </p>
+      {notice ? <Status kind={notice.kind}>{notice.text}</Status> : null}
+      {mayChange ? (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (valid) void save({ start: form.start, end: form.end });
+          }}
+        >
+          <div className="form-grid">
+            <Field label="Quiet from (county time)">
+              {({ id }) => (
+                <input
+                  id={id}
+                  type="time"
+                  value={form.start}
+                  onChange={(e) => setForm({ ...form, start: e.target.value })}
+                />
+              )}
+            </Field>
+            <Field label="Quiet until (county time)">
+              {({ id }) => (
+                <input
+                  id={id}
+                  type="time"
+                  value={form.end}
+                  onChange={(e) => setForm({ ...form, end: e.target.value })}
+                />
+              )}
+            </Field>
+          </div>
+          <div className="actions" style={{ justifyContent: 'flex-start' }}>
+            <button type="submit" className="primary" disabled={!valid}>
+              Save quiet hours
+            </button>
+            {set ? (
+              <button type="button" onClick={() => void save(null)}>
+                Remove quiet hours
+              </button>
+            ) : null}
+          </div>
+        </form>
+      ) : null}
+    </section>
+  );
+}

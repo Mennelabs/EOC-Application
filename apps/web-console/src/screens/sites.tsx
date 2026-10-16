@@ -726,13 +726,15 @@ interface PublicAudio {
   provider: string;
   model: string;
   createdAt: string;
+  clearedForAir: { by: string; at: string } | null;
 }
 const SPOKEN = { radioLoop: 'Radio loop (TIS)', netReadout: 'Amateur radio net read-out' } as const;
 
 /**
  * PUB-14: the AI voice speaks the script the PIO approves (the rules' text,
  * changed as they need) into an audio file. Each file is listed with its
- * transcript; the PIO plays it before it goes on the air.
+ * transcript. It is downloaded for air only once someone has played it to the
+ * end and cleared it, with a reason (GATE-08): Clear stays off until then.
  */
 function RadioAudio({
   siteId,
@@ -752,6 +754,7 @@ function RadioAudio({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: 'error' | 'success'; text: string } | null>(null);
   const [playing, setPlaying] = useState<Record<string, string>>({});
+  const [heard, setHeard] = useState<Record<string, boolean>>({});
 
   const choose = (f: typeof form, l: typeof language) => {
     setForm(f);
@@ -776,8 +779,18 @@ function RadioAudio({
   };
   const play = async (a: PublicAudio) => {
     try {
-      const blob = await fetchBlob(`/alerts/audio/${a.id}/file`);
+      const blob = await fetchBlob(`/alerts/audio/${a.id}/file?for=listening`);
       setPlaying((p) => ({ ...p, [a.id]: URL.createObjectURL(blob) }));
+    } catch (err) {
+      setMsg({ kind: 'error', text: describeFailure(err) });
+    }
+  };
+  const clear = async (a: PublicAudio) => {
+    setMsg(null);
+    try {
+      await api(`/alerts/audio/${a.id}/clear`, { body: { heardToTheEnd: true } });
+      setMsg({ kind: 'success', text: 'Cleared for air. The file can now be downloaded.' });
+      reload();
     } catch (err) {
       setMsg({ kind: 'error', text: describeFailure(err) });
     }
@@ -791,8 +804,8 @@ function RadioAudio({
       <p>
         The AI voice reads the script below for {site} into an audio file for the county's
         Travelers' Information Station or an amateur radio net. The file opens by saying the voice
-        is computer-generated. Change the script as needed first; play the file before it goes on
-        the air.
+        is computer-generated. Change the script as needed first. Before a file can be downloaded
+        for the air, play it to the end and clear it.
       </p>
       <div className="form-grid">
         <Field label="Script">
@@ -852,11 +865,19 @@ function RadioAudio({
                 {fmt(a.createdAt)} by the AI voice ({a.provider}, {a.model});{' '}
                 {Math.ceil(a.bytes / 1024)} KB.
               </p>
+              <p id={`air-${a.id}`}>
+                {a.clearedForAir
+                  ? `Cleared for air ${fmt(a.clearedForAir.at)}.`
+                  : heard[a.id]
+                    ? 'Played to the end. Clear it for air if it says what the script says.'
+                    : 'Not cleared for air yet: play it to the end first.'}
+              </p>
               {playing[a.id] ? (
                 <audio
                   controls
                   src={playing[a.id]}
                   aria-label={`${SPOKEN[a.form]}, ${a.language === 'es' ? 'Spanish' : 'English'}`}
+                  onEnded={() => setHeard((h) => ({ ...h, [a.id]: true }))}
                 />
               ) : null}
               <Toolbar>
@@ -865,17 +886,28 @@ function RadioAudio({
                     Play
                   </button>
                 )}
-                <button
-                  type="button"
-                  className="link"
-                  onClick={() =>
-                    download(`/alerts/audio/${a.id}/file`, fileName(a)).catch((err) =>
-                      setMsg({ kind: 'error', text: describeFailure(err) }),
-                    )
-                  }
-                >
-                  Download
-                </button>
+                {a.clearedForAir ? (
+                  <button
+                    type="button"
+                    className="link"
+                    onClick={() =>
+                      download(`/alerts/audio/${a.id}/file`, fileName(a)).catch((err) =>
+                        setMsg({ kind: 'error', text: describeFailure(err) }),
+                      )
+                    }
+                  >
+                    Download for air
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={!heard[a.id]}
+                    aria-describedby={`air-${a.id}`}
+                    onClick={() => void clear(a)}
+                  >
+                    Clear for air
+                  </button>
+                )}
               </Toolbar>
               <details>
                 <summary>Transcript</summary>

@@ -290,6 +290,88 @@ test.describe('resident report', () => {
     await expectNoViolations(page);
   });
 
+  test('GATE-08, AIG-01, INT-16: each answer read from the words waits for the resident; only a yes is used, a no is left for them to answer', async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    // The running stack has no AI provider (ADR-0043): the reply from the words is stood in
+    // for; the report itself goes to the real server.
+    const extractionId = crypto.randomUUID();
+    await page.route('**/api/public/intake/county/extract', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          extractionId,
+          candidates: [
+            {
+              questionId: 'employees_affected',
+              value: { kind: 'value', value: 12 },
+              confidence: 0.8,
+              evidence: 'twelve of us work there',
+            },
+            {
+              questionId: 'time_out_of_work',
+              value: { kind: 'value', value: 'months' },
+              confidence: 0.6,
+              evidence: 'out for a while',
+            },
+          ],
+          language: 'en',
+          injectionSuspected: false,
+          notice: 'A computer helped fill in these answers. Please check them.',
+        }),
+      }),
+    );
+    await page.goto('/county/westwind');
+    await pressButton(page, 'Start');
+    const email = `gate08-${Date.now()}@example.org`;
+    const seen = new Set<string>();
+    await answerUntilReview(page, email, seen, 'Or tell us in your own words');
+    await page
+      .getByLabel('What happened?')
+      .fill('The wind took the roof. Twelve of us work there and we are out for a while.');
+    await pressButton(page, 'Help me fill in the answers');
+    await expect(page.getByText('A computer helped fill in these answers.')).toBeVisible();
+    const twelve = page.getByRole('group', { name: /You said: 12\. Is that right\?/ });
+    const months = page.getByRole('group', {
+      name: /You said: Months or longer\. Is that right\?/,
+    });
+    await expect(twelve).toBeVisible();
+    await expect(months).toBeVisible();
+    // Nothing is chosen for the resident: each suggestion starts unanswered, its words shown.
+    await expect(page.getByRole('radio', { checked: true })).toHaveCount(0);
+    await expect(twelve.getByText('“twelve of us work there”')).toBeVisible();
+    await expectNoViolations(page);
+    const yes = twelve.getByRole('radio', { name: 'Yes, that is right' });
+    await yes.focus();
+    await page.keyboard.press('Space');
+    const no = months.getByRole('radio', { name: 'No, I will answer myself' });
+    await no.focus();
+    await page.keyboard.press('Space');
+    await pressButton(page, 'Continue');
+    await answerUntilReview(page, email, seen);
+    const sent = page.waitForRequest(
+      (r) => r.method() === 'POST' && /\/intake\/county\/[^/]+\/submissions$/.test(r.url()),
+    );
+    await pressButton(page, 'Send my report');
+    const body = (await sent).postDataJSON() as {
+      answers: Record<string, unknown>;
+      aiAssisted: boolean;
+      extractionId?: string;
+      ownWords?: string;
+    };
+    // The yes is the resident's answer, marked as helped; the no was never filled in for them.
+    expect(body.answers['employees_affected']).toEqual({ kind: 'value', value: 12 });
+    expect(body.answers['time_out_of_work']).toBeUndefined();
+    expect(body.aiAssisted).toBe(true);
+    expect(body.extractionId).toBe(extractionId);
+    expect(body.ownWords).toContain('Twelve of us work there');
+    await expect(page.getByRole('heading', { name: 'We received your report' })).toBeVisible({
+      timeout: 30_000,
+    });
+  });
+
   test('ORG-01: a business reports two places in one visit, each its own report; who they are is asked once', async ({
     page,
   }) => {

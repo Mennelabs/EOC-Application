@@ -249,7 +249,7 @@ export const AI_FEATURES: readonly RegisterEntry[] = [
     decisionInformed:
       'Speaks the script as an audio file for a Travelers’ Information Station loop or an amateur radio net (PUB-14); the file opens by saying the voice is computer-generated',
     humanCheckpoint:
-      'The PIO approves the script first and listens to the file before it goes on the air',
+      'The PIO approves the script first; the file is downloaded for air only after someone who may publish played it to the end and cleared it, with a reason',
     owner: 'Public information officer',
   },
   {

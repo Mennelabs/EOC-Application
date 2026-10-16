@@ -629,6 +629,79 @@ describe.skipIf(!appUrl || !workerUrl)(
       expect(events.filter((e) => e.kind === 'completed')).toHaveLength(2); // the update note, then the completion that rests on it
     });
 
+    it("BRD:FR-09.06: during the county's quiet hours an escalation waits, and goes out when they end", async () => {
+      const created = await call('priya', 'POST', '/api/v1/reminders', {
+        eventId,
+        kind: 'call_back',
+        title: 'Exercise: call the Birch Ln caller back',
+        dueAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+        escalateToRole: 'field_coordinator',
+        escalateAfterMinutes: 10,
+      });
+      expect(created.status, created.body).toBe(201);
+      const id = created.json<Reminder>().id;
+      // A quiet window around the worker's clock, on the county's clock (America/Chicago).
+      clock = Date.now() + 20 * 60_000;
+      const local = (at: number) =>
+        new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'America/Chicago',
+          hour: '2-digit',
+          minute: '2-digit',
+          hourCycle: 'h23',
+        }).format(new Date(at));
+      const county = tenants['county']!;
+      await dbWorker
+        .insertInto('cg.tenant_config')
+        .values({
+          tenant_id: county,
+          key: 'reminders.quiet_hours',
+          value: JSON.stringify({
+            start: local(clock - 60 * 60_000),
+            end: local(clock + 60 * 60_000),
+          }),
+        } as never)
+        .onConflict((oc) =>
+          oc.columns(['tenant_id', 'key']).doUpdateSet({
+            value: JSON.stringify({
+              start: local(clock - 60 * 60_000),
+              end: local(clock + 60 * 60_000),
+            }),
+          } as never),
+        )
+        .execute();
+      try {
+        await watchReminders(worker);
+        let r = (await call('priya', 'GET', `/api/v1/reminders/${id}`)).json<Reminder>();
+        expect(r.state).toBe('overdue');
+        expect(r.escalatedAt).toBeNull();
+        // The quiet hours end: the escalation goes out on the next pass, once.
+        clock = Date.now() + 20 * 60_000 + 2 * 60 * 60_000;
+        await watchReminders(worker);
+        await watchReminders(worker);
+        r = (await call('priya', 'GET', `/api/v1/reminders/${id}`)).json<Reminder>();
+        expect(r.escalatedAt).not.toBeNull();
+        expect(r.history!.filter((e) => e.kind === 'escalated')).toHaveLength(1);
+        const mail = (
+          await dbWorker
+            .selectFrom('cg.outbox')
+            .select('payload')
+            .where('tenant_id', '=', county)
+            .where('topic', '=', 'message.send')
+            .execute()
+        ).find((n) => (n.payload as { reminderId?: string }).reminderId === id);
+        // The due time is on the county's clock with its zone named (BRD:FR-00.08).
+        expect((mail!.payload as { variables: { dueAt: string } }).variables.dueAt).toMatch(
+          / C[DS]T$/,
+        );
+      } finally {
+        await dbWorker
+          .deleteFrom('cg.tenant_config')
+          .where('tenant_id', '=', county)
+          .where('key', '=', 'reminders.quiet_hours')
+          .execute();
+      }
+    });
+
     it('F09: a reminder acknowledged while the timer marks it overdue keeps the acknowledgement', async () => {
       const created = await call('priya', 'POST', '/api/v1/reminders', {
         eventId,

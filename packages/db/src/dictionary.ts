@@ -2284,6 +2284,14 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     provider: { c: 'internal', d: 'The text-to-speech provider (AIG-01)' },
     model: { c: 'internal' },
     ai_output_id: { c: 'internal' },
+    cleared_by: {
+      c: 'internal',
+      d: 'Who played the file to the end and cleared it for air (PUB-14, GATE-08)',
+    },
+    cleared_at: {
+      c: 'internal',
+      d: 'When it was cleared; until then it cannot be downloaded for air',
+    },
   }),
   discovery_source: table({
     kind: { c: 'internal', d: 'hsds, csv, geojson or web_search (REC-13)' },

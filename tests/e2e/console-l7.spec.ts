@@ -31,7 +31,8 @@
  * a graphic per language is named by its alt text and downloads as PNG;
  * with no AI provider configured, the assistant says it is off and the rules'
  * texts stay; the net read-out is ready to speak, and the AI voice says it is
- * off too.
+ * off too. A file the AI voice made (stood in for) can be downloaded for air
+ * only after it played to the end and was cleared with a reason (GATE-08).
  */
 import { devices, expect, test } from '@playwright/test';
 import {
@@ -649,7 +650,7 @@ test.describe('layer 7 console: the command window', () => {
     }
   });
 
-  test('PUB-11, PUB-12, PUB-14: the PIO reads the social, radio and net texts; the AI assistant says it is off', async ({
+  test('PUB-11, PUB-12, PUB-14, GATE-08: the PIO reads the social, radio and net texts; the AI assistant says it is off; an AI voice file goes to air only once played through and cleared', async ({
     page,
     context,
   }, testInfo) => {
@@ -671,6 +672,80 @@ test.describe('layer 7 console: the command window', () => {
     await page.getByLabel('ZIP', { exact: true }).fill('63003');
     await page.getByRole('button', { name: 'Add site' }).click();
     await expect(page.getByRole('status').first()).toContainText('added');
+    // GATE-08, PUB-14: an AI voice file is downloaded for air only after a person played it to the
+    // end and cleared it with a reason. The stack has no AI voice (ADR-0043), so one file the
+    // voice made is stood in for; the server's own gate is proven in drafting.db.test.ts.
+    const audioId = crypto.randomUUID();
+    let clearedForAir: { by: string; at: string } | null = null;
+    const audioFile = (() => {
+      const samples = 1600; // 0.2 s of silence at 8 kHz, 8-bit mono
+      const b = Buffer.alloc(44 + samples, 0x80);
+      b.write('RIFF', 0, 'ascii');
+      b.writeUInt32LE(36 + samples, 4);
+      b.write('WAVEfmt ', 8, 'ascii');
+      b.writeUInt32LE(16, 16);
+      b.writeUInt16LE(1, 20);
+      b.writeUInt16LE(1, 22);
+      b.writeUInt32LE(8000, 24);
+      b.writeUInt32LE(8000, 28);
+      b.writeUInt16LE(1, 32);
+      b.writeUInt16LE(8, 34);
+      b.write('data', 36, 'ascii');
+      b.writeUInt32LE(samples, 40);
+      return b;
+    })();
+    const audioRow = () => ({
+      id: audioId,
+      siteId: audioId,
+      form: 'netReadout',
+      language: 'en',
+      script: 'This announcement is read by a computer-generated voice. Exercise net read-out.',
+      mimeType: 'audio/wav',
+      bytes: audioFile.length,
+      sha256: 'stand-in',
+      provider: 'stand-in',
+      model: 'e2e',
+      createdAt: new Date().toISOString(),
+      clearedForAir,
+    });
+    const json = (body: unknown, status = 200) => ({
+      status,
+      contentType: 'application/json',
+      body: JSON.stringify(body),
+    });
+    await page.route('**/api/v1/alerts/audio?siteId=*', (route) =>
+      route.fulfill(json([audioRow()])),
+    );
+    let airDownloads = 0;
+    await page.route(`**/api/v1/alerts/audio/${audioId}/**`, (route) => {
+      const req = route.request();
+      const url = new URL(req.url());
+      if (url.pathname.endsWith('/clear')) {
+        if (!req.headers()['x-confirm'])
+          return route.fulfill(
+            json(
+              {
+                code: 'confirmation_required',
+                message: 'Confirm and give a reason.',
+                fields: [],
+                retryable: false,
+                details: { action: 'site.publish' },
+              },
+              428,
+            ),
+          );
+        expect(req.headers()['x-reason']).toBe(
+          'Exercise: played to the end, it matches the script',
+        );
+        expect(req.postDataJSON()).toEqual({ heardToTheEnd: true });
+        clearedForAir = { by: audioId, at: new Date().toISOString() };
+        return route.fulfill(json(audioRow()));
+      }
+      if (url.searchParams.get('for') === 'listening')
+        return route.fulfill({ status: 200, contentType: 'audio/wav', body: audioFile });
+      airDownloads++;
+      return route.fulfill({ status: 200, contentType: 'audio/wav', body: audioFile });
+    });
     const row = page.getByRole('row').filter({ hasText: siteName });
     await row.getByRole('button', { name: 'Alert draft' }).click();
     const drafts = page.getByRole('region', { name: `Alert drafts for ${siteName}` });
@@ -704,6 +779,34 @@ test.describe('layer 7 console: the command window', () => {
     await expect(drafts.getByLabel('Script to speak')).toHaveValue(/End of traffic\.$/);
     await drafts.getByRole('button', { name: 'Make the audio file with the AI voice' }).click();
     await expect(drafts.getByText('The AI voice is off here.')).toBeVisible();
+    const files = drafts.getByRole('list', { name: `Audio files for ${siteName}` });
+    await expect(
+      files.getByText('Not cleared for air yet: play it to the end first.'),
+    ).toBeVisible();
+    await expect(files.getByRole('button', { name: 'Download for air' })).toHaveCount(0);
+    const clearButton = files.getByRole('button', { name: 'Clear for air' });
+    await expect(clearButton).toBeDisabled();
+    await files.getByRole('button', { name: 'Play' }).click();
+    const player = files.getByLabel('Amateur radio net read-out, English');
+    await expect(player).toBeVisible();
+    await expect(clearButton).toBeDisabled();
+    // Played to the end (a headless browser has no speakers; the end of the file is what counts).
+    await player.evaluate((a: HTMLAudioElement) => a.dispatchEvent(new Event('ended')));
+    await expect(files.getByText('Played to the end.', { exact: false })).toBeVisible();
+    await expectNoViolations(page);
+    await clearButton.click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel('Reason').fill('Exercise: played to the end, it matches the script');
+    await dialog.getByRole('button', { name: 'Confirm' }).click();
+    await expect(
+      drafts.getByText('Cleared for air. The file can now be downloaded.'),
+    ).toBeVisible();
+    await expect(files.getByText(/^Cleared for air /)).toBeVisible();
+    const wav = page.waitForEvent('download');
+    await files.getByRole('button', { name: 'Download for air' }).click();
+    expect((await wav).suggestedFilename()).toBe('net-readout-en.wav');
+    expect(airDownloads).toBe(1);
     await expectNoViolations(page);
     if (testInfo.project.name === 'phone') await expectReflow(page);
   });

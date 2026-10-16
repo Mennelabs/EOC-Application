@@ -15,7 +15,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest';
-import { fakeProvider } from '@cg/ai';
+import { fakeProvider, type AiProvider } from '@cg/ai';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
 import { createDb, withTenant, type Database } from '@cg/db';
@@ -58,6 +58,8 @@ describe.skipIf(!appUrl || !workerUrl)('field assessments and counters (database
   let eventId: string;
   let reportId: string;
   let siteId: string;
+  /** The provider voice drafting asks; a test swaps in a failing one. */
+  let voiceProvider: AiProvider = fakeProvider;
   const parcelId = `SYN-TEST-${randomUUID().slice(0, 8)}`;
   const objects = new Map<string, Buffer>();
   const crypto = new FieldCrypto(new InMemoryKeyService(), new MemoryKeyStore());
@@ -273,7 +275,7 @@ describe.skipIf(!appUrl || !workerUrl)('field assessments and counters (database
       fieldCrypto: crypto,
       subjects: loader,
       routes: routesWith({
-        fieldVoice: { ai: { providerFor: async () => fakeProvider }, defaultGraph: westwindGraph },
+        fieldVoice: { ai: { providerFor: async () => voiceProvider }, defaultGraph: westwindGraph },
         fieldSync: {
           objects: {
             client: s3 as unknown as import('@aws-sdk/client-s3').S3Client,
@@ -622,6 +624,45 @@ describe.skipIf(!appUrl || !workerUrl)('field assessments and counters (database
       drafts: [],
       injectionSuspected: true,
     });
+    // GATE-08, AI-10: the provider failing is said plainly, the volunteer fills the fields,
+    // and the failed call is recorded against the request.
+    voiceProvider = {
+      ...fakeProvider,
+      llm: {
+        extract: async () => {
+          throw new Error('provider unavailable');
+        },
+      },
+    };
+    const failedUuid = randomUUID();
+    try {
+      const failed = await call('a1', 'POST', '/api/v1/field-assessments/draft', {
+        clientUuid: failedUuid,
+        text: 'tree on house',
+        language: 'en',
+      });
+      expect(failed.status).toBe(409);
+      expect(failed.json<{ code: string; message: string }>()).toMatchObject({
+        code: 'ai_unavailable',
+        message: expect.stringContaining('Fill in the fields yourself'),
+      });
+    } finally {
+      voiceProvider = fakeProvider;
+    }
+    expect(
+      await dbWorker
+        .selectFrom('cg.ai_output')
+        .select(['feature', 'outcome', 'language'])
+        .where('execution_id', '=', failedUuid)
+        .execute(),
+    ).toEqual([{ feature: 'field.voice_draft', outcome: 'error', language: 'en' }]);
+    expect(
+      await dbWorker
+        .selectFrom('cg.extraction')
+        .select('id')
+        .where('execution_id', '=', failedUuid)
+        .execute(),
+    ).toEqual([]);
     // Only roles that record assessments may ask.
     expect(
       (

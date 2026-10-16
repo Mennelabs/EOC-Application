@@ -1511,4 +1511,68 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
       'denied',
     );
   });
+
+  it('CMD-17, Section 30.2: a resource is drafted at once and published only on the screen; its review date (phase 2) and expiry (phase 3) change with one tap and undo to what the plan saw; a role without the edit is refused', async () => {
+    await phases([1, 2]);
+    const resource = (id: string) =>
+      dbWorker
+        .selectFrom('cg.resource')
+        .select(['status', 'published_at', 'review_at', 'expires_at', 'slug'])
+        .where('id', '=', id)
+        .executeTakeFirstOrThrow();
+    const title = `Exercise flood line ${run}`;
+    const drafted = await command('pio', `/resource new hotline ${title} category:debris`);
+    expect(drafted.status, drafted.message).toBe('succeeded');
+    expect(drafted.result?.state).toBe('drafted');
+    const id = drafted.result!.records[0]!.id;
+    const row = await resource(id);
+    expect(row).toMatchObject({ status: 'draft', published_at: null });
+    const text = await dbWorker
+      .selectFrom('cg.resource_text')
+      .select(['locale', 'title', 'reviewed_at'])
+      .where('resource_id', '=', id)
+      .execute();
+    // English, the fallback, not yet reviewed by a person: nobody sees it.
+    expect(text).toEqual([{ locale: 'en', title, reviewed_at: null }]);
+    // CMD-37: the title lives in the resource, not in the plan's words.
+    expect(drafted.plan?.description).not.toContain(title);
+
+    // The review date by slug: phase 2, one tap, undone to none.
+    const review = await command('pio', `/resource ${row.slug} review 2027-01-15`);
+    expect(review.status, review.message).toBe('awaiting_confirmation');
+    expect(review.command).toMatchObject({ confirmation: 'one_tap', reversal: 'undo_15_min' });
+    expect((await confirm('pio', review)).body['status']).toBe('succeeded');
+    expect(String((await resource(id)).review_at)).toContain('2027');
+    const undoReview = await call('pio', 'POST', `/commands/${review.id}/undo`, {
+      executionId: randomUUID(),
+    });
+    expect(undoReview.body['status'], JSON.stringify(undoReview.body)).toBe('succeeded');
+    expect((await resource(id)).review_at).toBeNull();
+
+    // The expiry is phase 3: off until the county turns it on.
+    expect((await command('pio', `/resource ${row.slug} expires 2030-06-30`)).status).toBe(
+      'unsupported',
+    );
+    await phases([1, 2, 3]);
+    // By words of its title; the plan names the time on the county's clock.
+    const expiry = await command('pio', `/resource ${title} expires 2030-06-30 17:00`);
+    expect(expiry.status, expiry.message).toBe('awaiting_confirmation');
+    expect(expiry.plan?.description).toBe(
+      `Expire ${row.slug} (draft) at 2030-06-30 17:00 America/Chicago; until then the public page is unchanged.`,
+    );
+    expect((await confirm('pio', expiry)).body['status']).toBe('succeeded');
+    expect((await resource(id)).expires_at?.toISOString()).toBe('2030-06-30T22:00:00.000Z');
+    const undoExpiry = await call('pio', 'POST', `/commands/${expiry.id}/undo`, {
+      executionId: randomUUID(),
+    });
+    expect(undoExpiry.body['status'], JSON.stringify(undoExpiry.body)).toBe('succeeded');
+    expect((await resource(id)).expires_at).toBeNull();
+    // Still a draft throughout: the window never publishes.
+    expect((await resource(id)).status).toBe('draft');
+
+    // A role without resource.edit is refused before anything is planned.
+    expect((await command('field', `/resource new hotline Exercise other line`)).status).toBe(
+      'denied',
+    );
+  });
 });

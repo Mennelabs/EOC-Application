@@ -67,6 +67,8 @@ const VERBS: Record<string, string> = {
   mensaje: 'message',
   resources: 'resources',
   recursos: 'resources',
+  resource: 'resource',
+  recurso: 'resource',
   contacts: 'contacts',
   contactos: 'contacts',
   log: 'log',
@@ -173,6 +175,8 @@ const KEYS = new Set([
   'solicitud',
   'evidence',
   'evidencia',
+  'summary',
+  'resumen',
 ]);
 
 /** CMD-14: availability as the roster records it. */
@@ -204,6 +208,33 @@ const PERSON_SETTINGS: Record<string, string> = {
   libre: 'off_duty',
 };
 const PERSON_USAGE = '/person <name> <available|unavailable|on duty|off duty>';
+
+/** CMD-17: the kinds of resource the Resources screen offers. */
+const RESOURCE_TYPES: Record<string, string> = {
+  hotline: 'hotline',
+  linea: 'hotline',
+  program: 'program',
+  programa: 'program',
+  deadline: 'deadline',
+  plazo: 'deadline',
+  guidance: 'guidance',
+  guia: 'guidance',
+  link: 'link',
+  enlace: 'link',
+  document: 'document',
+  documento: 'document',
+};
+const RESOURCE_DATES: Record<string, 'expiresAt' | 'reviewAt'> = {
+  expires: 'expiresAt',
+  expiry: 'expiresAt',
+  vence: 'expiresAt',
+  review: 'reviewAt',
+  revisar: 'reviewAt',
+  revision: 'reviewAt',
+};
+const NONE_WORDS = new Set(['none', 'ninguna', 'ninguno', 'clear', 'borrar']);
+const RESOURCE_USAGE =
+  '/resource new <hotline|program|deadline|guidance|link|document> <title> | /resource <slug or title> <expires YYYY-MM-DD [HH:MM]|review YYYY-MM-DD|… none>';
 
 /** CMD-15: the review queue's states and filters. */
 const REPORT_FILTERS: Record<string, [string, string | boolean]> = {
@@ -699,6 +730,62 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
         { reason: text, evidenceRefs: evidence },
         ref,
         'report',
+      );
+    }
+
+    // CMD-17: a resource is drafted here and published on the Resources screen; its dates are
+    // changed here with undo. An expiry in the past would take a page down now: that stays on
+    // the screen, as Unpublish.
+    case 'resource': {
+      if (NEW_WORDS.has(norm(words[0] ?? ''))) {
+        const type = RESOURCE_TYPES[norm(words[1] ?? '')];
+        if (!type) return usage('What kind of resource?', RESOURCE_USAGE);
+        const title = (pairs['title'] ?? words.slice(2).join(' ')).trim();
+        if (title.length < 3) return usage('What is it called?', RESOURCE_USAGE);
+        const args: Record<string, unknown> = { type, title };
+        const category = pairs['category'] ?? pairs['categoria'];
+        if (category) args['category'] = norm(category);
+        const summary = pairs['summary'] ?? pairs['resumen'];
+        if (summary) args['summary'] = summary;
+        return ok('resource.draft', args);
+      }
+      const at = words.findIndex((w, i) => i > 0 && RESOURCE_DATES[norm(w)]);
+      if (at < 1) return usage('Which resource, and which date?', RESOURCE_USAGE);
+      const field = RESOURCE_DATES[norm(words[at]!)]!;
+      const ref = words.slice(0, at).join(' ');
+      const [day, time] = words.slice(at + 1);
+      const command = field === 'expiresAt' ? 'resource.expiry' : 'resource.review';
+      if (day && NONE_WORDS.has(norm(day))) return ok(command, { value: null }, ref, 'resource');
+      const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day ?? '');
+      if (!d) return usage('Give the date as YYYY-MM-DD.', RESOURCE_USAGE);
+      if (field === 'reviewAt') {
+        if (time) return usage('A review date has no time.', RESOURCE_USAGE);
+        return ok(command, { value: day }, ref, 'resource');
+      }
+      // A date alone means the end of that day on the organization's clock.
+      const t = /^(\d{1,2}):(\d{2})$/.exec(time ?? '23:59');
+      if (!t || Number(t[1]) > 23 || Number(t[2]) > 59)
+        return usage('Give the time as HH:MM.', RESOURCE_USAGE);
+      const local = new Date(ctx.now.getTime() + zoneOffset(ctx.now, ctx.timeZone));
+      const daysOn = Math.round(
+        (Date.UTC(Number(d[1]), Number(d[2]) - 1, Number(d[3])) -
+          Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate())) /
+          86_400_000,
+      );
+      const when = wallClock(ctx.now, ctx.timeZone, Number(t[1]), Number(t[2]), daysOn);
+      if (when.getTime() <= ctx.now.getTime())
+        return usage(
+          'That time has passed. To take a page down now, use Unpublish on the Resources screen.',
+          RESOURCE_USAGE,
+        );
+      return ok(
+        command,
+        {
+          value: when.toISOString(),
+          local: `${day} ${(time ?? '23:59').padStart(5, '0')} ${ctx.timeZone}`,
+        },
+        ref,
+        'resource',
       );
     }
 

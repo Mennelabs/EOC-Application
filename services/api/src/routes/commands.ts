@@ -476,6 +476,23 @@ const RECORDS: Record<
     was: (r) => ({ dutyStatus: str(r['dutyStatus']), availability: str(r['availability']) }),
     noun: 'person on the roster',
   },
+  // CMD-17: a resource by its slug, or by words in its English title; drafts included.
+  resource: {
+    list: (ref) => (ref.trim() ? '/resources?limit=200' : null),
+    one: (id) => `/resources/${id}`,
+    label: (r) => `${str(r['slug'])} (${str(r['status'])})`,
+    pick: (rows, ref) => {
+      const want = ref.trim().toLowerCase();
+      const bySlug = rows.filter((r) => str(r['slug']) === want);
+      if (bySlug.length) return bySlug;
+      const title = (r: ListRow) => {
+        const texts = Array.isArray(r['texts']) ? (r['texts'] as ListRow[]) : [];
+        return str(texts.find((x) => x['locale'] === 'en')?.['title']).toLowerCase();
+      };
+      return rows.filter((r) => title(r).includes(want));
+    },
+    was: (r) => ({ reviewAt: str(r['reviewAt']), expiresAt: str(r['expiresAt']) }),
+  },
   // CMD-15: a resident's report by its reference code, as the review queue lists it.
   report: {
     list: (ref) =>

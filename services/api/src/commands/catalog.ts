@@ -24,7 +24,8 @@ export type TargetKind =
   | 'official_report'
   | 'report'
   | 'team'
-  | 'personnel';
+  | 'personnel'
+  | 'resource';
 
 /** A resolved record the command acts on, with the version it had when the plan was made. */
 export interface Target {
@@ -145,11 +146,26 @@ const PERSON_FIELD: Record<(typeof PERSON_SETTINGS)[number], 'availability' | 'd
   off_duty: 'dutyStatus',
 };
 
+const RESOURCE_TYPES = ['hotline', 'program', 'deadline', 'guidance', 'link', 'document'] as const;
+
 type Row = Record<string, unknown>;
 const rows = (r: unknown): Row[] => (Array.isArray(r) ? (r as Row[]) : []);
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
 const ver = (v: unknown) => (typeof v === 'number' ? v : undefined);
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** CMD-17, CMD-26: the date the resource itself now holds. */
+const resourceSaved = (r: unknown, what: string, field: string): Verified => {
+  const d = (r ?? {}) as Row;
+  const value = str(d[field]);
+  return {
+    state: 'saved',
+    summary: `${str(d['slug'])}: ${value ? `${what} ${value}` : `no ${what}`}.`,
+    records: [
+      { kind: 'resource', id: str(d['id']), label: str(d['slug']), version: ver(d['version']) },
+    ],
+  };
+};
 
 /** CMD-15, CMD-26: the review state the operation itself returned. */
 const reviewed = (r: unknown, what: string): Verified => {
@@ -1219,6 +1235,130 @@ export const CATALOG = [
         ],
       };
     },
+  }),
+
+  // CMD-17, Section 30.2 phase 1: a resource drafted in English, the fallback language. It is
+  // published on the Resources screen, after its texts are reviewed (BRD:FR-16.02).
+  define({
+    name: 'resource.draft',
+    version: 1,
+    phase: 1,
+    action: 'resource.edit',
+    kind: 'draft',
+    title: 'Draft a resource',
+    usage: '/resource new <hotline|program|deadline|guidance|link|document> <title>',
+    args: z.object({
+      type: z.enum(RESOURCE_TYPES),
+      title: z.string().trim().min(3).max(200),
+      summary: z.string().trim().max(500).optional(),
+      category: z
+        .string()
+        .regex(/^[a-z0-9_]{1,60}$/)
+        .optional(),
+    }),
+    confirmation: 'none',
+    reversal: 'none',
+    sideEffects:
+      'Creates a draft resource with an English title. Nobody sees it until its texts are reviewed and it is published on the Resources screen.',
+    freeText: ['title', 'summary'],
+    request: (a) => ({
+      method: 'POST',
+      path: '/resources',
+      body: {
+        type: a.type,
+        ...(a.category ? { category: a.category } : {}),
+        texts: {
+          en: { title: a.title, summary: a.summary ?? null, bodyHtml: '', humanReviewed: false },
+        },
+      },
+    }),
+    describe: (a) =>
+      `Draft a ${a.type} resource${a.category ? ` in ${a.category.replace(/_/g, ' ')}` : ''} with the title you typed. Nobody sees it until it is published.`,
+    verify: (r) => {
+      const d = (r ?? {}) as Row;
+      return {
+        state: 'drafted',
+        summary: `Resource "${str(d['slug'])}" drafted. Add its texts and publish it on the Resources screen.`,
+        records: [
+          {
+            kind: 'resource',
+            id: str(d['id']),
+            label: str(d['slug']),
+            version: ver(d['version']),
+          },
+        ],
+      };
+    },
+  }),
+  // CMD-17, Section 30.2 phase 2: the date someone looks at a resource again. Internal only.
+  define({
+    name: 'resource.review',
+    version: 1,
+    phase: 2,
+    action: 'resource.edit',
+    kind: 'change',
+    title: "Set a resource's review date",
+    usage: '/resource <slug or title> review <YYYY-MM-DD|none>',
+    args: z.object({ value: z.iso.date().nullable() }),
+    target: 'resource',
+    confirmation: 'one_tap',
+    reversal: 'undo_15_min',
+    sideEffects:
+      'Changes the date the resource comes up for review. The public page does not change.',
+    request: (a, t) => ({
+      method: 'PATCH',
+      path: `/resources/${t!.id}`,
+      body: { reviewAt: a.value },
+      version: t!.version,
+    }),
+    undo: (_a, t, v) => ({
+      method: 'PATCH',
+      path: `/resources/${t!.id}`,
+      body: { reviewAt: t!.was?.['reviewAt'] || null },
+      version: v.records[0]?.version,
+    }),
+    describe: (a, t) =>
+      a.value
+        ? `Set the review date of ${t!.label} to ${a.value}.`
+        : `Clear the review date of ${t!.label}.`,
+    verify: (r) => resourceSaved(r, 'review date', 'reviewAt'),
+  }),
+  // CMD-17, Section 30.2 phase 3: when a published page turns into "expired on". Only a future
+  // time is taken (the parser refuses a past one); undo puts back what the plan saw.
+  define({
+    name: 'resource.expiry',
+    version: 1,
+    phase: 3,
+    action: 'resource.edit',
+    kind: 'change',
+    title: "Set a resource's expiry",
+    usage: '/resource <slug or title> expires <YYYY-MM-DD [HH:MM]|none>',
+    args: z.object({
+      value: z.iso.datetime().nullable(),
+      local: z.string().max(80).optional(),
+    }),
+    target: 'resource',
+    confirmation: 'one_tap',
+    reversal: 'undo_15_min',
+    sideEffects:
+      'From that time the public page shows "expired on" instead of the resource. Without an expiry it stays until it is unpublished.',
+    request: (a, t) => ({
+      method: 'PATCH',
+      path: `/resources/${t!.id}`,
+      body: { expiresAt: a.value },
+      version: t!.version,
+    }),
+    undo: (_a, t, v) => ({
+      method: 'PATCH',
+      path: `/resources/${t!.id}`,
+      body: { expiresAt: t!.was?.['expiresAt'] || null },
+      version: v.records[0]?.version,
+    }),
+    describe: (a, t) =>
+      a.value
+        ? `Expire ${t!.label} at ${a.local ?? a.value}; until then the public page is unchanged.`
+        : `Remove the expiry of ${t!.label}; it stays published until someone unpublishes it.`,
+    verify: (r) => resourceSaved(r, 'expiry', 'expiresAt'),
   }),
 
   // AC-C08, Section 30.2 phase 4 (outbound messages): a message to a team's phones, reviewed

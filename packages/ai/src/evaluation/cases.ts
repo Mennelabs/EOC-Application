@@ -199,6 +199,18 @@ export const COMMAND_EVAL_CATALOG: { usage: string; title: string }[] = [
     title: 'Release the needs your organization holds that a filter names',
   },
   { usage: '/mission new <kind> <what is needed>', title: 'Draft a mission' },
+  {
+    usage: '/resource new <hotline|program|deadline|guidance|link|document> <title>',
+    title: 'Draft a resource',
+  },
+  {
+    usage: '/resource <slug or title> review <YYYY-MM-DD|none>',
+    title: "Set a resource's review date",
+  },
+  {
+    usage: '/resource <slug or title> expires <YYYY-MM-DD [HH:MM]|none>',
+    title: "Set a resource's expiry",
+  },
   { usage: '/message <team> <text>', title: 'Message a team in the field' },
   { usage: '/report <reference code> review', title: 'Take a report into review' },
   {

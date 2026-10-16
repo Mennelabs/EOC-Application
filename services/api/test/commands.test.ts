@@ -248,6 +248,67 @@ describe('shorthand', () => {
     expect(parse('claim the food need')).toMatchObject({ ok: false, error: 'unsupported' });
   });
 
+  it('CMD-17: "/resource new" drafts a resource of a known kind; dates are read on the organization\'s clock and a past expiry is refused', () => {
+    expect(
+      parse(
+        '/resource new hotline Flood debris pickup line category:debris summary:"Call to book"',
+      ),
+    ).toEqual({
+      ok: true,
+      command: 'resource.draft',
+      args: {
+        type: 'hotline',
+        title: 'Flood debris pickup line',
+        category: 'debris',
+        summary: 'Call to book',
+      },
+      ref: null,
+      refKind: null,
+    });
+    expect(parse('/recurso nuevo programa Ayuda con renta')).toMatchObject({
+      command: 'resource.draft',
+      args: { type: 'program', title: 'Ayuda con renta' },
+    });
+    expect(parse('/resource new poster Something')).toMatchObject({ ok: false, error: 'usage' });
+    // A date alone is the end of that day in Chicago, across the change back from daylight time.
+    expect(parse('/resource flood-hotline expires 2026-10-20')).toMatchObject({
+      command: 'resource.expiry',
+      args: { value: '2026-10-21T04:59:00.000Z', local: '2026-10-20 23:59 America/Chicago' },
+      ref: 'flood-hotline',
+      refKind: 'resource',
+    });
+    expect(parse('/resource Debris pickup line vence 2026-11-05 8:30')).toMatchObject({
+      command: 'resource.expiry',
+      args: { value: '2026-11-05T14:30:00.000Z' },
+      ref: 'Debris pickup line',
+    });
+    expect(parse('/resource flood-hotline expires 2026-10-15 12:00')).toMatchObject({
+      args: { value: '2026-10-15T17:00:00.000Z' },
+    });
+    // Ten in the morning has passed: taking a page down now stays on the screen.
+    expect(parse('/resource flood-hotline expires 2026-10-15 09:00')).toMatchObject({
+      ok: false,
+      error: 'usage',
+      message: expect.stringContaining('Unpublish'),
+    });
+    expect(parse('/resource flood-hotline expires none')).toMatchObject({
+      command: 'resource.expiry',
+      args: { value: null },
+    });
+    expect(parse('/resource flood-hotline review 2026-12-01')).toMatchObject({
+      command: 'resource.review',
+      args: { value: '2026-12-01' },
+    });
+    expect(parse('/resource flood-hotline review 2026-12-01 10:00')).toMatchObject({
+      ok: false,
+      error: 'usage',
+    });
+    expect(parse('/resource flood-hotline expires next week')).toMatchObject({
+      ok: false,
+      error: 'usage',
+    });
+  });
+
   it('CMD-13, AC-C08: "/mission new" drafts a mission of a known kind; "/message" names a team and the words', () => {
     expect(parse('/mission new welfare Check on the family at 14 Elm')).toMatchObject({
       command: 'mission.draft',

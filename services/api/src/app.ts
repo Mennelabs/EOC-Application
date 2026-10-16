@@ -118,7 +118,7 @@ export async function buildApp(opts: AppOptions) {
 
   // Every staff route needs a signed-in account (ADM-05 default deny). Refused at the start of
   // the request, so a caller without a token learns nothing from validation about a route's
-  // parameters and no body is parsed for them (SEC-09; found by tests/e2e/dast.spec.ts).
+  // parameters and no body is parsed for them (SEC-15; found by tests/e2e/dast.spec.ts).
   await app.register(
     async (v1) => {
       v1.addHook('onRequest', async (request) => {

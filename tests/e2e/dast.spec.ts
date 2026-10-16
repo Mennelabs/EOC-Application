@@ -1,6 +1,6 @@
 /**
  * Dynamic security checks against the running stack (SEC-15 "SAST/DAST …
- * in CI", SEC-09, NFR-02): what an outsider sees from the gateway, with no
+ * in CI", NFR-02): what an outsider sees from the gateway, with no
  * account. Every page the public or staff open carries the security headers;
  * plain HTTP goes to HTTPS; no response names the server software; staff
  * routes refuse a missing or forged token with the error envelope and no
@@ -31,7 +31,7 @@ test.describe('dynamic security checks (DAST)', () => {
 
   const headers = (r: APIResponse) => r.headers();
 
-  test('SEC-15, SEC-09: every page carries the security headers and names no server software', async ({
+  test('SEC-15: every page carries the security headers and names no server software', async ({
     request,
   }) => {
     for (const path of PAGES) {
@@ -56,7 +56,7 @@ test.describe('dynamic security checks (DAST)', () => {
     expect(headers(media)['content-security-policy']).toContain("form-action 'none'");
   });
 
-  test('SEC-09: plain HTTP is redirected to HTTPS, never served', async ({ playwright }) => {
+  test('SEC-15: plain HTTP is redirected to HTTPS, never served', async ({ playwright }) => {
     const http = await playwright.request.newContext({ ignoreHTTPSErrors: true });
     const url = new URL(BASE);
     url.protocol = 'http:';
@@ -70,7 +70,7 @@ test.describe('dynamic security checks (DAST)', () => {
     await http.dispose();
   });
 
-  test('ADM-05, SEC-09: staff routes refuse a missing or forged token with the envelope and no internals', async ({
+  test('ADM-05, SEC-15: staff routes refuse a missing or forged token with the envelope and no internals', async ({
     request,
   }) => {
     const forged = [
@@ -97,7 +97,7 @@ test.describe('dynamic security checks (DAST)', () => {
     }
   });
 
-  test('SEC-09: malformed input is refused without a stack trace or database text', async ({
+  test('SEC-15: malformed input is refused without a stack trace or database text', async ({
     request,
   }) => {
     const cases: [string, Parameters<APIRequestContext['post']>[1]][] = [
@@ -123,7 +123,7 @@ test.describe('dynamic security checks (DAST)', () => {
     }
   });
 
-  test('SEC-09: another origin is never granted the API', async ({ request }) => {
+  test('SEC-15: another origin is never granted the API', async ({ request }) => {
     for (const path of ['/api/v1/missions', '/api/public/help/county']) {
       const pre = await request.fetch(path, {
         method: 'OPTIONS',
@@ -144,7 +144,7 @@ test.describe('dynamic security checks (DAST)', () => {
     }
   });
 
-  test("NFR-10, SEC-09: the services' metrics are never served through the gateway", async ({
+  test("NFR-10, SEC-15: the services' metrics are never served through the gateway", async ({
     request,
   }) => {
     for (const path of ['/metrics', '/api/metrics', '/api/v1/metrics', '/api/public/metrics']) {
@@ -155,7 +155,31 @@ test.describe('dynamic security checks (DAST)', () => {
     }
   });
 
-  test('SEC-09: TRACE is not served and a path traversal finds nothing', async ({ request }) => {
+  test("SEC-15: the identity provider's administration and master realm are not served", async ({
+    request,
+  }) => {
+    for (const path of [
+      '/auth/admin/',
+      '/auth/admin/master/console/',
+      '/auth/Admin/',
+      '/auth//admin/',
+      '/auth/%61dmin/',
+      '/auth/realms/master/.well-known/openid-configuration',
+      '/auth/realms/MASTER/.well-known/openid-configuration',
+      '/auth/realms/%6Daster/.well-known/openid-configuration',
+    ])
+      expect((await request.get(path, { maxRedirects: 0 })).status(), path).toBe(404);
+    const token = await request.post('/auth/realms/master/protocol/openid-connect/token', {
+      form: { grant_type: 'password', client_id: 'admin-cli' },
+    });
+    expect(token.status()).toBe(404);
+    // A county's realm still signs its staff in.
+    expect(
+      (await request.get('/auth/realms/county/.well-known/openid-configuration')).status(),
+    ).toBe(200);
+  });
+
+  test('SEC-15: TRACE is not served and a path traversal finds nothing', async ({ request }) => {
     for (const path of ['/', '/api/v1/missions', '/api/public/help/county']) {
       const res = await request.fetch(path, { method: 'TRACE' });
       expect(res.status(), `TRACE ${path}`).not.toBe(200);
@@ -171,7 +195,7 @@ test.describe('dynamic security checks (DAST)', () => {
     }
   });
 
-  test('SEC-07, SEC-09: the identity provider does not send a sign-in to an address it does not know', async ({
+  test('SEC-07, SEC-15: the identity provider does not send a sign-in to an address it does not know', async ({
     request,
   }) => {
     const auth = new URL(`${BASE}/auth/realms/county/protocol/openid-connect/auth`);

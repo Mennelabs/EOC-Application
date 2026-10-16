@@ -128,9 +128,9 @@
   ],
   "SEC-15": [
     "partial",
-    ".github/workflows/ci.yml (lint, typecheck, unit, integration, e2e with axe, Semgrep, Trivy filesystem and images including cjis-api and cjis-web, SPDX SBOMs for api and cjis-api, the platform and enclave migration drills); actions pinned to commit SHAs (ADR-0019)",
-    "CI on every push",
-    "Threat models per feature, DAST and signed release builds are not in CI yet, and SBOMs are built on every push rather than kept per release (there is no release workflow)."
+    ".github/workflows/ci.yml (lint, typecheck, unit, integration, e2e with axe, Semgrep, Trivy filesystem and images including cjis-api and cjis-web, SPDX SBOMs for api and cjis-api, the platform and enclave migration drills); actions pinned to commit SHAs (ADR-0019); threat models per feature (docs/security/threat-models.md, STRIDE with controls and residual risks); dynamic checks of the running stack on every push (tests/e2e/dast.spec.ts: headers, HTTPS redirect, missing and forged tokens, error leakage, CORS, TRACE, traversal, sign-in redirect), and /api/v1 refuses a request without an account before parsing or validation (services/api/src/app.ts)",
+    "CI on every push; tests/e2e/dast.spec.ts",
+    "Signed release builds and an SBOM kept per release are not built (there is no release workflow); a ZAP baseline scan is not run because this build environment cannot fetch its image (layer-7 plan reading 42)."
   ],
   "GATE-01": [
     "pass",

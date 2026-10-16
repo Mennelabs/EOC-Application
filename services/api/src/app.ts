@@ -11,7 +11,7 @@ import type { Database } from '@cg/db';
 import type { FieldCrypto } from '@cg/crypto';
 import { runProbes, type Probe } from '@cg/adapters';
 import { AuthError, type SubjectLoader } from './auth/subject.ts';
-import { errorHandler } from './errors.ts';
+import { errorHandler, errors } from './errors.ts';
 import type { ReportDeps } from './routes/reports.ts';
 import { redactPaths, serializers } from './logging.ts';
 import { authorizePlugin } from './plugins/authorize.ts';
@@ -111,9 +111,18 @@ export async function buildApp(opts: AppOptions) {
 
   app.get('/api/docs/json', async () => app.swagger());
 
-  for (const routes of opts.routes ?? []) {
-    await app.register(routes, { prefix: '/api/v1' });
-  }
+  // Every staff route needs a signed-in account (ADM-05 default deny). Refused at the start of
+  // the request, so a caller without a token learns nothing from validation about a route's
+  // parameters and no body is parsed for them (SEC-09; found by tests/e2e/dast.spec.ts).
+  await app.register(
+    async (v1) => {
+      v1.addHook('onRequest', async (request) => {
+        if (request.subject.kind !== 'account') throw errors.unauthorized();
+      });
+      for (const routes of opts.routes ?? []) await v1.register(routes);
+    },
+    { prefix: '/api/v1' },
+  );
   for (const routes of opts.publicRoutes ?? []) {
     await app.register(routes, { prefix: '/api/public' });
   }

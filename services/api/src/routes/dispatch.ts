@@ -103,6 +103,8 @@ const boardMission = z.object({
   owningTenantId: z.uuid().nullable(),
   siteId: z.uuid().nullable(),
   needId: z.uuid().nullable(),
+  /** DSP-01: the parcel area a field route covers (its outline is in `routeAreas`). */
+  routeArea: z.string().nullable(),
   assignedCount: z.number().int(),
   createdAt: z.string(),
   openedAt: z.string().nullable(),
@@ -199,6 +201,18 @@ const boardOut = z.object({
       reportedAt: z.string(),
     }),
   ),
+  /**
+   * DSP-01, FLD-13: the parcel area of each open field route on the board, outlined (a
+   * concave hull of its parcels as GeoJSON), with the parcels it holds and its missions.
+   */
+  routeAreas: z.array(
+    z.object({
+      areaKey: z.string(),
+      parcels: z.number().int(),
+      outline: z.unknown().nullable(),
+      missions: z.array(z.object({ id: z.uuid(), reference: z.string(), assigned: z.boolean() })),
+    }),
+  ),
   counts: z.object({
     teamsByStatus: z.record(z.string(), z.number().int()),
     queue: z.number().int(),
@@ -208,6 +222,7 @@ const boardOut = z.object({
     needs: z.number().int(),
     closures: z.number().int(),
     fieldReports: z.number().int(),
+    routeAreas: z.number().int(),
   }),
 });
 
@@ -546,9 +561,14 @@ export const dispatchRoutes =
           'm.created_at',
           'm.opened_at',
           'm.event_id',
+          'm.route',
           sql<number | null>`ST_Y(l.geom)`.as('lat'),
           sql<number | null>`ST_X(l.geom)`.as('lon'),
         ]);
+    const routeAreaOf = (route: unknown) => {
+      const area = (route as { area?: unknown } | null)?.area;
+      return typeof area === 'string' && area.trim() ? area.trim() : null;
+    };
     type MissionSel = Awaited<ReturnType<ReturnType<typeof missionSelect>['execute']>>[number];
     const toBoardMission = (m: MissionSel, assigned: number): z.infer<typeof boardMission> => ({
       id: m.id,
@@ -566,6 +586,7 @@ export const dispatchRoutes =
       owningTenantId: m.owning_tenant_id,
       siteId: m.site_id,
       needId: m.need_id,
+      routeArea: routeAreaOf(m.route),
       assignedCount: assigned,
       createdAt: iso(m.created_at)!,
       openedAt: iso(m.opened_at),
@@ -732,6 +753,38 @@ export const dispatchRoutes =
           }
           queue.sort(byPriority);
           active.sort(byPriority);
+          // DSP-01: each open route's parcel area, outlined. Only the routes this board shows.
+          const byArea = new Map<string, { id: string; reference: string; assigned: boolean }[]>();
+          for (const m of [...queue, ...active])
+            if (m.routeArea)
+              byArea.set(m.routeArea, [
+                ...(byArea.get(m.routeArea) ?? []),
+                { id: m.id, reference: m.reference, assigned: m.assignedCount > 0 },
+              ]);
+          const areaKeys = [...byArea.keys()].sort().slice(0, 50);
+          const areaRows = areaKeys.length
+            ? await trx
+                .selectFrom('cg.parcel')
+                .select([
+                  'area_key',
+                  sql<string>`count(*)`.as('n'),
+                  sql<unknown>`ST_AsGeoJSON(ST_ConcaveHull(ST_Collect(geom), 0.3), 6)::json`.as(
+                    'outline',
+                  ),
+                ])
+                .where('area_key', 'in', areaKeys)
+                .groupBy('area_key')
+                .execute()
+            : [];
+          const routeAreas = areaKeys.map((areaKey) => {
+            const row = areaRows.find((r) => r.area_key === areaKey);
+            return {
+              areaKey,
+              parcels: Number(row?.n ?? 0),
+              outline: row?.outline ?? null,
+              missions: byArea.get(areaKey)!,
+            };
+          });
 
           const hazards = await trx
             .selectFrom('cg.hazard')
@@ -1006,7 +1059,9 @@ export const dispatchRoutes =
               needs: needRows.length,
               closures: closures.length,
               fieldReports: reportRows.length,
+              routeAreas: routeAreas.length,
             },
+            routeAreas,
           };
         });
       },

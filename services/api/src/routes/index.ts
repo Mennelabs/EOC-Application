@@ -31,6 +31,7 @@ import { fieldVisitRoutes } from './field-visits.ts';
 import { shelterCountRoutes } from './shelter-counts.ts';
 import { eventTemplateRoutes } from './event-templates.ts';
 import { reentryRoutes } from './reentry.ts';
+import { wazeRoutes } from './waze.ts';
 import { intakeGraphRoutes } from './intake-graphs.ts';
 import { meRoutes } from './me.ts';
 import { messageRoutes } from './messages.ts';
@@ -117,6 +118,8 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   eventTemplateRoutes,
   // FL:FR-03: resident re-entry passes and the log of checks.
   reentryRoutes,
+  // FL:FR-05, Q-04: the Waze for Cities closure feed as staff see it.
+  wazeRoutes,
   fieldOpsRoutes,
   fieldAssessmentRoutes,
   fieldVoiceRoutes(deps.fieldVoice),

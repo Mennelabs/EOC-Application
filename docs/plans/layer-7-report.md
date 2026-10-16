@@ -97,7 +97,7 @@ Everything in the stack is synthetic or the WESTWIND exercise (SCL-12).
 
 ## Readings taken in favour of privacy and safety (flagged for you)
 
-The plan's §12 lists all 35. The newest:
+The plan's §12 lists all 36. The newest:
 
 - a legal aid organization's referral responses share only the status;
 - resident dictation goes through the county's provider or not at all;
@@ -123,6 +123,7 @@ The plan's §12 lists all 35. The newest:
 - Red Cross shelter counts are loaded from a file of counts only; a file with columns about people is refused whole, and a linked county shelter takes the count as its occupancy but not its status (CON-16).
 - an event template presets its hazard, the docs/06 keywords and the map's first layers, and its safety messages are drafted into Resources for a person to publish, never published by opening the event (CON-02).
 - a re-entry pass shows the checkpoint the zone and the people, and who and which home only for a valid pass and to a role that checks passes; every scan is logged without naming anyone (FL:FR-03).
+- Waze reads the county's current road closures from a feed the county switches on; a road drawn only as a point is left out, never guessed (FL:FR-05).
 
 ## Questions for you (defaults in force)
 
@@ -150,3 +151,4 @@ The plan's §12 lists all 35. The newest:
    - Recall shared copies from partners?
    - Keep any de-identified counts?
 10. **Documents survivors share (FL-09).** Who may see them: the default is the assessment reviewer and the damage-assessment coordinator (`document.read`). Should case managers in partner organizations see them too, through the sharing grant? Withdrawing a shared document is not built yet.
+11. **Debris pickup requests from resident reports (FL:FR-05).** Residents cannot yet ask for curbside debris pickup: the intake questions offer "Cleanup help or a tarp" (volunteer crews), not county pickup. The default proposal is a new need, "Pick up storm debris I put at the curb" ("Recoger escombros de la tormenta que puse en la acera"), in the next version of the shipped questions. Public works would then see those requests by route area and open debris missions from them, the way field visits work. Changing the shipped questions means a new graph version for every county and a translator's check of the Spanish. Yes, or a different wording?

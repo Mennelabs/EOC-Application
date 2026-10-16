@@ -18,7 +18,7 @@
  * (FL:FR-06).
  */
 import { expect, test, type Page } from '@playwright/test';
-import { expectNoViolations, expectReflow, onboard } from './support/console.ts';
+import { BASE, expectNoViolations, expectReflow, onboard } from './support/console.ts';
 
 const tag = Date.now().toString(36);
 
@@ -654,5 +654,45 @@ test.describe('every console screen, one by one', () => {
     await expect(row).toContainText('Revoked: Exercise: the house is unsafe');
     await expectNoViolations(page);
     await expectReflow(page);
+  });
+
+  test('FL:FR-05, Q-04: an administrator switches the Waze closure feed on with a reason; Waze can read it; switched off it is gone; axe finds nothing', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'tenant_admin',
+      `Tenant admin W ${tag}`,
+      `scr-waze-${testInfo.project.name}`,
+    );
+    await page.goto('/console/integrations');
+    const section = page.getByRole('region', { name: 'Waze for Cities road closure feed' });
+    await expect(section.getByText(/The feed is/)).toBeVisible({ timeout: 30_000 });
+    const address = (await section.locator('code').textContent())!;
+    expect(address).toMatch(/\/api\/public\/waze\/county\/cifs\.json$/);
+    const feedUrl = `${BASE}/api/public/waze/county/cifs.json`;
+    const flip = async (to: 'on' | 'off') => {
+      await section.getByRole('button', { name: `Switch the Waze feed ${to}` }).click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toBeVisible();
+      await dialog.getByLabel('Reason').fill(`Exercise: Waze for Cities enrolment (${to})`);
+      await dialog.getByRole('button', { name: 'Confirm' }).click();
+      await expect(section.getByText(`The Waze feed is switched ${to}.`)).toBeVisible();
+    };
+    if (await section.getByRole('button', { name: 'Switch the Waze feed off' }).isVisible())
+      await flip('off');
+    expect((await fetch(feedUrl)).status).toBe(404);
+    await flip('on');
+    const on = await fetch(feedUrl);
+    expect(on.status).toBe(200);
+    expect(Array.isArray(((await on.json()) as { incidents: unknown }).incidents)).toBe(true);
+    await expect(section.getByRole('table', { name: 'Roads in the feed now' })).toBeVisible();
+    await expectNoViolations(page);
+    await expectReflow(page);
+    await flip('off');
+    expect((await fetch(feedUrl)).status).toBe(404);
   });
 });

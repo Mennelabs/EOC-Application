@@ -77,6 +77,7 @@ const HOOK_STATUS: Record<Hook['status'], string> = {
 export function IntegrationsScreen() {
   const [actions, setActions] = useState<string[] | null>(null);
   const [slug, setSlug] = useState<string | null>(null);
+  const [tenantId, setTenantId] = useState<string | null>(null);
   const [keys, setKeys] = useState<Key[] | null>(null);
   const [hooks, setHooks] = useState<Hook[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +95,7 @@ export function IntegrationsScreen() {
       .then(async (me) => {
         if (!live) return;
         setActions(me.actions);
+        setTenantId(me.tenantId);
         const t = await api<{ slug: string }>(`/tenants/${me.tenantId}`).catch(() => null);
         if (live && t) setSlug(t.slug);
       })
@@ -417,6 +419,9 @@ export function IntegrationsScreen() {
           ) : null}
         </section>
       ) : null}
+      {tenantId && can('tenant.config.read') ? (
+        <WazeFeed tenantId={tenantId} mayChange={can('tenant.config.write')} />
+      ) : null}
     </section>
   );
 }
@@ -670,6 +675,100 @@ function Deliveries({ hook, onClose }: { hook: Hook; onClose: () => void }) {
           Close the deliveries
         </button>
       </div>
+    </section>
+  );
+}
+
+interface WazeView {
+  enabled: boolean;
+  feedPath: string;
+  included: { street: string; type: string; since: string }[];
+  leftOut: { name: string; reason: string }[];
+}
+
+/**
+ * FL:FR-05, Q-04: the Waze for Cities road closure feed. Off until the county has enrolled with
+ * Waze; then Waze reads the address shown here. What is in it and what is left out, in words.
+ */
+function WazeFeed({ tenantId, mayChange }: { tenantId: string; mayChange: boolean }) {
+  const [view, setView] = useState<WazeView | null>(null);
+  const [version, setVersion] = useState<number | null>(null);
+  const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    let live = true;
+    api<WazeView>('/integrations/waze')
+      .then((v) => live && setView(v))
+      .catch((err: unknown) => live && setMessage({ kind: 'error', text: describeFailure(err) }));
+    api<{ version: number }>(`/tenants/${tenantId}/config/waze.feed_enabled`)
+      .then((c) => live && setVersion(c.version))
+      .catch(() => live && setVersion(null));
+    return () => {
+      live = false;
+    };
+  }, [tenantId, tick]);
+  const toggle = async () => {
+    if (!view) return;
+    setMessage(null);
+    try {
+      await api(`/tenants/${tenantId}/config/waze.feed_enabled`, {
+        method: 'PUT',
+        body: { value: !view.enabled },
+        ...(version !== null ? { version } : {}),
+      });
+      setMessage({
+        kind: 'success',
+        text: view.enabled ? 'The Waze feed is switched off.' : 'The Waze feed is switched on.',
+      });
+      setTick((n) => n + 1);
+    } catch (err) {
+      setMessage({ kind: 'error', text: describeFailure(err) });
+    }
+  };
+  return (
+    <section aria-labelledby="waze-h">
+      <h2 id="waze-h">Waze for Cities road closure feed</h2>
+      <p>
+        Waze reads the county&rsquo;s road closures from this address once the county has enrolled
+        in Waze for Cities. It lists the roads reported closed, impassable or down to one lane in
+        open events, until they are cleared. It holds nothing about any person.
+      </p>
+      {message ? <Status kind={message.kind}>{message.text}</Status> : null}
+      {view ? (
+        <>
+          <p role="status">
+            The feed is <strong>{view.enabled ? 'on' : 'off'}</strong>. Address to give Waze:{' '}
+            <code>{`${window.location.origin}${view.feedPath}`}</code>
+          </p>
+          {mayChange ? (
+            <button type="button" onClick={() => void toggle()}>
+              {view.enabled ? 'Switch the Waze feed off' : 'Switch the Waze feed on'}
+            </button>
+          ) : null}
+          <DataTable
+            caption="Roads in the feed now"
+            rows={view.included}
+            rowKey={(r) => `${r.street}-${r.since}`}
+            empty="No road is closed now."
+            columns={[
+              { key: 'street', header: 'Road', render: (r) => r.street },
+              { key: 'type', header: 'What Waze shows', render: (r) => r.type },
+              { key: 'since', header: 'Since', render: (r) => fmt(r.since) },
+            ]}
+          />
+          {view.leftOut.length ? (
+            <DataTable
+              caption="Roads left out of the feed"
+              rows={view.leftOut}
+              rowKey={(r) => r.name}
+              columns={[
+                { key: 'name', header: 'Road', render: (r) => r.name },
+                { key: 'why', header: 'Why', render: (r) => r.reason },
+              ]}
+            />
+          ) : null}
+        </>
+      ) : null}
     </section>
   );
 }

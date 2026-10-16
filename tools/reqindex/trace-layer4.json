@@ -800,9 +800,9 @@
   ],
   "FL:FR-05": [
     "partial",
-    "road_status with reopen and debris_ticket with cubic yards (0033, routes/field-records.ts); app forms (apps/field/src/records.ts)",
-    "apps/field/test/records.test.ts (debris ticket form); services/api/test/fieldrecords.db.test.ts (FL:FR-05: a road reported and cleared once; 40 cubic yards at 75% is 30; the PIO refused)",
-    "Debris pickup from resident reports is not linked; the Waze update is deferred (Waze for Cities agreement, plan §11) and its file stand-in is not built."
+    "road_status with reopen and debris_ticket with cubic yards (0033, routes/field-records.ts); app forms (apps/field/src/records.ts); the Waze update as Q-04 decided (adapter + file stand-in): a Waze for Cities closure feed (CIFS) built from the road reports (public/waze-cifs.ts), served at /api/public/waze/<county>/cifs.json only when the county switches `waze.feed_enabled` on, with the roads closed, impassable or down to one lane in open events until cleared, a point-only road left out and named to staff; the Integrations screen shows it on or off, the address to give Waze, what is in it and what is left out, and switches it with a reason (plan reading 36)",
+    "apps/field/test/records.test.ts (debris ticket form); services/api/test/fieldrecords.db.test.ts (FL:FR-05: a road reported and cleared once; 40 cubic yards at 75% is 30; the PIO refused); services/api/test/waze-cifs.test.ts (closures and lane closures as CIFS incidents, latitude first, point-only roads left out); services/api/test/waze.db.test.ts (not found until switched on; only current closures of open events; a reopened road and a closed event's road left out; staff view and refusal), tests/e2e/console-screens.spec.ts (FL:FR-05, Q-04: an administrator switches the feed on with a reason, the public feed answers, switched off it is gone, with axe)",
+    "Debris pickup requests from resident reports need a pickup choice in the intake questions (a new graph version, with its Spanish wording); asked of Adam (layer-7 report question 11). The feed's field names are to be checked against Waze's CIFS specification when a county enrols; there is no push to Waze (Waze reads the feed)."
   ],
   "FL:FR-06": [
     "pass",

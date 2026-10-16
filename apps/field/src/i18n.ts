@@ -121,6 +121,9 @@ const en = {
   'work.arrivedSuggest':
     'You seem to be there. Tap “Arrived” to tell dispatch; nothing is sent until you do.',
   'work.facts': 'Tell dispatch',
+  'work.hazards': 'Hazards at this job',
+  'work.hazardAt': 'The job is inside a hazard area: {kind}',
+  'work.hazardNearJob': 'Hazard {distance} m from the job: {kind}',
   'work.enRoute': 'On my way',
   'work.arrived': 'Arrived',
   'work.cleared': 'Done here',
@@ -724,6 +727,9 @@ const es: Record<MessageKey, string> = {
   'work.arrivedSuggest':
     'Parece que ya llegó. Toque “Llegué” para avisar a despacho; no se envía nada hasta que lo haga.',
   'work.facts': 'Avisar a despacho',
+  'work.hazards': 'Peligros en este trabajo',
+  'work.hazardAt': 'El trabajo está dentro de una zona de peligro: {kind}',
+  'work.hazardNearJob': 'Peligro a {distance} m del trabajo: {kind}',
   'work.enRoute': 'Voy en camino',
   'work.arrived': 'Llegué',
   'work.cleared': 'Terminé aquí',

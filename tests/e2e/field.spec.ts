@@ -67,6 +67,19 @@ test.describe('field app (web build)', () => {
       confirm: 'Exercise: field journey job',
     });
     expect(assigned.status).toBe(201);
+    // HAZ-01, BRD:FR-04.05: a downed line reported at the job before the shift reaches the phone.
+    const lineDown = `Exercise: line down across the driveway (${Date.now()})`;
+    const hazard = await api(dispatcher, '/hazards', {
+      body: {
+        eventId: westwind.id,
+        kind: 'downed_line',
+        severity: 'caution',
+        summary: lineDown,
+        position: { lat: 38.795, lon: -90.87 },
+        radiusM: 40,
+      },
+    });
+    expect(hazard.status, JSON.stringify(hazard.body)).toBe(201);
     await context.addInitScript((tok) => {
       sessionStorage.setItem(
         'cgf.session',
@@ -289,6 +302,12 @@ test.describe('field app (web build)', () => {
       .getByRole('heading', { name: new RegExp(`^${jobRef} `) })
       .locator('xpath=..');
     await jobCard.getByRole('button', { name: 'Open' }).click();
+    await expect(page.getByRole('heading', { name: 'Hazards at this job' })).toBeVisible();
+    // The seeded exercise has hazards near Cedar Ct too; this one is the line down at the job.
+    await expect(
+      page.getByText(`The job is inside a hazard area: downed power line — ${lineDown}`),
+    ).toBeVisible();
+    await expectNoViolations(page);
     await page.getByRole('button', { name: 'Ask or command about this job' }).click();
     await expect(page.getByText(`"This" means mission ${jobRef}`, { exact: false })).toBeVisible();
     await page.getByLabel('What you need').fill('/mission this');
@@ -469,5 +488,12 @@ test.describe('field app (web build)', () => {
         { timeout: 30_000 },
       )
       .toBe(true);
+    // The exercise hazard is cleared so other journeys do not walk into it.
+    const cleared = await api(dispatcher, `/hazards/${hazard.body['id'] as string}/clear`, {
+      body: {},
+      version: hazard.body['version'] as number,
+      confirm: 'Exercise: journey finished',
+    });
+    expect(cleared.status, JSON.stringify(cleared.body)).toBe(200);
   });
 });

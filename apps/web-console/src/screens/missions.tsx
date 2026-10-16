@@ -466,6 +466,14 @@ function CjisPanel({
   );
 }
 
+interface MissionHazard {
+  id: string;
+  kind: string;
+  severity: string;
+  state: string;
+  summary: string | null;
+}
+
 export function MissionDetailScreen({ id }: { id: string }) {
   const [m, setM] = useState<Mission | null>(null);
   const [people, setPeople] = useState<
@@ -479,6 +487,7 @@ export function MissionDetailScreen({ id }: { id: string }) {
       }[]
     | null
   >(null);
+  const [hazards, setHazards] = useState<MissionHazard[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -501,6 +510,33 @@ export function MissionDetailScreen({ id }: { id: string }) {
       live = false;
     };
   }, [id, tick]);
+  // HAZ-01, BRD:FR-04.05: open hazards linked to this mission or within 300 m of where it is.
+  const at = m?.location?.position ?? null;
+  const missionId = m?.id ?? null;
+  const eventId = m?.eventId ?? null;
+  const lat = at?.lat ?? null;
+  const lon = at?.lon ?? null;
+  useEffect(() => {
+    if (!missionId || !eventId) return;
+    let live = true;
+    const near =
+      lat !== null && lon !== null
+        ? api<MissionHazard[]>(
+            `/hazards?open=true&eventId=${eventId}&near=${lat},${lon},300&limit=50`,
+          )
+        : Promise.resolve([]);
+    Promise.all([api<MissionHazard[]>(`/hazards?open=true&missionId=${missionId}&limit=50`), near])
+      .then(([linked, around]) => {
+        if (!live) return;
+        const seen = new Map<string, MissionHazard>();
+        for (const h of [...linked, ...around]) seen.set(h.id, h);
+        setHazards([...seen.values()]);
+      })
+      .catch(() => live && setHazards(null));
+    return () => {
+      live = false;
+    };
+  }, [missionId, eventId, lat, lon, tick]);
   const reload = () => setTick((n) => n + 1);
   const narrativeBox = useRef<HTMLTextAreaElement>(null);
   const closingBox = useRef<HTMLInputElement>(null);
@@ -716,6 +752,30 @@ export function MissionDetailScreen({ id }: { id: string }) {
         <button type="button" onClick={() => void act(`/missions/${m.id}/reopen`, {}, 'Reopened.')}>
           Reopen…
         </button>
+      )}
+      <h2>Hazards here</h2>
+      {hazards === null ? (
+        <p className="hint">Your role does not show hazards.</p>
+      ) : (
+        <>
+          {!at ? (
+            <p className="hint">
+              This mission has no position, so only hazards linked to it are listed.
+            </p>
+          ) : null}
+          <DataTable
+            caption="Open hazards linked to this mission or within 300 metres"
+            rows={hazards}
+            rowKey={(h) => h.id}
+            empty="None reported."
+            columns={[
+              { key: 'kind', header: 'Hazard', render: (h) => label(h.kind) },
+              { key: 'severity', header: 'Severity', render: (h) => label(h.severity) },
+              { key: 'state', header: 'State', render: (h) => label(h.state) },
+              { key: 'summary', header: 'What was seen', render: (h) => h.summary ?? '—' },
+            ]}
+          />
+        </>
       )}
       <h2>Assignments</h2>
       <DataTable

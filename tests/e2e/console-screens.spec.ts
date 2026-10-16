@@ -162,7 +162,12 @@ test.describe('every console screen, one by one', () => {
     );
     await open(page, 'peer-support', 'Peer support');
     await expect(page.getByRole('alert')).toHaveCount(0);
-    await expect(page.getByRole('table', { name: 'Open requests, oldest first' })).toBeVisible();
+    // A county with nobody waiting shows a sentence, not an empty table.
+    await expect(
+      page
+        .getByRole('table', { name: 'Open requests, oldest first' })
+        .or(page.getByText('Nobody is waiting.')),
+    ).toBeVisible();
     await expect(
       page.getByText('their lead, dispatch and coordinators are not told'),
     ).toBeVisible();

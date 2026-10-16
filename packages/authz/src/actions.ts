@@ -192,6 +192,13 @@ export const actions = {
     "Record a report on a resident's behalf (assisted intake)",
   ),
   'report.update': a('write', 'report', "Update a report's location or answers as a reviewer"),
+  // FL-02: find a resident's report without their code, once they show it is them.
+  'survivor.find': a(
+    'read',
+    'report',
+    "Find a survivor's report without their code: by phone with a code texted to them, or by address and name with their confirmation",
+    { explicit: true },
+  ),
   'report.review': a(
     'write',
     'report',

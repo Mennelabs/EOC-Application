@@ -98,6 +98,7 @@ import * as m0096 from './0096_location_permission.ts';
 import * as m0097 from './0097_health_notice.ts';
 import * as m0098 from './0098_location_verification.ts';
 import * as m0099 from './0099_field_visit.ts';
+import * as m0100 from './0100_shelter_count.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -200,4 +201,5 @@ export const migrations: Record<string, Migration> = {
   '0097_health_notice': m0097,
   '0098_location_verification': m0098,
   '0099_field_visit': m0099,
+  '0100_shelter_count': m0100,
 };

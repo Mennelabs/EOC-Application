@@ -37,7 +37,7 @@ Everything in the stack is synthetic or the WESTWIND exercise (SCL-12).
 
 ## What passed
 
-- **Traceability:** of the 105 requirement IDs assigned to layer 7, 92 pass and 13 are partial as of 2026-10-16, after the follow-up work (76, 23 and 6 deferred when the report was first written; `docs/traceability.md`, evidence in `trace-layer7.json`). Across every layer so far, 482 of 663 IDs pass, 145 are partial, 33 deferred, 2 designed and 1 not started. Earlier IDs this layer extends are updated in place: INT-12, PHO-03, PHO-07, AIG-05, the GATE rows and others.
+- **Traceability:** of the 105 requirement IDs assigned to layer 7, 92 pass and 13 are partial as of 2026-10-16, after the follow-up work (76, 23 and 6 deferred when the report was first written; `docs/traceability.md`, evidence in `trace-layer7.json`). Across every layer so far, 483 of 663 IDs pass, 144 are partial, 33 deferred, 2 designed and 1 not started. Earlier IDs this layer extends are updated in place: INT-12, PHO-03, PHO-07, AIG-05, the GATE rows and others.
 - **Launch gates:** GATE-02, GATE-04 and GATE-05 pass for layer 7. GATE-03 and GATE-08 are partial; see `layer-7-gates.md`.
 - **Permission sweep:** every staff route (364) refuses a caller with no token and an account with no role, and none fails with a server error (`authz-sweep.db.test.ts`, in CI).
 - **CI:** each merged PR was green end to end (lint, typecheck, unit tests, scans, Semgrep, the Android build, and the compose stack with integration, database and browser suites). Locally the full database list, the console, resident, field and help journeys, and the a11y spec pass.
@@ -97,7 +97,7 @@ Everything in the stack is synthetic or the WESTWIND exercise (SCL-12).
 
 ## Readings taken in favour of privacy and safety (flagged for you)
 
-The plan's §12 lists all 32. The newest:
+The plan's §12 lists all 33. The newest:
 
 - a legal aid organization's referral responses share only the status;
 - resident dictation goes through the county's provider or not at all;
@@ -120,6 +120,7 @@ The plan's §12 lists all 32. The newest:
 - a health notice is approved by someone other than its drafter, reaches only residents in its area who agreed to be contacted (a text only with text opt-in, an email only when email is their chosen way), and its reach is shown as counts only (FL:FR-06).
 - a report sent to the field stays in review until a visit verifies it; it is routed by the parcel its location names, the parcel under its point, or the county's parcel at the street line the resident typed, never an outside geocoder, and one with no parcel in a route area waits for its place to be fixed (CON-05).
 - an organization reports its places one after another in one visit, each its own report with its own number; who they are and how to reach them are asked once, everything about each place every time, and no place's needs or sharing choices are copied to another (ORG-01).
+- Red Cross shelter counts are loaded from a file of counts only; a file with columns about people is refused whole, and a linked county shelter takes the count as its occupancy but not its status (CON-16).
 
 ## Questions for you (defaults in force)
 

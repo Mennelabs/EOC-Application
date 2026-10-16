@@ -894,6 +894,25 @@ export interface SiteTable extends Stamped {
   /** CON-16: the partner organization that runs the site. */
   operator_tenant_id: Uuid | null;
   posted_by_tenant_id: Uuid | null;
+  /** CON-16: the shelter's id in the Red Cross records, so imported counts reach this site. */
+  external_ref: string | null;
+}
+
+/** CON-16: one shelter's count at one moment, as the Red Cross reported it; no person in it. */
+export interface ShelterCountTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  source: 'red_cross';
+  external_ref: string;
+  shelter_name: string;
+  status: 'open' | 'limited' | 'full' | 'closed' | null;
+  population: number | null;
+  capacity: number | null;
+  as_of: ColumnType<Date, Date | string, Date | string>;
+  site_id: Uuid | null;
+  imported_by: Uuid | null;
+  created_at: TsGen;
 }
 
 export interface ZipCentroidTable {
@@ -3452,6 +3471,7 @@ export interface Database {
   'cg.referral': ReferralTable;
   'cg.partner_contact': PartnerContactTable;
   'cg.site': SiteTable;
+  'cg.shelter_count': ShelterCountTable;
   'cg.zip_centroid': ZipCentroidTable;
   'cg.resource': ResourceTable;
   'cg.resource_text': ResourceTextTable;

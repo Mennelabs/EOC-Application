@@ -28,6 +28,7 @@ import { fieldRecordRoutes, type FieldRecordDeps } from './field-records.ts';
 import { fieldSyncRoutes, type FieldSyncDeps } from './field-sync.ts';
 import { fieldVoiceRoutes, type FieldVoiceDeps } from './field-voice.ts';
 import { fieldVisitRoutes } from './field-visits.ts';
+import { shelterCountRoutes } from './shelter-counts.ts';
 import { intakeGraphRoutes } from './intake-graphs.ts';
 import { meRoutes } from './me.ts';
 import { messageRoutes } from './messages.ts';
@@ -108,6 +109,8 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   parcelRoutes,
   // CON-05: reports sent to the field, grouped by route area, opened as routes.
   fieldVisitRoutes,
+  // CON-16: Red Cross shelter counts, counts only.
+  shelterCountRoutes,
   fieldOpsRoutes,
   fieldAssessmentRoutes,
   fieldVoiceRoutes(deps.fieldVoice),

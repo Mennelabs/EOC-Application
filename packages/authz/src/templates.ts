@@ -129,6 +129,7 @@ const templates: readonly RoleTemplate[] = [
     description: 'Dana in WESTWIND: how bad is it, where, do we need state and federal help.',
     source: 'cast',
     grants: [
+      g('shelter_count.read'), // CON-16
       g('dashboard.read'),
       g('board.read'),
       g('site.read'),
@@ -263,6 +264,8 @@ const templates: readonly RoleTemplate[] = [
       g('need.update'), // reopen a met need, set it back on the board (NED-07)
       g('board.read'),
       g('site.*'),
+      // CON-16: Red Cross shelter counts, counts only.
+      g('shelter_count.*'),
       g('shelter_stay.read'),
       g('inspection.read'),
       g('stock.read'),

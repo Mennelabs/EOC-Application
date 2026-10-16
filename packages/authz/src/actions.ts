@@ -284,6 +284,18 @@ export const actions = {
     "Publish or withdraw your organization's own service on the county's public pages",
     { consequential: true, explicit: true },
   ),
+  // CON-16: shelter counts from the Red Cross records, counts only, never people.
+  'shelter_count.read': a(
+    'read',
+    'shelter_count',
+    'Read shelter counts imported from the Red Cross',
+  ),
+  'shelter_count.import': a(
+    'write',
+    'shelter_count',
+    'Import shelter counts from the Red Cross (counts only, no people)',
+    { consequential: true },
+  ),
   'resource.read': a('read', 'resource', 'Read published resources and drafts'),
   'resource.edit': a('write', 'resource', 'Draft or change a resource'),
   'resource.publish': a('admin', 'resource', 'Publish or unpublish a resource', {

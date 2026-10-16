@@ -19,10 +19,10 @@
     ""
   ],
   "CON-16": [
-    "partial",
-    "shelter_stay with household, cots, access needs (encrypted), pets, check-in and check-out (0033, routes/field-records.ts); a county site run by a partner (0039, routes/sites.ts); screens/masscare.tsx shelters; a partner posts and runs its own service in the county, the county sees Posted by and withdraws it (0052; routes/sites.ts; screens/our-services.tsx, sites.tsx)",
-    "services/api/test/fieldrecords.db.test.ts (CON-16 shelter door), services/api/test/siteoperator.db.test.ts (CON-16 operator), services/api/test/siteoperator.db.test.ts (partner posting), tests/e2e/console-l3.spec.ts (partner posting)",
-    "Import of shelter counts from the Red Cross system is not built."
+    "pass",
+    "shelter_stay with household, cots, access needs (encrypted), pets, check-in and check-out (0033, routes/field-records.ts); a county site run by a partner (0039, routes/sites.ts); screens/masscare.tsx shelters; a partner posts and runs its own service in the county, the county sees Posted by and withdraws it (0052; routes/sites.ts; screens/our-services.tsx, sites.tsx); Red Cross shelter counts without personal details (0100, routes/shelter-counts.ts): a CSV shelter report with its columns mapped, only the shelter id, name, status, people staying, capacity and time read, a file with columns about people refused whole, each count kept once, a county site linked by `externalRef` taking the newest count as occupancy while its status stays with its confirmer; the Shelters screen's 'Red Cross shelter counts' section (plan reading 33)",
+    "services/api/test/fieldrecords.db.test.ts (CON-16 shelter door), services/api/test/siteoperator.db.test.ts (CON-16 operator), services/api/test/siteoperator.db.test.ts (partner posting), tests/e2e/console-l3.spec.ts (partner posting); services/api/test/shelter-counts.db.test.ts (CON-16: a roster refused whole without echoing a name; a missing column refused; bad rows named; a count never loaded twice; the linked site's occupancy updated, its status not; the newest count per shelter with totals; the EM director reads, a volunteer is refused, a reason is required), tests/e2e/console-screens.spec.ts (CON-16: mass care loads the report, a roster refused, counts shown, with axe on desktop and phone)",
+    "The Red Cross report arrives as a file a person loads; no live connection to a Red Cross system is built."
   ],
   "DCL:DEC-09": [
     "pass",

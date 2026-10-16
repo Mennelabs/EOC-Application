@@ -474,4 +474,65 @@ test.describe('every console screen, one by one', () => {
     );
     await expectNoViolations(page);
   });
+
+  test('CON-16: mass care loads the Red Cross shelter report; a file listing people is refused; the counts are shown, never who; axe finds nothing', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'mass_care_coordinator',
+      `Mass care ${tag}`,
+      `scr-mc-${testInfo.project.name}`,
+    );
+    await open(page, 'shelters', 'Shelters');
+    await expect(page.getByRole('heading', { name: 'Red Cross shelter counts' })).toBeVisible({
+      timeout: 15_000,
+    });
+    const form = page.getByRole('form', { name: 'Load the Red Cross shelter report' });
+    const id = `${tag}-${testInfo.project.name}`;
+    const when = new Date(Date.now() - 3_600_000).toISOString();
+    // A roster is refused whole, and its names are never shown back.
+    await form.getByLabel('Shelter report (CSV)').setInputFiles({
+      name: 'roster.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(
+        `Shelter ID,Shelter Name,First Name,Last Name\nRC-${id}-1,Exercise Gym,Ana,Ruiz\n`,
+      ),
+    });
+    await expect(form.getByLabel('Shelter id')).toHaveValue('Shelter ID');
+    await form.getByLabel('Reason', { exact: true }).fill('Exercise: morning report');
+    await form.getByRole('button', { name: 'Load the counts' }).click();
+    await expect(page.getByText(/This file has columns about people/)).toBeVisible();
+    await expect(page.getByText('Ruiz')).toHaveCount(0);
+
+    const report = [
+      'Shelter ID,Shelter Name,Status,Overnight Population,Evacuation Capacity,Report Time',
+      `RC-${id}-1,Exercise Gym ${id},Open,42,150,${when}`,
+      `RC-${id}-2,Exercise Church ${id},Full,30,30,${when}`,
+    ].join('\n');
+    await form.getByLabel('Shelter report (CSV)').setInputFiles({
+      name: 'shelters.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(report),
+    });
+    await expect(form.getByLabel('People staying')).toHaveValue('Overnight Population');
+    await expect(form.getByLabel('When it was counted')).toHaveValue('Report Time');
+    await expectNoViolations(page);
+    await form.getByRole('button', { name: 'Load the counts' }).click();
+    await expect(page.getByText('2 counts loaded, 0 already loaded, 0 rows refused')).toBeVisible();
+    const table = page.getByRole('table', {
+      name: 'Red Cross shelter counts, the newest for each shelter',
+    });
+    await expect(table.getByRole('row', { name: new RegExp(`Exercise Gym ${id}`) })).toContainText(
+      '42',
+    );
+    await expect(
+      table.getByRole('row', { name: new RegExp(`Exercise Church ${id}`) }),
+    ).toContainText('full');
+    await expectNoViolations(page);
+    await expectReflow(page);
+  });
 });

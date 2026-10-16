@@ -105,6 +105,19 @@ interface Credential {
 }
 
 // --------------------------------------------------------------- roster
+/**
+ * A screen whose event list cannot load keeps its heading (WCAG 1.3.1, 2.4.6),
+ * so a screen-reader user still hears where they are before the reason.
+ */
+function Unavailable({ id, title, error }: { id: string; title: string; error: string }) {
+  return (
+    <section aria-labelledby={id}>
+      <h1 id={id}>{title}</h1>
+      <Status kind="error">{error}</Status>
+    </section>
+  );
+}
+
 export function RosterScreen() {
   const { eventId, picker, error: evError } = useEvent();
   const teams = useApi<Team[]>(eventId ? `/teams?eventId=${eventId}&limit=200` : null);
@@ -149,7 +162,7 @@ export function RosterScreen() {
       },
     );
   };
-  if (evError) return <Status kind="error">{evError}</Status>;
+  if (evError) return <Unavailable id="roster-h" title="Roster and check-in" error={evError} />;
   const nameOf = (id: string | null) =>
     id ? (teams.data?.find((t) => t.id === id)?.name ?? '—') : '—';
   return (
@@ -438,7 +451,7 @@ export function NetControlScreen() {
   };
   const teamName = (id: string | null) =>
     id ? (teams.data?.find((t) => t.id === id)?.name ?? '—') : '—';
-  if (evError) return <Status kind="error">{evError}</Status>;
+  if (evError) return <Unavailable id="net-h" title="Net control log" error={evError} />;
   return (
     <section aria-labelledby="net-h">
       <h1 id="net-h">Net control log</h1>
@@ -674,7 +687,7 @@ export function FieldMessagesScreen() {
       setMsg({ kind: 'error', text: describeFailure(err) });
     }
   };
-  if (evError) return <Status kind="error">{evError}</Status>;
+  if (evError) return <Unavailable id="fm-h" title="Messages to the field" error={evError} />;
   const ready =
     f.body.trim().length > 0 &&
     (f.audience !== 'team' || !!f.team) &&

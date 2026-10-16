@@ -2090,6 +2090,16 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
     },
     { omit: ['id'] },
   ),
+  command_outcome: table(
+    {
+      day: { c: 'internal', d: 'FR-C11: the UTC day counted' },
+      command: { c: 'internal', d: "Catalogued command name, or 'unknown'" },
+      input_kind: { c: 'internal', d: 'shorthand or natural language' },
+      outcome: { c: 'internal', d: 'What the window answered, or a replay it returned again' },
+      n: { c: 'internal', d: 'How many times; no account, words or record are kept' },
+    },
+    { omit: ['id', 'version', 'created_at', 'created_by', 'updated_at', 'updated_by'] },
+  ),
   command_execution: table({
     account_id: { c: 'internal', d: 'Who asked for the command (CMD-37)' },
     execution_id: { c: 'internal', d: 'Idempotency key for the operation it runs (CMD-25)' },
@@ -2388,6 +2398,11 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
       },
       acted_by: { c: 'internal' },
       acted_at: { c: 'internal' },
+      complaint: {
+        c: 'internal',
+        d: 'AIG-09: a resident said this help went wrong, by a fixed reason; no words kept',
+      },
+      complained_at: { c: 'internal' },
       created_at: { c: 'internal' },
     },
     { standard: false },

@@ -6,7 +6,9 @@
  * - corrections: of the last outputs a person acted on, the share they edited
  *   or rejected;
  * - failures: of the last calls, the share that timed out, failed, was refused
- *   or came back unusable.
+ *   or came back unusable;
+ * - complaints: of the last outputs, the share a resident said went wrong
+ *   (AIG-09; a fixed reason, no words; default line 10%).
  *
  * Past the tenant's threshold (default: more than 30% of the last 50, once at
  * least 20 count) an alert is raised, the administrators who manage the AI use
@@ -39,6 +41,7 @@ export interface AiHealthSettings {
   minimum: number;
   correctionRate: number;
   failureRate: number;
+  complaintRate: number;
 }
 
 export const AI_HEALTH_DEFAULTS: AiHealthSettings = {
@@ -46,11 +49,12 @@ export const AI_HEALTH_DEFAULTS: AiHealthSettings = {
   minimum: 20,
   correctionRate: 0.3,
   failureRate: 0.3,
+  complaintRate: 0.1,
 };
 
 const FAILED = ['timeout', 'error', 'refused', 'invalid'];
 
-type Kind = 'corrections' | 'failures';
+type Kind = 'corrections' | 'failures' | 'complaints';
 
 /** One tenant: the alerts that hold are raised (and told once), the rest cleared. */
 export async function evaluateAiHealthFor(
@@ -81,7 +85,7 @@ export async function evaluateAiHealthFor(
       const recent = (acted: boolean) =>
         trx
           .selectFrom('cg.ai_output')
-          .select(['outcome', 'human_action'])
+          .select(['outcome', 'human_action', 'complained_at'])
           .where('tenant_id', '=', tenantId)
           .where('feature', '=', g.feature)
           .where(sql<boolean>`coalesce(language, '') = ${g.language}`)
@@ -103,6 +107,12 @@ export async function evaluateAiHealthFor(
           counted: calls.length,
           flagged: calls.filter((r) => FAILED.includes(r.outcome)).length,
           threshold: s.failureRate,
+        },
+        {
+          kind: 'complaints',
+          counted: calls.length,
+          flagged: calls.filter((r) => r.complained_at !== null).length,
+          threshold: s.complaintRate,
         },
       ];
       for (const m of measures) {
@@ -152,7 +162,9 @@ export async function evaluateAiHealthFor(
               what:
                 m.kind === 'corrections'
                   ? `people edited or rejected ${pct} of its last ${m.counted} outputs${lang} (the threshold is ${Math.round(m.threshold * 100)}%).`
-                  : `${pct} of its last ${m.counted} calls${lang} failed or timed out; people did the work by hand (the threshold is ${Math.round(m.threshold * 100)}%).`,
+                  : m.kind === 'complaints'
+                    ? `residents said ${pct} of its last ${m.counted} outputs${lang} went wrong (the threshold is ${Math.round(m.threshold * 100)}%).`
+                    : `${pct} of its last ${m.counted} calls${lang} failed or timed out; people did the work by hand (the threshold is ${Math.round(m.threshold * 100)}%).`,
             });
           }
           await systemAudit(trx, tenantId, 'ai-health', {

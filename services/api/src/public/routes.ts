@@ -31,6 +31,7 @@ import { validateAnswer, type QuestionGraph, type QuestionNode } from '@cg/intak
 import { ApiError, errors } from '../errors.ts';
 import { enqueueOutbox } from '../routes/helpers.ts';
 import { RiskScorer, WindowCounter } from './abuse.ts';
+import { aiComplaintRoutes } from './ai-complaint.ts';
 import { dictationOn, dictationRoutes } from './dictation.ts';
 import { facilityRegistrationRoutes } from './facility-registration.ts';
 import {
@@ -154,6 +155,8 @@ export const publicRoutes =
     // REC-01: a place offered through the public form waits for county approval.
     await app.register(facilityRegistrationRoutes);
     await app.register(dictationRoutes({ ...(deps.ai ? { ai: deps.ai } : {}) }));
+    // AIG-09: a resident says the computer help went wrong (fixed reasons, no words).
+    await app.register(aiComplaintRoutes);
 
     // ---------------------------------------------------------------- graph
     app.get(

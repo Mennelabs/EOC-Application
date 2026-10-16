@@ -149,6 +149,17 @@ export const extract = (
   },
 ) => call<ExtractionResult>(`/intake/${tenant}/extract`, { body });
 
+/** AIG-09: the resident says the computer help went wrong, by a fixed reason with no words. */
+export type ComplaintReason = 'wrong' | 'not_my_language' | 'hard_to_understand' | 'other';
+export const aiComplaint = (
+  tenant: string,
+  body: {
+    executionId: string;
+    feature: 'intake.extraction' | 'intake.transcription';
+    reason: ComplaintReason;
+  },
+) => call<{ received: true }>(`/intake/${tenant}/ai-complaint`, { body });
+
 /** INT-12: the county's AI service writes a recorded clip down; nothing is kept. */
 export async function dictate(
   tenant: string,

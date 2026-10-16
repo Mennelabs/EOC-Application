@@ -2085,6 +2085,16 @@ export interface ChangeFeedTable {
 }
 
 /** SEC-13: the highest change-feed sequence the retention sweep removed, per tenant. */
+/** FR-C11, migration 0086: what the command window answered, counted per day; nothing personal. */
+export interface CommandOutcomeTable {
+  tenant_id: string;
+  day: ColumnType<string, string, string>;
+  command: string;
+  input_kind: 'shorthand' | 'natural';
+  outcome: string;
+  n: Generated<number>;
+}
+
 export interface ChangeFeedPrunedTable {
   tenant_id: Uuid;
   through_seq: ColumnType<string, string | number, string | number>;
@@ -2600,6 +2610,9 @@ export interface AiOutputTable {
   human_action: 'accepted' | 'edited' | 'rejected' | null;
   acted_by: Uuid | null;
   acted_at: TsNullable;
+  /** AIG-09, migration 0087: a resident's complaint about this help, by a fixed reason. */
+  complaint: 'wrong' | 'not_my_language' | 'hard_to_understand' | 'other' | null;
+  complained_at: TsNullable;
   created_at: Generated<Date>;
 }
 
@@ -2609,7 +2622,7 @@ export interface AiHealthAlertTable extends Stamped {
   tenant_id: Uuid;
   feature: string;
   language: Generated<string>;
-  kind: 'corrections' | 'failures' | 'fairness';
+  kind: 'corrections' | 'failures' | 'fairness' | 'complaints';
   window_size: number;
   counted: number;
   flagged: number;
@@ -3259,6 +3272,7 @@ export interface Database {
   'cg.field_assessment': FieldAssessmentTable;
   'cg.change_feed': ChangeFeedTable;
   'cg.change_feed_pruned': ChangeFeedPrunedTable;
+  'cg.command_outcome': CommandOutcomeTable;
   'cg.client_command': ClientCommandTable;
   'cg.location_geo': LocationGeoTable;
   'cg.declaration': DeclarationTable;

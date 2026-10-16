@@ -271,6 +271,17 @@ test.describe('field app (web build)', () => {
     await page.getByRole('button', { name: 'Go', exact: true }).click();
     await expect(page.getByText(/open reminder|reminders?:/i)).toBeVisible();
     await expectNoViolations(page);
+    // CMD-34: without signal nothing is sent, and nothing goes later by itself.
+    await context.setOffline(true);
+    await page.getByLabel('What you need').fill('/remind in 30m Exercise offline line');
+    await page.getByRole('button', { name: 'Go', exact: true }).click();
+    await expect(page.getByText(/Commands need a connection\. Nothing was sent/)).toBeVisible();
+    await expectNoViolations(page);
+    await context.setOffline(false);
+    await page.getByLabel('What you need').fill('/reminders');
+    await page.getByRole('button', { name: 'Go', exact: true }).click();
+    await expect(page.getByText(/open reminder|reminders?:/i)).toBeVisible();
+    await expect(page.getByText(/Exercise offline line/)).toHaveCount(0);
 
     // CMD-06: opened from a job, "this" means that job's mission, and the screen says so.
     await page.getByRole('link', { name: 'Home' }).click();

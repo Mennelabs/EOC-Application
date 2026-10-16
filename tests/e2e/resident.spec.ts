@@ -220,6 +220,56 @@ test.describe('resident report', () => {
     await expectNoViolations(page);
   });
 
+  test('AIG-09: the resident can tell the county that computer help went wrong, by a fixed reason, and their report is not changed', async ({
+    page,
+  }) => {
+    // The running stack has no AI provider (ADR-0043), so the answers read from the words are
+    // stood in for; the complaint itself goes to the real server.
+    await page.route('**/api/public/intake/county/extract', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          extractionId: crypto.randomUUID(),
+          candidates: [
+            {
+              questionId: 'employees_affected',
+              value: { kind: 'value', value: 12 },
+              confidence: 0.8,
+              evidence: 'twelve of us work there',
+            },
+          ],
+          language: 'en',
+          injectionSuspected: false,
+          notice: 'A computer helped fill in these answers. Please check them.',
+        }),
+      }),
+    );
+    await page.goto('/county/westwind');
+    await pressButton(page, 'Start');
+    await answerUntilReview(
+      page,
+      `aig09-${Date.now()}@example.org`,
+      new Set(),
+      'Or tell us in your own words',
+    );
+    await page
+      .getByLabel('What happened?')
+      .fill('The wind took the roof. Twelve of us work there.');
+    await pressButton(page, 'Help me fill in the answers');
+    await expect(page.getByText('You said: 12. Is that right?', { exact: false })).toBeVisible();
+    await pressButton(page, 'This computer help got something wrong');
+    await chooseRadio(page, 'It did not understand my language');
+    await expectNoViolations(page);
+    const sent = page.waitForResponse('**/ai-complaint');
+    await pressButton(page, 'Tell the county');
+    expect((await sent).status()).toBe(202);
+    await expect(page.getByText(/The county will see that this help went wrong/)).toBeVisible();
+    // The suggestion is still the resident's to accept or not.
+    await expect(page.getByRole('radio', { name: 'Yes, that is right' })).toBeVisible();
+    await expectNoViolations(page);
+  });
+
   test('danger: yes shows the emergency instructions before anything else (INT-07, CON-10)', async ({
     page,
   }) => {

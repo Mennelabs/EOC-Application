@@ -1766,4 +1766,68 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
     expect((await command('badges', `/badge ${name} handed out`)).status).toBe('not_found');
     expect((await command('mc', `/badge ${name} printed`)).status).toBe('denied');
   });
+
+  it('FR-C11, CMD-38: the window counts what it answered, per day, command and outcome only; clarifications, repeats and completions are reported as rates', async () => {
+    type Quality = {
+      answers: number;
+      outcomes: Record<string, number>;
+      clarificationRate: number | null;
+      finished: number;
+      completionRate: number | null;
+      duplicates: number;
+      duplicateRate: number | null;
+    };
+    const quality = async () => {
+      const r = await call('admin', 'GET', '/commands/performance?days=1');
+      expect(r.status, JSON.stringify(r.body)).toBe(200);
+      return (r.body as { quality: Quality }).quality;
+    };
+    const before = await quality();
+    const n = (q: Quality, k: string) => q.outcomes[k] ?? 0;
+
+    // A lookup that runs, the same request sent again, and one that is not a command.
+    const executionId = randomUUID();
+    const first = await call('mc', 'POST', '/commands', { executionId, input: '/reminders' });
+    expect(first.body['status']).toBe('succeeded');
+    const again = await call('mc', 'POST', '/commands', { executionId, input: '/reminders' });
+    expect(again.body['id']).toBe(first.body['id']);
+    expect((await command('mc', '/fly to the moon')).status).toBe('unsupported');
+    // A change confirmed twice: the second answers from the first.
+    const remind = await command('mc', '/remind in 30m Exercise: count the cots');
+    expect((await confirm('mc', remind)).body['status']).toBe('succeeded');
+    expect((await confirm('mc', remind)).body['status']).toBe('succeeded');
+    // Two people match: the window asks.
+    await withTenant(dbWorker, { tenantId: county }, async (trx) => {
+      for (const name of [`Exercise Quinn Abara ${run}`, `Exercise Quinn Abara-Ng ${run}`])
+        await trx
+          .insertInto('cg.personnel')
+          .values({ tenant_id: county, name, availability: 'available', duty_status: 'on_duty' })
+          .execute();
+    });
+    await phases([1, 2, 3]);
+    expect((await command('field', '/person Quinn Abara unavailable')).status).toBe('clarify');
+
+    const after = await quality();
+    expect(n(after, 'succeeded') - n(before, 'succeeded')).toBe(1);
+    expect(n(after, 'replayed') - n(before, 'replayed')).toBe(1);
+    expect(n(after, 'unsupported') - n(before, 'unsupported')).toBe(1);
+    expect(n(after, 'awaiting_confirmation') - n(before, 'awaiting_confirmation')).toBe(1);
+    expect(n(after, 'confirm_replayed') - n(before, 'confirm_replayed')).toBe(1);
+    expect(n(after, 'clarify') - n(before, 'clarify')).toBe(1);
+    expect(after.answers - before.answers).toBe(4);
+    expect(after.duplicates - before.duplicates).toBe(2);
+    expect(after.clarificationRate).toBeGreaterThan(0);
+    expect(after.completionRate).toBeGreaterThan(0);
+    // Counted by command and outcome only.
+    const today = await dbWorker
+      .selectFrom('cg.command_outcome')
+      .selectAll()
+      .where('tenant_id', '=', county)
+      .where('command', '=', 'person.status')
+      .execute();
+    expect(today.map((t) => Object.keys(t).sort())[0]).toEqual(
+      ['command', 'day', 'input_kind', 'n', 'outcome', 'tenant_id'].sort(),
+    );
+    expect(today.find((t) => t.outcome === 'clarify')?.n).toBeGreaterThan(0);
+  });
 });

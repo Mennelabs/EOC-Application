@@ -331,7 +331,7 @@ interface HealthAlert {
   id: string;
   feature: string;
   scope: string;
-  kind: 'corrections' | 'failures' | 'fairness';
+  kind: 'corrections' | 'failures' | 'fairness' | 'complaints';
   counted: number;
   flagged: number;
   rate: number;
@@ -371,6 +371,8 @@ const alertWhat = (a: HealthAlert) => {
     const [dimension, group] = a.scope.split(':');
     return `Reviewers agreed with it on ${pct(1 - a.rate)} of ${a.counted} decisions for ${(DIMENSION[dimension ?? ''] ?? dimension ?? '').toLowerCase()} ${group ?? ''}, more than the margin under the model's overall agreement`;
   }
+  if (a.kind === 'complaints')
+    return `Residents said ${a.flagged} of the last ${a.counted} outputs${a.scope ? ` in ${a.scope}` : ''} went wrong (${pct(a.rate)}; the line is ${pct(a.threshold)})`;
   const what = a.kind === 'corrections' ? 'corrected or rejected' : 'failed';
   return `${a.flagged} of the last ${a.counted} outputs${a.scope ? ` in ${a.scope}` : ''} were ${what} (${pct(a.rate)}; the line is ${pct(a.threshold)})`;
 };
@@ -392,7 +394,18 @@ interface CommandPerformance {
   shorthand: Measured;
   interpretation: Measured & { timedOut: number };
   execution: Measured & { stillRunning: number };
+  quality: {
+    answers: number;
+    outcomes: Record<string, number>;
+    clarificationRate: number | null;
+    finished: number;
+    completionRate: number | null;
+    duplicates: number;
+    duplicateRate: number | null;
+  };
 }
+
+const percent = (r: number | null) => (r === null ? 'No data yet' : `${Math.round(r * 100)}%`);
 
 const seconds = (ms: number | null) => (ms === null ? '—' : `${(ms / 1000).toFixed(2)} s`);
 
@@ -455,6 +468,44 @@ function CommandTimes() {
             { key: 'note', header: 'Notes', render: (r) => r.extra || '—' },
           ]}
         />
+      ) : null}
+      {perf ? (
+        <>
+          <h3 id="command-quality-h">How often it completes, asks or repeats</h3>
+          <p>
+            Counted per day by command and outcome only: no names, words or records are kept for
+            these figures.
+          </p>
+          <DataTable
+            caption="Command window quality"
+            rows={[
+              {
+                key: 'completion',
+                what: 'Confirmed or run commands that succeeded',
+                value: percent(perf.quality.completionRate),
+                of: `${perf.quality.finished} finished`,
+              },
+              {
+                key: 'clarification',
+                what: 'Answers that asked which record was meant',
+                value: percent(perf.quality.clarificationRate),
+                of: `${perf.quality.answers} answers`,
+              },
+              {
+                key: 'duplicates',
+                what: 'Requests sent again and answered from the first time',
+                value: percent(perf.quality.duplicateRate),
+                of: `${perf.quality.duplicates} repeats`,
+              },
+            ]}
+            rowKey={(r) => r.key}
+            columns={[
+              { key: 'what', header: 'Measure', render: (r) => r.what },
+              { key: 'value', header: 'Rate', render: (r) => r.value },
+              { key: 'of', header: 'Out of', render: (r) => r.of },
+            ]}
+          />
+        </>
       ) : null}
     </>
   );

@@ -84,7 +84,7 @@ const alertOut = z.object({
   feature: z.string(),
   /** A language for corrections and failures; `dimension:group` for fairness. */
   scope: z.string(),
-  kind: z.enum(['corrections', 'failures', 'fairness']),
+  kind: z.enum(['corrections', 'failures', 'fairness', 'complaints']),
   counted: z.number().int(),
   flagged: z.number().int(),
   rate: z.number(),

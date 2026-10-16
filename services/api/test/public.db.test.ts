@@ -500,4 +500,61 @@ describe.skipIf(!appUrl || !workerUrl)('public intake API (database-backed)', ()
     for (const r of seededRegister) expect(r.provider).toBe('openai');
     expect(seededRegister.find((r) => r.feature === 'intake.extraction')?.enabled).toBe(false);
   });
+
+  it('AIG-09: a resident says the computer help went wrong, by a fixed reason with no words; it is kept on that help once, and the answer never says whether there was any', async () => {
+    const executionId = randomUUID();
+    const extracted = await app.inject({
+      method: 'POST',
+      url: '/api/public/intake/county/extract',
+      payload: {
+        executionId,
+        text: 'The wind took part of the roof and water came in.',
+        graphKey: westwindGraph.key,
+        graphVersion: westwindGraph.version,
+      },
+    });
+    expect(extracted.statusCode, extracted.body).toBe(200);
+    const complain = (body: Record<string, unknown>) =>
+      app.inject({ method: 'POST', url: '/api/public/intake/county/ai-complaint', payload: body });
+    const output = () =>
+      dbWorker
+        .selectFrom('cg.ai_output')
+        .select(['complaint', 'complained_at'])
+        .where('execution_id', '=', executionId)
+        .where('feature', '=', 'intake.extraction')
+        .executeTakeFirstOrThrow();
+
+    const first = await complain({
+      executionId,
+      feature: 'intake.extraction',
+      reason: 'not_my_language',
+      text: 'words are never kept',
+    });
+    expect(first.statusCode, first.body).toBe(202);
+    expect(first.json()).toEqual({ received: true });
+    const kept = await output();
+    expect(kept.complaint).toBe('not_my_language');
+    expect(kept.complained_at).not.toBeNull();
+    // Once: a second complaint changes nothing.
+    expect(
+      (await complain({ executionId, feature: 'intake.extraction', reason: 'wrong' })).statusCode,
+    ).toBe(202);
+    expect((await output()).complaint).toBe('not_my_language');
+    // No such help: the same answer, and nothing anywhere changes.
+    const none = await complain({
+      executionId: randomUUID(),
+      feature: 'intake.transcription',
+      reason: 'other',
+    });
+    expect(none.statusCode).toBe(202);
+    expect(none.json()).toEqual({ received: true });
+    // Only the fixed reasons and the resident-facing features.
+    expect(
+      (await complain({ executionId, feature: 'intake.extraction', reason: 'it was rude' }))
+        .statusCode,
+    ).toBe(400);
+    expect(
+      (await complain({ executionId, feature: 'command.interpret', reason: 'wrong' })).statusCode,
+    ).toBe(400);
+  });
 });

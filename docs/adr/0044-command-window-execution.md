@@ -57,3 +57,10 @@ The executor lives in the API process and adds no service. The language model si
 - Reports are a target kind of their own, listed through the console's route and narrowed to issued or superseded ones, so a draft is never found (RULE-10).
 - An export is answered as queued, never done. The answer names the screen that lists the file once the worker builds it, and nothing is sent anywhere.
 - The request reference of a release is free text (it may carry a requester's name), so the execution keeps only its digest once the command has run (CMD-37).
+
+## Addendum 2026-10-16: report review (CMD-15)
+
+- A reviewer can take a report into review (phase 3, one tap), approve or reject it, or ask the resident for more information (phase 4, the full review with a reason). Approvals and outbound messages are phase 4 in Section 30.2.
+- The decision's own reason and evidence references go to the review decision row, as on the review screen. The reason and the question are free text, so the execution keeps only their digests once run (CMD-37).
+- A decision never changes the verification level, and the plan says so. A public observation stays an observation until someone verifies it.
+- The author of a report never reviews it (A7). The route's guardrail refuses it, from the window as from the screen.

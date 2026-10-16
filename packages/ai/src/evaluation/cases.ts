@@ -194,6 +194,19 @@ export const COMMAND_EVAL_CATALOG: { usage: string; title: string }[] = [
     usage: '/needs claimed [category:<category>] [postal:<code>] release [note]',
     title: 'Release the needs your organization holds that a filter names',
   },
+  { usage: '/report <reference code> review', title: 'Take a report into review' },
+  {
+    usage: '/report <reference code> approve <why> [evidence:<ref>,<ref>]',
+    title: 'Approve a report',
+  },
+  {
+    usage: '/report <reference code> reject <why> [evidence:<ref>,<ref>]',
+    title: 'Reject a report',
+  },
+  {
+    usage: '/report <reference code> ask <question>',
+    title: 'Ask the resident for more information',
+  },
   { usage: '/export ida', title: 'Prepare the IDA package' },
   {
     usage: '/export sitrep|briefing [number|latest] [pdf|csv]',

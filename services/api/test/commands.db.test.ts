@@ -16,7 +16,7 @@ import type { Kysely } from 'kysely';
 import { fakeProvider, type AiProvider } from '@cg/ai';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
-import { createDb, withTenant, type Database } from '@cg/db';
+import { createDb, randomCode, withTenant, type Database } from '@cg/db';
 import { loadSeed } from '../../../tools/seed/src/load.ts';
 import { buildApp, type App } from '../src/app.ts';
 import { AuthError, type SubjectLoader } from '../src/auth/subject.ts';
@@ -91,6 +91,38 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
       .selectAll()
       .where('id', '=', id)
       .executeTakeFirstOrThrow();
+
+  /** Section 30.2: the phases this county has turned on. */
+  const phases = (on: number[]) =>
+    withTenant(dbWorker, { tenantId: county }, async (trx) => {
+      await trx
+        .deleteFrom('cg.tenant_config')
+        .where('tenant_id', '=', county)
+        .where('key', '=', 'command.phases')
+        .execute();
+      await trx
+        .insertInto('cg.tenant_config')
+        .values({ tenant_id: county, key: 'command.phases', value: JSON.stringify(on) })
+        .execute();
+    });
+  /** Another person in this county with one shipped role, scoped to the event. */
+  const person = (template: string): AccountSubject => {
+    const t = roleTemplates.find((x) => x.key === template)!;
+    return {
+      ...subjects['admin']!,
+      accountId: randomUUID(),
+      roles: [
+        {
+          roleId: randomUUID(),
+          key: t.key,
+          version: 1,
+          templateKey: t.key,
+          grants: t.grants,
+          scope: { eventIds: [eventId] },
+        },
+      ],
+    };
+  };
 
   const needIds: string[] = [];
   let missionId = '';
@@ -1085,31 +1117,8 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
   });
 
   it('CMD-16, RULE-10, SEC-13: exports state their scope and period, wait for a confirmation and are queued, never "done"; a draft is never exported; a records release is reviewed with a reason', async () => {
-    subjects['director'] = { ...subjects['admin']!, accountId: randomUUID(), roles: [] };
-    const t = roleTemplates.find((x) => x.key === 'county_em_director')!;
-    subjects['director'].roles = [
-      {
-        roleId: randomUUID(),
-        key: t.key,
-        version: 1,
-        templateKey: t.key,
-        grants: t.grants,
-        scope: { eventIds: [eventId] },
-      },
-    ];
+    subjects['director'] = person('county_em_director');
     const reason = { 'x-confirm': 'true', 'x-reason': 'Exercise: records office request' };
-    const phases = (on: number[]) =>
-      withTenant(dbWorker, { tenantId: county }, async (trx) => {
-        await trx
-          .deleteFrom('cg.tenant_config')
-          .where('tenant_id', '=', county)
-          .where('key', '=', 'command.phases')
-          .execute();
-        await trx
-          .insertInto('cg.tenant_config')
-          .values({ tenant_id: county, key: 'command.phases', value: JSON.stringify(on) })
-          .execute();
-      });
     await phases([1, 2, 3]);
     const files = () =>
       dbWorker
@@ -1222,6 +1231,100 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
       from: '2026-01-01',
       to: '2026-12-31',
     });
+    await phases([1, 2, 3]);
+  });
+
+  it('CMD-15, RULE-14, A7: a reviewer takes a report into review, then decides it with a reason and evidence; the verification level stays; asking the resident is a reviewed message; a role without the review is refused', async () => {
+    subjects['reviewer'] = person('assessment_reviewer');
+    const codes = [randomCode(), randomCode()];
+    const code = (n: number) => codes[n - 1]!;
+    const reportIds = await withTenant(dbWorker, { tenantId: county }, async (trx) => {
+      const out: string[] = [];
+      for (const n of [1, 2])
+        out.push(
+          (
+            await trx
+              .insertInto('cg.report')
+              .values({
+                tenant_id: county,
+                event_id: eventId,
+                reference_code: code(n),
+                execution_id: randomUUID(),
+                graph_key: 'damage',
+                graph_version: 1,
+                channel_of_origin: 'web',
+                relationship: 'own_home',
+              })
+              .returning('id')
+              .executeTakeFirstOrThrow()
+          ).id,
+        );
+      return out;
+    });
+    const report = (id: string) =>
+      dbWorker
+        .selectFrom('cg.report')
+        .select(['review_state', 'verification_level'])
+        .where('id', '=', id)
+        .executeTakeFirstOrThrow();
+    const before = await report(reportIds[0]!);
+    const reason = { 'x-confirm': 'true', 'x-reason': 'Exercise: reviewed against the photos' };
+    await phases([1, 2, 3]);
+
+    const claim = await command('reviewer', `/report ${code(1)} review`);
+    expect(claim.status, claim.message).toBe('awaiting_confirmation');
+    expect(claim.plan?.description).toBe(
+      `Take ${code(1)} (submitted, ${before.verification_level.replace(/_/g, ' ')}) into review. No decision is made.`,
+    );
+    const claimed = await confirm('reviewer', claim);
+    expect(claimed.body['status'], JSON.stringify(claimed.body)).toBe('succeeded');
+    expect(claimed.body['message']).toContain('is under review');
+    expect((await report(reportIds[0]!)).review_state).toBe('under_review');
+
+    // Decisions and messages are phase 4, off until the county turns it on.
+    const line = `/report ${code(1)} approve roof loss matches the photos evidence:photo-1,visit-2`;
+    expect((await command('reviewer', line)).status).toBe('unsupported');
+    await phases([1, 2, 3, 4]);
+    expect((await command('mc', line)).status).toBe('denied');
+    const approve = await command('reviewer', line);
+    expect(approve.status, approve.message).toBe('awaiting_confirmation');
+    expect(approve.plan?.description).toContain('citing photo-1, visit-2');
+    expect(approve.plan?.description).toContain('The verification level stays as it is.');
+    expect((await confirm('reviewer', approve)).status).toBe(428);
+    const approved = await confirm('reviewer', approve, reason);
+    expect(approved.body['status'], JSON.stringify(approved.body)).toBe('succeeded');
+    expect(approved.body['message']).toContain('is approved');
+    const after = await report(reportIds[0]!);
+    expect(after.review_state).toBe('approved');
+    // CMD-15: a decision is not a verification; the level the report had stays.
+    expect(after.verification_level).toBe(before.verification_level);
+    const decision = await dbWorker
+      .selectFrom('cg.review_decision')
+      .select(['decision', 'reason', 'evidence_refs'])
+      .where('report_id', '=', reportIds[0]!)
+      .executeTakeFirstOrThrow();
+    expect(decision).toMatchObject({
+      decision: 'approve',
+      reason: 'roof loss matches the photos',
+      evidence_refs: ['photo-1', 'visit-2'],
+    });
+    // CMD-37: the reason lives in the decision, not in the execution record.
+    expect(JSON.stringify((await stored(approve.id!)).plan)).not.toContain('roof loss');
+
+    const ask = await command(
+      'reviewer',
+      `/reporte ${code(2)} preguntar ¿Cuántas personas viven allí?`,
+    );
+    expect(ask.status, ask.message).toBe('awaiting_confirmation');
+    const asked = await confirm('reviewer', ask, reason);
+    expect(asked.body['status'], JSON.stringify(asked.body)).toBe('succeeded');
+    expect((await report(reportIds[1]!)).review_state).toBe('needs_information');
+    const question = await dbWorker
+      .selectFrom('cg.correction_request')
+      .select('message')
+      .where('report_id', '=', reportIds[1]!)
+      .executeTakeFirstOrThrow();
+    expect(question.message).toBe('¿Cuántas personas viven allí?');
     await phases([1, 2, 3]);
   });
 });

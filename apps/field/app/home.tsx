@@ -204,6 +204,13 @@ export default function Home() {
               onPress={() => router.push('/scribe')}
             />
           ) : null}
+          {f.can('survivor.find') ? (
+            <Button
+              kind="secondary"
+              label={t('find.heading')}
+              onPress={() => router.push('/find')}
+            />
+          ) : null}
           {f.can('translation.use') ? (
             <Button
               kind="secondary"

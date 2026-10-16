@@ -59,6 +59,8 @@ const VERBS: Record<string, string> = {
   personal: 'people',
   reports: 'reports',
   reportes: 'reports',
+  report: 'report',
+  reporte: 'report',
   resources: 'resources',
   recursos: 'resources',
   contacts: 'contacts',
@@ -165,6 +167,8 @@ const KEYS = new Set([
   'hasta',
   'request',
   'solicitud',
+  'evidence',
+  'evidencia',
 ]);
 
 /** CMD-14: availability as the roster records it. */
@@ -275,6 +279,24 @@ const CONTACT_TYPES: Record<string, string> = {
   liaison: 'liaison',
   enlace: 'liaison',
 };
+
+/** CMD-15: what a reviewer does to one report, in English and Spanish. */
+const REPORT_ACTIONS: Record<string, 'claim' | 'approve' | 'reject' | 'ask'> = {
+  review: 'claim',
+  revisar: 'claim',
+  claim: 'claim',
+  tomar: 'claim',
+  approve: 'approve',
+  aprobar: 'approve',
+  reject: 'reject',
+  rechazar: 'reject',
+  ask: 'ask',
+  info: 'ask',
+  preguntar: 'ask',
+  pedir_informacion: 'ask',
+};
+const REPORT_USAGE =
+  '/report <reference code> review | approve <why> | reject <why> | ask <question>';
 
 /** CMD-16: the exports the window can prepare. */
 const EXPORT_IDA = new Set(['ida', 'ida_package', 'paquete_ida']);
@@ -567,6 +589,32 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
           );
       }
       return ok('reports.find', args);
+    }
+
+    // CMD-15: take a report into review, decide it, or ask the resident; never two at once.
+    case 'report': {
+      const [ref, sub, ...rest] = words;
+      if (!ref) return usage('Which report? Give its reference code.', REPORT_USAGE);
+      if (!sub) return ok('reports.find', { reference: ref });
+      const act = REPORT_ACTIONS[norm(sub)];
+      if (!act) return usage(`"${sub}" is not something a reviewer does here.`, REPORT_USAGE);
+      const text = (pairs['reason'] ?? pairs['text'] ?? rest.join(' ')).trim();
+      const evidence = (pairs['evidence'] ?? pairs['evidencia'] ?? '')
+        .split(',')
+        .map((e) => e.trim())
+        .filter(Boolean);
+      if (act === 'claim') return ok('report.claim', {}, ref, 'report');
+      if (act === 'ask') {
+        if (!text) return usage('What should the resident be asked?', REPORT_USAGE);
+        return ok('report.ask', { message: text }, ref, 'report');
+      }
+      if (text.length < 3) return usage('Say why, for the record.', REPORT_USAGE);
+      return ok(
+        act === 'approve' ? 'report.approve' : 'report.reject',
+        { reason: text, evidenceRefs: evidence },
+        ref,
+        'report',
+      );
     }
 
     case 'resources': {

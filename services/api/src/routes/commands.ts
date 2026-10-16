@@ -443,6 +443,16 @@ const RECORDS: Record<
     },
     noun: 'issued report',
   },
+  // CMD-15: a resident's report by its reference code, as the review queue lists it.
+  report: {
+    list: (ref) =>
+      /^[a-z0-9-]{6,12}$/i.test(ref)
+        ? `/reports?limit=10&reference=${encodeURIComponent(ref)}`
+        : null,
+    one: (id) => `/reports/${id}`,
+    label: (r) =>
+      `${str(r['referenceCode'])} (${str(r['reviewState']).replace(/_/g, ' ')}, ${str(r['verificationLevel']).replace(/_/g, ' ')})`,
+  },
 };
 
 /** CMD-08, RULE-18: names become ids among the records the person may see; more than one asks. */

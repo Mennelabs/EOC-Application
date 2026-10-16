@@ -216,7 +216,7 @@ export const COMMAND_EVAL_CATALOG: { usage: string; title: string }[] = [
     usage: '/resource <slug or title> expires <YYYY-MM-DD [HH:MM]|none>',
     title: "Set a resource's expiry",
   },
-  { usage: '/message <team> <text>', title: 'Message a team in the field' },
+  { usage: '/message <team> <text> [mission:<number>]', title: 'Message a team in the field' },
   { usage: '/report <reference code> review', title: 'Take a report into review' },
   {
     usage: '/report <reference code> approve <why> [evidence:<ref>,<ref>]',

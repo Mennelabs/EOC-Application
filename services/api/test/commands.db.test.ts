@@ -1830,4 +1830,111 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
     );
     expect(today.find((t) => t.outcome === 'clarify')?.n).toBeGreaterThan(0);
   });
+
+  it('AC-C07, CMD-24: a message then its note on a mission; when the note fails the message stands, the answer names both, and nothing is said to be rolled back', async () => {
+    subjects['dispatch'] = person('agency_dispatcher');
+    subjects['safety'] = person('safety_officer');
+    await phases([1, 2, 3, 4]);
+    const m = await call('calltaker', 'POST', '/missions', {
+      eventId,
+      kind: 'delivery',
+      source: 'call',
+      priority: 'normal',
+      urgency: 'soon',
+      summary: 'Exercise: water to the library.',
+      location: {
+        line1: '44 Exercise Way',
+        city: 'Harmon City',
+        postal: '63002',
+        position: { lat: 38.792, lon: -90.872 },
+        state: 'approximate',
+      },
+    });
+    expect(m.status, JSON.stringify(m.body)).toBe(201);
+    const mission = { id: m.body['id'] as string, ref: m.body['reference'] as string };
+    const team = await withTenant(dbWorker, { tenantId: county }, async (trx) => {
+      const t = (
+        await trx
+          .insertInto('cg.team')
+          .values({ tenant_id: county, key: `two-${run}`, name: `Exercise Birch Crew ${run}` })
+          .returning('id')
+          .executeTakeFirstOrThrow()
+      ).id;
+      const p = (
+        await trx
+          .insertInto('cg.personnel')
+          .values({ tenant_id: county, name: `Exercise Cy ${run}` })
+          .returning('id')
+          .executeTakeFirstOrThrow()
+      ).id;
+      await trx
+        .insertInto('cg.team_member')
+        .values({ tenant_id: county, team_id: t, personnel_id: p })
+        .execute();
+      return t;
+    });
+    const line = (text: string) =>
+      `/message to:"Exercise Birch Crew ${run}" ${text} mission:${mission.ref}`;
+    const reason = { 'x-confirm': 'true', 'x-reason': 'Exercise: keep the crew informed' };
+    const notes = () =>
+      dbWorker
+        .selectFrom('cg.mission_event')
+        .select('id')
+        .where('mission_id', '=', mission.id)
+        .where('kind', '=', 'narrative')
+        .execute();
+
+    // A role that may message but not write on a mission is told before anything is sent.
+    const safety = await command('safety', line('Exercise: the road is open.'));
+    expect(safety.status, safety.message).toBe('denied');
+    expect(safety.message).toContain('the note on the mission');
+
+    // Both steps done.
+    const both = await command('dispatch', line('Exercise: the road is open.'));
+    expect(both.status, both.message).toBe('awaiting_confirmation');
+    expect(both.plan?.description).toContain(`Then note it on mission ${mission.ref}.`);
+    expect(both.plan?.target?.id).toBe(team);
+    const before = (await notes()).length;
+    const done = await confirm('dispatch', both, reason);
+    expect(done.body['status'], JSON.stringify(done.body)).toBe('succeeded');
+    expect(done.body['message']).toContain('It is noted on the mission timeline.');
+    expect((await notes()).length).toBe(before + 1);
+
+    // The mission is locked after the plan: the message goes, the note does not.
+    const second = await command('dispatch', line('Exercise: bring two more pallets.'));
+    expect(second.status, second.message).toBe('awaiting_confirmation');
+    const locked = await call('admin', 'POST', `/missions/${mission.id}/lock`, {
+      reason: 'Exercise: editing the call',
+    });
+    expect(locked.status, JSON.stringify(locked.body)).toBe(200);
+    try {
+      const partly = await confirm('dispatch', second, reason);
+      expect(partly.body['status'], JSON.stringify(partly.body)).toBe('partially_succeeded');
+      const said = String(partly.body['message']);
+      expect(said).toMatch(/^Sent to 1 person\./);
+      expect(said).toContain(
+        'Not done: the note on the mission (This mission is locked by another person).',
+      );
+      expect(said).toContain('nothing was rolled back');
+      // The only word about rolling back is that nothing was.
+      expect(said.replace('nothing was rolled back', '')).not.toMatch(
+        /rolled back|undone|reverted/i,
+      );
+      const result = partly.body['result'] as Execution['result'] & {
+        failures?: { id: string; label: string }[];
+      };
+      expect(result?.failures?.map((f) => f.label)).toEqual(['the note on the mission']);
+      const sent = await dbWorker
+        .selectFrom('cg.field_message')
+        .select('recipient_count')
+        .where('id', '=', result!.records[0]!.id)
+        .executeTakeFirstOrThrow();
+      expect(sent.recipient_count).toBe(1);
+      expect((await notes()).length).toBe(before + 1);
+      expect((await stored(second.id!)).state).toBe('partially_succeeded');
+    } finally {
+      await call('admin', 'DELETE', `/missions/${mission.id}/lock`, {});
+      await phases([1, 2, 3]);
+    }
+  });
 });

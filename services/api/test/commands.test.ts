@@ -363,6 +363,12 @@ describe('shorthand', () => {
       ['mission.draft', 1, 'none', 'draft'],
       ['team.message', 4, 'full_review', 'change'],
     ]);
+    // AC-C07: with mission:, the message is then noted on the mission.
+    expect(parse('/message CC-1 Water at the school is safe mission:M-00012')).toMatchObject({
+      command: 'team.message',
+      args: { text: 'Water at the school is safe', mission: 'M-00012' },
+      ref: 'CC-1',
+    });
   });
 
   it('CMD-15: a reviewer takes a report into review, decides it with a reason and evidence, or asks the resident', () => {

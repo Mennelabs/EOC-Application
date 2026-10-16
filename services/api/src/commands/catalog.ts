@@ -134,6 +134,19 @@ export interface CommandSpec<A = Record<string, unknown>> {
    */
   freeText?: string[];
   request(args: A, target: Target | null, ctx: OpContext): OpRequest;
+  /**
+   * AC-C07: a second operation, run once the first has succeeded (a message, then its note on
+   * a mission). The person must hold its action too. When it fails the execution is partly
+   * done: the answer names what the first step did, and nothing is rolled back or said to be.
+   */
+  then?: {
+    action: string;
+    /** How the answer names the second step when it was not done. */
+    label: string;
+    when(args: A): boolean;
+    request(args: A, target: Target | null, first: Verified): OpRequest;
+    verify(response: unknown): Verified;
+  };
   /** AC-C08: what "undo" answers when the change cannot be taken back, in this command's words. */
   undoUnavailable?: string;
   /** Undo from what the plan targeted and what the operation verified; never from free text. */
@@ -1510,16 +1523,43 @@ export const CATALOG = [
 
   // AC-C08, Section 30.2 phase 4 (outbound messages): a message to a team's phones, reviewed
   // with a reason. It is answered as sent, never as delivered: delivery is each phone's receipt.
-  define<{ text: string }>({
+  define<{ text: string; mission?: string | undefined; missionId?: string | undefined }>({
     name: 'team.message',
     version: 1,
     phase: 4,
     action: 'field_message.send',
     kind: 'change',
     title: 'Message a team in the field',
-    usage: '/message <team> <text>',
-    args: z.object({ text: z.string().trim().min(1).max(1000) }),
+    usage: '/message <team> <text> [mission:<number>]',
+    args: z.object({
+      text: z.string().trim().min(1).max(1000),
+      mission: z.string().trim().min(1).max(40).optional(),
+      missionId: z.uuid().optional(),
+    }),
     target: 'team',
+    // AC-C07: with mission:, the message is then noted on the mission's timeline.
+    also: { arg: 'mission', idArg: 'missionId', kind: 'mission' },
+    then: {
+      action: 'mission.narrative',
+      label: 'the note on the mission',
+      when: (a) => Boolean(a.missionId),
+      request: (a, t, first) => ({
+        method: 'POST',
+        path: `/missions/${a.missionId ?? ''}/narratives`,
+        body: {
+          role: 'dispatcher',
+          body: `Field message ${first.records[0]?.id ?? ''} sent to ${t?.label ?? 'the team'} from the command window.`,
+        },
+      }),
+      verify: (r) => {
+        const e = (r ?? {}) as Row;
+        return {
+          state: 'saved',
+          summary: 'It is noted on the mission timeline.',
+          records: e['id'] ? [{ kind: 'mission_event', id: str(e['id']) }] : [],
+        };
+      },
+    },
     needsEvent: true,
     confirmation: 'full_review',
     reversal: 'compensating',
@@ -1538,8 +1578,8 @@ export const CATALOG = [
         audience: { kind: 'team', teamId: t!.id },
       },
     }),
-    describe: (_a, t) =>
-      `Send what you typed to ${t?.label ?? 'the team'}. It shows as delivered only when their phones confirm it.`,
+    describe: (a, t) =>
+      `Send what you typed to ${t?.label ?? 'the team'}. It shows as delivered only when their phones confirm it.${a.mission ? ` Then note it on mission ${a.mission}.` : ''}`,
     verify: (r) => {
       const d = (r ?? {}) as Row;
       const n = typeof d['recipientCount'] === 'number' ? d['recipientCount'] : 0;

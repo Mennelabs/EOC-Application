@@ -180,6 +180,8 @@ const KEYS = new Set([
   'evidencia',
   'summary',
   'resumen',
+  'mission',
+  'mision',
 ]);
 
 /** CMD-14: availability as the roster records it. */
@@ -729,8 +731,12 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
       const to = (pairs['to'] ?? words[0] ?? '').trim();
       const text = (pairs['text'] ?? (pairs['to'] ? words : words.slice(1)).join(' ')).trim();
       if (!to || !text)
-        return usage('Which team, and what should it say?', '/message <team> <text>');
-      return ok('team.message', { text }, to, 'team');
+        return usage(
+          'Which team, and what should it say?',
+          '/message <team> <text> [mission:<number>]',
+        );
+      const mission = (pairs['mission'] ?? pairs['mision'] ?? '').trim();
+      return ok('team.message', mission ? { text, mission } : { text }, to, 'team');
     }
 
     // CMD-15: take a report into review, decide it, or ask the resident; never two at once.

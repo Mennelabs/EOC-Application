@@ -668,9 +668,9 @@
   ],
   "DSP-01": [
     "partial",
-    "GET /dispatch/board (teams by status with positions, queue, active work, hazards, open sites, alerts; routes/dispatch.ts); screens/dispatch.tsx list, filters and optional map",
-    "services/api/test/dispatch-sync.db.test.ts (DSP-01/02/03), tests/e2e/console-l4.spec.ts (board with axe); services/api/test/dispatch-sync.db.test.ts (DSP-01, DSP-03, MIS-01: an open need waits at about a block, becomes a mission and leaves the needs; a second mission refused, a replay not; closures by the latest report per road; a partner sees no county needs), tests/e2e/console-l4.spec.ts (a resident need on the board, made a mission, with axe)",
-    "Open needs with no mission and road closures are on the board as lists (layer 7 follow-up, L45); they are not drawn on the board map yet, where every layer has its list."
+    "GET /dispatch/board (teams by status with positions, queue, active work, hazards, open sites, alerts; routes/dispatch.ts); screens/dispatch.tsx list, filters and optional map; open needs (at about a block), road closures and field reports are lists and map layers too, each layer with its own toggle and words on every marker",
+    "services/api/test/dispatch-sync.db.test.ts (DSP-01/02/03), tests/e2e/console-l4.spec.ts (board with axe); services/api/test/dispatch-sync.db.test.ts (DSP-01, DSP-03, MIS-01: an open need waits at about a block, becomes a mission and leaves the needs; a second mission refused, a replay not; closures by the latest report per road; a partner sees no county needs), tests/e2e/console-l4.spec.ts (a resident need on the board, made a mission, with axe), tests/e2e/console-l4.spec.ts (DSP-01: the map's needs, road closures and field reports layers, toggled, with axe)",
+    "Field routes show as their mission's point on the work layer; the outline of a route's parcel area is not drawn."
   ],
   "DSP-02": [
     "pass",

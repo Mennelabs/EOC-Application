@@ -434,7 +434,9 @@ function AlertTakeover({
 function BoardMap({ board }: { board: Board }) {
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<ConsoleMap | null>(null);
-  const [layers, setLayers] = useState<Set<string>>(new Set(['teams', 'work', 'hazards', 'sites']));
+  const [layers, setLayers] = useState<Set<string>>(
+    new Set(['teams', 'work', 'needs', 'hazards', 'closures', 'sites', 'reports']),
+  );
   const [picked, setPicked] = useState<string | null>(null);
   const points = useMemo<MapPoint[]>(() => {
     const out: MapPoint[] = [];
@@ -492,6 +494,46 @@ function BoardMap({ board }: { board: Board }) {
           tone: 'info',
           layer: 'sites',
         });
+    // DSP-01: open needs (at about a block), road closures and field reports, each also a list.
+    for (const n of board.needs ?? [])
+      if (n.position)
+        out.push({
+          id: n.id,
+          lat: n.position.lat,
+          lon: n.position.lon,
+          label: `Need: ${label(n.category)}${n.referenceCode ? ` (${n.referenceCode})` : ''}, no mission yet`,
+          mark: 'N',
+          shape: 'diamond',
+          tone: 'warn',
+          layer: 'needs',
+        });
+    for (const c of board.closures ?? [])
+      if (c.position)
+        out.push({
+          id: c.id,
+          lat: c.position.lat,
+          lon: c.position.lon,
+          label: `Road ${c.name}: ${label(c.status)}`,
+          mark: 'X',
+          shape: 'square',
+          tone: 'danger',
+          layer: 'closures',
+        });
+    for (const r of board.fieldReports ?? [])
+      if (r.position)
+        out.push({
+          id: r.id,
+          lat: r.position.lat,
+          lon: r.position.lon,
+          label:
+            r.category === 'site_status'
+              ? `Field report: ${r.siteName ?? 'a site'} seen ${label(r.siteStatus ?? 'other')}`
+              : `Field report: ${label(r.resourceKind ?? 'resource')} seen${r.place ? ` at ${r.place}` : ''}`,
+          mark: 'R',
+          shape: 'diamond',
+          tone: 'info',
+          layer: 'reports',
+        });
     return out;
   }, [board]);
   useEffect(() => {
@@ -526,8 +568,11 @@ function BoardMap({ board }: { board: Board }) {
         {[
           ['teams', 'Teams'],
           ['work', 'Work'],
+          ['needs', 'Needs'],
           ['hazards', 'Hazards'],
+          ['closures', 'Road closures'],
           ['sites', 'Sites'],
+          ['reports', 'Field reports'],
         ].map(([k, l]) => (
           <button key={k} type="button" aria-pressed={layers.has(k!)} onClick={() => toggle(k!)}>
             {l}
@@ -539,7 +584,7 @@ function BoardMap({ board }: { board: Board }) {
         ref={box}
         className="map"
         role="region"
-        aria-label="Map of teams, work, hazards and sites. The lists below show the same."
+        aria-label="Map of teams, work, needs, hazards, road closures, sites and field reports. The lists below show the same."
       />
     </section>
   );

@@ -198,6 +198,23 @@ test.describe('layer 4 console', () => {
       timeout: 30_000,
     });
     await expectNoViolations(page);
+    // DSP-01: needs, closures and field reports are map layers too, each with its own toggle.
+    await page.getByRole('button', { name: 'Show map' }).click();
+    await expect(
+      page.getByRole('region', {
+        name: 'Map of teams, work, needs, hazards, road closures, sites and field reports. The lists below show the same.',
+      }),
+    ).toBeVisible();
+    const mapLayers = page.getByRole('group', { name: 'Map layers' });
+    for (const name of ['Needs', 'Road closures', 'Field reports'])
+      await expect(mapLayers.getByRole('button', { name })).toHaveAttribute('aria-pressed', 'true');
+    await mapLayers.getByRole('button', { name: 'Needs' }).click();
+    await expect(mapLayers.getByRole('button', { name: 'Needs' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    await expectNoViolations(page, { mapMarkers: true });
+    await page.getByRole('button', { name: 'Hide map' }).click();
     await fieldReports
       .getByRole('row', { name: new RegExp(place) })
       .getByRole('button', { name: 'Mark noted: water' })

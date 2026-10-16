@@ -11,6 +11,7 @@ import { sql } from 'kysely';
 import { diffForAudit } from '@cg/audit';
 import { errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
+import { configOf, draftTemplateMessages } from './event-templates.ts';
 import {
   classifierFor,
   enqueueOutbox,
@@ -35,6 +36,8 @@ const eventOut = z.object({
   openedAt: z.iso.datetime().nullable(),
   closedAt: z.iso.datetime().nullable(),
   closeReason: z.string().nullable(),
+  /** CON-02: on opening, how many of the template's public messages were drafted into Resources. */
+  draftedMessages: z.number().int().optional(),
 });
 
 type EventRow = {
@@ -211,11 +214,17 @@ export const eventRoutes: FastifyPluginAsync = async (raw) => {
       config: { idempotent: true },
       schema: {
         tags: ['events'],
-        body: z.object({
-          name: z.string().min(1).max(200),
-          hazardType: z.string().min(1).max(60),
-          templateId: z.uuid().optional(),
-        }),
+        body: z
+          .object({
+            name: z.string().min(1).max(200),
+            /** Taken from the template when one is named (CON-02). */
+            hazardType: z.string().min(1).max(60).optional(),
+            templateId: z.uuid().optional(),
+          })
+          .refine((b) => b.hazardType || b.templateId, {
+            message: 'name a hazard or a template',
+            path: ['hazardType'],
+          }),
         response: { 201: eventOut },
       },
     },
@@ -224,13 +233,22 @@ export const eventRoutes: FastifyPluginAsync = async (raw) => {
       if (s.kind !== 'account') throw errors.unauthorized();
       await request.authorize('event.create', { type: 'event', tenantId: s.tenantId });
       const row = await request.tx(async (trx) => {
+        const template = request.body.templateId
+          ? await trx
+              .selectFrom('cg.event_template')
+              .select(['id', 'hazard_type'])
+              .where('id', '=', request.body.templateId)
+              .executeTakeFirst()
+          : undefined;
+        if (request.body.templateId && !template)
+          throw errors.validation([{ name: 'templateId', message: 'no such template' }]);
         const inserted = await trx
           .insertInto('cg.event')
           .values({
             tenant_id: s.tenantId,
-            template_id: request.body.templateId ?? null,
+            template_id: template?.id ?? null,
             name: request.body.name,
-            hazard_type: request.body.hazardType,
+            hazard_type: request.body.hazardType ?? template!.hazard_type,
             created_by: s.accountId,
             updated_by: s.accountId,
           })
@@ -380,7 +398,11 @@ export const eventRoutes: FastifyPluginAsync = async (raw) => {
       schema: {
         tags: ['events'],
         params: uuidParam,
-        body: z.object({ intakeSlug: slug, intakeKeywords: z.array(keyword).min(1).max(6) }),
+        body: z.object({
+          intakeSlug: slug,
+          /** From the event's template when not given (CON-02). */
+          intakeKeywords: z.array(keyword).min(1).max(6).optional(),
+        }),
         response: { 200: eventOut },
       },
     },
@@ -396,7 +418,28 @@ export const eventRoutes: FastifyPluginAsync = async (raw) => {
       );
       const { reason } = request.confirmation();
       if (current.status !== 'draft') throw errors.conflict(toEvent(current));
+      let drafted = 0;
       const updated = await request.tx(async (trx) => {
+        // CON-02: the template presets the keywords and drafts its public messages.
+        const template = current.template_id
+          ? configOf(
+              (
+                await trx
+                  .selectFrom('cg.event_template')
+                  .select('config')
+                  .where('id', '=', current.template_id)
+                  .executeTakeFirst()
+              )?.config,
+            )
+          : null;
+        const keywords = request.body.intakeKeywords ?? template?.keywords;
+        if (!keywords?.length)
+          throw errors.validation([
+            {
+              name: 'intakeKeywords',
+              message: 'name at least one keyword; this event has no template',
+            },
+          ]);
         const row = assertUpdated(
           await trx
             .updateTable('cg.event')
@@ -404,7 +447,7 @@ export const eventRoutes: FastifyPluginAsync = async (raw) => {
               status: 'active',
               opened_at: new Date(),
               intake_slug: request.body.intakeSlug,
-              intake_keywords: request.body.intakeKeywords,
+              intake_keywords: keywords,
               updated_by: s.accountId,
             })
             .where('id', '=', current.id)
@@ -428,9 +471,19 @@ export const eventRoutes: FastifyPluginAsync = async (raw) => {
           { eventId: row.id },
           request.executionId,
         );
+        if (template?.messages.length)
+          drafted = (
+            await draftTemplateMessages(
+              trx,
+              s.tenantId,
+              s.accountId,
+              { id: row.id, intakeSlug: request.body.intakeSlug },
+              template,
+            )
+          ).length;
         return row;
       });
-      return toEvent(updated);
+      return { ...toEvent(updated), ...(current.template_id ? { draftedMessages: drafted } : {}) };
     },
   );
 

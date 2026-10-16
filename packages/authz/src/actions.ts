@@ -57,6 +57,8 @@ export const actions = {
 
   'event.read': a('read', 'event', 'Read events'),
   'event.create': a('write', 'event', 'Create an event from a template'),
+  // CON-02: the county's event templates (keywords, map layers, public messages per hazard).
+  'event.template_edit': a('write', 'event', "Add or change the county's event templates"),
   'event.update': a('write', 'event', 'Update event details and footprint'),
   'event.check_in_code': a(
     'write',

@@ -325,10 +325,10 @@
     ""
   ],
   "CON-02": [
-    "partial",
-    "per-event intake slug, keywords and graph version (routes/events.ts /intake, apps/web-console/src/screens/intake.tsx)",
-    "services/api/test/reports.db.test.ts (event intake facts), tests/e2e/console.spec.ts (intake setup with the QR code)",
-    "The event template table exists and an event stores its template, but nothing applies a template's presets (map layers, public messages, keywords); the hazard type chooses the intake branches. No test times opening an event in under 5 minutes."
+    "pass",
+    "per-event intake slug, keywords and graph version (routes/events.ts /intake, apps/web-console/src/screens/intake.tsx); event templates by hazard (packages/intake/src/event-templates.ts: tornado, flood, winter storm, wildfire, each with the docs/06 keywords, the situation map's first layers and two safety messages in English and Spanish; routes/event-templates.ts: GET /event-templates, POST /event-templates/defaults, PUT /event-templates/:id, GET /events/:id/template): an event made from a template takes its hazard, which chooses the intake questions; opening it with only an intake link takes the template's keywords and drafts its messages into Resources as unpublished guidance for the public information officer; the situation map opens on the template's layers; the Events screen chooses a template, pre-fills the intake link and keywords, and adds the shipped templates when the county has none; the seed installs them (plan reading 34)",
+    "services/api/test/reports.db.test.ts (event intake facts), tests/e2e/console.spec.ts (intake setup with the QR code); services/api/test/event-templates.db.test.ts (CON-02: the shipped four added once, changed with docs/06 keywords only; a flood event opens with only its link, keywords preset, two messages drafted in English and Spanish and nothing published, its map layers named, timed under five minutes; no template means keywords are still asked; the volunteer refused), tests/e2e/console-screens.spec.ts (CON-02: a director creates a flood event from its template and publishes intake within five minutes, then the situation map opens on its layers, with axe on desktop and phone)",
+    "A template is changed through PUT /event-templates/:id; its editing screen comes with the other ADM-01 editors."
   ],
   "CON-05": [
     "pass",

@@ -535,4 +535,73 @@ test.describe('every console screen, one by one', () => {
     await expectNoViolations(page);
     await expectReflow(page);
   });
+
+  test('CON-02: a director makes a flood event from its template and publishes intake within five minutes; keywords preset, messages drafted, the map opens on its layers; axe finds nothing', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'county_em_director',
+      `Director ${tag}`,
+      `scr-dir-${testInfo.project.name}`,
+    );
+    const started = Date.now();
+    await open(page, 'events', 'Events');
+    const add = page.getByRole('button', { name: 'Add the shipped event templates' });
+    if (await add.isVisible().catch(() => false)) {
+      await add.click();
+      await expect(page.getByText('Created the shipped event templates.')).toBeVisible();
+    }
+    const name = `Exercise flood ${tag} ${testInfo.project.name}`;
+    await page.getByLabel('Name', { exact: true }).fill(name);
+    await page.getByLabel('Template').selectOption({ label: 'Flood' });
+    await expect(page.getByLabel('Hazard')).toHaveValue('flood');
+    await expect(page.getByLabel('Hazard')).toBeDisabled();
+    await expectNoViolations(page);
+    await page.getByRole('button', { name: 'Create draft' }).click();
+    await expect(page.getByText(`Created ${name} as a draft.`)).toBeVisible();
+    await page.getByRole('button', { name: `Open ${name}…` }).click();
+    await expect(page.getByLabel('Intake link')).toHaveValue(
+      `exercise-flood-${tag}-${testInfo.project.name}`,
+    );
+    await expect(page.getByLabel('SMS keywords')).toHaveValue(/DAMAGE/);
+    await page.getByRole('button', { name: 'Open event' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Reason').fill('Exercise: river flood');
+    await dialog.getByRole('button', { name: 'Confirm' }).click();
+    await expect(page.getByText('Event opened. Intake is live.')).toBeVisible();
+    await expect(page.getByText(/2 public safety messages were drafted/)).toBeVisible();
+    expect(Date.now() - started).toBeLessThan(5 * 60_000);
+    await expectNoViolations(page);
+
+    await open(page, 'situation', 'Situation map');
+    await page.getByLabel('Event').selectOption({ label: name });
+    await expect(
+      page.getByText('Layers first shown are those of the Flood template.'),
+    ).toBeVisible();
+    const layers = page.getByRole('group', { name: 'Layers' });
+    await expect(layers.getByRole('button', { name: /^Outages/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(layers.getByRole('button', { name: /^Teams/ })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    await expectNoViolations(page);
+    // Leave the exercise county as it was: the other journeys default to its open events.
+    await open(page, 'events', 'Events');
+    await page
+      .getByRole('row', { name: new RegExp(name) })
+      .getByRole('button', { name: 'Close' })
+      .click();
+    const closing = page.getByRole('dialog');
+    await expect(closing).toBeVisible();
+    await closing.getByLabel('Reason').fill('Exercise over');
+    await closing.getByRole('button', { name: 'Confirm' }).click();
+    await expect(page.getByText(`Closed ${name}.`)).toBeVisible();
+  });
 });

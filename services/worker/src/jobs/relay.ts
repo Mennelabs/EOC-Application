@@ -12,6 +12,7 @@ import { publishConfirmed, TOPOLOGY } from '@cg/adapters';
 import { describeMessage, topicHandlers } from './handlers.ts';
 import { fileSubmission } from './intake.ts';
 import type { JobContext, OutboxMessage } from './types.ts';
+import { queueMessages } from '../metrics.ts';
 
 const QUEUE = TOPOLOGY.queues[1]; // jobs.default
 const INTAKE_QUEUE = TOPOLOGY.queues[0]; // intake.submissions
@@ -96,16 +97,19 @@ export async function consume(ctx: JobContext, channel: ConfirmChannel): Promise
         const handler = topicHandlers[msg.topic];
         if (!handler) {
           ctx.log.warn({ topic: msg.topic }, 'no handler for topic; dropping');
+          queueMessages.inc({ topic: msg.topic, result: 'dropped' });
           settle(channel, raw, 'ack', ctx.log);
           return;
         }
         await handler(ctx, msg);
+        queueMessages.inc({ topic: msg.topic, result: 'ok' });
         settle(channel, raw, 'ack', ctx.log);
       } catch (err) {
         ctx.log.error(
           { err, msg: msg ? describeMessage(msg) : 'unparseable' },
           'job failed; requeue',
         );
+        queueMessages.inc({ topic: msg?.topic ?? 'unparseable', result: 'requeued' });
         // requeue=true → the broker's x-delivery-limit dead-letters it after 10 tries.
         settle(channel, raw, 'requeue', ctx.log);
       }

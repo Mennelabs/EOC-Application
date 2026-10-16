@@ -144,6 +144,17 @@ test.describe('dynamic security checks (DAST)', () => {
     }
   });
 
+  test("NFR-10, SEC-09: the services' metrics are never served through the gateway", async ({
+    request,
+  }) => {
+    for (const path of ['/metrics', '/api/metrics', '/api/v1/metrics', '/api/public/metrics']) {
+      const res = await request.get(path);
+      const body = await res.text();
+      expect(body, path).not.toContain('# TYPE');
+      expect(body, path).not.toContain('cg_http_requests_total');
+    }
+  });
+
   test('SEC-09: TRACE is not served and a path traversal finds nothing', async ({ request }) => {
     for (const path of ['/', '/api/v1/missions', '/api/public/help/county']) {
       const res = await request.fetch(path, { method: 'TRACE' });

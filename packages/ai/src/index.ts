@@ -63,6 +63,7 @@ export {
 } from './evaluation/cases.ts';
 export {
   callAi,
+  observeAiOutcomes,
   recordAiOutput,
   recordHumanAction,
   type AiCall,

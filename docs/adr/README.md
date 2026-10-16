@@ -26,7 +26,7 @@ One record per technology choice (SCL-15). Use `0000-template.md` for new ones. 
 | [0020](0020-gateway-caddy.md)                     | Caddy as the local gateway (TLS, routing, security headers, static tiles)                                     |
 | [0021](0021-cjis-enclave-isolation.md)            | CJIS enclave as a separate Compose project with its own network, data, keys and identity                      |
 | [0022](0022-realtime-sse.md)                      | Server-Sent Events for live console updates                                                                   |
-| [0023](0023-observability.md)                     | Structured logs with pino (classification-aware redaction), OpenTelemetry later                               |
+| [0023](0023-observability.md)                     | Structured logs with pino, metrics in the Prometheus format, alert rules with named owners                    |
 | [0024](0024-question-graph-engine.md)             | Intake as a versioned question graph with one deterministic engine for every channel                          |
 | [0025](0025-ai-interfaces-fake-provider.md)       | Pluggable AI behind four interfaces, a deterministic fake provider, an evaluation gate                        |
 | [0026](0026-filing-submissions.md)                | Filing submissions with one idempotent function behind a queue consumer and a sweep                           |

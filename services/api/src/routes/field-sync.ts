@@ -22,6 +22,7 @@ import { sql, type Transaction } from 'kysely';
 import { z } from 'zod';
 import type { Database } from '@cg/db';
 import { ApiError, errors } from '../errors.ts';
+import { fieldCommandResults } from '../plugins/metrics.ts';
 import { enqueueOutbox, iso, uuidParam } from './helpers.ts';
 
 type Trx = Transaction<Database>;
@@ -651,6 +652,14 @@ export const fieldSyncRoutes =
           });
           results.push(outcome);
         }
+        // NFR-10: how phones' commands fare, by kind and result (no ids, no content);
+        // a kind the table does not know is counted as "unknown", so a phone cannot mint labels.
+        b.commands.forEach((c, i) =>
+          fieldCommandResults.inc({
+            kind: Object.hasOwn(FIELD_COMMANDS, c.kind) ? c.kind : 'unknown',
+            result: results[i]?.result ?? 'rejected',
+          }),
+        );
         return { asOf: new Date().toISOString(), results, device };
       },
     );

@@ -6,6 +6,7 @@
  */
 import type { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
 import { hasZodFastifySchemaValidationErrors } from 'fastify-type-provider-zod';
+import { apiErrors } from './plugins/metrics.ts';
 
 export interface FieldError {
   name: string;
@@ -72,6 +73,7 @@ export function errorHandler(
   reply: FastifyReply,
 ): void {
   if (error instanceof ApiError) {
+    apiErrors.inc({ code: error.code });
     reply.code(error.status).send({
       code: error.code,
       message: error.message,
@@ -83,6 +85,7 @@ export function errorHandler(
     return;
   }
   if (hasZodFastifySchemaValidationErrors(error)) {
+    apiErrors.inc({ code: 'validation_failed' });
     reply.code(400).send({
       code: 'validation_failed',
       message: 'Some values need attention.',
@@ -102,6 +105,7 @@ export function errorHandler(
   const status =
     'statusCode' in error && typeof error.statusCode === 'number' ? error.statusCode : 500;
   if (status >= 500) request.log.error({ err: error }, 'unhandled error');
+  apiErrors.inc({ code: status >= 500 ? 'internal_error' : 'error' });
   reply.code(status).send({
     code: status >= 500 ? 'internal_error' : ('code' in error && error.code) || 'error',
     message:

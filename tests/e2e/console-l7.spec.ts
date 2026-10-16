@@ -655,4 +655,96 @@ test.describe('layer 7 console: the command window', () => {
     await expectNoViolations(page);
     if (testInfo.project.name === 'phone') await expectReflow(page);
   });
+
+  test("FL-02: mass care finds a survivor's report by address and name; the code shows once they confirm", async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    // A resident's report, sent without the worker: they have no code with them later.
+    const graph = (await (await fetch(`${BASE}/api/public/intake/county/westwind`)).json()) as {
+      graph: { key: string; version: number };
+    };
+    const executionId = crypto.randomUUID();
+    const n = 1000 + (Date.now() % 8000);
+    const who = `Ines ${tag}${testInfo.project.name}`;
+    const submitted = await fetch(`${BASE}/api/public/intake/county/westwind/submissions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'idempotency-key': executionId },
+      body: JSON.stringify({
+        executionId,
+        channel: 'web',
+        language: 'en',
+        graphKey: graph.graph.key,
+        graphVersion: graph.graph.version,
+        relationship: 'own_home',
+        answers: {
+          danger_now: { kind: 'value', value: 'no' },
+          relationship: { kind: 'value', value: 'own_home' },
+          address: {
+            kind: 'value',
+            value: { line1: `${n} Survivor Ln`, city: 'Westwind', postal: '63002' },
+          },
+          home_type: { kind: 'value', value: 'house' },
+          cause: { kind: 'value', value: 'wind_tornado' },
+          damage_types: { kind: 'value', value: ['roof'] },
+          roof_state: { kind: 'value', value: 'large_hole' },
+          habitable: { kind: 'value', value: 'no' },
+          tonight: { kind: 'value', value: 'no' },
+          insurance: { kind: 'unknown' },
+          contact_name: { kind: 'value', value: `Exercise ${who}` },
+          contact: { kind: 'value', value: { phone: `314557${n}`, preferred: 'text' } },
+        },
+        needs: [],
+        consent: {},
+      }),
+    });
+    expect(submitted.status).toBe(202);
+    const code = ((await submitted.json()) as { referenceCode: string }).referenceCode;
+
+    await onboard(
+      page,
+      context,
+      'mass_care_coordinator',
+      `Mass care lookup ${tag}`,
+      `l7f-${testInfo.project.name}`,
+    );
+    await page.goto('/console/find-survivor');
+    await expect(
+      page.getByRole('heading', { level: 1, name: "Find a survivor's record" }),
+    ).toBeVisible();
+    await expectNoViolations(page);
+    if (testInfo.project.name === 'phone') await expectReflow(page);
+
+    // By phone: the same answer whether or not the number is on file, and a wrong code is refused.
+    await page.getByLabel('Their phone number').fill(`314 557 ${n}`);
+    await page.getByRole('button', { name: 'Text them a code' }).click();
+    await expect(
+      page.getByText(/If that number is on a report, the survivor gets a text/),
+    ).toBeVisible();
+    await page.getByLabel('Code they read to you').fill('000000');
+    await page.getByRole('button', { name: 'Check the code' }).click();
+    await expect(page.getByText(/That code did not match/)).toBeVisible();
+    await expectNoViolations(page);
+
+    // By address and name: only the day and how it came in, until they say it is theirs.
+    await page.getByRole('radio', { name: /By address and name/ }).check();
+    await page.getByLabel('Street address').fill(`${n} survivor ln`);
+    await page.getByLabel('Their name').fill(who.toLowerCase());
+    const theirs = page.getByRole('button', { name: /They say this one is theirs/ });
+    // The intake worker files the report in the background; search again until it has.
+    await expect(async () => {
+      await page.getByRole('button', { name: 'Search', exact: true }).click();
+      await expect(theirs).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 60_000, intervals: [4_000] });
+    await expect(page.getByText(code)).toHaveCount(0);
+    await expect(page.getByText(`${n} Survivor Ln`)).toHaveCount(0);
+    await expectNoViolations(page);
+    await page.getByLabel('What they recognised (optional)').fill('The day and the online form');
+    await theirs.click();
+    await expect(page.getByText(`Their reference code is ${code}`)).toBeVisible();
+    await expectNoViolations(page);
+    await page.getByRole('link', { name: 'Open the report' }).click();
+    await expect(page).toHaveURL(/\/console\/reports\//);
+  });
 });

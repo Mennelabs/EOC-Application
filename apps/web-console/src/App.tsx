@@ -43,6 +43,7 @@ import { RefdataScreen } from './screens/refdata.tsx';
 import { ReportDetailScreen, ReviewQueueScreen } from './screens/review.tsx';
 import { PublicationsScreen, SitesScreen } from './screens/sites.tsx';
 import { PublicRecordsScreen } from './screens/public-records.tsx';
+import { FindSurvivorScreen } from './screens/find-survivor.tsx';
 import { CommandWindow } from './ui/command-window.tsx';
 import { ConfirmDialog, Field, Status } from './ui/primitives.tsx';
 
@@ -55,6 +56,7 @@ import { ConfirmDialog, Field, Status } from './ui/primitives.tsx';
 const routes = [
   { path: '/console/', label: 'Home', layer: 1 },
   { path: '/console/reports', label: 'Review queue', layer: 2 },
+  { path: '/console/find-survivor', label: "Find a survivor's record", layer: 3 },
   { path: '/console/assist', label: 'Assisted report', layer: 2 },
   { path: '/console/intake', label: 'Intake setup', layer: 2 },
   { path: '/console/needs', label: 'Needs board', layer: 3 },
@@ -343,6 +345,8 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <RetentionScreen />;
       case '/console/public-records':
         return <PublicRecordsScreen />;
+      case '/console/find-survivor':
+        return <FindSurvivorScreen navigate={navigate} />;
       default:
         return (
           <section aria-labelledby="home-h">

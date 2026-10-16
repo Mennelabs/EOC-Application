@@ -82,6 +82,48 @@ test.describe('field app (web build)', () => {
       );
     }, accessToken);
 
+    // FL-02: the lead's role reads no reports, so the survivor lookup's answers are stubbed for
+    // the phone screen; the lookup itself runs against the database in survivor-lookup.db.test.ts
+    // and end to end in the console journey (console-l7.spec.ts).
+    await page.route('**/api/v1/me', async (route) => {
+      const res = await route.fetch();
+      const me = (await res.json()) as { actions: string[] };
+      await route.fulfill({
+        response: res,
+        json: { ...me, actions: [...me.actions, 'survivor.find'] },
+      });
+    });
+    const survivor = {
+      reportId: crypto.randomUUID(),
+      referenceCode: 'KXRT-4827',
+      eventId: null,
+      submittedAt: new Date().toISOString(),
+      channel: 'sms',
+      reviewState: 'submitted',
+    };
+    await page.route('**/api/v1/survivor-lookup/**', (route) => {
+      const url = route.request().url();
+      if (url.endsWith('/phone'))
+        return route.fulfill({
+          status: 202,
+          json: { status: 'sent', message: 'If that number is on a report, a text is on its way.' },
+        });
+      if (url.endsWith('/phone/verify')) return route.fulfill({ json: { reports: [survivor] } });
+      if (url.endsWith('/address'))
+        return route.fulfill({
+          json: {
+            candidates: [
+              {
+                reportId: survivor.reportId,
+                submittedAt: survivor.submittedAt,
+                channel: 'sms',
+              },
+            ],
+          },
+        });
+      return route.fulfill({ json: survivor });
+    });
+
     await page.goto('/field/');
     await expect(page.getByRole('heading', { name: 'Choose a PIN for this phone' })).toBeVisible({
       timeout: 30_000,
@@ -199,6 +241,26 @@ test.describe('field app (web build)', () => {
     await page.getByRole('button', { name: 'Go', exact: true }).click();
     await expect(page.getByText(new RegExp(jobRef)).last()).toBeVisible();
     await expect(page.getByText(/check the culvert on Cedar Ct/).last()).toBeVisible();
+    await expectNoViolations(page);
+
+    // FL-02: a survivor without their code shows it is them before anything is shown.
+    await page.getByRole('link', { name: 'Home' }).click();
+    await page.getByRole('button', { name: "Find a survivor's record" }).click();
+    await expect(page.getByRole('heading', { name: "Find a survivor's record" })).toBeVisible();
+    await expectNoViolations(page);
+    await page.getByLabel('Their phone number').fill('314 555 0142');
+    await page.getByRole('button', { name: 'Text them a code' }).click();
+    await expect(page.getByText(/they get a text with a code/)).toBeVisible();
+    await page.getByLabel('Code they read to you').fill('123456');
+    await page.getByRole('button', { name: 'Check the code' }).click();
+    await expect(page.getByText(/Reference code KXRT-4827/)).toBeVisible();
+    await page.getByRole('radio', { name: /By address and name/ }).click();
+    await page.getByLabel('Street address').fill('140 Cedar Ct');
+    await page.getByLabel('Their name').fill('Maria Lopez');
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
+    await expect(page.getByText(/KXRT-4827/)).toHaveCount(0);
+    await page.getByRole('button', { name: /They say this is theirs/ }).click();
+    await expect(page.getByText(/Reference code KXRT-4827/)).toBeVisible();
     await expectNoViolations(page);
 
     // FL-04, FL-05, FL-18: the conversation note-taker asks first, in the person's language,

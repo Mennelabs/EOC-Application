@@ -583,10 +583,10 @@
     "The camera scan itself is checked on a device by a person (native)."
   ],
   "FLD-04": [
-    "partial",
-    "cg.parcel (0029) in the area package; packages/field-core/src/geo.ts snapToParcel; apps/field/app/locate.tsx 'Is this the property?' with the address of record",
-    "packages/field-core/test/geo.test.ts (parcel snapping), services/api/test/dispatch-sync.db.test.ts (area package parcels)",
-    "The parcel outline is not drawn: the phone has no map yet."
+    "pass",
+    "cg.parcel (0029) in the area package, outlines included for the phone (GET /field/area?geometry=true, six decimals) and the areas within about 150 m of a job; packages/field-core/src/geo.ts snapToParcel; packages/field-core/src/sketch.ts parcelSketch; apps/field/app/locate.tsx 'Is this the property?' with the address of record and apps/field/src/parcel-sketch.tsx drawing the lot, its neighbours and the pin from the outlines, one image named in words",
+    "packages/field-core/test/geo.test.ts (parcel snapping), packages/field-core/test/sketch.test.ts (the lot in the frame, north up, the pin inside, a far pin left out), services/api/test/dispatch-sync.db.test.ts (area package parcels), tests/e2e/field.spec.ts (FLD-04: standing on 100 Hickory Way, the question with the lot drawn and named, axe)",
+    "The sketch needs no map tiles, so it works offline from the area package; a tile map behind it waits for the field map work (FLD-13, SCL-13; layer-7 plan reading 40)."
   ],
   "FLD-05": [
     "pass",
@@ -640,7 +640,7 @@
     "partial",
     "outbox states on this phone / sending / received (field-core), GET /field/area, duplicate_of flag for a second record on a parcel (routes/field-assessments.ts)",
     "packages/field-core/test/sync.test.ts (outbox), services/api/test/dispatch-sync.db.test.ts (area package; batch applied twice), services/api/test/fieldwork.db.test.ts (second record flagged, not merged), tests/integration/layer4.int.test.ts, tests/e2e/field.spec.ts",
-    "Map extracts are not cut yet (/field/area only reports availability) and the phone shows no map."
+    "Map extracts are not cut yet (/field/area only reports availability) and the phone has no tile map; it draws the lots of its area from their outlines on \"Is this the property?\" (FLD-04)."
   ],
   "FLD-14": [
     "pass",

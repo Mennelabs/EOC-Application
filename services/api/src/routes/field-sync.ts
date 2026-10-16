@@ -837,8 +837,8 @@ export const fieldSyncRoutes =
             .execute();
           const eventId =
             q.eventId ?? assignments[0]?.event_id ?? (await myEventIds(trx, me))[0] ?? null;
-          // The areas: named, else the route areas of the assigned routes and those holding a
-          // parcel the assignments point at.
+          // The areas: named, else the route areas of the assigned routes and those with a lot
+          // within about 150 m of a job (a job's point is often in the street, between lots).
           const areaKeys: string[] = q.areaKey ? [q.areaKey] : [];
           if (!areaKeys.length) {
             for (const a of assignments) {
@@ -853,12 +853,12 @@ export const fieldSyncRoutes =
                 .distinct()
                 .where('area_key', 'is not', null)
                 .where(
-                  sql<boolean>`ST_Intersects(geom, ST_Collect(ARRAY[${sql.join(
+                  sql<boolean>`ST_DWithin(geom, ST_Collect(ARRAY[${sql.join(
                     points.map(
                       (p) =>
                         sql`ST_SetSRID(ST_MakePoint(${Number(p.lon)}, ${Number(p.lat)}), 4326)`,
                     ),
-                  )}]))`,
+                  )}]), 0.0015)`,
                 )
                 .execute();
               for (const f of found)
@@ -879,7 +879,8 @@ export const fieldSyncRoutes =
                   'area_key',
                   sql<number | null>`ST_Y(centroid)`.as('lat'),
                   sql<number | null>`ST_X(centroid)`.as('lon'),
-                  ...(q.geometry ? [sql<string>`ST_AsGeoJSON(geom)`.as('geojson')] : []),
+                  // Six decimals is about 10 cm: enough for a lot, and a lighter package.
+                  ...(q.geometry ? [sql<string>`ST_AsGeoJSON(geom, 6)`.as('geojson')] : []),
                 ])
                 .where('area_key', 'in', areaKeys)
                 .orderBy('parcel_id')

@@ -604,4 +604,55 @@ test.describe('every console screen, one by one', () => {
     await closing.getByRole('button', { name: 'Confirm' }).click();
     await expect(page.getByText(`Closed ${name}.`)).toBeVisible();
   });
+
+  test('FL:FR-03: a director issues a re-entry pass with a reason, prints its code once, and revokes it; axe finds nothing', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'county_em_director',
+      `Director ${tag}`,
+      `scr-dir-${testInfo.project.name}`,
+    );
+    await open(page, 'reentry', 'Re-entry passes');
+    const zone = `Exercise canyon zone ${tag} ${testInfo.project.name}`;
+    const form = page.getByRole('form', { name: 'Issue a pass' });
+    await form.getByLabel('Zone').fill(zone);
+    await form.getByLabel('Name on the pass').fill('Ana Exercise');
+    await form.getByLabel('Home address').fill('12 Exercise Canyon Rd, Westwind');
+    await form.getByLabel('People').fill('3');
+    await expectNoViolations(page);
+    await form.getByRole('button', { name: 'Issue the pass' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel('Reason').fill('Exercise: the household checks the house');
+    await dialog.getByRole('button', { name: 'Confirm' }).click();
+    await expect(
+      page.getByText('Pass issued. Print it now: its code is shown only once.'),
+    ).toBeVisible();
+    const card = page.getByRole('region', { name: 'Pass to print' });
+    await expect(card.getByText(`Re-entry pass: ${zone}`)).toBeVisible();
+    await expect(card.getByRole('img', { name: /Pass code/ })).toBeVisible();
+    await expect(card.getByText(/Code: /)).toBeVisible();
+    await expectNoViolations(page);
+    await card.getByRole('button', { name: 'Done: hide the code' }).click();
+    await expect(page.getByRole('region', { name: 'Pass to print' })).toHaveCount(0);
+
+    const row = page
+      .getByRole('table', { name: 'Passes for this event' })
+      .getByRole('row', { name: new RegExp(zone) });
+    await expect(row).toContainText('Active');
+    await expect(row).toContainText('Not scanned yet');
+    await row.getByRole('button', { name: 'Revoke the pass for Ana Exercise' }).click();
+    const revoking = page.getByRole('dialog');
+    await expect(revoking).toBeVisible();
+    await revoking.getByLabel('Reason').fill('Exercise: the house is unsafe');
+    await revoking.getByRole('button', { name: 'Confirm' }).click();
+    await expect(row).toContainText('Revoked: Exercise: the house is unsafe');
+    await expectNoViolations(page);
+    await expectReflow(page);
+  });
 });

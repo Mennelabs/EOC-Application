@@ -30,6 +30,7 @@ import { fieldVoiceRoutes, type FieldVoiceDeps } from './field-voice.ts';
 import { fieldVisitRoutes } from './field-visits.ts';
 import { shelterCountRoutes } from './shelter-counts.ts';
 import { eventTemplateRoutes } from './event-templates.ts';
+import { reentryRoutes } from './reentry.ts';
 import { intakeGraphRoutes } from './intake-graphs.ts';
 import { meRoutes } from './me.ts';
 import { messageRoutes } from './messages.ts';
@@ -114,6 +115,8 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   shelterCountRoutes,
   // CON-02: the county's event templates by hazard.
   eventTemplateRoutes,
+  // FL:FR-03: resident re-entry passes and the log of checks.
+  reentryRoutes,
   fieldOpsRoutes,
   fieldAssessmentRoutes,
   fieldVoiceRoutes(deps.fieldVoice),

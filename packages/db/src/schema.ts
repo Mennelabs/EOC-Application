@@ -898,6 +898,37 @@ export interface SiteTable extends Stamped {
   external_ref: string | null;
 }
 
+/** FL:FR-03: a household's pass back into a closed zone; the code is kept only as a hash. */
+export interface ReentryPassTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  code_hash: Buffer;
+  zone: string;
+  holder_name_enc: Buffer;
+  address_enc: Buffer;
+  people: Generated<number>;
+  valid_from: TsGen;
+  valid_to: ColumnType<Date, Date | string, Date | string>;
+  state: Generated<'active' | 'revoked'>;
+  report_id: Uuid | null;
+  revoked_at: TsNullable;
+  revoked_by: Uuid | null;
+  revoke_reason: string | null;
+}
+
+/** FL:FR-03: one scan of a pass at the perimeter; it names no one. */
+export interface ReentryCheckTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  pass_id: Uuid;
+  checkpoint: string | null;
+  result: 'valid' | 'expired' | 'revoked' | 'not_yet_valid';
+  checked_by: Uuid | null;
+  checked_at: TsGen;
+}
+
 /** CON-16: one shelter's count at one moment, as the Red Cross reported it; no person in it. */
 export interface ShelterCountTable {
   id: Generated<Uuid>;
@@ -3472,6 +3503,8 @@ export interface Database {
   'cg.partner_contact': PartnerContactTable;
   'cg.site': SiteTable;
   'cg.shelter_count': ShelterCountTable;
+  'cg.reentry_pass': ReentryPassTable;
+  'cg.reentry_check': ReentryCheckTable;
   'cg.zip_centroid': ZipCentroidTable;
   'cg.resource': ResourceTable;
   'cg.resource_text': ResourceTextTable;

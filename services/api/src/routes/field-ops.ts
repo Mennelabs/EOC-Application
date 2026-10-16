@@ -292,13 +292,13 @@ const significantOut = z.object({
 
 /** Badge codes: 12 unambiguous characters, hashed at rest; the clear code is on the badge only. */
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-function newBadgeCode(): string {
+export function newBadgeCode(): string {
   const bytes = randomBytes(12);
   let out = '';
   for (const b of bytes) out += CODE_ALPHABET[b % CODE_ALPHABET.length];
   return `${out.slice(0, 4)}-${out.slice(4, 8)}-${out.slice(8, 12)}`;
 }
-const hashCode = (tenantId: string, code: string): Buffer =>
+export const hashCode = (tenantId: string, code: string): Buffer =>
   createHash('sha256')
     .update(`${tenantId}:${code.replace(/[^A-Z0-9]/gi, '').toUpperCase()}`)
     .digest();
@@ -2127,12 +2127,26 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
         }),
         response: {
           200: z.object({
-            result: z.enum(['valid', 'expired', 'revoked', 'not_yet_printed', 'unknown']),
+            result: z.enum([
+              'valid',
+              'expired',
+              'revoked',
+              'not_yet_printed',
+              'not_yet_valid',
+              'unknown',
+            ]),
+            /** FL:FR-03: a staff badge, or a resident's re-entry pass. */
+            kind: z.enum(['badge', 'reentry']).optional(),
             displayName: z.string().optional(),
             agency: z.string().nullable().optional(),
             roleLabel: z.string().nullable().optional(),
             accessLabel: z.string().nullable().optional(),
             validTo: z.iso.datetime().optional(),
+            /** A re-entry pass: the zone, how many people, and (to match an ID) who and which home. */
+            zone: z.string().optional(),
+            people: z.number().int().optional(),
+            holderName: z.string().optional(),
+            address: z.string().optional(),
           }),
         },
       },
@@ -2147,6 +2161,80 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
           .selectAll()
           .where('code_hash', '=', hash)
           .executeTakeFirst();
+        // FL:FR-03: not a badge? Perhaps a resident's re-entry pass.
+        const pass = badge
+          ? undefined
+          : await trx
+              .selectFrom('cg.reentry_pass')
+              .selectAll()
+              .where('code_hash', '=', hash)
+              .executeTakeFirst();
+        if (pass) {
+          const now = Date.now();
+          const passResult: 'valid' | 'expired' | 'revoked' | 'not_yet_valid' =
+            pass.state === 'revoked'
+              ? 'revoked'
+              : new Date(pass.valid_to).getTime() < now
+                ? 'expired'
+                : new Date(pass.valid_from).getTime() > now
+                  ? 'not_yet_valid'
+                  : 'valid';
+          await trx
+            .insertInto('cg.reentry_check')
+            .values({
+              tenant_id: pass.tenant_id,
+              event_id: pass.event_id,
+              pass_id: pass.id,
+              checkpoint: request.body.checkpoint ?? null,
+              result: passResult,
+              checked_by: s.accountId,
+            })
+            .execute();
+          // Who and which home only for a valid pass and a role that checks passes (restricted).
+          const mayCheck =
+            passResult === 'valid' &&
+            (await request
+              .authorize('reentry_pass.verify', {
+                type: 'reentry_pass',
+                tenantId: s.tenantId,
+                eventId: pass.event_id,
+              })
+              .then(
+                () => true,
+                () => false,
+              ));
+          await request.audit(trx, {
+            action: 'badge.verify',
+            targetType: 'reentry_pass',
+            targetId: pass.id,
+            changes: {
+              fields: [
+                { name: 'result', to: passResult },
+                { name: 'checkpoint', to: request.body.checkpoint ?? null },
+                { name: 'holder_shown', to: mayCheck },
+              ],
+            },
+          });
+          const shown = mayCheck
+            ? {
+                holderName: await app.fieldCrypto
+                  .decrypt(pass.tenant_id, pass.holder_name_enc)
+                  .catch(() => undefined),
+                address: await app.fieldCrypto
+                  .decrypt(pass.tenant_id, pass.address_enc)
+                  .catch(() => undefined),
+              }
+            : {};
+          return {
+            result: passResult,
+            kind: 'reentry' as const,
+            zone: pass.zone,
+            people: pass.people,
+            validTo: iso(pass.valid_to)!,
+            ...(shown.holderName ? { holderName: shown.holderName } : {}),
+            ...(shown.address ? { address: shown.address } : {}),
+          };
+        }
         const result: 'valid' | 'expired' | 'revoked' | 'not_yet_printed' | 'unknown' = !badge
           ? 'unknown'
           : badge.state === 'revoked' || badge.state === 'replaced'
@@ -2190,6 +2278,7 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
         return badge && result !== 'unknown'
           ? {
               result,
+              kind: 'badge' as const,
               displayName: badge.display_name,
               agency: badge.agency,
               roleLabel: badge.role_label,

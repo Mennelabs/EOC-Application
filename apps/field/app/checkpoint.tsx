@@ -1,8 +1,11 @@
 /**
  * Checkpoint (FL:FR-03, BDG-02, RULE-11): scan or type a badge code and see
  * valid, expired, revoked, not yet printed or unknown, with never more than
- * the name, agency and labels. The answer comes from the server (badges can
- * be revoked at any time), so this needs signal; each check is recorded.
+ * the name, agency and labels. A resident's re-entry pass scans the same way:
+ * the zone and how many people, and for a valid pass who it is for and which
+ * home, to match against their ID. The answer comes from the server (badges
+ * and passes can be revoked at any time), so this needs signal; each check is
+ * recorded.
  */
 import { useState } from 'react';
 import { useField } from '../src/field';
@@ -11,7 +14,12 @@ import { Scanner } from '../src/scanner';
 import { Alert, Body, Button, Card, Field, Heading, NavBar, Page } from '../src/ui';
 
 interface Result {
-  result: 'valid' | 'expired' | 'revoked' | 'not_yet_printed' | 'unknown';
+  result: 'valid' | 'expired' | 'revoked' | 'not_yet_printed' | 'not_yet_valid' | 'unknown';
+  kind?: 'badge' | 'reentry';
+  zone?: string;
+  people?: number;
+  holderName?: string;
+  address?: string;
   displayName?: string;
   agency?: string | null;
   roleLabel?: string | null;
@@ -53,6 +61,20 @@ export default function Checkpoint() {
           {result.roleLabel ? <Body>{result.roleLabel}</Body> : null}
           {result.accessLabel ? (
             <Body>{t('check.access', { label: result.accessLabel })}</Body>
+          ) : null}
+          {result.kind === 'reentry' ? (
+            <>
+              <Heading level={2}>{t('check.reentry')}</Heading>
+              {result.zone ? <Body>{t('check.zone', { zone: result.zone })}</Body> : null}
+              {result.people ? (
+                <Body>{t('check.people', { count: String(result.people) })}</Body>
+              ) : null}
+              {result.holderName ? <Body>{result.holderName}</Body> : null}
+              {result.address ? <Body>{result.address}</Body> : null}
+              {result.result === 'valid' && result.holderName ? (
+                <Body>{t('check.matchId')}</Body>
+              ) : null}
+            </>
           ) : null}
         </Card>
       ) : null}

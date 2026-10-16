@@ -787,10 +787,10 @@
     ""
   ],
   "FL:FR-03": [
-    "partial",
-    "POST /badges/verify recorded per check (routes/field-ops.ts); apps/field/app/checkpoint.tsx scan or type; no CJI",
-    "services/api/test/fieldops.db.test.ts (verify outcomes)",
-    "Resident re-entry passes are not modelled; camera scanning is checked on a device by a person."
+    "pass",
+    "POST /badges/verify recorded per check (routes/field-ops.ts); apps/field/app/checkpoint.tsx scan or type; no CJI; resident re-entry passes (migration 0101, routes/reentry.ts): issued by the EOC with a reason for an open event (zone, people, holder and home encrypted, code shown once and kept as a hash), listed with their state and last check (the read audited), revoked with a reason; the checkpoint's badge check recognises a pass and answers valid, expired, revoked or not valid yet, with the zone and people, and the holder and home only for a valid pass and a role that checks passes (reentry_pass.verify, the checkpoint officer); every scan logged with its checkpoint and result, naming no one; console screen Re-entry passes with a printable pass and the log; field checkpoint shows the pass in English and Spanish (plan reading 35)",
+    "services/api/test/fieldops.db.test.ts (verify outcomes); services/api/test/reentry.db.test.ts (FL:FR-03: issued with a reason only for an open event, holder and home encrypted, code hashed; a valid pass shows the holder only to the checkpoint officer; every scan logged without names; revoked and expired passes refused without the holder; the reads audited), tests/e2e/console-screens.spec.ts (FL:FR-03: a director issues a pass with a reason, prints its code once and revokes it, with axe on desktop and phone)",
+    "Camera scanning is checked on a device by a person."
   ],
   "FL:FR-04": [
     "pass",

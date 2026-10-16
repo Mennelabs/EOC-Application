@@ -94,6 +94,7 @@ import * as m0092 from './0092_equipment_use.ts';
 import * as m0093 from './0093_canteen_stop.ts';
 import * as m0094 from './0094_badge_photo.ts';
 import * as m0095 from './0095_volunteer_signup.ts';
+import * as m0096 from './0096_location_permission.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -192,4 +193,5 @@ export const migrations: Record<string, Migration> = {
   '0093_canteen_stop': m0093,
   '0094_badge_photo': m0094,
   '0095_volunteer_signup': m0095,
+  '0096_location_permission': m0096,
 };

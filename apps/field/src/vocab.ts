@@ -62,6 +62,10 @@ const commandKinds: Vocab = {
   'check_in.start': { en: 'Check-in', es: 'Registro de llegada' },
   'check_in.end': { en: 'Check-out', es: 'Registro de salida' },
   'position.batch': { en: 'Location for dispatch', es: 'Ubicación para despacho' },
+  'check_in.location_permission': {
+    en: 'Location setting for dispatch',
+    es: 'Ajuste de ubicación para despacho',
+  },
   'team.status': { en: 'Team status (we’re OK)', es: 'Estado del equipo (estamos bien)' },
   'assignment.acknowledge': { en: '“Got it” for an assignment', es: '“Entendido” de una tarea' },
   'assignment.status': { en: 'Assignment status', es: 'Estado de una tarea' },

@@ -53,6 +53,12 @@ const en = {
   'home.onShift': 'On shift {time}',
   'home.sharing': 'Sharing location with dispatch while checked in',
   'home.notSharing': 'Location sharing is off',
+  'home.locationDenied':
+    'This phone blocks location for the app, so dispatch cannot see where you are. Dispatch has been told. To share it, allow location for the app in the phone settings.',
+  'home.locationUnavailable':
+    'This phone cannot get a position right now (location may be off). Dispatch has been told.',
+  'home.locationForeground':
+    'Location is shared only while the app is open. Allow it "all the time" in the phone settings to keep sharing in the background.',
   'home.timer': 'Check-in due {time}',
   'home.ok': 'We’re OK',
   'home.okSent': 'Sent: we’re OK',
@@ -770,6 +776,12 @@ const es: Record<MessageKey, string> = {
   'home.onShift': 'En turno {time}',
   'home.sharing': 'Compartiendo ubicación con despacho mientras está registrado',
   'home.notSharing': 'No está compartiendo su ubicación',
+  'home.locationDenied':
+    'Este teléfono bloquea la ubicación para la aplicación, así que despacho no puede ver dónde está. Ya se le avisó a despacho. Para compartirla, permita la ubicación para la aplicación en los ajustes del teléfono.',
+  'home.locationUnavailable':
+    'Este teléfono no puede obtener una posición ahora (la ubicación puede estar apagada). Ya se le avisó a despacho.',
+  'home.locationForeground':
+    'La ubicación se comparte solo mientras la aplicación está abierta. Permítala "siempre" en los ajustes del teléfono para seguir compartiendo en segundo plano.',
   'home.timer': 'Próximo reporte {time}',
   'home.ok': 'Estamos bien',
   'home.okSent': 'Enviado: estamos bien',

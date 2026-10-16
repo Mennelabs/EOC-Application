@@ -41,6 +41,12 @@ export const FIELD_COMMANDS: Record<
     needsTarget: true,
   },
   'position.batch': { method: 'POST', path: () => '/api/v1/positions', needsTarget: false },
+  // BRD:FR-03.05: the phone says when it may not read location, so dispatch is told.
+  'check_in.location_permission': {
+    method: 'POST',
+    path: () => '/api/v1/check-ins/current/location-permission',
+    needsTarget: false,
+  },
   'team.status': { method: 'POST', path: (id) => `/api/v1/teams/${id}/status`, needsTarget: true },
   'assignment.acknowledge': {
     method: 'POST',

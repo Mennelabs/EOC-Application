@@ -95,6 +95,33 @@ interface CheckIn {
   endedAt: string | null;
   hours: number | null;
   credentials: { kind: string; status: string }[];
+  locationSharing: boolean;
+  locationPermission: 'granted' | 'foreground_only' | 'denied' | 'unavailable' | null;
+  locationPermissionAt: string | null;
+}
+interface LatestPosition {
+  checkInId: string;
+  recordedAt: string;
+  stale: boolean;
+}
+
+/**
+ * BRD:FR-03.05: where a person's location stands, in words: sharing off, blocked on
+ * the phone, no position to be had, an old position, or a recent one.
+ */
+function locationText(c: CheckIn, p: LatestPosition | undefined): string {
+  if (!c.locationSharing) return 'Sharing off for this shift';
+  if (c.locationPermission === 'denied')
+    return `Blocked on the phone since ${fmt(c.locationPermissionAt)}`;
+  if (c.locationPermission === 'unavailable')
+    return `Phone cannot get a position since ${fmt(c.locationPermissionAt)}`;
+  if (p)
+    return p.stale
+      ? `Old position, last at ${fmt(p.recordedAt)}`
+      : `Shared at ${fmt(p.recordedAt)}`;
+  return c.locationPermission === 'foreground_only'
+    ? 'Only while the app is open; no position yet'
+    : 'No position yet';
 }
 interface Credential {
   id: string;
@@ -185,6 +212,10 @@ export function RosterScreen() {
   const teams = useApi<Team[]>(eventId ? `/teams?eventId=${eventId}&limit=200` : null);
   const checkIns = useApi<CheckIn[]>(
     eventId ? `/check-ins?eventId=${eventId}&open=true&limit=200` : null,
+  );
+  // FR-03.05: latest positions with their stale flag, for roles that may read positions.
+  const positions = useApi<LatestPosition[]>(
+    eventId ? `/positions/latest?eventId=${eventId}` : null,
   );
   const people = useApi<Person[]>('/personnel?limit=200');
   const [open, setOpen] = useState<string | null>(null);
@@ -388,6 +419,15 @@ export function RosterScreen() {
           { key: 't', header: 'Team', render: (c) => nameOf(c.teamId) },
           { key: 'm', header: 'How', render: (c) => label(c.method) },
           { key: 's', header: 'Since', render: (c) => fmt(c.startedAt) },
+          {
+            key: 'l',
+            header: 'Location',
+            render: (c) =>
+              locationText(
+                c,
+                positions.data?.find((p) => p.checkInId === c.id),
+              ),
+          },
           {
             key: 'h',
             header: 'Hours',

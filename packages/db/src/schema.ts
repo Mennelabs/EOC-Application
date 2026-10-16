@@ -1086,6 +1086,9 @@ export interface CheckInTable {
   credentials_snapshot: JsonGen<unknown[]>;
   device_id: Uuid | null;
   location_sharing: Generated<boolean>;
+  /** BRD:FR-03.05: what the phone allows, as it last said. */
+  location_permission: 'granted' | 'foreground_only' | 'denied' | 'unavailable' | null;
+  location_permission_at: TsNullable;
   started_at: TsGen;
   ended_at: TsNullable;
   ended_by: Uuid | null;

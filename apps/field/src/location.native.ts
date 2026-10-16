@@ -8,9 +8,9 @@
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import type { LocationPolicy } from '@cg/field-core';
-import type { Fix } from './location';
+import type { Fix, LocationPermission } from './location';
 
-export type { Fix } from './location';
+export type { Fix, LocationPermission } from './location';
 
 const TASK = 'cg-field-location';
 let last: Fix | null = null;
@@ -48,12 +48,21 @@ const accuracyOf = (p: LocationPolicy) =>
 export async function startLocation(
   policy: LocationPolicy,
   onFix: (f: Fix) => void,
+  onPermission: (p: LocationPermission) => void = () => undefined,
 ): Promise<boolean> {
   await stopLocation();
   if (!policy.enabled) return false;
   sink = onFix;
+  // BRD:FR-03.05: what the phone allows is said to dispatch, not only shown here.
+  if (!(await Location.hasServicesEnabledAsync().catch(() => true))) {
+    onPermission('unavailable');
+    return false;
+  }
   const fg = await Location.requestForegroundPermissionsAsync();
-  if (fg.status !== 'granted') return false;
+  if (fg.status !== 'granted') {
+    onPermission('denied');
+    return false;
+  }
   foreground = await Location.watchPositionAsync(
     {
       accuracy: accuracyOf(policy),
@@ -66,6 +75,7 @@ export async function startLocation(
     },
   );
   const bg = await Location.requestBackgroundPermissionsAsync();
+  onPermission(bg.status === 'granted' ? 'granted' : 'foreground_only');
   if (bg.status === 'granted')
     await Location.startLocationUpdatesAsync(TASK, {
       accuracy: accuracyOf(policy),

@@ -876,6 +876,12 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
       },
       device_id: { c: 'internal', r: 'field_records' },
       location_sharing: { c: 'internal', r: 'field_records', d: 'DSP-08: on while checked in' },
+      location_permission: {
+        c: 'internal',
+        r: 'field_records',
+        d: 'BRD:FR-03.05: what the phone allows: granted, foreground_only, denied or unavailable',
+      },
+      location_permission_at: { c: 'internal', r: 'field_records' },
       started_at: { c: 'internal', r: 'field_records' },
       ended_at: { c: 'internal', r: 'field_records' },
       ended_by: { c: 'internal', r: 'field_records' },

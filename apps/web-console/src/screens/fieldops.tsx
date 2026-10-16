@@ -23,6 +23,7 @@ import { DataTable, Field, Status, Toolbar, fmt } from '../ui/primitives.tsx';
 import { STATUS_TEXT } from './dispatch.tsx';
 import { EventPicker, useOpenEvents } from './dispatch.tsx';
 import { formatDate, fromZoneInput } from '../ui/time.ts';
+import { QrImage } from '../ui/qr.tsx';
 
 const label = (s: string | null | undefined) => (s ? s.replace(/_/g, ' ') : '—');
 
@@ -119,6 +120,65 @@ function Unavailable({ id, title, error }: { id: string; title: string; error: s
   );
 }
 
+interface EventCode {
+  id: string;
+  version: number;
+  name: string;
+  checkInCode: string | null;
+}
+
+/**
+ * FLD-03: the code people scan at staging, or type, to check in. Printed as a
+ * QR code with the code in large letters beside it; a new code retires the old
+ * one at once (a sign that leaked stops working).
+ */
+function StagingCode({ eventId }: { eventId: string }) {
+  const ev = useApi<EventCode>(`/events/${eventId}`);
+  const [msg, setMsg] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const replace = async () => {
+    if (!ev.data) return;
+    try {
+      await api(`/events/${eventId}/check-in-code`, { body: {}, version: ev.data.version });
+      setMsg({ kind: 'success', text: 'New code made. The old one no longer works.' });
+    } catch (e) {
+      setMsg({ kind: 'error', text: describeFailure(e) });
+    }
+    ev.reload();
+  };
+  const code = ev.data?.checkInCode ?? null;
+  return (
+    <section className="panel staging-code" aria-labelledby="staging-h">
+      <h2 id="staging-h">Staging check-in code</h2>
+      {msg ? <Status kind={msg.kind}>{msg.text}</Status> : null}
+      {ev.error ? <Status kind="error">{ev.error}</Status> : null}
+      {code ? (
+        <>
+          <p>
+            People check in to {ev.data?.name} by scanning this code with the field app or typing
+            it.
+          </p>
+          <div className="staging-sign">
+            <QrImage text={code} alt={`Check-in code ${code.split('').join(' ')}`} size={200} />
+            <p className="staging-code-text">{code}</p>
+          </div>
+        </>
+      ) : (
+        <p>This event has no check-in code yet.</p>
+      )}
+      <div className="actions" style={{ justifyContent: 'flex-start' }}>
+        {code ? (
+          <button type="button" onClick={() => window.print()}>
+            Print
+          </button>
+        ) : null}
+        <button type="button" onClick={() => void replace()} disabled={!ev.data}>
+          {code ? 'Make a new code' : 'Make a code'}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 export function RosterScreen() {
   const { eventId, picker, error: evError } = useEvent();
   const teams = useApi<Team[]>(eventId ? `/teams?eventId=${eventId}&limit=200` : null);
@@ -170,6 +230,7 @@ export function RosterScreen() {
     <section aria-labelledby="roster-h">
       <h1 id="roster-h">Roster and check-in</h1>
       <Toolbar>{picker}</Toolbar>
+      {eventId ? <StagingCode eventId={eventId} /> : null}
       {msg ? <Status kind={msg.kind}>{msg.text}</Status> : null}
       {teams.error ? <Status kind="error">{teams.error}</Status> : null}
       <h2>Teams</h2>
@@ -1006,9 +1067,16 @@ export function BadgesScreen() {
               {formatDate(new Date(printing.validTo))}
             </p>
             {printing.code ? (
-              <p>
-                Code: <strong>{printing.code}</strong>
-              </p>
+              <>
+                <QrImage
+                  text={printing.code}
+                  alt={`Badge code ${printing.code.split('').join(' ')}`}
+                  size={120}
+                />
+                <p>
+                  Code: <strong>{printing.code}</strong>
+                </p>
+              </>
             ) : null}
           </div>
           <p className="hint">The same information is printed in text beside the code (AC-13C).</p>

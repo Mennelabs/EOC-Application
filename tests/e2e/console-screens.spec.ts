@@ -37,6 +37,7 @@ const SCREENS: [path: string, heading: string][] = [
   ['field-messages', 'Messages to the field'],
   ['net-control', 'Net control log'],
   ['badges', 'Badges'],
+  ['roster', 'Roster and check-in'],
 ];
 
 /** Opens a screen and waits until it has loaded: heading shown, nothing still loading. */
@@ -83,6 +84,14 @@ test.describe('every console screen, one by one', () => {
             '30 days',
           );
           await expect(page.getByText(/null days|0 years/)).toHaveCount(0);
+        }
+
+        if (path === 'roster') {
+          // FLD-03: the staging check-in code, with its QR code and the code in letters beside it.
+          const panel = page.getByRole('region', { name: 'Staging check-in code' });
+          await expect(panel).toBeVisible();
+          const qr = panel.getByRole('img', { name: /^Check-in code / });
+          if (await qr.count()) await expect(panel.locator('.staging-code-text')).not.toBeEmpty();
         }
 
         if (path === 'reminders') {

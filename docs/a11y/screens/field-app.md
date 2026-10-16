@@ -22,3 +22,5 @@ Screens: PIN, check-in, home with the help button and the check-in timer, messag
 | 16  | Live translation (FL-14)               | pass (automated on the web build): the person's language and the kind of conversation are named radio groups; consent, legal and medical say in words that an interpreter is used and hide machine translation; each turn's text box is named ("What you say", "What they say"); the translation shows large in a status region, labelled as machine translation with provider and model, marked with its `lang`; "Bring in an interpreter" is one tap at the top                                                                         |
 
 Open: checks 2 and 10 need a person with a device; a recorded conversation with the AI note-taker on (OpenAI key set) is part of check 10.
+
+Scanning (2026-10-16, FLD-03, FL:FR-14): the check-in screen and the shelter door now have the same "scan" button as the checkpoint. It opens the camera only when pressed, and it says plainly when camera permission is refused. Typing the code always works, so the camera is never the only way (WCAG 2.5, FLD-15). The camera itself is checked on a device by a person.

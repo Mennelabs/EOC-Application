@@ -10,6 +10,7 @@ import { View } from 'react-native';
 import { RadioGroup, Stepper } from '../src/controls';
 import { useField } from '../src/field';
 import { problem, useOnline } from '../src/online';
+import { Scanner } from '../src/scanner';
 import { Alert, Body, Button, Card, Field, Heading, NavBar, Page } from '../src/ui';
 
 interface Site {
@@ -92,11 +93,11 @@ export default function Shelter() {
       setMessage({ tone: 'warn', text: problem(err, t) });
     }
   };
-  const lookup = async () => {
+  const lookup = async (value = code) => {
     try {
       setFound(
         await f.send<Stay>('POST', '/field-records/shelter_stay/lookup', {
-          code: code.trim(),
+          code: value.trim(),
           ...(siteId ? { siteId } : {}),
         }),
       );
@@ -197,6 +198,13 @@ export default function Shelter() {
           label={t('shelter.find')}
           disabled={code.trim().length < 4}
           onPress={() => void lookup()}
+        />
+        {/* FL:FR-14: a wristband with a printed code is scanned at the door; typing always works. */}
+        <Scanner
+          onCode={(v) => {
+            setCode(v.trim());
+            void lookup(v);
+          }}
         />
         {found ? (
           <View style={{ gap: 6 }}>

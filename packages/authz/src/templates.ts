@@ -465,6 +465,8 @@ const templates: readonly RoleTemplate[] = [
       g('team.manage'),
       g('check_in.read'),
       g('check_in.manage'),
+      // FLD-03: the staging check-in code and its QR.
+      g('event.check_in_code'),
       g('device.read'),
       g('badge.*'),
       g('volunteer_registration.*'),
@@ -818,6 +820,8 @@ const templates: readonly RoleTemplate[] = [
       g('me.read'),
       g('tenant.read'),
       g('event.read', ['location_exact']),
+      // FLD-03: the staging check-in code and its QR.
+      g('event.check_in_code'),
       g('dashboard.read'),
       g('personnel.read', ['contact']),
       g('personnel.update'),

@@ -487,6 +487,27 @@ fieldset {
   .badge-print .hint {
     display: none;
   }
+  .staging-code,
+  .staging-code * {
+    visibility: visible;
+  }
+  .staging-code .actions {
+    display: none;
+  }
+}
+
+/* FLD-03: the staging check-in sign, the code in large letters beside its QR code. */
+.staging-sign {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+}
+.staging-code-text {
+  font-family: ui-monospace, monospace;
+  font-size: 2.5rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
 }
 
 /* Official reports (layer 6): staff text keeps its line breaks; a hash wraps instead of scrolling. */

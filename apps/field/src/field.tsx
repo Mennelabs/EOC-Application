@@ -136,7 +136,7 @@ interface FieldActions {
   unlock(pin: string): Promise<{ ok: boolean; triesLeft?: number }>;
   unlockWithBiometrics(): Promise<boolean>;
   biometrics(): Promise<boolean>;
-  checkInWithCode(code: string, share: boolean): Promise<string | null>;
+  checkInWithCode(code: string, share: boolean, scanned?: boolean): Promise<string | null>;
   downloadArea(): Promise<void>;
   weAreOk(): Promise<void>;
   acknowledgeAssignment(id: string): Promise<void>;
@@ -553,7 +553,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
       return true;
     },
     biometrics: () => vault.biometricsAvailable(),
-    async checkInWithCode(code, share) {
+    async checkInWithCode(code, share, scanned = false) {
       const s = store.current;
       if (!s) return 'locked';
       try {
@@ -561,6 +561,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
         const ci = await api.current.checkIn({
           eventCode: code.trim(),
           locationSharing: share,
+          method: scanned ? 'qr' : 'event_code',
           ...(deviceId ? { deviceId } : {}),
         });
         await s.setMeta('checkin', JSON.stringify(ci));

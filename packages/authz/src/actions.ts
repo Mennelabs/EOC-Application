@@ -58,6 +58,11 @@ export const actions = {
   'event.read': a('read', 'event', 'Read events'),
   'event.create': a('write', 'event', 'Create an event from a template'),
   'event.update': a('write', 'event', 'Update event details and footprint'),
+  'event.check_in_code': a(
+    'write',
+    'event',
+    'Set or replace the staging check-in code people scan or type to check in',
+  ),
   'event.open': a('write', 'event', 'Open an event and publish its intake link and keyword', {
     consequential: true,
   }),

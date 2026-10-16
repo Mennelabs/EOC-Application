@@ -1529,6 +1529,25 @@ export const commandRoutesWith =
           planArgs['person'] = str(found[0]!['name']);
         }
 
+        // CMD-13: the one record of the target the arguments name (an open assignment of the
+        // named person); none or several is answered, never guessed.
+        if (spec.within && target) {
+          const res = await op(request, {
+            method: 'GET',
+            path: spec.within.path(planArgs, target),
+          });
+          const found =
+            res.status === 200 && Array.isArray(res.body) ? (res.body as ListRow[]) : [];
+          if (found.length !== 1)
+            return {
+              ...head,
+              status: 'not_found',
+              message: found.length ? spec.within.many(planArgs) : spec.within.none(planArgs),
+            };
+          planArgs[spec.within.idArg] = str(found[0]!['id']);
+          planArgs[spec.within.versionArg] = found[0]!['version'];
+        }
+
         let eventId: string | null = null;
         if (spec.needsEvent) {
           const ev = await op(request, { method: 'GET', path: '/events?limit=100' });

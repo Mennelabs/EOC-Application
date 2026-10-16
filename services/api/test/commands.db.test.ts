@@ -1647,4 +1647,64 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
     expect((await report(ids[2]!)).review_state).toBe('submitted');
     await phases([1, 2, 3]);
   });
+
+  it("CMD-13, Section 30.2 phase 3: a person's open assignment on a mission is released after a full review, the reason kept as the release reason; none open is answered, not guessed", async () => {
+    await phases([1, 2, 3]);
+    const m = await call('calltaker', 'POST', '/missions', {
+      eventId,
+      kind: 'delivery',
+      source: 'call',
+      priority: 'normal',
+      urgency: 'soon',
+      summary: 'Exercise: water to the church hall.',
+      location: {
+        line1: '30 Exercise Way',
+        city: 'Harmon City',
+        postal: '63002',
+        position: { lat: 38.791, lon: -90.871 },
+        state: 'approximate',
+      },
+    });
+    expect(m.status, JSON.stringify(m.body)).toBe(201);
+    const ref2 = m.body['reference'] as string;
+    const name = `Exercise Dev Okafor ${run}`;
+    const dev = await withTenant(dbWorker, { tenantId: county }, (trx) =>
+      trx
+        .insertInto('cg.personnel')
+        .values({ tenant_id: county, name, availability: 'available', duty_status: 'on_duty' })
+        .returning('id')
+        .executeTakeFirstOrThrow(),
+    );
+    // Nothing to release yet.
+    const early = await command('field', `/mission ${ref2} release ${name}`);
+    expect(early.status).toBe('not_found');
+    expect(early.message).toBe(`${name} has no open assignment on this mission.`);
+
+    const assign = await command('field', `/mission ${ref2} assign ${name}`);
+    expect((await confirm('field', assign)).body['status']).toBe('succeeded');
+
+    const release = await command('field', `/mission ${ref2} release ${name}`);
+    expect(release.status, release.message).toBe('awaiting_confirmation');
+    expect(release.command).toMatchObject({ confirmation: 'full_review' });
+    expect(release.plan?.description).toContain(`Release ${name} from mission ${ref2}`);
+    // Consequential: no reason, no release.
+    expect((await confirm('field', release)).status).toBe(428);
+    const done = await confirm('field', release, {
+      'x-confirm': 'true',
+      'x-reason': 'Exercise: crew swapped at shift change',
+    });
+    expect(done.body['status'], JSON.stringify(done.body)).toBe('succeeded');
+    const held = await dbWorker
+      .selectFrom('cg.assignment')
+      .select(['state', 'released_at', 'release_reason'])
+      .where('personnel_id', '=', dev.id)
+      .executeTakeFirstOrThrow();
+    expect(held).toMatchObject({
+      state: 'released',
+      release_reason: 'Exercise: crew swapped at shift change',
+    });
+    expect(held.released_at).not.toBeNull();
+    expect((await command('field', `/mission ${ref2} release ${name}`)).status).toBe('not_found');
+    expect((await command('pio', `/mission ${ref2} release ${name}`)).status).toBe('denied');
+  });
 });

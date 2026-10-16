@@ -182,6 +182,13 @@ describe('shorthand', () => {
       args: { person: 'Ana Ruiz' },
     });
     expect(parse('/mision M-00012 asignar')).toMatchObject({ error: 'usage' });
+    // The release reason is asked at confirmation, not typed with the command.
+    expect(parse('/mision M-00012 liberar Ana Ruiz')).toMatchObject({
+      command: 'mission.release',
+      args: { person: 'Ana Ruiz' },
+      ref: 'M-00012',
+    });
+    expect(parse('/mission M-00012 release')).toMatchObject({ error: 'usage' });
     expect(parse('/mission M-00012 close disposition:referred')).toMatchObject({
       command: 'mission.close',
       args: { disposition: 'referred' },

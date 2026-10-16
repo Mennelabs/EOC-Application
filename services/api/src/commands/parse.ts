@@ -543,6 +543,12 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
         if (!person) return usage('Assign whom?', '/mission <number> assign <person>');
         return ok('mission.assign', { person }, ref, 'mission');
       }
+      // CMD-13: the reason is asked at confirmation; it becomes the release reason.
+      if (s === 'release') {
+        const person = rest.join(' ').trim();
+        if (!person) return usage('Release whom?', '/mission <number> release <person>');
+        return ok('mission.release', { person }, ref, 'mission');
+      }
       if (s === 'close') {
         const d = pairs['disposition'] ? norm(pairs['disposition']) : undefined;
         return ok('mission.close', d ? { disposition: d } : {}, ref, 'mission');

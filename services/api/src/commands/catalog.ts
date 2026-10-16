@@ -108,6 +108,18 @@ export interface CommandSpec<A = Record<string, unknown>> {
    * one match asks for the full reference rather than guess.
    */
   also?: { arg: string; idArg: string; kind: TargetKind };
+  /**
+   * CMD-13: a record of the target that the arguments name, read through its list route
+   * before the plan is shown; its id and version go in the arguments. None or several is
+   * answered in these words.
+   */
+  within?: {
+    path(args: A, target: Target): string;
+    idArg: string;
+    versionArg: string;
+    none(args: A): string;
+    many(args: A): string;
+  };
   /** CMD-30: runs over many records (phase 4, `command.bulk`); `target` names their kind. */
   bulk?: BulkSpec<A>;
   confirmation: Confirmation;
@@ -1029,6 +1041,59 @@ export const CATALOG = [
             version: ver(p['version']),
           },
         ],
+      };
+    },
+  }),
+  // CMD-13, Section 30.2 phase 3: a person's open assignment on the mission is released. The
+  // release is consequential, so the full review's reason becomes the release reason.
+  define<{
+    person: string;
+    personId?: string | undefined;
+    assignmentId?: string | undefined;
+    assignmentVersion?: number | undefined;
+  }>({
+    name: 'mission.release',
+    version: 1,
+    phase: 3,
+    action: 'assignment.release',
+    kind: 'change',
+    title: 'Release a person from a mission',
+    usage: '/mission <reference> release <person>',
+    args: z.object({
+      person: z.string().min(1).max(120),
+      personId: z.uuid().optional(),
+      assignmentId: z.uuid().optional(),
+      assignmentVersion: z.number().int().optional(),
+    }),
+    target: 'mission',
+    person: true,
+    within: {
+      path: (a, t) =>
+        `/assignments?limit=10&open=true&missionId=${t.id}&personnelId=${a.personId ?? ''}`,
+      idArg: 'assignmentId',
+      versionArg: 'assignmentVersion',
+      none: (a) => `${a.person} has no open assignment on this mission.`,
+      many: (a) =>
+        `${a.person} holds more than one open assignment on this mission. Release it on the dispatch board.`,
+    },
+    confirmation: 'full_review',
+    reversal: 'compensating',
+    freeText: ['person'],
+    sideEffects:
+      'Releases the assignment with your reason, exactly as the dispatch board does. Assigning them again is a new assignment.',
+    request: (a) => ({
+      method: 'POST',
+      path: `/assignments/${a.assignmentId ?? ''}/release`,
+      version: a.assignmentVersion,
+    }),
+    describe: (a, t) =>
+      `Release ${a.person} from mission ${t!.label}. Your reason is kept as the release reason.`,
+    verify: (r) => {
+      const x = (r ?? {}) as Row;
+      return {
+        state: 'saved',
+        summary: x['releasedAt'] ? 'Released.' : 'The assignment was not released.',
+        records: [{ kind: 'assignment', id: str(x['id']), version: ver(x['version']) }],
       };
     },
   }),

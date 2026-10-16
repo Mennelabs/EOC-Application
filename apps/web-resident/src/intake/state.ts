@@ -58,6 +58,9 @@ export interface FlowState {
   earlierPlaces?: string[];
 }
 
+/** Where the report in progress is kept on the device, encrypted (storage.ts). */
+export const FLOW_KEY = 'flow';
+
 export function newFlow(input: {
   tenant: string;
   event: string;

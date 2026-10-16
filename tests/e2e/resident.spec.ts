@@ -57,6 +57,8 @@ async function answerUntilReview(
   seen: Set<string>,
   stopAt = 'Check your answers',
   street = '12 Oak St',
+  /** Answers a screen itself and returns true, or leaves it to the defaults. */
+  custom?: (heading: string) => Promise<boolean>,
 ) {
   for (let i = 0; i < 40; i++) {
     const heading =
@@ -65,6 +67,10 @@ async function answerUntilReview(
     if (!seen.has(heading)) {
       seen.add(heading);
       await expectNoViolations(page);
+    }
+    if (custom && (await custom(heading))) {
+      await pressButton(page, 'Continue');
+      continue;
     }
     if (heading.startsWith('Is anyone in danger')) {
       await chooseRadio(page, 'No, everyone is safe');
@@ -119,6 +125,42 @@ async function answerUntilReview(
     await pressButton(page, 'Continue');
   }
   throw new Error(`${stopAt} not reached`);
+}
+
+/** The intake description for the exercise county, as the page receives it. */
+const isIntakeInfo = (url: URL) => url.pathname === '/api/public/intake/county/westwind';
+
+/** Everything the app keeps on this device, opened with the device's own key where it can be. */
+async function heldOnDevice(page: Page): Promise<string> {
+  return page.evaluate(async () => {
+    const bytes = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+    const raw = sessionStorage.getItem('cg.key') ?? localStorage.getItem('cg.key');
+    const key = raw
+      ? await crypto.subtle.importKey('raw', bytes(raw), 'AES-GCM', false, ['decrypt'])
+      : null;
+    const out: string[] = [];
+    for (const store of [localStorage, sessionStorage])
+      for (const name of Object.keys(store)) {
+        if (!name.startsWith('cg.') || name === 'cg.key') continue;
+        const value = store.getItem(name) ?? '';
+        const [iv, ct] = value.split('.');
+        if (key && iv && ct) {
+          try {
+            const plain = await crypto.subtle.decrypt(
+              { name: 'AES-GCM', iv: bytes(iv) },
+              key,
+              bytes(ct),
+            );
+            out.push(new TextDecoder().decode(plain));
+            continue;
+          } catch {
+            // not this key's: kept as stored
+          }
+        }
+        out.push(value);
+      }
+    return out.join('\n');
+  });
 }
 
 test.describe('resident report', () => {
@@ -422,6 +464,9 @@ test.describe('resident report', () => {
     await pressButton(page, 'Continue');
     await expect(page.getByRole('heading', { name: 'Please get help first' })).toBeVisible();
     await expect(page.getByRole('link', { name: /911/ })).toBeVisible();
+    // AC-A04: the way without a voice is in the county's wording here, so it is not said twice.
+    await expect(page.getByText(/If you cannot call, text 911 where that works/)).toBeVisible();
+    await expect(page.getByText('Cannot call? Text 911 where that works.')).toHaveCount(0);
     await expectNoViolations(page);
   });
 
@@ -548,5 +593,246 @@ test.describe('resident report', () => {
     });
     await pressButton(page, 'Back');
     await expect(page.getByRole('radio', { name: 'No, everyone is safe' })).toBeChecked();
+  });
+  test("AC-A04: nothing needs a voice: the help line takes texts and relay calls, and the danger screen says to text 911 even in a county's own wording, in Spanish too", async ({
+    page,
+  }) => {
+    // A county's own emergency wording that leaves texting out.
+    await page.route(isIntakeInfo, async (route) => {
+      const res = await route.fetch();
+      const body = (await res.json()) as { graph: Record<string, unknown> };
+      body.graph['emergencyInstructions'] = {
+        en: 'Call 911 now. Stay away from downed lines.',
+        es: 'Llame al 911 ahora. Aléjese de los cables caídos.',
+      };
+      await route.fulfill({ response: res, json: body });
+    });
+    await page.goto('/county/westwind');
+    await expect(
+      page.getByText(
+        /Deaf, hard of hearing or unable to speak\? Text .+, or call it through relay by dialing 711\./,
+      ),
+    ).toBeVisible();
+    await pressButton(page, 'Start');
+    await chooseRadio(page, 'Yes, someone is in danger');
+    await pressButton(page, 'Continue');
+    await expect(page.getByRole('heading', { name: 'Please get help first' })).toBeVisible();
+    await expect(page.getByText('Call 911 now. Stay away from downed lines.')).toBeVisible();
+    await expect(page.getByText('Cannot call? Text 911 where that works.')).toBeVisible();
+    await expectNoViolations(page);
+    await page.getByLabel('Language').selectOption('es');
+    await expect(page.getByRole('heading', { name: 'Primero busque ayuda' })).toBeVisible();
+    await expect(
+      page.getByText('¿No puede llamar? Envíe un mensaje al 911 donde funcione.'),
+    ).toBeVisible();
+    await expect(page.getByText(/servicio de retransmisión marcando 711/)).toBeVisible();
+    // Help near you says the same.
+    await page.goto('/county/help');
+    await expect(page.getByText('If you cannot call, text 911 where that works.')).toBeVisible();
+    await expect(page.getByText(/through relay by dialing 711/).first()).toBeVisible();
+  });
+
+  test('AC-A06: with camera, microphone and location refused, the report is made by typing and a photo chosen from the device', async ({
+    page,
+    context,
+  }) => {
+    test.setTimeout(180_000);
+    await context.clearPermissions();
+    await page.addInitScript(() => {
+      const refused = () =>
+        Promise.reject(new DOMException('Permission denied', 'NotAllowedError'));
+      if (navigator.mediaDevices) navigator.mediaDevices.getUserMedia = refused;
+      const denied = {
+        code: 1,
+        message: 'User denied Geolocation',
+        PERMISSION_DENIED: 1,
+        POSITION_UNAVAILABLE: 2,
+        TIMEOUT: 3,
+      } as GeolocationPositionError;
+      navigator.geolocation.getCurrentPosition = (_ok, fail) => fail?.(denied);
+      navigator.geolocation.watchPosition = (_ok, fail) => {
+        fail?.(denied);
+        return 0;
+      };
+    });
+    // The county offers speaking instead of typing here, so the microphone is asked for.
+    await page.route(isIntakeInfo, async (route) => {
+      const res = await route.fetch();
+      await route.fulfill({ response: res, json: { ...(await res.json()), dictation: true } });
+    });
+    const email = `denied-${Date.now().toString(36)}@example.org`;
+    const seen = new Set<string>();
+    await page.goto('/county/westwind');
+    await pressButton(page, 'Start');
+    await answerUntilReview(page, email, seen, 'Or tell us in your own words');
+    await pressButton(page, 'Speak instead');
+    await expect(
+      page.getByText('The microphone is not available. Please type your words.'),
+    ).toBeVisible();
+    await page.getByLabel('What happened?').fill('Water came in through the kitchen ceiling.');
+    await pressButton(page, 'Continue');
+    await answerUntilReview(page, email, seen, 'Photos of the damage');
+    await page.getByLabel('Choose from my photos').setInputFiles({
+      name: 'ceiling.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(PNG_1X1, 'base64'),
+    });
+    const keep = page.getByRole('button', { name: 'Keep this photo' });
+    if (
+      await keep.waitFor({ state: 'visible', timeout: 5_000 }).then(
+        () => true,
+        () => false,
+      )
+    )
+      await keep.click();
+    await expect(page.getByRole('status').filter({ hasText: '1 photo added' })).toBeVisible({
+      timeout: 30_000,
+    });
+    await pressButton(page, 'Continue');
+    await answerUntilReview(page, email, seen);
+    await pressButton(page, 'Send my report');
+    await expect(page.getByRole('heading', { name: 'We received your report' })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(page.locator('.reference')).toHaveText(CODE);
+  });
+
+  test('AC-A07: on a shared device the next person finds nothing of the last report: cleared by the resident, and on the kiosk after Done', async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    const mark = `Wren${Date.now().toString(36)}`;
+    // A personal phone or library computer: the resident clears their answers when done.
+    await page.goto('/county/westwind');
+    await pressButton(page, 'Start');
+    await answerUntilReview(
+      page,
+      `shared-${mark}@example.org`.toLowerCase(),
+      new Set(),
+      'Check your answers',
+      `14 ${mark} Lane`,
+    );
+    await pressButton(page, 'Send my report');
+    await expect(page.getByRole('heading', { name: 'We received your report' })).toBeVisible({
+      timeout: 30_000,
+    });
+    const first = ((await page.locator('.reference').textContent()) ?? '').match(CODE)?.[0];
+    expect(first).toBeTruthy();
+    await pressButton(page, /Clear my answers from this device/);
+    await expect(page.getByText('Your answers have been cleared from this device.')).toBeVisible();
+    expect(
+      await page.evaluate(() =>
+        [...Object.keys(localStorage), ...Object.keys(sessionStorage)].filter((k) =>
+          k.startsWith('cg.'),
+        ),
+      ),
+    ).toEqual([]);
+    // The next person goes back, then starts: nothing of the last report.
+    await page.goBack();
+    await expect(page.getByRole('button', { name: 'Start' })).toBeVisible();
+    await pressButton(page, 'Start');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(/Is anyone in danger/);
+    for (const radio of await page.getByRole('radio').all()) await expect(radio).not.toBeChecked();
+    await expect(page.getByText(mark)).toHaveCount(0);
+    await expect(page.getByText(first!)).toHaveCount(0);
+    expect(await heldOnDevice(page)).not.toContain(mark);
+
+    // A kiosk at a recovery centre: Done hands over a clean kiosk, still a kiosk.
+    await page.goto('/county/westwind/kiosk');
+    await expect(page.getByRole('status').filter({ hasText: 'Assisted report' })).toBeVisible();
+    await answerUntilReview(
+      page,
+      `kiosk-${mark}@example.org`.toLowerCase(),
+      new Set(),
+      'Check your answers',
+      `16 ${mark} Lane`,
+    );
+    await pressButton(page, 'Send my report');
+    await expect(page.getByRole('heading', { name: 'We received your report' })).toBeVisible({
+      timeout: 30_000,
+    });
+    const second = ((await page.locator('.reference').textContent()) ?? '').match(CODE)?.[0];
+    expect(second).toBeTruthy();
+    await pressButton(page, /Done: clear the screen for the next person/);
+    await expect(page).toHaveURL(/\/county\/westwind\/kiosk$/);
+    await expect(page.getByRole('status').filter({ hasText: 'Assisted report' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    for (const radio of await page.getByRole('radio').all()) await expect(radio).not.toBeChecked();
+    await expect(page.getByText(mark)).toHaveCount(0);
+    await expect(page.getByText(second!)).toHaveCount(0);
+    expect(await heldOnDevice(page)).not.toContain(mark);
+    await page.goBack();
+    await expect(page.getByText(second!)).toHaveCount(0);
+    await expect(page.getByText(mark)).toHaveCount(0);
+  });
+
+  test("AC-A09: someone helping another person reports for them; helper and person stay apart, and only the helper's contact opens the report later", async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    const run = Date.now().toString(36);
+    const email = `helper-${run}@example.org`;
+    await page.goto('/county/westwind');
+    await pressButton(page, 'I am helping someone else report');
+    const asked: string[] = [];
+    await answerUntilReview(
+      page,
+      email,
+      new Set(),
+      'Check your answers',
+      '12 Oak St',
+      async (h) => {
+        if (h.startsWith('What is your name')) {
+          asked.push('helper');
+          await page.getByRole('textbox').first().fill('Exercise Helper Kim');
+        } else if (h.startsWith('Does this person know')) {
+          asked.push('consent');
+          await chooseRadio(page, 'I cannot ask them right now');
+        } else if (h.startsWith('Who are you helping')) {
+          asked.push('subject');
+          await page.getByRole('textbox').first().fill('Exercise Neighbor Lee');
+        } else if (h.startsWith('How can we reach you')) {
+          // Asked of the helper, as the helper; the person helped is never asked for a contact.
+          asked.push('contact');
+          expect(h).toBe('How can we reach you, the helper?');
+          await page.getByLabel('Email (optional)').fill(email);
+          await chooseRadio(page, 'Email');
+        } else return false;
+        return true;
+      },
+    );
+    expect(asked).toEqual(['helper', 'consent', 'subject', 'contact']);
+    // The review names both, each as who they are.
+    await expect(page.getByText('Exercise Helper Kim')).toBeVisible();
+    await expect(page.getByText('Exercise Neighbor Lee')).toBeVisible();
+    await expect(page.getByText('I cannot ask them right now')).toBeVisible();
+    await expectNoViolations(page);
+    await pressButton(page, 'Send my report');
+    await expect(page.getByRole('heading', { name: 'We received your report' })).toBeVisible({
+      timeout: 30_000,
+    });
+    const code = ((await page.locator('.reference').textContent()) ?? '').match(CODE)?.[0];
+    expect(code).toBeTruthy();
+
+    // Follow-up goes to the helper's contact: only it opens the report.
+    await page.goto('/county/my-report');
+    const other = `someone-else-${run}@example.org`;
+    await page.getByLabel('Reference number').fill(code!);
+    await page.getByLabel('Phone number or email on the report').fill(other);
+    await pressButton(page, 'Send me a code');
+    await expect(
+      page.getByText('If the details match a report, a code is on its way.'),
+    ).toBeVisible();
+    await page.goto('/county/my-report');
+    await page.getByLabel('Reference number').fill(code!);
+    await page.getByLabel('Phone number or email on the report').fill(email);
+    await pressButton(page, 'Send me a code');
+    const otp = (await mailFor(email, 'one-time code')).match(/\b(\d{6})\b/)?.[1];
+    expect(otp).toBeTruthy();
+    await page.getByLabel('One-time code').fill(otp!);
+    await pressButton(page, 'Open my report');
+    await expect(page.getByText(code!)).toBeVisible({ timeout: 15_000 });
+    // By now the helper's code has come; nothing went to the address not on the report.
+    await expect(mailFor(other, 'one-time code', 1)).rejects.toThrow(/no mail/);
   });
 });

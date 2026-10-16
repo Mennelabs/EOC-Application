@@ -18,6 +18,7 @@ const en = {
   'skip.toContent': 'Skip to main content',
   'safety.heading': 'In danger right now?',
   'safety.body': 'Call 911. This form does not send help.',
+  'safety.text': 'Cannot call? Text 911 where that works.',
   'intro.heading': 'Tell us how the storm affected your home',
   'intro.event': 'Reporting damage from: {event}',
   'intro.body': 'We will ask one question at a time. You can say “I don’t know” or skip.',
@@ -34,6 +35,8 @@ const en = {
     'Open the link or scan the code from your county to start a report. You can also call or text {phone}.',
   'footer.noDecision': 'Reporting does not decide whether you get help.',
   'footer.talk': 'Prefer to talk? Call or text {phone}.',
+  'footer.relay':
+    'Deaf, hard of hearing or unable to speak? Text {phone}, or call it through relay by dialing 711.',
   'footer.website': 'Website: {county}',
   'footer.poweredBy': 'Runs on {product}',
   'county.fallback': 'Your county',
@@ -271,6 +274,7 @@ const en = {
   'help.body':
     'Open shelters, food and water sites will be listed here. Until then, call or text {phone} for help near you.',
   'help.911': 'In danger right now? Call 911.',
+  'help.911text': 'If you cannot call, text 911 where that works.',
   'kiosk.banner': 'Assisted report: a helper is entering this report with the person present.',
   'kiosk.cleared':
     'Your answers have left this device. Write down your reference number, or have it texted to you, then press Done.',
@@ -291,6 +295,7 @@ const es: Record<MessageId, string> = {
   'skip.toContent': 'Saltar al contenido',
   'safety.heading': '¿Está en peligro ahora mismo?',
   'safety.body': 'Llame al 911. Este formulario no envía ayuda.',
+  'safety.text': '¿No puede llamar? Envíe un mensaje al 911 donde funcione.',
   'intro.heading': 'Cuéntenos cómo afectó la tormenta a su hogar',
   'intro.event': 'Reporte de daños de: {event}',
   'intro.body': 'Le haremos una pregunta a la vez. Puede decir “No sé” o saltarla.',
@@ -307,6 +312,8 @@ const es: Record<MessageId, string> = {
     'Abra el enlace o escanee el código de su condado para empezar. También puede llamar o enviar un mensaje al {phone}.',
   'footer.noDecision': 'Reportar no decide si usted recibe ayuda.',
   'footer.talk': '¿Prefiere hablar? Llame o envíe un mensaje al {phone}.',
+  'footer.relay':
+    '¿Es sordo, tiene pérdida auditiva o no puede hablar? Envíe un mensaje al {phone}, o llame por el servicio de retransmisión marcando 711.',
   'footer.website': 'Sitio web: {county}',
   'footer.poweredBy': 'Funciona con {product}',
   'county.fallback': 'Su condado',
@@ -549,6 +556,7 @@ const es: Record<MessageId, string> = {
   'help.body':
     'Aquí se listarán albergues y sitios de comida y agua abiertos. Por ahora, llame o envíe un mensaje al {phone} para ayuda cerca de usted.',
   'help.911': '¿En peligro ahora mismo? Llame al 911.',
+  'help.911text': 'Si no puede llamar, envíe un mensaje al 911 donde funcione.',
   'kiosk.banner':
     'Reporte asistido: una persona de apoyo está ingresando este reporte con la persona presente.',
   'kiosk.cleared':

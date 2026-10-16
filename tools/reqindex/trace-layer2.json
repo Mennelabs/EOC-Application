@@ -536,8 +536,8 @@
   ],
   "CHN-07": [
     "pass",
-    "encrypted local storage with a persistent kiosk key, outbox states, one report per execution id",
-    "apps/web-resident/test/storage.test.ts, outbox.test.ts",
+    "encrypted local storage with a persistent kiosk key, outbox states, one report per execution id; the kiosk's Done hands the next person a clean kiosk, and clearing keeps a report still waiting to send (2026-10-16)",
+    "apps/web-resident/test/storage.test.ts, outbox.test.ts, tests/e2e/resident.spec.ts (AC-A07: kiosk after Done)",
     ""
   ],
   "CHN-08": [

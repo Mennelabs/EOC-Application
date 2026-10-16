@@ -403,10 +403,10 @@
     "Remaining limits: the one-time code lasts 10 minutes, the my-report token 30 minutes, dictation 2 minutes; asking again is always possible."
   ],
   "AC-A04": [
-    "partial",
-    "The whole flow is text; dictation is optional and hidden when the county has no AI service; the danger screen says to text 911 where that works; follow-up and the one-time code go by text or email",
-    "tests/e2e/resident.spec.ts (completes by email with no \"Speak instead\"; danger shows the emergency instructions first)",
-    "No mention of relay or TTY services; the danger test checks the heading and the 911 link, not the text-911 line; docs/a11y/checklist.md has no row for AC-A04."
+    "pass",
+    "The whole flow is text; dictation is optional and hidden when the county has no AI service; the footer on every resident screen and Help near you (resident app and Find help) say to text the county help line or call it through relay at 711; the danger screen says to text 911 where that works, and adds that line when a county's own emergency wording leaves it out; follow-up and the one-time code go by text or email (2026-10-16)",
+    "tests/e2e/resident.spec.ts (AC-A04: relay line in English and Spanish, text 911 kept under a county's own wording, Help near you; danger: the default wording says to text 911 and it is not said twice; completes by email with no \"Speak instead\"), docs/a11y/checklist.md check 15",
+    "Relay reaches the county only if its help line answers relay calls; that is the county's operation, not the platform's."
   ],
   "AC-A05": [
     "partial",
@@ -415,22 +415,22 @@
     "Consent and confirmation in Spanish are not exercised end to end. Spanish strings are reviewed drafts; professional review is the EQ-07 gate."
   ],
   "AC-A06": [
-    "partial",
-    "The resident app never asks for location: the address is typed; photos are optional with \"Skip photos\", and \"Choose from my photos\" works without the camera",
-    "tests/e2e/resident.spec.ts (address typed, photos skipped), apps/web-resident/test/photos.test.ts",
-    "No test denies camera, location or microphone permission; check 11 of the resident record is passed by reading the code."
+    "pass",
+    "The resident app never asks for location: the address is typed; photos are optional with \"Skip photos\", and \"Choose from my photos\" works without the camera; a refused microphone is said in words and typing goes on",
+    "tests/e2e/resident.spec.ts (AC-A06: camera, microphone and location refused with dictation offered; \"Speak instead\" says the microphone is not available, a photo is chosen from the device, the report is sent and numbered), apps/web-resident/test/photos.test.ts",
+    ""
   ],
   "AC-A07": [
     "partial",
-    "Answers encrypted under a session key; \"Clear my answers\" and an automatic clear after 2 minutes on a personal device; on the kiosk the answers leave the device as soon as the county has the report and the screen clears for the next person (idle.ts); pausing removes the flow; \"Close my report\" removes the token",
-    "apps/web-resident/test/storage.test.ts (never stores clear text; unreadable once the session key is gone; clearAll), apps/web-resident/test/idle.test.ts",
-    "No end-to-end test shows that the next person sees nothing; the my-report token stays up to 30 minutes unless the person closes it; the kiosk keeps its device key so unsent reports survive a restart (CHN-07)."
+    "Answers encrypted under a session key; \"Clear my answers\" and an automatic clear after 2 minutes on a personal device; on the kiosk the answers leave the device as soon as the county has the report and Done hands over a clean kiosk; pausing removes the flow; \"Close my report\" removes the token. Fixed 2026-10-16: clearing showed \"Not sent yet\" in place of the reference number, clearing wrote the outbox again under a new key, and the kiosk's Done opened the personal welcome page; a report still waiting to send is kept when the device is cleared (SCL-06)",
+    "tests/e2e/resident.spec.ts (AC-A07: after \"Clear my answers\" no stored key or answers remain and the next person starts clean; on the kiosk after Done nothing of the report is in what the device keeps, read with its own key, nor on screen, nor one step back), apps/web-resident/test/outbox.test.ts (clearing keeps a report still waiting, leaves nothing when none waits), apps/web-resident/test/storage.test.ts, apps/web-resident/test/idle.test.ts",
+    "The my-report token stays up to 30 minutes in the tab unless the person closes it; the kiosk keeps its device key so unsent reports survive a restart (CHN-07)."
   ],
   "AC-A09": [
-    "partial",
-    "Questions helper_name, helper_consent (required) and subject_name; the worker files separate helper and subject parties, the subject with no contact; lookup matches only the reporter's contact; an assisted entry records on the report, for the reviewer, whether the person agreed (flags assisted_consent or assisted_no_consent; the kiosk derives it from the relationship and the helper's answer, 2026-10-16)",
-    "packages/intake/test/graph.test.ts (a helper is kept apart, HLP-01), services/worker/test/intake.db.test.ts (helper report with a separate affected-person party), services/api/test/reports.db.test.ts (assisted intake filed with the helper as recorder and the person's agreement flagged; the helper cannot approve it), apps/web-resident/test/state.test.ts (CHN-06, AC-A09: the kiosk's consent record), tests/e2e/a11y.spec.ts (assisted kiosk banner)",
-    "No end-to-end walk of \"I am helping someone else report\"; the cannot_ask answer is exercised only in the state test; follow-up going only to the helper is by design (lookup by the reporter's contact) but not tested; what a helper may see later follows DEC-10."
+    "pass",
+    "Questions helper_name, helper_consent (required) and subject_name; the contact question is asked of the helper as the helper and never of the person helped; the worker files separate helper and subject parties, the subject with no contact; lookup matches only the reporter's contact; an assisted entry records on the report, for the reviewer, whether the person agreed (flags assisted_consent or assisted_no_consent; the kiosk derives it from the relationship and the helper's answer, 2026-10-16)",
+    "tests/e2e/resident.spec.ts (AC-A09: \"I am helping someone else report\" by keyboard, the helper's name, \"I cannot ask them right now\", the person's name and the helper's contact in that order, both names on the review; only the helper's email gets a one-time code and opens the report, another address gets none), packages/intake/test/graph.test.ts (HLP-01), services/worker/test/intake.db.test.ts (separate affected-person party), services/api/test/reports.db.test.ts (assisted intake; the helper cannot approve it), apps/web-resident/test/state.test.ts (the kiosk's consent record)",
+    "What a helper may see later follows DEC-10."
   ],
   "AC-A08": [
     "pass",

@@ -43,6 +43,7 @@ import {
   contextOf,
   currentNode,
   engineAnswers,
+  FLOW_KEY,
   goBack,
   jumpTo,
   markStep,
@@ -56,8 +57,6 @@ import { ButtonRow, Card, ChoiceGroup, Field, Progress, Status } from '../ui/pri
 import { Icon } from '../ui/icons.tsx';
 import { Submit } from './Submit.tsx';
 import { fallbackIntake, useIntake } from './useIntake.ts';
-
-const FLOW_KEY = 'flow';
 
 interface Candidates {
   extractionId: string;
@@ -199,9 +198,14 @@ export function Flow({
         setAfterMode={setAfterMode}
         update={update}
         onDone={() => {
+          // AC-A07: nothing of this person's report stays for the next one, and a kiosk stays a
+          // kiosk (CHN-05, CHN-07); before, Done opened the personal welcome page.
           shell.store.remove(FLOW_KEY);
           setState(null);
-          shell.navigate(`/${tenant}/${event}`);
+          setCandidates(null);
+          setPaused(null);
+          setAfterMode(false);
+          shell.navigate(kiosk ? `/${tenant}/${event}/kiosk` : `/${tenant}/${event}`);
         }}
       />
     );
@@ -259,20 +263,24 @@ export function Flow({
           />
         </main>
       );
-    case 'info':
+    case 'info': {
+      const ownText =
+        node.tenantKey && info.graph.emergencyInstructions
+          ? text(info.graph.emergencyInstructions, locale)
+          : null;
       return (
         <main id="main" tabIndex={-1}>
           {chrome}
           <Card tone="safety">
             <h1>{text(node.title, locale)}</h1>
-            <p>
-              {node.tenantKey && info.graph.emergencyInstructions
-                ? text(info.graph.emergencyInstructions, locale)
-                : text(node.body, locale)}
-            </p>
+            <p>{ownText ?? text(node.body, locale)}</p>
             <p>
               <a href="tel:911">{t('safety.body')}</a>
             </p>
+            {/* AC-A04: a county's own wording may leave out texting; the way without a voice stays. */}
+            {ownText !== null && ownText !== text(node.body, locale) ? (
+              <p>{t('safety.text')}</p>
+            ) : null}
           </Card>
           <ButtonRow>
             <button
@@ -291,6 +299,7 @@ export function Flow({
           </ButtonRow>
         </main>
       );
+    }
     case 'free_text':
       return (
         <main id="main" tabIndex={-1}>

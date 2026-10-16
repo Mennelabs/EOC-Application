@@ -13,7 +13,7 @@ import { Offline, sendAfter, textCode, type IntakeInfo } from '../api/public.ts'
 import { IdleTimer, KIOSK_CONFIRMATION } from '../intake/idle.ts';
 import { validationText } from '../intake/validation-text.ts';
 import type { OutboxItem } from '../intake/outbox.ts';
-import { nextPlace, spellCode, type FlowState } from '../intake/state.ts';
+import { FLOW_KEY, nextPlace, spellCode, type FlowState } from '../intake/state.ts';
 import { ButtonRow, Card, ChoiceGroup, Field, Status } from '../ui/primitives.tsx';
 
 export function Submit({
@@ -37,8 +37,22 @@ export function Submit({
 }) {
   const t = useT();
   const [, tick] = useState(0);
-  useEffect(() => shell.outbox.subscribe(() => tick((n) => n + 1)), [shell.outbox]);
-  const item = shell.outbox.find(state.executionId);
+  // Once the county has the report, its receipt stays on screen even after the device copy is
+  // cleared (ACC-41, AC-A07): clearing removes the outbox entry, not what the person is reading.
+  // Before, clearing (by hand, after two minutes, or at once on a kiosk) showed "Not sent yet".
+  const received = (it: OutboxItem | undefined) => (it?.state === 'received' ? it : null);
+  const [receipt, setReceipt] = useState(() => received(shell.outbox.find(state.executionId)));
+  useEffect(
+    () =>
+      shell.outbox.subscribe(() => {
+        const now = received(shell.outbox.find(state.executionId));
+        if (now) setReceipt(now);
+        tick((n) => n + 1);
+      }),
+    [shell.outbox, state.executionId],
+  );
+  const live = shell.outbox.find(state.executionId);
+  const item = live ?? (receipt?.body.executionId === state.executionId ? receipt : undefined);
 
   if (afterMode && item?.state === 'received') {
     return (
@@ -87,6 +101,16 @@ export function Submit({
       onDone={onDone}
     />
   );
+}
+
+/**
+ * Shared devices (ACC-41, AC-A07): the answers and every report the county has leave the device.
+ * A report still waiting to send stays, under the key it was saved with (SCL-06, rule 8); before,
+ * clearing wiped the key and the outbox was written again under a new one.
+ */
+async function clearDevice(shell: Shell): Promise<void> {
+  if (await shell.outbox.clearDelivered()) shell.store.remove(FLOW_KEY);
+  else shell.store.clearAll();
 }
 
 function SendState({ item }: { item: OutboxItem | undefined }) {
@@ -162,11 +186,7 @@ function Confirmation({
       .catch(() => setQr(null));
   }, [code, state.tenant]);
 
-  const clear = () => {
-    shell.store.clearAll();
-    void shell.outbox.forget(state.executionId);
-    setCleared(true);
-  };
+  const clear = () => void clearDevice(shell).then(() => setCleared(true));
 
   // Shared devices: personal answers leave the device after two minutes here (ACC-41); the code
   // stays on screen. On the kiosk they leave at once, the report having reached the county, and
@@ -180,8 +200,7 @@ function Confirmation({
       return () => clearTimeout(timer);
     }
     // The kiosk never shows "cleared" (that line is for personal devices), so only the device.
-    shell.store.clearAll();
-    void shell.outbox.forget(state.executionId);
+    void clearDevice(shell);
     const timer = new IdleTimer({
       ...KIOSK_CONFIRMATION,
       onWarn: () => setWarning(true),

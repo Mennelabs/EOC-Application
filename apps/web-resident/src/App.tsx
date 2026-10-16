@@ -141,6 +141,8 @@ function Layout({ shell, children }: { shell: Shell; children: ReactNode }) {
         <p>
           {t('footer.noDecision')} {t('footer.talk', { phone })}
         </p>
+        {/* AC-A04: nothing depends on voice; the help line takes texts and relay calls. */}
+        <p>{t('footer.relay', { phone })}</p>
         {brand?.website ? (
           <p>
             <a href={brand.website}>{t('footer.website', { county: agency })}</a>

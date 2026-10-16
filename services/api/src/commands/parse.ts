@@ -67,6 +67,8 @@ const VERBS: Record<string, string> = {
   mensaje: 'message',
   resources: 'resources',
   recursos: 'resources',
+  resource: 'resource',
+  recurso: 'resource',
   contacts: 'contacts',
   contactos: 'contacts',
   log: 'log',
@@ -77,6 +79,9 @@ const VERBS: Record<string, string> = {
   salida: 'checkout',
   export: 'export',
   exportar: 'export',
+  badge: 'badge',
+  credencial: 'badge',
+  gafete: 'badge',
   help: 'help',
   ayuda: 'help',
 };
@@ -173,6 +178,8 @@ const KEYS = new Set([
   'solicitud',
   'evidence',
   'evidencia',
+  'summary',
+  'resumen',
 ]);
 
 /** CMD-14: availability as the roster records it. */
@@ -204,6 +211,47 @@ const PERSON_SETTINGS: Record<string, string> = {
   libre: 'off_duty',
 };
 const PERSON_USAGE = '/person <name> <available|unavailable|on duty|off duty>';
+
+/** CMD-17: the kinds of resource the Resources screen offers. */
+const RESOURCE_TYPES: Record<string, string> = {
+  hotline: 'hotline',
+  linea: 'hotline',
+  program: 'program',
+  programa: 'program',
+  deadline: 'deadline',
+  plazo: 'deadline',
+  guidance: 'guidance',
+  guia: 'guidance',
+  link: 'link',
+  enlace: 'link',
+  document: 'document',
+  documento: 'document',
+};
+const RESOURCE_DATES: Record<string, 'expiresAt' | 'reviewAt'> = {
+  expires: 'expiresAt',
+  expiry: 'expiresAt',
+  vence: 'expiresAt',
+  review: 'reviewAt',
+  revisar: 'reviewAt',
+  revision: 'reviewAt',
+};
+const NONE_WORDS = new Set(['none', 'ninguna', 'ninguno', 'clear', 'borrar']);
+const RESOURCE_USAGE =
+  '/resource new <hotline|program|deadline|guidance|link|document> <title> | /resource <slug or title> <expires YYYY-MM-DD [HH:MM]|review YYYY-MM-DD|… none>';
+
+/** CMD-17, RULE-11: what a person saw happen to a badge, by the last words of the command. */
+const BADGE_OUTCOMES: Record<string, string> = {
+  printed: 'confirmed',
+  impreso: 'confirmed',
+  impresa: 'confirmed',
+  failed: 'failed',
+  fallo: 'failed',
+  handed_out: 'handed_out',
+  given: 'handed_out',
+  entregado: 'handed_out',
+  entregada: 'handed_out',
+};
+const BADGE_USAGE = '/badge <person> <printed|failed <why>|handed out>';
 
 /** CMD-15: the review queue's states and filters. */
 const REPORT_FILTERS: Record<string, [string, string | boolean]> = {
@@ -339,7 +387,10 @@ const NEW_WORDS = new Set(['new', 'nueva', 'nuevo']);
 const MISSION_DRAFT_USAGE = `/mission new <${[...new Set(Object.values(MISSION_KINDS))].join('|')}> <what is needed>`;
 
 /** CMD-15: what a reviewer does to one report, in English and Spanish. */
-const REPORT_ACTIONS: Record<string, 'claim' | 'approve' | 'reject' | 'ask'> = {
+const REPORT_ACTIONS: Record<string, 'claim' | 'approve' | 'reject' | 'ask' | 'duplicate'> = {
+  duplicate: 'duplicate',
+  duplicado: 'duplicate',
+  dup: 'duplicate',
   review: 'claim',
   revisar: 'claim',
   claim: 'claim',
@@ -354,7 +405,7 @@ const REPORT_ACTIONS: Record<string, 'claim' | 'approve' | 'reject' | 'ask'> = {
   pedir_informacion: 'ask',
 };
 const REPORT_USAGE =
-  '/report <reference code> review | approve <why> | reject <why> | ask <question>';
+  '/report <reference code> review | approve <why> | reject <why> | ask <question> | duplicate <other reference code> <why>';
 
 /** CMD-16: the exports the window can prepare. */
 const EXPORT_IDA = new Set(['ida', 'ida_package', 'paquete_ida']);
@@ -508,6 +559,12 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
         const person = rest.join(' ').trim();
         if (!person) return usage('Assign whom?', '/mission <number> assign <person>');
         return ok('mission.assign', { person }, ref, 'mission');
+      }
+      // CMD-13: the reason is asked at confirmation; it becomes the release reason.
+      if (s === 'release') {
+        const person = rest.join(' ').trim();
+        if (!person) return usage('Release whom?', '/mission <number> release <person>');
+        return ok('mission.release', { person }, ref, 'mission');
       }
       if (s === 'close') {
         const d = pairs['disposition'] ? norm(pairs['disposition']) : undefined;
@@ -689,6 +746,14 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
         .map((e) => e.trim())
         .filter(Boolean);
       if (act === 'claim') return ok('report.claim', {}, ref, 'report');
+      if (act === 'duplicate') {
+        const [of, ...why] = rest;
+        const reason = (pairs['reason'] ?? pairs['text'] ?? why.join(' ')).trim();
+        if (!of || !/^(?=.*\d)[a-z0-9-]{6,12}$/iu.test(of))
+          return usage('A duplicate of which report? Give its reference code.', REPORT_USAGE);
+        if (reason.length < 3) return usage('Say why, for the record.', REPORT_USAGE);
+        return ok('report.duplicate', { of, reason, evidenceRefs: evidence }, ref, 'report');
+      }
       if (act === 'ask') {
         if (!text) return usage('What should the resident be asked?', REPORT_USAGE);
         return ok('report.ask', { message: text }, ref, 'report');
@@ -700,6 +765,86 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
         ref,
         'report',
       );
+    }
+
+    // CMD-17: a resource is drafted here and published on the Resources screen; its dates are
+    // changed here with undo. An expiry in the past would take a page down now: that stays on
+    // the screen, as Unpublish.
+    case 'resource': {
+      if (NEW_WORDS.has(norm(words[0] ?? ''))) {
+        const type = RESOURCE_TYPES[norm(words[1] ?? '')];
+        if (!type) return usage('What kind of resource?', RESOURCE_USAGE);
+        const title = (pairs['title'] ?? words.slice(2).join(' ')).trim();
+        if (title.length < 3) return usage('What is it called?', RESOURCE_USAGE);
+        const args: Record<string, unknown> = { type, title };
+        const category = pairs['category'] ?? pairs['categoria'];
+        if (category) args['category'] = norm(category);
+        const summary = pairs['summary'] ?? pairs['resumen'];
+        if (summary) args['summary'] = summary;
+        return ok('resource.draft', args);
+      }
+      const at = words.findIndex((w, i) => i > 0 && RESOURCE_DATES[norm(w)]);
+      if (at < 1) return usage('Which resource, and which date?', RESOURCE_USAGE);
+      const field = RESOURCE_DATES[norm(words[at]!)]!;
+      const ref = words.slice(0, at).join(' ');
+      const [day, time] = words.slice(at + 1);
+      const command = field === 'expiresAt' ? 'resource.expiry' : 'resource.review';
+      if (day && NONE_WORDS.has(norm(day))) return ok(command, { value: null }, ref, 'resource');
+      const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day ?? '');
+      if (!d) return usage('Give the date as YYYY-MM-DD.', RESOURCE_USAGE);
+      if (field === 'reviewAt') {
+        if (time) return usage('A review date has no time.', RESOURCE_USAGE);
+        return ok(command, { value: day }, ref, 'resource');
+      }
+      // A date alone means the end of that day on the organization's clock.
+      const t = /^(\d{1,2}):(\d{2})$/.exec(time ?? '23:59');
+      if (!t || Number(t[1]) > 23 || Number(t[2]) > 59)
+        return usage('Give the time as HH:MM.', RESOURCE_USAGE);
+      const local = new Date(ctx.now.getTime() + zoneOffset(ctx.now, ctx.timeZone));
+      const daysOn = Math.round(
+        (Date.UTC(Number(d[1]), Number(d[2]) - 1, Number(d[3])) -
+          Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate())) /
+          86_400_000,
+      );
+      const when = wallClock(ctx.now, ctx.timeZone, Number(t[1]), Number(t[2]), daysOn);
+      if (when.getTime() <= ctx.now.getTime())
+        return usage(
+          'That time has passed. To take a page down now, use Unpublish on the Resources screen.',
+          RESOURCE_USAGE,
+        );
+      return ok(
+        command,
+        {
+          value: when.toISOString(),
+          local: `${day} ${(time ?? '23:59').padStart(5, '0')} ${ctx.timeZone}`,
+        },
+        ref,
+        'resource',
+      );
+    }
+
+    // CMD-17, RULE-11: a print outcome somebody saw. "failed" may carry why, after it.
+    case 'badge': {
+      for (let i = words.length - 1; i > 0; i -= 1) {
+        const two =
+          i + 1 < words.length
+            ? BADGE_OUTCOMES[`${norm(words[i]!)}_${norm(words[i + 1]!)}`]
+            : undefined;
+        const outcome = two ?? BADGE_OUTCOMES[norm(words[i]!)];
+        if (!outcome) continue;
+        const after = words
+          .slice(i + (two ? 2 : 1))
+          .join(' ')
+          .trim();
+        if (after && outcome !== 'failed') continue;
+        const why = (pairs['reason'] ?? after).trim();
+        return ok('badge.print', {
+          person: words.slice(0, i).join(' '),
+          outcome,
+          ...(why ? { reason: why } : {}),
+        });
+      }
+      return usage('Whose badge, and what happened to it?', BADGE_USAGE);
     }
 
     case 'resources': {

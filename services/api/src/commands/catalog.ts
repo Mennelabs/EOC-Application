@@ -24,7 +24,8 @@ export type TargetKind =
   | 'official_report'
   | 'report'
   | 'team'
-  | 'personnel';
+  | 'personnel'
+  | 'resource';
 
 /** A resolved record the command acts on, with the version it had when the plan was made. */
 export interface Target {
@@ -101,6 +102,26 @@ export interface CommandSpec<A = Record<string, unknown>> {
    * (CMD-08), and puts the chosen id in `personId` before the plan is shown.
    */
   person?: boolean;
+  /**
+   * CMD-08, CMD-15: a second record the command names by reference (`arg`), found among the
+   * records the caller may see; its id goes in `idArg` before the plan is shown. More than
+   * one match asks for the full reference rather than guess.
+   */
+  also?: { arg: string; idArg: string; kind: TargetKind };
+  /**
+   * CMD-13: a record of the target that the arguments name, read through its list route
+   * before the plan is shown; its id and version go in the arguments. None or several is
+   * answered in these words.
+   */
+  within?: {
+    path(args: A, target: Target | null): string;
+    /** Narrows the listed rows to the ones the command can act on. */
+    pick?(rows: Record<string, unknown>[], args: A): Record<string, unknown>[];
+    idArg: string;
+    versionArg: string;
+    none(args: A): string;
+    many(args: A): string;
+  };
   /** CMD-30: runs over many records (phase 4, `command.bulk`); `target` names their kind. */
   bulk?: BulkSpec<A>;
   confirmation: Confirmation;
@@ -145,11 +166,34 @@ const PERSON_FIELD: Record<(typeof PERSON_SETTINGS)[number], 'availability' | 'd
   off_duty: 'dutyStatus',
 };
 
+/** RULE-11: a print outcome a person saw, and the badge states each one follows. */
+const BADGE_OUTCOMES = ['confirmed', 'failed', 'handed_out'] as const;
+const BADGE_FROM: Record<(typeof BADGE_OUTCOMES)[number], string[]> = {
+  confirmed: ['print_requested', 'print_failed'],
+  failed: ['print_requested'],
+  handed_out: ['print_confirmed'],
+};
+
+const RESOURCE_TYPES = ['hotline', 'program', 'deadline', 'guidance', 'link', 'document'] as const;
+
 type Row = Record<string, unknown>;
 const rows = (r: unknown): Row[] => (Array.isArray(r) ? (r as Row[]) : []);
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
 const ver = (v: unknown) => (typeof v === 'number' ? v : undefined);
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** CMD-17, CMD-26: the date the resource itself now holds. */
+const resourceSaved = (r: unknown, what: string, field: string): Verified => {
+  const d = (r ?? {}) as Row;
+  const value = str(d[field]);
+  return {
+    state: 'saved',
+    summary: `${str(d['slug'])}: ${value ? `${what} ${value}` : `no ${what}`}.`,
+    records: [
+      { kind: 'resource', id: str(d['id']), label: str(d['slug']), version: ver(d['version']) },
+    ],
+  };
+};
 
 /** CMD-15, CMD-26: the review state the operation itself returned. */
 const reviewed = (r: unknown, what: string): Verified => {
@@ -1010,6 +1054,59 @@ export const CATALOG = [
       };
     },
   }),
+  // CMD-13, Section 30.2 phase 3: a person's open assignment on the mission is released. The
+  // release is consequential, so the full review's reason becomes the release reason.
+  define<{
+    person: string;
+    personId?: string | undefined;
+    assignmentId?: string | undefined;
+    assignmentVersion?: number | undefined;
+  }>({
+    name: 'mission.release',
+    version: 1,
+    phase: 3,
+    action: 'assignment.release',
+    kind: 'change',
+    title: 'Release a person from a mission',
+    usage: '/mission <reference> release <person>',
+    args: z.object({
+      person: z.string().min(1).max(120),
+      personId: z.uuid().optional(),
+      assignmentId: z.uuid().optional(),
+      assignmentVersion: z.number().int().optional(),
+    }),
+    target: 'mission',
+    person: true,
+    within: {
+      path: (a, t) =>
+        `/assignments?limit=10&open=true&missionId=${t!.id}&personnelId=${a.personId ?? ''}`,
+      idArg: 'assignmentId',
+      versionArg: 'assignmentVersion',
+      none: (a) => `${a.person} has no open assignment on this mission.`,
+      many: (a) =>
+        `${a.person} holds more than one open assignment on this mission. Release it on the dispatch board.`,
+    },
+    confirmation: 'full_review',
+    reversal: 'compensating',
+    freeText: ['person'],
+    sideEffects:
+      'Releases the assignment with your reason, exactly as the dispatch board does. Assigning them again is a new assignment.',
+    request: (a) => ({
+      method: 'POST',
+      path: `/assignments/${a.assignmentId ?? ''}/release`,
+      version: a.assignmentVersion,
+    }),
+    describe: (a, t) =>
+      `Release ${a.person} from mission ${t!.label}. Your reason is kept as the release reason.`,
+    verify: (r) => {
+      const x = (r ?? {}) as Row;
+      return {
+        state: 'saved',
+        summary: x['releasedAt'] ? 'Released.' : 'The assignment was not released.',
+        records: [{ kind: 'assignment', id: str(x['id']), version: ver(x['version']) }],
+      };
+    },
+  }),
   define({
     name: 'mission.close',
     version: 1,
@@ -1221,6 +1318,196 @@ export const CATALOG = [
     },
   }),
 
+  // CMD-17, RULE-11, FR-13.06: what happened to a person's badge at the printer, recorded by
+  // the person who saw it. Generating or replacing a badge stays on the Badges screen: its
+  // code is shown once, to print, and the window never holds it.
+  define<{
+    person: string;
+    personId?: string | undefined;
+    outcome: (typeof BADGE_OUTCOMES)[number];
+    reason?: string | undefined;
+    badgeId?: string | undefined;
+    badgeVersion?: number | undefined;
+  }>({
+    name: 'badge.print',
+    version: 1,
+    phase: 3,
+    action: 'badge.print',
+    kind: 'change',
+    title: "Record what happened to a person's badge at the printer",
+    usage: '/badge <person> <printed|failed <why>|handed out>',
+    args: z.object({
+      person: z.string().min(1).max(120),
+      personId: z.uuid().optional(),
+      outcome: z.enum(BADGE_OUTCOMES),
+      reason: z.string().trim().max(300).optional(),
+      badgeId: z.uuid().optional(),
+      badgeVersion: z.number().int().optional(),
+    }),
+    person: true,
+    within: {
+      path: (a) => `/badges?limit=20&personnelId=${a.personId ?? ''}`,
+      pick: (list, a) => list.filter((b) => BADGE_FROM[a.outcome].includes(str(b['state']))),
+      idArg: 'badgeId',
+      versionArg: 'badgeVersion',
+      none: (a) =>
+        `${a.person} has no badge waiting for that. Generate or reprint it on the Badges screen.`,
+      many: (a) => `${a.person} has more than one badge waiting. Record it on the Badges screen.`,
+    },
+    confirmation: 'one_tap',
+    reversal: 'none',
+    undoUnavailable:
+      "A print outcome stays in the badge's history. If it was wrong, record what happened next on the Badges screen.",
+    sideEffects:
+      'Adds the outcome to the badge history. A printed badge is not handed out until someone records that too.',
+    freeText: ['person', 'reason'],
+    request: (a) => ({
+      method: 'POST',
+      path: `/badges/${a.badgeId ?? ''}/print`,
+      version: a.badgeVersion,
+      body: { outcome: a.outcome, ...(a.reason ? { reason: a.reason } : {}) },
+    }),
+    describe: (a) =>
+      a.outcome === 'confirmed'
+        ? `Record that you saw ${a.person}'s badge come out of the printer. It is not handed out yet.`
+        : a.outcome === 'failed'
+          ? `Record that ${a.person}'s badge failed to print.`
+          : `Record that ${a.person}'s printed badge was handed to them.`,
+    // The answer never carries the badge's code: the print route does not return it.
+    verify: (r) => {
+      const b = (r ?? {}) as Row;
+      return {
+        state: 'saved',
+        summary: `${str(b['displayName'])}'s badge: ${str(b['state']).replace(/_/g, ' ')}.`,
+        records: [{ kind: 'badge', id: str(b['id']), version: ver(b['version']) }],
+      };
+    },
+  }),
+
+  // CMD-17, Section 30.2 phase 1: a resource drafted in English, the fallback language. It is
+  // published on the Resources screen, after its texts are reviewed (BRD:FR-16.02).
+  define({
+    name: 'resource.draft',
+    version: 1,
+    phase: 1,
+    action: 'resource.edit',
+    kind: 'draft',
+    title: 'Draft a resource',
+    usage: '/resource new <hotline|program|deadline|guidance|link|document> <title>',
+    args: z.object({
+      type: z.enum(RESOURCE_TYPES),
+      title: z.string().trim().min(3).max(200),
+      summary: z.string().trim().max(500).optional(),
+      category: z
+        .string()
+        .regex(/^[a-z0-9_]{1,60}$/)
+        .optional(),
+    }),
+    confirmation: 'none',
+    reversal: 'none',
+    sideEffects:
+      'Creates a draft resource with an English title. Nobody sees it until its texts are reviewed and it is published on the Resources screen.',
+    freeText: ['title', 'summary'],
+    request: (a) => ({
+      method: 'POST',
+      path: '/resources',
+      body: {
+        type: a.type,
+        ...(a.category ? { category: a.category } : {}),
+        texts: {
+          en: { title: a.title, summary: a.summary ?? null, bodyHtml: '', humanReviewed: false },
+        },
+      },
+    }),
+    describe: (a) =>
+      `Draft a ${a.type} resource${a.category ? ` in ${a.category.replace(/_/g, ' ')}` : ''} with the title you typed. Nobody sees it until it is published.`,
+    verify: (r) => {
+      const d = (r ?? {}) as Row;
+      return {
+        state: 'drafted',
+        summary: `Resource "${str(d['slug'])}" drafted. Add its texts and publish it on the Resources screen.`,
+        records: [
+          {
+            kind: 'resource',
+            id: str(d['id']),
+            label: str(d['slug']),
+            version: ver(d['version']),
+          },
+        ],
+      };
+    },
+  }),
+  // CMD-17, Section 30.2 phase 2: the date someone looks at a resource again. Internal only.
+  define({
+    name: 'resource.review',
+    version: 1,
+    phase: 2,
+    action: 'resource.edit',
+    kind: 'change',
+    title: "Set a resource's review date",
+    usage: '/resource <slug or title> review <YYYY-MM-DD|none>',
+    args: z.object({ value: z.iso.date().nullable() }),
+    target: 'resource',
+    confirmation: 'one_tap',
+    reversal: 'undo_15_min',
+    sideEffects:
+      'Changes the date the resource comes up for review. The public page does not change.',
+    request: (a, t) => ({
+      method: 'PATCH',
+      path: `/resources/${t!.id}`,
+      body: { reviewAt: a.value },
+      version: t!.version,
+    }),
+    undo: (_a, t, v) => ({
+      method: 'PATCH',
+      path: `/resources/${t!.id}`,
+      body: { reviewAt: t!.was?.['reviewAt'] || null },
+      version: v.records[0]?.version,
+    }),
+    describe: (a, t) =>
+      a.value
+        ? `Set the review date of ${t!.label} to ${a.value}.`
+        : `Clear the review date of ${t!.label}.`,
+    verify: (r) => resourceSaved(r, 'review date', 'reviewAt'),
+  }),
+  // CMD-17, Section 30.2 phase 3: when a published page turns into "expired on". Only a future
+  // time is taken (the parser refuses a past one); undo puts back what the plan saw.
+  define({
+    name: 'resource.expiry',
+    version: 1,
+    phase: 3,
+    action: 'resource.edit',
+    kind: 'change',
+    title: "Set a resource's expiry",
+    usage: '/resource <slug or title> expires <YYYY-MM-DD [HH:MM]|none>',
+    args: z.object({
+      value: z.iso.datetime().nullable(),
+      local: z.string().max(80).optional(),
+    }),
+    target: 'resource',
+    confirmation: 'one_tap',
+    reversal: 'undo_15_min',
+    sideEffects:
+      'From that time the public page shows "expired on" instead of the resource. Without an expiry it stays until it is unpublished.',
+    request: (a, t) => ({
+      method: 'PATCH',
+      path: `/resources/${t!.id}`,
+      body: { expiresAt: a.value },
+      version: t!.version,
+    }),
+    undo: (_a, t, v) => ({
+      method: 'PATCH',
+      path: `/resources/${t!.id}`,
+      body: { expiresAt: t!.was?.['expiresAt'] || null },
+      version: v.records[0]?.version,
+    }),
+    describe: (a, t) =>
+      a.value
+        ? `Expire ${t!.label} at ${a.local ?? a.value}; until then the public page is unchanged.`
+        : `Remove the expiry of ${t!.label}; it stays published until someone unpublishes it.`,
+    verify: (r) => resourceSaved(r, 'expiry', 'expiresAt'),
+  }),
+
   // AC-C08, Section 30.2 phase 4 (outbound messages): a message to a team's phones, reviewed
   // with a reason. It is answered as sent, never as delivered: delivery is each phone's receipt.
   define<{ text: string }>({
@@ -1316,6 +1603,44 @@ export const CATALOG = [
       verify: (r) => reviewed(r, decision === 'approve' ? 'is approved' : 'is rejected'),
     }),
   ),
+  // CMD-15: the other report is found by its reference code among those the reviewer may
+  // see, and named in the plan. Reopening is a new decision on the review screen.
+  define<{ of: string; ofId?: string | undefined; reason: string; evidenceRefs: string[] }>({
+    name: 'report.duplicate',
+    version: 1,
+    phase: 4,
+    action: 'report.review',
+    kind: 'change',
+    title: 'Mark a report as a duplicate of another',
+    usage: '/report <reference code> duplicate <other reference code> <why>',
+    args: z.object({
+      of: z.string().trim().min(6).max(12),
+      ofId: z.uuid().optional(),
+      reason: z.string().trim().min(3).max(2000),
+      evidenceRefs: z.array(z.string().trim().min(1).max(200)).max(20).default([]),
+    }),
+    target: 'report',
+    also: { arg: 'of', idArg: 'ofId', kind: 'report' },
+    confirmation: 'full_review',
+    reversal: 'compensating',
+    sideEffects:
+      'Records the review decision with your reason: this report becomes a duplicate and points at the other one. Neither report is deleted, and the other is not changed.',
+    freeText: ['reason'],
+    request: (a, t) => ({
+      method: 'POST',
+      path: `/reports/${t!.id}/decisions`,
+      version: t!.version,
+      body: {
+        decision: 'duplicate',
+        duplicateOf: a.ofId,
+        reason: a.reason,
+        evidenceRefs: a.evidenceRefs,
+      },
+    }),
+    describe: (a, t) =>
+      `Mark ${t?.label ?? 'the report'} as a duplicate of ${a.of.toUpperCase()}${a.evidenceRefs.length ? `, citing ${a.evidenceRefs.join(', ')}` : ''}. ${a.of.toUpperCase()} is not changed.`,
+    verify: (r) => reviewed(r, 'is marked as a duplicate'),
+  }),
   define<{ message: string }>({
     name: 'report.ask',
     version: 1,

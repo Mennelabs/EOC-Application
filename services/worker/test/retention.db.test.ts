@@ -75,6 +75,7 @@ describe.skipIf(!workerUrl)('retention sweeps by category (database-backed)', ()
         ['publications', '7 years'],
         ['field_records', '7 years'],
         ['sessions', '90 days'],
+        ['records', '7 years'],
       ])
         await trx
           .insertInto('cg.retention_policy')
@@ -711,5 +712,158 @@ describe.skipIf(!workerUrl)('retention sweeps by category (database-backed)', ()
     } finally {
       await app.destroy();
     }
+  });
+
+  it("SEC-13: the roster goes the period after it was archived or lapsed, with its stored files first; a person or team another record names, a held one, a recent one and an open event's team stay; without a store that can delete, files and rows stay", async () => {
+    const years = (n: number) => ago(n * 365);
+    const key = (name: string) => `exercise/${tag}/${name}`;
+    const r: Record<string, string> = {};
+    await tx(async (trx) => {
+      const person = async (name: string, values: Record<string, unknown>) =>
+        (r[name] = (
+          await trx
+            .insertInto('cg.personnel')
+            .values({ tenant_id: tenantId, name: `Exercise roster ${name} ${tag}`, ...values })
+            .returning('id')
+            .executeTakeFirstOrThrow()
+        ).id);
+      const archived = (when: Date, extra: Record<string, unknown> = {}) => ({
+        status: 'archived',
+        archived_at: when,
+        archived_reason: 'Exercise: left the county',
+        ...extra,
+      });
+      await person('old', archived(years(8), { photo_key: key('photo-old.jpg') }));
+      await person('lead', archived(years(8)));
+      await person('recent', archived(ago(100)));
+      await person('held', archived(years(8)));
+      await person('active', {});
+      const team = async (name: string, values: Record<string, unknown>) =>
+        (r[name] = (
+          await trx
+            .insertInto('cg.team')
+            .values({
+              tenant_id: tenantId,
+              key: `ex-${name}-${tag}`,
+              name: `Exercise ${name} ${tag}`,
+              ...values,
+            })
+            .returning('id')
+            .executeTakeFirstOrThrow()
+        ).id);
+      // A standing team still in service, led by an archived person: the lead stays.
+      await team('teamActive', { lead_personnel_id: r['lead'] });
+      await team('teamOld', { status: 'archived', updated_at: years(8) });
+      await team('teamOpenEvent', { status: 'archived', updated_at: years(8), event_id: eventId });
+      await team('teamLogged', { status: 'archived', updated_at: years(8) });
+      for (const [t, p] of [
+        ['teamActive', 'old'],
+        ['teamOld', 'recent'],
+      ])
+        await trx
+          .insertInto('cg.team_member')
+          .values({ tenant_id: tenantId, team_id: r[t!]!, personnel_id: r[p!]! })
+          .execute();
+      // A status report a communications entry still names keeps its team (comms may be kept longer).
+      const status = await trx
+        .insertInto('cg.team_status')
+        .values({
+          tenant_id: tenantId,
+          team_id: r['teamLogged']!,
+          status: 'available',
+          source: 'console',
+        })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      await trx
+        .insertInto('cg.comms_log')
+        .values({
+          tenant_id: tenantId,
+          event_id: eventId,
+          net: 'Exercise net',
+          kind: 'status_heard',
+          team_status_id: status.id,
+          entry_at: new Date(),
+        })
+        .execute();
+      const credential = async (name: string, values: Record<string, unknown>) =>
+        (r[name] = (
+          await trx
+            .insertInto('cg.credential')
+            .values({ tenant_id: tenantId, kind: 'chainsaw', ...values } as never)
+            .returning('id')
+            .executeTakeFirstOrThrow()
+        ).id);
+      await credential('credOfOld', {
+        personnel_id: r['old'],
+        status: 'verified',
+        evidence_key: key('cert-of-old.pdf'),
+      });
+      await credential('credLapsed', {
+        personnel_id: r['active'],
+        status: 'expired',
+        expires_at: years(8),
+        evidence_key: key('cert-lapsed.pdf'),
+      });
+      await credential('credValid', {
+        personnel_id: r['active'],
+        status: 'verified',
+        expires_at: ago(-200),
+        evidence_key: key('cert-valid.pdf'),
+      });
+      holds.push(
+        (
+          await trx
+            .insertInto('cg.legal_hold')
+            .values({
+              tenant_id: tenantId,
+              scope: JSON.stringify({ targetType: 'personnel', targetId: r['held'] }),
+              reason: 'Exercise: retention sweep test',
+              placed_by: adminId,
+            })
+            .returning('id')
+            .executeTakeFirstOrThrow()
+        ).id,
+      );
+    });
+
+    // Without a store that can delete, rows with stored files stay; the rest of the roster goes.
+    await sweepRetention({ db, log: pino({ level: 'silent' }) } as unknown as JobContext);
+    expect(await exists('cg.personnel', r['old']!)).toBe(true);
+    expect(await exists('cg.credential', r['credLapsed']!)).toBe(true);
+    expect(await exists('cg.team', r['teamOld']!)).toBe(false);
+
+    const removed: string[] = [];
+    const objects = { delete: async (k: string) => void removed.push(k) };
+    await sweepRetention({ db, log: pino({ level: 'silent' }), objects } as unknown as JobContext);
+    expect(removed.sort()).toEqual(
+      [key('cert-lapsed.pdf'), key('cert-of-old.pdf'), key('photo-old.jpg')].sort(),
+    );
+    expect(await exists('cg.personnel', r['old']!)).toBe(false);
+    expect(await exists('cg.credential', r['credOfOld']!)).toBe(false);
+    expect(await exists('cg.credential', r['credLapsed']!)).toBe(false);
+    expect(
+      await db
+        .selectFrom('cg.team_member')
+        .select('id')
+        .where('personnel_id', '=', r['old']!)
+        .execute(),
+    ).toEqual([]);
+    // Named by a team, held, recent, active or still valid: kept.
+    for (const name of ['lead', 'held', 'recent', 'active'])
+      expect(await exists('cg.personnel', r[name]!), name).toBe(true);
+    expect(await exists('cg.credential', r['credValid']!)).toBe(true);
+    for (const name of ['teamActive', 'teamOpenEvent', 'teamLogged'])
+      expect(await exists('cg.team', r[name]!), name).toBe(true);
+
+    const log = await db
+      .selectFrom('cg.deletion_log')
+      .select(['data_category', 'target_type'])
+      .where('tenant_id', '=', tenantId)
+      .where('target_type', 'in', ['personnel', 'team', 'credential'])
+      .execute();
+    expect(new Set(log.map((l) => `${l.data_category}:${l.target_type}`))).toEqual(
+      new Set(['records:personnel', 'field_records:team', 'field_records:credential']),
+    );
   });
 });

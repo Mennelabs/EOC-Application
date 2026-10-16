@@ -476,6 +476,23 @@ const RECORDS: Record<
     was: (r) => ({ dutyStatus: str(r['dutyStatus']), availability: str(r['availability']) }),
     noun: 'person on the roster',
   },
+  // CMD-17: a resource by its slug, or by words in its English title; drafts included.
+  resource: {
+    list: (ref) => (ref.trim() ? '/resources?limit=200' : null),
+    one: (id) => `/resources/${id}`,
+    label: (r) => `${str(r['slug'])} (${str(r['status'])})`,
+    pick: (rows, ref) => {
+      const want = ref.trim().toLowerCase();
+      const bySlug = rows.filter((r) => str(r['slug']) === want);
+      if (bySlug.length) return bySlug;
+      const title = (r: ListRow) => {
+        const texts = Array.isArray(r['texts']) ? (r['texts'] as ListRow[]) : [];
+        return str(texts.find((x) => x['locale'] === 'en')?.['title']).toLowerCase();
+      };
+      return rows.filter((r) => title(r).includes(want));
+    },
+    was: (r) => ({ reviewAt: str(r['reviewAt']), expiresAt: str(r['expiresAt']) }),
+  },
   // CMD-15: a resident's report by its reference code, as the review queue lists it.
   report: {
     list: (ref) =>
@@ -1460,6 +1477,27 @@ export const commandRoutesWith =
         // CMD-08, CMD-14: the person a command names is found among the people this person may
         // see, by name; more than one asks which. Nothing about them is inferred.
         const planArgs = args.data as Record<string, unknown>;
+        // CMD-08, CMD-15: a second record named by its reference, among those this person may see.
+        if (spec.also) {
+          const named = str(planArgs[spec.also.arg]).trim();
+          const noun = RECORDS[spec.also.kind].noun ?? spec.also.kind;
+          const other = await resolveTarget(request, spec.also.kind, named, undefined);
+          if (other.kind === 'none')
+            return {
+              ...head,
+              status: 'not_found',
+              message: `No ${noun} you can see matches "${named}".`,
+            };
+          if (other.kind === 'many')
+            return {
+              ...head,
+              status: 'not_found',
+              message: `More than one ${noun} matches "${named}". Give its full reference code.`,
+            };
+          if (other.target.id === target?.id)
+            return { ...head, status: 'not_found', message: `A ${noun} cannot duplicate itself.` };
+          planArgs[spec.also.idArg] = other.target.id;
+        }
         if (spec.person) {
           const named = str(planArgs['person']).trim();
           const res = await op(request, {
@@ -1489,6 +1527,25 @@ export const commandRoutesWith =
             };
           planArgs['personId'] = str(found[0]!['id']);
           planArgs['person'] = str(found[0]!['name']);
+        }
+
+        // CMD-13: the one record of the target the arguments name (an open assignment of the
+        // named person); none or several is answered, never guessed.
+        if (spec.within && (target || !spec.target)) {
+          const res = await op(request, {
+            method: 'GET',
+            path: spec.within.path(planArgs, target),
+          });
+          let found = res.status === 200 && Array.isArray(res.body) ? (res.body as ListRow[]) : [];
+          if (spec.within.pick) found = spec.within.pick(found, planArgs);
+          if (found.length !== 1)
+            return {
+              ...head,
+              status: 'not_found',
+              message: found.length ? spec.within.many(planArgs) : spec.within.none(planArgs),
+            };
+          planArgs[spec.within.idArg] = str(found[0]!['id']);
+          planArgs[spec.within.versionArg] = found[0]!['version'];
         }
 
         let eventId: string | null = null;

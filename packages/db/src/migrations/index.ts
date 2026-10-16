@@ -83,6 +83,7 @@ import * as m0081 from './0081_retention_delete_field.ts';
 import * as m0082 from './0082_shared_document.ts';
 import * as m0083 from './0083_change_feed_pruning.ts';
 import * as m0084 from './0084_retention_delete_scribe.ts';
+import * as m0085 from './0085_retention_delete_roster.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -170,4 +171,5 @@ export const migrations: Record<string, Migration> = {
   '0082_shared_document': m0082,
   '0083_change_feed_pruning': m0083,
   '0084_retention_delete_scribe': m0084,
+  '0085_retention_delete_roster': m0085,
 };

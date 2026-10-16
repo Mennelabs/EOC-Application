@@ -1511,4 +1511,259 @@ describe.skipIf(!appUrl || !workerUrl)('the command window engine (database-back
       'denied',
     );
   });
+
+  it('CMD-17, Section 30.2: a resource is drafted at once and published only on the screen; its review date (phase 2) and expiry (phase 3) change with one tap and undo to what the plan saw; a role without the edit is refused', async () => {
+    await phases([1, 2]);
+    const resource = (id: string) =>
+      dbWorker
+        .selectFrom('cg.resource')
+        .select(['status', 'published_at', 'review_at', 'expires_at', 'slug'])
+        .where('id', '=', id)
+        .executeTakeFirstOrThrow();
+    const title = `Exercise flood line ${run}`;
+    const drafted = await command('pio', `/resource new hotline ${title} category:debris`);
+    expect(drafted.status, drafted.message).toBe('succeeded');
+    expect(drafted.result?.state).toBe('drafted');
+    const id = drafted.result!.records[0]!.id;
+    const row = await resource(id);
+    expect(row).toMatchObject({ status: 'draft', published_at: null });
+    const text = await dbWorker
+      .selectFrom('cg.resource_text')
+      .select(['locale', 'title', 'reviewed_at'])
+      .where('resource_id', '=', id)
+      .execute();
+    // English, the fallback, not yet reviewed by a person: nobody sees it.
+    expect(text).toEqual([{ locale: 'en', title, reviewed_at: null }]);
+    // CMD-37: the title lives in the resource, not in the plan's words.
+    expect(drafted.plan?.description).not.toContain(title);
+
+    // The review date by slug: phase 2, one tap, undone to none.
+    const review = await command('pio', `/resource ${row.slug} review 2027-01-15`);
+    expect(review.status, review.message).toBe('awaiting_confirmation');
+    expect(review.command).toMatchObject({ confirmation: 'one_tap', reversal: 'undo_15_min' });
+    expect((await confirm('pio', review)).body['status']).toBe('succeeded');
+    expect(String((await resource(id)).review_at)).toContain('2027');
+    const undoReview = await call('pio', 'POST', `/commands/${review.id}/undo`, {
+      executionId: randomUUID(),
+    });
+    expect(undoReview.body['status'], JSON.stringify(undoReview.body)).toBe('succeeded');
+    expect((await resource(id)).review_at).toBeNull();
+
+    // The expiry is phase 3: off until the county turns it on.
+    expect((await command('pio', `/resource ${row.slug} expires 2030-06-30`)).status).toBe(
+      'unsupported',
+    );
+    await phases([1, 2, 3]);
+    // By words of its title; the plan names the time on the county's clock.
+    const expiry = await command('pio', `/resource ${title} expires 2030-06-30 17:00`);
+    expect(expiry.status, expiry.message).toBe('awaiting_confirmation');
+    expect(expiry.plan?.description).toBe(
+      `Expire ${row.slug} (draft) at 2030-06-30 17:00 America/Chicago; until then the public page is unchanged.`,
+    );
+    expect((await confirm('pio', expiry)).body['status']).toBe('succeeded');
+    expect((await resource(id)).expires_at?.toISOString()).toBe('2030-06-30T22:00:00.000Z');
+    const undoExpiry = await call('pio', 'POST', `/commands/${expiry.id}/undo`, {
+      executionId: randomUUID(),
+    });
+    expect(undoExpiry.body['status'], JSON.stringify(undoExpiry.body)).toBe('succeeded');
+    expect((await resource(id)).expires_at).toBeNull();
+    // Still a draft throughout: the window never publishes.
+    expect((await resource(id)).status).toBe('draft');
+
+    // A role without resource.edit is refused before anything is planned.
+    expect((await command('field', `/resource new hotline Exercise other line`)).status).toBe(
+      'denied',
+    );
+  });
+
+  it('CMD-15, CMD-08: a duplicate names the other report by its code, found among those the reviewer may see; the plan names both, the other is not changed; itself or an unknown code is refused', async () => {
+    subjects['reviewer'] = person('assessment_reviewer');
+    const codes = [randomCode(), randomCode(), randomCode()];
+    const ids = await withTenant(dbWorker, { tenantId: county }, async (trx) => {
+      const out: string[] = [];
+      for (const c of codes)
+        out.push(
+          (
+            await trx
+              .insertInto('cg.report')
+              .values({
+                tenant_id: county,
+                event_id: eventId,
+                reference_code: c,
+                execution_id: randomUUID(),
+                graph_key: 'damage',
+                graph_version: 1,
+                channel_of_origin: 'web',
+                relationship: 'own_home',
+              })
+              .returning('id')
+              .executeTakeFirstOrThrow()
+          ).id,
+        );
+      return out;
+    });
+    const report = (id: string) =>
+      dbWorker
+        .selectFrom('cg.report')
+        .select(['review_state', 'duplicate_of', 'version'])
+        .where('id', '=', id)
+        .executeTakeFirstOrThrow();
+    const other = await report(ids[1]!);
+    await phases([1, 2, 3, 4]);
+
+    const line = `/report ${codes[0]} duplicate ${codes[1]} Exercise: same house, same photos`;
+    expect((await command('mc', line)).status).toBe('denied');
+    const plan = await command('reviewer', line);
+    expect(plan.status, plan.message).toBe('awaiting_confirmation');
+    expect(plan.plan?.description).toMatch(
+      new RegExp(
+        `^Mark ${codes[0]} \\(submitted, .+\\) as a duplicate of ${codes[1]}\\. ${codes[1]} is not changed\\.$`,
+      ),
+    );
+    expect(plan.plan?.args['ofId']).toBe(ids[1]);
+    const done = await confirm('reviewer', plan, {
+      'x-confirm': 'true',
+      'x-reason': 'Exercise: the second call about the same house',
+    });
+    expect(done.body['status'], JSON.stringify(done.body)).toBe('succeeded');
+    expect(done.body['message']).toContain('is marked as a duplicate');
+    expect(await report(ids[0]!)).toMatchObject({
+      review_state: 'duplicate',
+      duplicate_of: ids[1],
+    });
+    // The other report is untouched.
+    expect(await report(ids[1]!)).toEqual(other);
+    // CMD-37: the reason lives in the decision, not in the execution record.
+    expect(JSON.stringify((await stored(plan.id!)).plan)).not.toContain('same photos');
+
+    const self = await command('reviewer', `/report ${codes[2]} duplicate ${codes[2]} same one`);
+    expect(self.status).toBe('not_found');
+    expect(self.message).toContain('cannot duplicate itself');
+    const unknown = await command(
+      'reviewer',
+      `/report ${codes[2]} duplicate ${randomCode()} Exercise: no such report`,
+    );
+    expect(unknown.status).toBe('not_found');
+    expect((await report(ids[2]!)).review_state).toBe('submitted');
+    await phases([1, 2, 3]);
+  });
+
+  it("CMD-13, Section 30.2 phase 3: a person's open assignment on a mission is released after a full review, the reason kept as the release reason; none open is answered, not guessed", async () => {
+    await phases([1, 2, 3]);
+    const m = await call('calltaker', 'POST', '/missions', {
+      eventId,
+      kind: 'delivery',
+      source: 'call',
+      priority: 'normal',
+      urgency: 'soon',
+      summary: 'Exercise: water to the church hall.',
+      location: {
+        line1: '30 Exercise Way',
+        city: 'Harmon City',
+        postal: '63002',
+        position: { lat: 38.791, lon: -90.871 },
+        state: 'approximate',
+      },
+    });
+    expect(m.status, JSON.stringify(m.body)).toBe(201);
+    const ref2 = m.body['reference'] as string;
+    const name = `Exercise Dev Okafor ${run}`;
+    const dev = await withTenant(dbWorker, { tenantId: county }, (trx) =>
+      trx
+        .insertInto('cg.personnel')
+        .values({ tenant_id: county, name, availability: 'available', duty_status: 'on_duty' })
+        .returning('id')
+        .executeTakeFirstOrThrow(),
+    );
+    // Nothing to release yet.
+    const early = await command('field', `/mission ${ref2} release ${name}`);
+    expect(early.status).toBe('not_found');
+    expect(early.message).toBe(`${name} has no open assignment on this mission.`);
+
+    const assign = await command('field', `/mission ${ref2} assign ${name}`);
+    expect((await confirm('field', assign)).body['status']).toBe('succeeded');
+
+    const release = await command('field', `/mission ${ref2} release ${name}`);
+    expect(release.status, release.message).toBe('awaiting_confirmation');
+    expect(release.command).toMatchObject({ confirmation: 'full_review' });
+    expect(release.plan?.description).toContain(`Release ${name} from mission ${ref2}`);
+    // Consequential: no reason, no release.
+    expect((await confirm('field', release)).status).toBe(428);
+    const done = await confirm('field', release, {
+      'x-confirm': 'true',
+      'x-reason': 'Exercise: crew swapped at shift change',
+    });
+    expect(done.body['status'], JSON.stringify(done.body)).toBe('succeeded');
+    const held = await dbWorker
+      .selectFrom('cg.assignment')
+      .select(['state', 'released_at', 'release_reason'])
+      .where('personnel_id', '=', dev.id)
+      .executeTakeFirstOrThrow();
+    expect(held).toMatchObject({
+      state: 'released',
+      release_reason: 'Exercise: crew swapped at shift change',
+    });
+    expect(held.released_at).not.toBeNull();
+    expect((await command('field', `/mission ${ref2} release ${name}`)).status).toBe('not_found');
+    expect((await command('pio', `/mission ${ref2} release ${name}`)).status).toBe('denied');
+  });
+
+  it("CMD-17, RULE-11: a print outcome is recorded for the person's one badge waiting for it; printed is not handed out; it cannot be undone from the window; generating stays on the screen", async () => {
+    await phases([1, 2, 3]);
+    subjects['badges'] = person('personnel_coordinator');
+    const name = `Exercise Rae Lindqvist ${run}`;
+    const rae = await withTenant(dbWorker, { tenantId: county }, (trx) =>
+      trx
+        .insertInto('cg.personnel')
+        .values({ tenant_id: county, name, availability: 'available', duty_status: 'on_duty' })
+        .returning('id')
+        .executeTakeFirstOrThrow(),
+    );
+    const made = await call('badges', 'POST', '/badges', { personnelId: rae.id });
+    expect(made.status, JSON.stringify(made.body)).toBe(201);
+    const badgeId = made.body['id'] as string;
+    const code = made.body['code'] as string;
+    expect(code.length).toBeGreaterThan(5);
+    const badge = () =>
+      dbWorker
+        .selectFrom('cg.badge')
+        .select(['state', 'print_confirmed_at', 'handed_out_at', 'version'])
+        .where('id', '=', badgeId)
+        .executeTakeFirstOrThrow();
+    // Generated but never sent to a printer: nothing to confirm.
+    const early = await command('badges', `/badge ${name} printed`);
+    expect(early.status).toBe('not_found');
+    expect(early.message).toContain('Badges screen');
+    const requested = await call(
+      'badges',
+      'POST',
+      `/badges/${badgeId}/print`,
+      { outcome: 'requested' },
+      { 'if-match': `"${(await badge()).version}"` },
+    );
+    expect(requested.status, JSON.stringify(requested.body)).toBe(200);
+
+    const printed = await command('badges', `/badge ${name} printed`);
+    expect(printed.status, printed.message).toBe('awaiting_confirmation');
+    expect(printed.command).toMatchObject({ confirmation: 'one_tap', reversal: 'none' });
+    expect(printed.plan?.description).toContain('It is not handed out yet.');
+    const done = await confirm('badges', printed);
+    expect(done.body['status'], JSON.stringify(done.body)).toBe('succeeded');
+    expect(await badge()).toMatchObject({ state: 'print_confirmed', handed_out_at: null });
+    // The answer and the record never carry the badge's code.
+    expect(JSON.stringify(done.body)).not.toContain(code);
+    expect(JSON.stringify(await stored(printed.id!))).not.toContain(code);
+
+    const undo = await call('badges', 'POST', `/commands/${printed.id}/undo`, {
+      executionId: randomUUID(),
+    });
+    expect(undo.status).toBe(409);
+    expect(undo.body['message']).toContain("stays in the badge's history");
+
+    const handed = await command('badges', `/gafete ${name} entregado`);
+    expect((await confirm('badges', handed)).body['status']).toBe('succeeded');
+    expect((await badge()).state).toBe('handed_out');
+    expect((await command('badges', `/badge ${name} handed out`)).status).toBe('not_found');
+    expect((await command('mc', `/badge ${name} printed`)).status).toBe('denied');
+  });
 });

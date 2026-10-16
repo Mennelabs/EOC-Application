@@ -166,6 +166,8 @@ const recordHref = (r: { kind: string; id: string }): string | null => {
       return '/console/reminders';
     case 'personnel':
       return '/console/personnel';
+    case 'resource':
+      return '/console/resources';
     // CMD-16: an export is listed where it was asked for.
     case 'ida_package':
       return '/console/declaration';

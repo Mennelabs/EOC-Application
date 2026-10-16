@@ -182,6 +182,13 @@ describe('shorthand', () => {
       args: { person: 'Ana Ruiz' },
     });
     expect(parse('/mision M-00012 asignar')).toMatchObject({ error: 'usage' });
+    // The release reason is asked at confirmation, not typed with the command.
+    expect(parse('/mision M-00012 liberar Ana Ruiz')).toMatchObject({
+      command: 'mission.release',
+      args: { person: 'Ana Ruiz' },
+      ref: 'M-00012',
+    });
+    expect(parse('/mission M-00012 release')).toMatchObject({ error: 'usage' });
     expect(parse('/mission M-00012 close disposition:referred')).toMatchObject({
       command: 'mission.close',
       args: { disposition: 'referred' },
@@ -248,6 +255,86 @@ describe('shorthand', () => {
     expect(parse('claim the food need')).toMatchObject({ ok: false, error: 'unsupported' });
   });
 
+  it('CMD-17: "/resource new" drafts a resource of a known kind; dates are read on the organization\'s clock and a past expiry is refused', () => {
+    expect(
+      parse(
+        '/resource new hotline Flood debris pickup line category:debris summary:"Call to book"',
+      ),
+    ).toEqual({
+      ok: true,
+      command: 'resource.draft',
+      args: {
+        type: 'hotline',
+        title: 'Flood debris pickup line',
+        category: 'debris',
+        summary: 'Call to book',
+      },
+      ref: null,
+      refKind: null,
+    });
+    expect(parse('/recurso nuevo programa Ayuda con renta')).toMatchObject({
+      command: 'resource.draft',
+      args: { type: 'program', title: 'Ayuda con renta' },
+    });
+    expect(parse('/resource new poster Something')).toMatchObject({ ok: false, error: 'usage' });
+    // A date alone is the end of that day in Chicago, across the change back from daylight time.
+    expect(parse('/resource flood-hotline expires 2026-10-20')).toMatchObject({
+      command: 'resource.expiry',
+      args: { value: '2026-10-21T04:59:00.000Z', local: '2026-10-20 23:59 America/Chicago' },
+      ref: 'flood-hotline',
+      refKind: 'resource',
+    });
+    expect(parse('/resource Debris pickup line vence 2026-11-05 8:30')).toMatchObject({
+      command: 'resource.expiry',
+      args: { value: '2026-11-05T14:30:00.000Z' },
+      ref: 'Debris pickup line',
+    });
+    expect(parse('/resource flood-hotline expires 2026-10-15 12:00')).toMatchObject({
+      args: { value: '2026-10-15T17:00:00.000Z' },
+    });
+    // Ten in the morning has passed: taking a page down now stays on the screen.
+    expect(parse('/resource flood-hotline expires 2026-10-15 09:00')).toMatchObject({
+      ok: false,
+      error: 'usage',
+      message: expect.stringContaining('Unpublish'),
+    });
+    expect(parse('/resource flood-hotline expires none')).toMatchObject({
+      command: 'resource.expiry',
+      args: { value: null },
+    });
+    expect(parse('/resource flood-hotline review 2026-12-01')).toMatchObject({
+      command: 'resource.review',
+      args: { value: '2026-12-01' },
+    });
+    expect(parse('/resource flood-hotline review 2026-12-01 10:00')).toMatchObject({
+      ok: false,
+      error: 'usage',
+    });
+    // RULE-11: what a person saw at the printer; only a failure carries why.
+    expect(parse('/badge Dana Ruiz printed')).toEqual({
+      ok: true,
+      command: 'badge.print',
+      args: { person: 'Dana Ruiz', outcome: 'confirmed' },
+      ref: null,
+      refKind: null,
+    });
+    expect(parse('/badge Dana Ruiz failed printer out of labels')).toMatchObject({
+      args: { person: 'Dana Ruiz', outcome: 'failed', reason: 'printer out of labels' },
+    });
+    expect(parse('/gafete Dana Ruiz entregado')).toMatchObject({
+      args: { person: 'Dana Ruiz', outcome: 'handed_out' },
+    });
+    expect(parse('/badge Dana Ruiz handed out')).toMatchObject({
+      args: { person: 'Dana Ruiz', outcome: 'handed_out' },
+    });
+    expect(parse('/badge printed')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/badge Dana Ruiz generate')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/resource flood-hotline expires next week')).toMatchObject({
+      ok: false,
+      error: 'usage',
+    });
+  });
+
   it('CMD-13, AC-C08: "/mission new" drafts a mission of a known kind; "/message" names a team and the words', () => {
     expect(parse('/mission new welfare Check on the family at 14 Elm')).toMatchObject({
       command: 'mission.draft',
@@ -303,11 +390,27 @@ describe('shorthand', () => {
     expect(parse('/report AB12CD approve')).toMatchObject({ ok: false, error: 'usage' });
     expect(parse('/report AB12CD ask')).toMatchObject({ ok: false, error: 'usage' });
     expect(parse('/report AB12CD delete')).toMatchObject({ ok: false, error: 'usage' });
+    // The other report is named by its code; the reason follows it.
+    expect(parse('/report AB12CD duplicate WX34YZ same house, same photos')).toMatchObject({
+      command: 'report.duplicate',
+      args: { of: 'WX34YZ', reason: 'same house, same photos', evidenceRefs: [] },
+      ref: 'AB12CD',
+      refKind: 'report',
+    });
+    expect(parse('/reporte AB12CD duplicado WX34YZ reason:"misma casa"')).toMatchObject({
+      args: { of: 'WX34YZ', reason: 'misma casa' },
+    });
+    expect(parse('/report AB12CD duplicate same house')).toMatchObject({
+      ok: false,
+      error: 'usage',
+    });
+    expect(parse('/report AB12CD duplicate WX34YZ')).toMatchObject({ ok: false, error: 'usage' });
     const review = CATALOG.filter((c) => c.name.startsWith('report.'));
     expect(review.map((c) => [c.name, c.phase, c.confirmation])).toEqual([
       ['report.claim', 3, 'one_tap'],
       ['report.approve', 4, 'full_review'],
       ['report.reject', 4, 'full_review'],
+      ['report.duplicate', 4, 'full_review'],
       ['report.ask', 4, 'full_review'],
       ['report.export', 3, 'one_tap'],
     ]);

@@ -184,6 +184,7 @@ export const COMMAND_EVAL_CATALOG: { usage: string; title: string }[] = [
     usage: '/person <name> <available|unavailable|on duty|off duty>',
     title: "Change a person's duty status or availability",
   },
+  { usage: '/mission <reference> release <person>', title: 'Release a person from a mission' },
   {
     usage:
       '/mission <reference> close [disposition:<completed|referred|no_action_needed|unable_to_locate|duplicate|transferred|other>]',
@@ -199,6 +200,22 @@ export const COMMAND_EVAL_CATALOG: { usage: string; title: string }[] = [
     title: 'Release the needs your organization holds that a filter names',
   },
   { usage: '/mission new <kind> <what is needed>', title: 'Draft a mission' },
+  {
+    usage: '/badge <person> <printed|failed <why>|handed out>',
+    title: "Record what happened to a person's badge at the printer",
+  },
+  {
+    usage: '/resource new <hotline|program|deadline|guidance|link|document> <title>',
+    title: 'Draft a resource',
+  },
+  {
+    usage: '/resource <slug or title> review <YYYY-MM-DD|none>',
+    title: "Set a resource's review date",
+  },
+  {
+    usage: '/resource <slug or title> expires <YYYY-MM-DD [HH:MM]|none>',
+    title: "Set a resource's expiry",
+  },
   { usage: '/message <team> <text>', title: 'Message a team in the field' },
   { usage: '/report <reference code> review', title: 'Take a report into review' },
   {
@@ -208,6 +225,10 @@ export const COMMAND_EVAL_CATALOG: { usage: string; title: string }[] = [
   {
     usage: '/report <reference code> reject <why> [evidence:<ref>,<ref>]',
     title: 'Reject a report',
+  },
+  {
+    usage: '/report <reference code> duplicate <other reference code> <why>',
+    title: 'Mark a report as a duplicate of another',
   },
   {
     usage: '/report <reference code> ask <question>',

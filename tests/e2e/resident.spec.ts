@@ -488,14 +488,23 @@ test.describe('resident report', () => {
   }) => {
     test.setTimeout(180_000);
     await page.setViewportSize({ width: 320, height: 740 });
-    const reflows = async (where: string) =>
-      expect(
-        await page.evaluate(
-          () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
-        ),
-        `${where} scrolls sideways at 320 px`,
-      ).toBe(false);
-    const email = `reflow-${Date.now().toString(36)}@example.org`;
+    // Whatever font the device has: the page's own, then a wide one (CI's fonts are wider than
+    // this stack's, and a review row overflowed there only).
+    const reflows = async (where: string) => {
+      for (const font of ['', '"DejaVu Sans", Verdana, sans-serif'])
+        expect(
+          await page.evaluate((f) => {
+            const root = document.documentElement;
+            root.style.setProperty('font-family', f);
+            const over = root.scrollWidth > root.clientWidth;
+            root.style.removeProperty('font-family');
+            return over;
+          }, font),
+          `${where} scrolls sideways at 320 px${font ? ' in a wide font' : ''}`,
+        ).toBe(false);
+    };
+    // A long address with no place to break: it must wrap, not push the page wider (WCAG 1.4.10).
+    const email = `reflow-check-with-a-long-address-${Date.now().toString(36)}@example.org`;
     await page.goto('/county/westwind');
     await pressButton(page, 'Start');
     // Continue with nothing chosen: the error is announced with the question; choosing fixes it.

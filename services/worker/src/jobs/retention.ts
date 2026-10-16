@@ -310,6 +310,7 @@ export const SWEEPS: readonly Sweep[] = [
     keptByReferences: true,
     objects: [
       { table: 'personnel', column: 'id', key: 'photo_key' },
+      { table: 'personnel', column: 'id', key: 'photo_pending_key' },
       { table: 'credential', column: 'personnel_id', key: 'evidence_key' },
     ],
   },

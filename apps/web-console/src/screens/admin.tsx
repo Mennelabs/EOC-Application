@@ -4,6 +4,7 @@
  * visible is what the role allows, and nothing is hidden client-side only.
  */
 import { useEffect, useState, type FormEvent } from 'react';
+import { BadgePhoto } from '../ui/badge-photo.tsx';
 import { api, describeFailure } from '../api/client.ts';
 import { DataTable, Field, Status, Toolbar, fmt } from '../ui/primitives.tsx';
 
@@ -553,6 +554,7 @@ export function PersonnelScreen() {
                   : 'None recorded'}
             </dd>
           </dl>
+          <BadgePhoto personnelId={detail.id} name={detail.name} />
           <button type="button" onClick={() => setDetail(null)}>
             Close
           </button>

@@ -33,6 +33,7 @@ import { messageRoutes } from './messages.ts';
 import { missionRoutesWith, type MissionDeps } from './missions.ts';
 import { needRoutes } from './needs.ts';
 import { personnelRoutes } from './personnel.ts';
+import { personnelPhotoRoutes, type PersonnelPhotoDeps } from './personnel-photo.ts';
 import { recommendationRoutes } from './recommendations.ts';
 import { referralRoutes } from './referrals.ts';
 import { survivorLookupRoutes } from './survivor-lookup.ts';
@@ -62,6 +63,7 @@ export interface RouteDeps {
   fieldVoice?: FieldVoiceDeps;
   fieldRecords?: FieldRecordDeps;
   missions?: MissionDeps;
+  personnelPhotos?: PersonnelPhotoDeps;
   refdata?: RefdataDeps;
   metrics?: { productName?: string };
   commands?: CommandDeps;
@@ -76,6 +78,7 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   eventRoutes,
   accountRoutes,
   personnelRoutes,
+  personnelPhotoRoutes(deps.personnelPhotos),
   roleRoutes,
   breakGlassRoutes,
   auditRoutes,

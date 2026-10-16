@@ -97,7 +97,7 @@ Everything in the stack is synthetic or the WESTWIND exercise (SCL-12).
 
 ## Readings taken in favour of privacy and safety (flagged for you)
 
-The plan's §12 lists all 27. The newest:
+The plan's §12 lists all 28. The newest:
 
 - a legal aid organization's referral responses share only the status;
 - resident dictation goes through the county's provider or not at all;
@@ -115,6 +115,7 @@ The plan's §12 lists all 27. The newest:
 - a resupply request started at the reorder point is a draft a person checks and sends; one shortage is asked for once (FL:FR-21, FL:FR-22).
 - a lost pet is matched to an animal found or sheltered by a person, from suggestions that show the words the descriptions share (FL:FR-08).
 - a canteen stop's allergen note is about the food, never who has an allergy (FL:FR-17).
+- a badge photo is printed only once a second person approves it; whoever took it cannot (BRD:FR-13.01).
 
 ## Questions for you (defaults in force)
 

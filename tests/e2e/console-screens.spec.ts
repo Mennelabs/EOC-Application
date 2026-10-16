@@ -9,7 +9,8 @@
  * error, passes axe with WCAG 2.2 AA rules and, on the phone, reflows without
  * sideways scrolling (ACC-07). Two screens also check what they promise:
  * retention reads in years and days (SEC-13), and an overdue reminder says so
- * in words and a symbol, not by colour or sound (FR-09.05). A role refused a
+ * in words and a symbol, not by colour or sound (FR-09.05). A badge photo
+ * taken in the console waits for a second person (BRD:FR-13.01). A role refused a
  * field screen still hears its heading before the reason (WCAG 1.3.1, 2.4.6).
  */
 import { expect, test, type Page } from '@playwright/test';
@@ -146,6 +147,45 @@ test.describe('every console screen, one by one', () => {
       await expect(page.getByRole('alert')).toContainText('You do not have permission');
       await expectNoViolations(page);
     }
+  });
+
+  test('BRD:FR-13.01, ADM-05 G4: a badge photo taken in the console waits for someone else to approve it; axe finds nothing', async ({
+    page,
+    context,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    await onboard(
+      page,
+      context,
+      'personnel_coordinator',
+      `Photos ${tag}`,
+      `scr-photo-${testInfo.project.name}`,
+    );
+    await open(page, 'personnel', 'Personnel');
+    // A person of this county, added here (partner agencies keep their own people).
+    const who = `Exercise Photo ${tag}-${testInfo.project.name}`;
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill(who);
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    await expect(page.getByText(`Added ${who}.`)).toBeVisible();
+    await page.getByRole('table', { name: 'Personnel' }).getByRole('button', { name: who }).click();
+    await expect(page.getByRole('heading', { name: 'Badge photo', level: 3 })).toBeVisible();
+    await page.getByLabel('Take or upload a badge photo').setInputFiles({
+      name: 'badge.png',
+      mimeType: 'image/png',
+      // A tiny synthetic image; the server re-encodes whatever it gets.
+      buffer: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        'base64',
+      ),
+    });
+    await expect(
+      page.getByText('Photo saved. It waits for a second person to approve it.'),
+    ).toBeVisible();
+    await expect(page.getByRole('img', { name: /waiting for approval$/ })).toBeVisible();
+    // Whoever took it cannot approve it.
+    await page.getByRole('button', { name: /^Approve photo of/ }).click();
+    await expect(page.getByRole('alert')).toBeVisible();
+    await expectNoViolations(page);
   });
 
   test('FL-16: the peer-support role opens its list of private requests; axe finds nothing', async ({

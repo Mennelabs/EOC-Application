@@ -80,6 +80,17 @@ export const actions = {
   'personnel.read': a('read', 'personnel', 'Read personnel records'),
   'personnel.create': a('write', 'personnel', 'Create a personnel record'),
   'personnel.update': a('write', 'personnel', 'Update skills, agency, availability'),
+  // BRD:FR-13.01: a badge photo is taken by one person and approved by another.
+  'personnel.photo': a(
+    'write',
+    'personnel',
+    'Take or upload a badge photo (it waits for approval)',
+  ),
+  'personnel.photo.approve': a(
+    'write',
+    'personnel',
+    'Approve or reject a badge photo someone else took',
+  ),
   'personnel.archive': a('write', 'personnel', 'Archive a personnel record', {
     consequential: true,
   }),
@@ -818,4 +829,6 @@ export const SELF_REVIEW_ACTIONS: readonly string[] = [
   'official_report.issue',
   // Joint assessment: nobody validates a home whose degree they set or assessed.
   'joint_assessment.validate',
+  // BRD:FR-13.01: whoever took a badge photo does not approve it.
+  'personnel.photo.approve',
 ];

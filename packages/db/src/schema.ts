@@ -169,8 +169,14 @@ export interface PersonnelTable extends Stamped {
   hours_limit: number | null;
   /** DSP-09: the agency when it runs its own tenant. */
   home_tenant_id: Uuid | null;
-  /** FR-13.01: badge photo object key. */
+  /** FR-13.01: the approved badge photo's object key. */
   photo_key: string | null;
+  /** FR-13.01: a photo waiting for a second person's approval. */
+  photo_pending_key: string | null;
+  photo_pending_by: Uuid | null;
+  photo_pending_at: TsNullable;
+  photo_approved_by: Uuid | null;
+  photo_approved_at: TsNullable;
   archived_at: TsNullable;
   archived_reason: string | null;
 }

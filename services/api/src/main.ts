@@ -149,6 +149,7 @@ const app = await buildApp({
     drafting: { ai, objects: { client: s3, bucket: config.S3_BUCKET } },
     scribe: { ai, objects: { client: s3, bucket: config.S3_BUCKET } },
     refdata: { objects: { client: s3, bucket: config.S3_BUCKET } },
+    personnelPhotos: { objects: { client: s3, bucket: config.S3_BUCKET } },
     exports: { objects: { client: s3, bucket: config.S3_BUCKET } },
     metrics: { productName: config.PRODUCT_NAME },
     packagePhotos: {

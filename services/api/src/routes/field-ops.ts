@@ -1862,7 +1862,6 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
           roleLabel: z.string().max(80).optional(),
           /** FR-13.03: printed text, never a permission. */
           accessLabel: z.string().max(80).optional(),
-          photoKey: z.string().max(400).optional(),
           validDays: z.number().int().min(1).max(366).default(14),
           replacesBadgeId: z.uuid().optional(),
         }),
@@ -1901,7 +1900,8 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
             agency: person.agency,
             role_label: b.roleLabel ?? person.operational_role,
             access_label: b.accessLabel ?? null,
-            photo_key: b.photoKey ?? person.photo_key,
+            // BRD:FR-13.01: only the person's approved photo is printed; a request cannot name another.
+            photo_key: person.photo_key,
             credentials_snapshot: JSON.stringify(
               creds.map((c) => ({ kind: c.kind, expiresAt: c.expires_at })),
             ),

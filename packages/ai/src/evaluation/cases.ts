@@ -181,6 +181,10 @@ export const COMMAND_EVAL_CATALOG: { usage: string; title: string }[] = [
   },
   { usage: '/mission <reference> assign <person>', title: 'Assign a person to a mission' },
   {
+    usage: '/person <name> <available|unavailable|on duty|off duty>',
+    title: "Change a person's duty status or availability",
+  },
+  {
     usage:
       '/mission <reference> close [disposition:<completed|referred|no_action_needed|unable_to_locate|duplicate|transferred|other>]',
     title: 'Close a mission',
@@ -194,6 +198,8 @@ export const COMMAND_EVAL_CATALOG: { usage: string; title: string }[] = [
     usage: '/needs claimed [category:<category>] [postal:<code>] release [note]',
     title: 'Release the needs your organization holds that a filter names',
   },
+  { usage: '/mission new <kind> <what is needed>', title: 'Draft a mission' },
+  { usage: '/message <team> <text>', title: 'Message a team in the field' },
   { usage: '/report <reference code> review', title: 'Take a report into review' },
   {
     usage: '/report <reference code> approve <why> [evidence:<ref>,<ref>]',

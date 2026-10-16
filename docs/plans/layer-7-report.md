@@ -104,6 +104,9 @@ The plan's §12 lists all 20. The newest:
 - the register lists only features that call a provider;
 - "income band" is the county's tract poverty quintile;
 - a group is behind on severity agreement when it has 20 or more decisions and is more than 10 points under the model's overall agreement.
+- finding a survivor without their code shows nothing until the survivor reads back a texted code or recognises a report read back by its date (FL-02);
+- a document a survivor shares is never one of the report's damage photos, never sent to an AI service, and seen only by document readers (FL-09);
+- field records are counted from the day their event closes, so an open event's records never expire (SEC-13).
 
 ## Questions for you (defaults in force)
 
@@ -125,3 +128,9 @@ The plan's §12 lists all 20. The newest:
    Confidential sites are left out entirely. Each withheld column is listed in REDACTIONS.csv, and a person reviews the file before release. Should sensitive fields stay withheld, or should your county's records rules decide them? Releases are open to the EM director and the PIO, and each person can release only what they may read.
 
 8. **Batches in the command window (CMD-30).** They exist for need claims and releases only, are phase 4 (off until a county turns them on), and need the new action `command.bulk`. Are other batch commands wanted (for example closing missions)?
+9. **Deleting the core records after their period (SEC-13).** Reports, needs, missions, photos and residents' words are the last SEC-13 category without a sweep. Deleting them touches about 40 linked tables, object storage and what partners hold, and cannot be undone, so `docs/plans/sec-13-core-records.md` sets out a reading and four questions before anything is built. In short:
+   - Count from the event's close?
+   - Keep issued official reports and declaration figures?
+   - Recall shared copies from partners?
+   - Keep any de-identified counts?
+10. **Documents survivors share (FL-09).** Who may see them: the default is the assessment reviewer and the damage-assessment coordinator (`document.read`). Should case managers in partner organizations see them too, through the sharing grant? Withdrawing a shared document is not built yet.

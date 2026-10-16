@@ -90,7 +90,10 @@ test.describe('field app (web build)', () => {
       const me = (await res.json()) as { actions: string[] };
       await route.fulfill({
         response: res,
-        json: { ...me, actions: [...me.actions, 'survivor.find', 'document.capture'] },
+        json: {
+          ...me,
+          actions: [...me.actions, 'survivor.find', 'document.capture', 'report.read'],
+        },
       });
     });
     const survivor = {
@@ -123,6 +126,25 @@ test.describe('field app (web build)', () => {
         });
       return route.fulfill({ json: survivor });
     });
+    // FL-01: a resident's code, scanned or typed, opens the stubbed record.
+    await page.route(
+      (url) => url.pathname === '/api/v1/reports' && url.searchParams.get('reference') !== null,
+      (route) =>
+        route.fulfill({
+          json:
+            new URL(route.request().url()).searchParams.get('reference') === 'KXRT-4827'
+              ? [
+                  {
+                    id: survivor.reportId,
+                    referenceCode: 'KXRT-4827',
+                    submittedAt: survivor.submittedAt,
+                    channelOfOrigin: 'sms',
+                    reviewState: 'submitted',
+                  },
+                ]
+              : [],
+        }),
+    );
     // FL-09: the document is asked for and sent to the stubbed record; nothing else is kept.
     const documentId = crypto.randomUUID();
     const documentRequests: { method: string; body: unknown }[] = [];
@@ -269,6 +291,16 @@ test.describe('field app (web build)', () => {
     await page.getByRole('button', { name: "Find a survivor's record" }).click();
     await expect(page.getByRole('heading', { name: "Find a survivor's record" })).toBeVisible();
     await expectNoViolations(page);
+    // FL-01: their code from the confirmation's QR link, or typed; a code nobody has says so.
+    await page.getByLabel('Reference code').fill('ZZZZ-2222');
+    await page.getByRole('button', { name: 'Open their record' }).click();
+    await expect(page.getByText(/No report you can see has that code/)).toBeVisible();
+    await page
+      .getByLabel('Reference code')
+      .fill('https://help.example.org/county/my-report?ref=KXRT-4827');
+    await page.getByRole('button', { name: 'Open their record' }).click();
+    await expect(page.getByText(/Reference code KXRT-4827/)).toBeVisible();
+    await page.getByRole('radio', { name: /By phone/ }).click();
     await page.getByLabel('Their phone number').fill('314 555 0142');
     await page.getByRole('button', { name: 'Text them a code' }).click();
     await expect(page.getByText(/they get a text with a code/)).toBeVisible();

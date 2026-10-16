@@ -48,6 +48,7 @@ describe('the command catalog', () => {
   it('Section 30.2: phases 1 and 2 are on by default; status changes are phase 3', () => {
     expect([...DEFAULT_PHASES]).toEqual([1, 2]);
     expect(CATALOG.find((c) => c.name === 'mission.status')?.phase).toBe(3);
+    expect(CATALOG.find((c) => c.name === 'person.status')?.phase).toBe(3);
     expect(CATALOG.filter((c) => c.phase === 1).every((c) => c.kind !== 'change')).toBe(true);
   });
 
@@ -124,6 +125,25 @@ describe('shorthand', () => {
       command: 'people.find',
       args: { availability: 'available', onDuty: true, skill: 'motosierra' },
     });
+    // CMD-14: the longest status phrase at the end wins; "assigned" comes from assignments only.
+    expect(parse('/person Dana Ruiz unavailable')).toEqual({
+      ok: true,
+      command: 'person.status',
+      args: { set: 'unavailable' },
+      ref: 'Dana Ruiz',
+      refKind: 'personnel',
+    });
+    expect(parse('/persona Dana Ruiz no disponible')).toMatchObject({
+      args: { set: 'unavailable' },
+      ref: 'Dana Ruiz',
+    });
+    expect(parse('/persona Dana fuera de turno')).toMatchObject({
+      args: { set: 'off_duty' },
+      ref: 'Dana',
+    });
+    expect(parse('/person Dana on duty')).toMatchObject({ args: { set: 'on_duty' }, ref: 'Dana' });
+    expect(parse('/person Dana assigned')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/person available')).toMatchObject({ ok: false, error: 'usage' });
     expect(parse('/reports new flagged')).toMatchObject({
       command: 'reports.find',
       args: { state: 'submitted', flagged: true },
@@ -226,6 +246,36 @@ describe('shorthand', () => {
     expect(parse('/delete everything')).toMatchObject({ ok: false, error: 'unsupported' });
     expect(parse('/mission M-1 delete')).toMatchObject({ ok: false, error: 'usage' });
     expect(parse('claim the food need')).toMatchObject({ ok: false, error: 'unsupported' });
+  });
+
+  it('CMD-13, AC-C08: "/mission new" drafts a mission of a known kind; "/message" names a team and the words', () => {
+    expect(parse('/mission new welfare Check on the family at 14 Elm')).toMatchObject({
+      command: 'mission.draft',
+      args: { kind: 'welfare_check', summary: 'Check on the family at 14 Elm' },
+    });
+    expect(parse('/mision nueva escombros Calle 5 bloqueada')).toMatchObject({
+      command: 'mission.draft',
+      args: { kind: 'debris', summary: 'Calle 5 bloqueada' },
+    });
+    expect(parse('/mission new rescue now')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/mission new delivery')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/message FX-1 Water is safe to drink')).toMatchObject({
+      command: 'team.message',
+      ref: 'FX-1',
+      refKind: 'team',
+      args: { text: 'Water is safe to drink' },
+    });
+    expect(parse('/mensaje to:"Field Exercise Team" El agua es potable')).toMatchObject({
+      command: 'team.message',
+      ref: 'Field Exercise Team',
+      args: { text: 'El agua es potable' },
+    });
+    expect(parse('/message FX-1')).toMatchObject({ ok: false, error: 'usage' });
+    const added = CATALOG.filter((c) => ['mission.draft', 'team.message'].includes(c.name));
+    expect(added.map((c) => [c.name, c.phase, c.confirmation, c.kind])).toEqual([
+      ['mission.draft', 1, 'none', 'draft'],
+      ['team.message', 4, 'full_review', 'change'],
+    ]);
   });
 
   it('CMD-15: a reviewer takes a report into review, decides it with a reason and evidence, or asks the resident', () => {

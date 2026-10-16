@@ -57,10 +57,14 @@ const VERBS: Record<string, string> = {
   personnel: 'people',
   personas: 'people',
   personal: 'people',
+  person: 'person',
+  persona: 'person',
   reports: 'reports',
   reportes: 'reports',
   report: 'report',
   reporte: 'report',
+  message: 'message',
+  mensaje: 'message',
   resources: 'resources',
   recursos: 'resources',
   contacts: 'contacts',
@@ -183,6 +187,24 @@ const AVAILABILITY: Record<string, string> = {
   no_disponible: 'unavailable',
 };
 
+/**
+ * CMD-14: what the window may set on a person's roster entry, by the last
+ * words of the command. "Assigned" is not here: it comes from an assignment.
+ */
+const PERSON_SETTINGS: Record<string, string> = {
+  available: 'available',
+  disponible: 'available',
+  unavailable: 'unavailable',
+  no_disponible: 'unavailable',
+  on_duty: 'on_duty',
+  de_turno: 'on_duty',
+  en_turno: 'on_duty',
+  off_duty: 'off_duty',
+  fuera_de_turno: 'off_duty',
+  libre: 'off_duty',
+};
+const PERSON_USAGE = '/person <name> <available|unavailable|on duty|off duty>';
+
 /** CMD-15: the review queue's states and filters. */
 const REPORT_FILTERS: Record<string, [string, string | boolean]> = {
   new: ['state', 'submitted'],
@@ -279,6 +301,42 @@ const CONTACT_TYPES: Record<string, string> = {
   liaison: 'liaison',
   enlace: 'liaison',
 };
+
+/** CMD-13: the kinds of mission a draft can be, in English and Spanish. */
+const MISSION_KINDS: Record<string, string> = {
+  welfare_check: 'welfare_check',
+  welfare: 'welfare_check',
+  bienestar: 'welfare_check',
+  verification_route: 'verification_route',
+  verification: 'verification_route',
+  verificacion: 'verification_route',
+  cleanup_work_order: 'cleanup_work_order',
+  cleanup: 'cleanup_work_order',
+  limpieza: 'cleanup_work_order',
+  delivery: 'delivery',
+  entrega: 'delivery',
+  outreach_sweep: 'outreach_sweep',
+  outreach: 'outreach_sweep',
+  alcance: 'outreach_sweep',
+  site_staffing: 'site_staffing',
+  staffing: 'site_staffing',
+  personal_de_sitio: 'site_staffing',
+  search: 'search',
+  busqueda: 'search',
+  road_clearance: 'road_clearance',
+  road: 'road_clearance',
+  despeje: 'road_clearance',
+  traffic_control: 'traffic_control',
+  traffic: 'traffic_control',
+  trafico: 'traffic_control',
+  debris: 'debris',
+  escombros: 'debris',
+  other: 'other',
+  otra: 'other',
+  otro: 'other',
+};
+const NEW_WORDS = new Set(['new', 'nueva', 'nuevo']);
+const MISSION_DRAFT_USAGE = `/mission new <${[...new Set(Object.values(MISSION_KINDS))].join('|')}> <what is needed>`;
 
 /** CMD-15: what a reviewer does to one report, in English and Spanish. */
 const REPORT_ACTIONS: Record<string, 'claim' | 'approve' | 'reject' | 'ask'> = {
@@ -404,6 +462,14 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
     }
 
     case 'mission': {
+      // CMD-13, Section 30.2 phase 1: a mission draft; nothing is dispatched.
+      if (NEW_WORDS.has(norm(words[0] ?? ''))) {
+        const kind = MISSION_KINDS[norm(words[1] ?? '')];
+        if (!kind) return usage('What kind of mission?', MISSION_DRAFT_USAGE);
+        const summary = (pairs['text'] ?? words.slice(2).join(' ')).trim();
+        if (summary.length < 3) return usage('What is needed?', MISSION_DRAFT_USAGE);
+        return ok('mission.draft', { kind, summary });
+      }
       const [first, sub, ...rest] = words;
       const ref = onScreen(first);
       if (!ref) return usage('Which mission? Give its number.', '/mission <number>');
@@ -575,6 +641,16 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
       return ok('people.find', args);
     }
 
+    // CMD-14: the longest status phrase at the end wins ("no disponible" before "disponible").
+    case 'person': {
+      for (const n of [3, 2, 1]) {
+        if (words.length <= n) continue;
+        const set = PERSON_SETTINGS[words.slice(-n).map(norm).join('_')];
+        if (set) return ok('person.status', { set }, words.slice(0, -n).join(' '), 'personnel');
+      }
+      return usage('Whom, and what should their roster entry say?', PERSON_USAGE);
+    }
+
     case 'reports': {
       const args: Record<string, unknown> = {};
       for (const w of words) {
@@ -589,6 +665,15 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
           );
       }
       return ok('reports.find', args);
+    }
+
+    // AC-C08, Section 30.2 phase 4: a message to a team's phones; the first word (or to:) names the team.
+    case 'message': {
+      const to = (pairs['to'] ?? words[0] ?? '').trim();
+      const text = (pairs['text'] ?? (pairs['to'] ? words : words.slice(1)).join(' ')).trim();
+      if (!to || !text)
+        return usage('Which team, and what should it say?', '/message <team> <text>');
+      return ok('team.message', { text }, to, 'team');
     }
 
     // CMD-15: take a report into review, decide it, or ask the resident; never two at once.

@@ -463,6 +463,36 @@ describe.skipIf(!workerUrl)('retention sweeps by category (database-backed)', ()
           .execute();
       }
 
+      // Conversation notes (FL-04): kept for the field-records period after confirmation.
+      for (const [k, state, at, related, audio] of [
+        ['noteOld', 'confirmed', ago(3000), null, null],
+        ['noteNew', 'confirmed', ago(10), null, null],
+        ['noteHeld', 'confirmed', ago(3000), ids['missionHeld']!, null],
+        ['sessionAudioLeft', 'expired', ago(3000), null, `tenants/${tenantId}/scribe/x.webm`],
+      ] as const)
+        ids[k] = (
+          await trx
+            .insertInto('cg.scribe_session')
+            .values({
+              tenant_id: tenantId,
+              client_uuid: randomUUID(),
+              account_id: adminId,
+              context: 'general',
+              language: 'en',
+              consent_method: 'spoken',
+              consent_text: 'Exercise: may I take notes?',
+              consent_at: at,
+              state,
+              ...(state === 'confirmed'
+                ? { note_enc: bytes('note'), confirmed_at: at }
+                : { audio_object_key: audio }),
+              ...(related ? { related_type: 'mission', related_id: related } : {}),
+              updated_at: at,
+            })
+            .returning('id')
+            .executeTakeFirstOrThrow()
+        ).id;
+
       // The field change feed (sessions, 90 days): two old entries and a recent one.
       for (const [k, at] of [
         ['feedOld1', ago(120)],
@@ -608,6 +638,13 @@ describe.skipIf(!workerUrl)('retention sweeps by category (database-backed)', ()
     ).toEqual([]);
     expect(await exists('cg.assignment', ids['missionHeldAssignment']!)).toBe(true);
     expect(await exists('cg.mission', ids['missionDone']!)).toBe(true);
+
+    // Conversation notes: an old confirmed note goes; a recent one, one tied to a held mission and
+    // a session whose audio is still stored stay.
+    expect(await exists('cg.scribe_session', ids['noteOld']!)).toBe(false);
+    expect(await exists('cg.scribe_session', ids['noteNew']!)).toBe(true);
+    expect(await exists('cg.scribe_session', ids['noteHeld']!)).toBe(true);
+    expect(await exists('cg.scribe_session', ids['sessionAudioLeft']!)).toBe(true);
 
     // The change feed: old entries go and the mark says how far, so a phone behind it starts over.
     const feed = await db

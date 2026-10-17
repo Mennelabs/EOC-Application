@@ -50,6 +50,7 @@ const SCREENS: [path: string, heading: string][] = [
   ['roster', 'Roster and check-in'],
   ['subscription', 'Subscription'],
   ['job-aids', 'Job aids'],
+  ['resource-requests', 'Resource requests'],
 ];
 
 /** Opens a screen and waits until it has loaded: heading shown, nothing still loading. */
@@ -105,6 +106,19 @@ test.describe('every console screen, one by one', () => {
             page.getByRole('row').filter({ hasText: 'Shelter standards checklist' }).first(),
           ).toContainText('Exercise draft');
           await expect(page.getByRole('button', { name: /^Approve / })).toHaveCount(0);
+        }
+
+        if (path === 'resource-requests') {
+          // CON-13: the seeded exercise requests are listed most urgent first, with the state's
+          // tracking number on the one en route; the administrator holds no approve grant.
+          const rows = page.getByRole('row').filter({ hasText: /WESTWIND-RR-000/ });
+          await expect(rows.first()).toContainText('WESTWIND-RR-0001');
+          await expect(rows.first()).toContainText('SEMA-EX-4471');
+          await expect(page.getByRole('button', { name: /^Approve / })).toHaveCount(0);
+          await page.getByRole('button', { name: 'Show WESTWIND-RR-0001' }).click();
+          await expect(
+            page.getByRole('table', { name: 'History of WESTWIND-RR-0001' }).getByRole('row'),
+          ).toHaveCount(7);
         }
 
         if (path === 'subscription') {

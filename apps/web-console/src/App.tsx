@@ -64,6 +64,7 @@ import { IntegrationsScreen } from './screens/integrations.tsx';
 import { SsoScreen } from './screens/sso.tsx';
 import { SubscriptionScreen } from './screens/subscription.tsx';
 import { JobAidsScreen } from './screens/job-aids.tsx';
+import { ResourceRequestsScreen } from './screens/resource-requests.tsx';
 import { MetricsScreen } from './screens/metrics.tsx';
 import { JointAssessmentScreen } from './screens/joint-assessment.tsx';
 import { SharedDeclarationsScreen } from './screens/shared-declarations.tsx';
@@ -395,6 +396,8 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <SubscriptionScreen />;
       case '/console/job-aids':
         return <JobAidsScreen />;
+      case '/console/resource-requests':
+        return <ResourceRequestsScreen />;
       case '/console/facilities':
         return <FacilitiesScreen />;
       case '/console/facility-approvals':

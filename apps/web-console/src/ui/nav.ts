@@ -253,6 +253,12 @@ export const GROUPS: readonly WorkspaceGroup[] = [
         icon: icons.Info,
         needs: ['job_aid.edit', 'job_aid.approve'],
       },
+      {
+        path: '/console/resource-requests',
+        label: 'Resource requests',
+        icon: icons.Truck,
+        needs: ['resource_request.read'],
+      },
     ],
   },
   {

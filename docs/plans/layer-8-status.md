@@ -37,6 +37,8 @@ Resume record for layer 8. Chat history is not the record; this file is.
 
 ## Open items
 
+- PR #59 merged into main as 602cd7c on 2026-10-17 after the every-screen scan was scoped to the feeds table (adb8176). Layer 8 waits on Adam's review with layer 7.
+
 - Layer 8 is built (tasks P to F); the report is `docs/plans/layer-8-report.md` and waits on Adam's review with layer 7's. Follow-ups listed there: a shorter retention sweep for cleared live conditions, county-editable ICS editions, closures weighted into routing, and the per-state WebEOC adapter.
 
 - Layer 7's formal approval is deferred (Adam, 2026-10-17); its report and questions stay in `docs/plans/layer-7-report.md`.

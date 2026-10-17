@@ -37,6 +37,7 @@ const LAYER_TITLES: Record<(typeof MAP_LAYERS)[number], string> = {
   roadClosures: 'Road closures',
   searched: 'Searched',
   outages: 'Outages',
+  liveConditions: 'Live conditions',
 };
 
 type Notice = { kind: 'success' | 'error'; text: string } | null;

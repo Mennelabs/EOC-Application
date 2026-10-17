@@ -25,6 +25,8 @@ export const MAP_LAYERS = [
   'roadClosures',
   'searched',
   'outages',
+  // CON-14: feed and staff conditions with their source and age.
+  'liveConditions',
 ] as const;
 export type MapLayer = (typeof MAP_LAYERS)[number];
 

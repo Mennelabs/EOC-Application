@@ -47,6 +47,7 @@ import { relayChangesOnce, type ChangeRelayState } from './jobs/changes.ts';
 import { dropPositionTrails, watchFieldSafety, watchReminders } from './jobs/field.ts';
 import { assignLocationGeography } from './jobs/geography.ts';
 import { pruneReferenceSnapshots, scheduleReferencePulls } from './jobs/refdata.ts';
+import { scheduleLivePulls } from './jobs/live.ts';
 import { evaluateEquityAlerts } from './jobs/equity.ts';
 import { evaluateAiHealth } from './jobs/ai-health.ts';
 import { staleAbandonedPlans, sweepCommandHistory } from './jobs/commands.ts';
@@ -186,8 +187,10 @@ const ctx: JobContext = {
         return createRecordedHttp(config.REFDATA_RECORDINGS_DIR ?? recordingsDir);
       const narrowed = config.REFDATA_ALLOWED_HOSTS;
       return createEgressHttp({
-        allowedHosts: hosts.filter(
-          (h) => connectorHosts().includes(h) && (!narrowed || narrowed.includes(h)),
+        // A connector's own hosts, narrowed by REFDATA_ALLOWED_HOSTS when set; a county's
+        // live feed host (CON-14) is reached only when that list names it.
+        allowedHosts: hosts.filter((h) =>
+          narrowed ? narrowed.includes(h) : connectorHosts().includes(h),
         ),
         userAgent: `${config.PRODUCT_NAME} reference data${config.REFDATA_CONTACT ? ` (${config.REFDATA_CONTACT})` : ''}`,
       });
@@ -262,6 +265,8 @@ const schedules: Schedule[] = [
   // ADR-0039, SCL-09: reference data refreshed per its source's period; old snapshots pruned (SEC-13).
   { name: 'refdata-refresh', everyMs: 15 * 60_000, run: scheduleReferencePulls },
   { name: 'refdata-prune', everyMs: 24 * 3600_000, run: pruneReferenceSnapshots },
+  // CON-14: live feeds pulled on each source's period; failures stay on the source.
+  { name: 'live-pulls', everyMs: 60_000, run: scheduleLivePulls },
   // DCL:DEC-05, EQ-11: each located place's census tract and jurisdiction, kept current.
   { name: 'location-geography', everyMs: 60_000, run: assignLocationGeography },
   // EQ-12, CON-07: coverage and gap alerts raised and cleared against the tenant's thresholds.

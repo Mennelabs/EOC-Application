@@ -2734,8 +2734,8 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
       });
       const b = request.body;
       const occurredAt = occurredAtOf(b.occurredAt);
-      const row = await request.tx((trx) =>
-        trx
+      const row = await request.tx(async (trx) => {
+        const inserted = await trx
           .insertInto('cg.significant_event')
           .values({
             tenant_id: s.tenantId,
@@ -2748,8 +2748,17 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
             ...(occurredAt ? { occurred_at: occurredAt } : {}),
           } as Insertable<Database['cg.significant_event']>)
           .returningAll()
-          .executeTakeFirstOrThrow(),
-      );
+          .executeTakeFirstOrThrow();
+        // CON-13, SCL-09: a state system's webhooks hear of the entry.
+        await enqueueOutbox(
+          trx,
+          s.tenantId,
+          'significant_event.created',
+          { significantEventId: inserted.id },
+          request.executionId,
+        );
+        return inserted;
+      });
       return reply.code(201).send({
         id: row.id,
         eventId: row.event_id,

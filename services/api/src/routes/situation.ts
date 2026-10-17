@@ -45,6 +45,8 @@ const situationOut = z.object({
     hazards: layer,
     /** Blocked roads reported as hazards and not cleared, and road reports still closed (CON-03, FL:FR-05). */
     roadClosures: layer,
+    /** CON-14: live conditions from feeds and staff entries, each with its source and age. */
+    liveConditions: layer,
     /** FL:FR-01: structures with a search mark, so no block is searched twice. */
     searched: layer,
   }),
@@ -83,7 +85,7 @@ export const situationRoutes: FastifyPluginAsync = async (instance) => {
       if (s.kind !== 'account') throw errors.unauthorized();
       const eventId = request.query.eventId;
       const base = { tenantId: s.tenantId, eventId };
-      const [reports, needs, sites, hazards, teams, positions, events, marks, roads] =
+      const [reports, needs, sites, hazards, teams, positions, events, marks, roads, live] =
         await Promise.all([
           may(request, 'report.read', { type: 'report', ...base, fields: LOCATION }),
           may(request, 'need.read', { type: 'need', ...base, fields: LOCATION }),
@@ -94,6 +96,7 @@ export const situationRoutes: FastifyPluginAsync = async (instance) => {
           may(request, 'event.read', { type: 'event', ...base }),
           may(request, 'search_mark.read', { type: 'search_mark', ...base }),
           may(request, 'road_status.read', { type: 'road_status', ...base }),
+          may(request, 'live_condition.read', { type: 'live_condition', ...base }),
         ]);
       if (!events && !reports && !sites && !teams) throw errors.forbidden();
       const exactReports = !!reports?.fields.includes('location');
@@ -206,6 +209,31 @@ export const situationRoutes: FastifyPluginAsync = async (instance) => {
               .where(sql<boolean>`l.geom is not null`)
               .orderBy('m.searched_at', 'desc')
               .limit(2000)
+              .execute()
+          : [];
+        // CON-14: live conditions in force, placed by their centre; lines and areas stay on the list.
+        const liveRows = live
+          ? await trx
+              .selectFrom('cg.live_condition as c')
+              .leftJoin('cg.live_source as ls', 'ls.id', 'c.source_id')
+              .select([
+                'c.id',
+                'c.kind',
+                'c.summary',
+                'c.severity',
+                'c.as_of',
+                'c.override',
+                'ls.name as source_name',
+                sql<number | null>`ST_Y(ST_Centroid(c.geom))`.as('lat'),
+                sql<number | null>`ST_X(ST_Centroid(c.geom))`.as('lon'),
+              ])
+              .where('c.tenant_id', '=', s.tenantId)
+              .where('c.cleared_at', 'is', null)
+              .where((eb) => eb.or([eb('c.ends_at', 'is', null), eb('c.ends_at', '>', new Date())]))
+              .where((eb) => eb.or([eb('c.event_id', '=', eventId), eb('c.event_id', 'is', null)]))
+              .where(sql<boolean>`c.geom is not null`)
+              .orderBy('c.as_of', 'desc')
+              .limit(500)
               .execute()
           : [];
         // CON-03, FL:FR-05: the latest report for each road, when it is still closed.
@@ -360,6 +388,17 @@ export const situationRoutes: FastifyPluginAsync = async (instance) => {
                   detail: r.reason,
                 })),
               ],
+            },
+            liveConditions: {
+              available: !!live,
+              items: liveRows.map((c) => ({
+                id: c.id,
+                position: { lat: Number(c.lat), lon: Number(c.lon) },
+                approximate: false,
+                label: c.summary,
+                state: c.kind,
+                detail: `${c.override ? 'Staff entry' : (c.source_name ?? 'Feed')}, as of ${new Date(c.as_of).toISOString()}; ${c.severity}`,
+              })),
             },
             searched: {
               available: !!marks,

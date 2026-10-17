@@ -1249,6 +1249,386 @@ async function ensureJobAids(trx: Transaction<Database>, tenantId: string): Prom
 }
 
 /**
+ * CON-13: two exercise resource requests to the state (ICS 213 RR) for the WESTWIND event, so
+ * the screen, the forms and the state API have something to show: one placed with the state
+ * and en route under an invented tracking number, one submitted and waiting for approval. Each
+ * step is in the history. Synthetic throughout (SCL-12). Added once.
+ */
+async function ensureResourceRequests(
+  trx: Transaction<Database>,
+  tenantId: string,
+  accountIds: Record<string, string>,
+): Promise<void> {
+  const event = await trx
+    .selectFrom('cg.event')
+    .select('id')
+    .where('tenant_id', '=', tenantId)
+    .where('intake_slug', '=', 'westwind')
+    .executeTakeFirst();
+  if (!event) return;
+  const existing = await trx
+    .selectFrom('cg.resource_request')
+    .select('id')
+    .where('tenant_id', '=', tenantId)
+    .where('event_id', '=', event.id)
+    .limit(1)
+    .executeTakeFirst();
+  if (existing) return;
+  const who = (email: string) => accountIds[email] ?? SEED_ACTOR_A;
+  const luis = who('luis.masscare@example.org');
+  const dana = who('dana.director@example.org');
+  const casey = who('casey.dispatch@example.org');
+  const marcus = who('marcus.gis@example.org');
+  const h = 3_600_000;
+  const t0 = Date.now() - 20 * h;
+  const requests = [
+    {
+      request_number: 'WESTWIND-RR-0001',
+      status: 'en_route' as const,
+      priority: 'urgent' as const,
+      delivery_location: 'Harmon High School gym (shelter), loading dock',
+      requested_by_name: 'Luis Ortega (exercise)',
+      requested_by_position: 'Mass Care Coordinator',
+      substitutes: 'Folding camp beds acceptable in place of cots.',
+      suggested_sources: 'State logistics warehouse; Red Cross regional chapter.',
+      notes: 'Shelter at 180 of 220 after the second night; more arrivals expected.',
+      cost_estimate: 18_400,
+      finance_reply: 'Approved against the shelter operations line (exercise).',
+      finance_replied_at: new Date(t0 + 2 * h),
+      finance_replied_by: dana,
+      submitted_at: new Date(t0 + h),
+      submitted_by: luis,
+      approved_at: new Date(t0 + 3 * h),
+      approved_by: dana,
+      placed_at: new Date(t0 + 4 * h),
+      placed_by: casey,
+      placed_with: 'state' as const,
+      state_tracking_number: 'SEMA-EX-4471',
+      eta: new Date(t0 + 30 * h),
+      created_by: luis,
+      lines: [
+        {
+          quantity: 200,
+          unit: 'each',
+          kind: 'Cots',
+          type: 'Standard shelter cot',
+          description: 'For the Harmon High shelter',
+        },
+        {
+          quantity: 400,
+          unit: 'each',
+          kind: 'Blankets',
+          type: 'Wool or fleece',
+          description: null,
+        },
+        {
+          quantity: 2,
+          unit: 'pallets',
+          kind: 'Hygiene kits',
+          type: 'Adult',
+          description: '48 per case',
+        },
+      ],
+      steps: [
+        ['drafted', null, 'draft', null, luis, t0],
+        [
+          'submitted',
+          'draft',
+          'submitted',
+          'Shelter near capacity; cots and blankets short for a third night',
+          luis,
+          t0 + h,
+        ],
+        [
+          'finance_replied',
+          'submitted',
+          'submitted',
+          'Approved against the shelter operations line (exercise).',
+          dana,
+          t0 + 2 * h,
+        ],
+        [
+          'approved',
+          'submitted',
+          'approved',
+          'Confirmed with the shelter manager',
+          dana,
+          t0 + 3 * h,
+        ],
+        ['placed', 'approved', 'placed', 'Placed with state logistics', casey, t0 + 4 * h],
+        ['en_route', 'placed', 'en_route', null, casey, t0 + 9 * h],
+      ] as const,
+    },
+    {
+      request_number: 'WESTWIND-RR-0002',
+      status: 'submitted' as const,
+      priority: 'high' as const,
+      delivery_location: 'Commercial Row distribution point',
+      requested_by_name: 'Marcus Bell (exercise)',
+      requested_by_position: 'Planning Section Chief',
+      substitutes: null,
+      suggested_sources: 'State public works fleet.',
+      notes: 'Power out along Commercial Row; the distribution point runs on one small generator.',
+      cost_estimate: 6_000,
+      finance_reply: null,
+      finance_replied_at: null,
+      finance_replied_by: null,
+      submitted_at: new Date(t0 + 6 * h),
+      submitted_by: marcus,
+      approved_at: null,
+      approved_by: null,
+      placed_at: null,
+      placed_by: null,
+      placed_with: null,
+      state_tracking_number: null,
+      eta: null,
+      created_by: marcus,
+      lines: [
+        {
+          quantity: 4,
+          unit: 'each',
+          kind: 'Generators',
+          type: 'Towable, 20 kW',
+          description: 'With fuel for 72 hours',
+        },
+        { quantity: 8, unit: 'each', kind: 'Light towers', type: 'Towable', description: null },
+      ],
+      steps: [
+        ['drafted', null, 'draft', null, marcus, t0 + 5 * h],
+        [
+          'submitted',
+          'draft',
+          'submitted',
+          'Distribution point cannot run after dark',
+          marcus,
+          t0 + 6 * h,
+        ],
+      ] as const,
+    },
+  ];
+  for (const spec of requests) {
+    const { lines, steps, ...row } = spec;
+    const r = await trx
+      .insertInto('cg.resource_request')
+      .values({ ...row, tenant_id: tenantId, event_id: event.id, updated_by: row.created_by })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    await trx
+      .insertInto('cg.resource_request_line')
+      .values(
+        lines.map((l, i) => ({
+          ...l,
+          tenant_id: tenantId,
+          request_id: r.id,
+          line_no: i + 1,
+          created_by: row.created_by,
+          updated_by: row.created_by,
+        })),
+      )
+      .execute();
+    await trx
+      .insertInto('cg.resource_request_step')
+      .values(
+        steps.map(([step, from, to, reason, actor, at]) => ({
+          tenant_id: tenantId,
+          request_id: r.id,
+          step,
+          from_status: from,
+          to_status: to,
+          reason,
+          occurred_at: new Date(at),
+          actor_account_id: actor,
+          created_by: actor,
+          updated_by: actor,
+        })),
+      )
+      .execute();
+  }
+}
+
+/**
+ * CON-13: the WESTWIND event's objectives for the current operational period
+ * (ICS 202) and one general message (ICS 213) approved by a second person,
+ * so the ICS 201 and 213 have content to show. Synthetic (SCL-12). Added once.
+ */
+async function ensureIcsRecords(
+  trx: Transaction<Database>,
+  tenantId: string,
+  accountIds: Record<string, string>,
+): Promise<void> {
+  const event = await trx
+    .selectFrom('cg.event')
+    .select('id')
+    .where('tenant_id', '=', tenantId)
+    .where('intake_slug', '=', 'westwind')
+    .executeTakeFirst();
+  if (!event) return;
+  const existing = await trx
+    .selectFrom('cg.incident_objective')
+    .select('id')
+    .where('event_id', '=', event.id)
+    .limit(1)
+    .executeTakeFirst();
+  if (existing) return;
+  const who = (email: string) => accountIds[email] ?? SEED_ACTOR_A;
+  const marcus = who('marcus.gis@example.org');
+  const dana = who('dana.director@example.org');
+  const luis = who('luis.masscare@example.org');
+  const h = 3_600_000;
+  const periodFrom = new Date(Math.floor(Date.now() / (12 * h)) * 12 * h);
+  const periodTo = new Date(periodFrom.getTime() + 12 * h);
+  const objectives: [string, string, 'open' | 'met' | 'dropped'][] = [
+    [
+      'Shelter everyone displaced by the tornado with no one turned away',
+      'Mass Care Coordinator',
+      'open',
+    ],
+    [
+      'Clear Commercial Row for utility crews by the end of the period',
+      'Operations Section Chief',
+      'open',
+    ],
+    [
+      'Complete welfare checks on every oxygen-dependent resident reported',
+      'Operations Section Chief',
+      'met',
+    ],
+    ['Issue a situation report every operational period', 'Planning Section Chief', 'open'],
+  ];
+  await trx
+    .insertInto('cg.incident_objective')
+    .values(
+      objectives.map(([objective, owner, status], i) => ({
+        tenant_id: tenantId,
+        event_id: event.id,
+        period_from: periodFrom,
+        period_to: periodTo,
+        position: i + 1,
+        objective,
+        owner_position: owner,
+        status,
+        note: null,
+        created_by: marcus,
+        updated_by: marcus,
+      })),
+    )
+    .execute();
+  const t0 = Date.now() - 6 * h;
+  await trx
+    .insertInto('cg.general_message')
+    .values({
+      tenant_id: tenantId,
+      event_id: event.id,
+      message_number: 'WESTWIND-GM-0001',
+      to_name: 'Luis Ortega (exercise)',
+      to_position: 'Mass Care Coordinator',
+      from_name: 'Marcus Bell (exercise)',
+      from_position: 'Planning Section Chief',
+      subject: 'Second shelter opening',
+      body: 'Open the Lincoln Elementary shelter by 18:00 today.\n\nExpect 60 arrivals from the Elm St evacuation.',
+      status: 'replied',
+      approved_at: new Date(t0 + h),
+      approved_by: dana,
+      sent_at: new Date(t0 + h + 600_000),
+      sent_by: marcus,
+      reply: 'Lincoln Elementary open at 17:40 with 80 cots.',
+      reply_by_name: 'Luis Ortega (exercise)',
+      reply_by_position: 'Mass Care Coordinator',
+      replied_at: new Date(t0 + 5 * h),
+      replied_by: luis,
+      created_by: marcus,
+      updated_by: luis,
+    })
+    .execute();
+}
+
+/**
+ * CON-14: the exercise county's live feeds (a state DOT WZDx feed, the Waze
+ * partner feed and a utility's outages), pointing at the recorded synthetic
+ * responses the worker replays, plus one staff entry that overrides them for
+ * its area. Added once; the worker's first pull fills the feed items.
+ */
+async function ensureLiveSources(
+  trx: Transaction<Database>,
+  tenantId: string,
+  accountIds: Record<string, string>,
+): Promise<void> {
+  const existing = await trx
+    .selectFrom('cg.live_source')
+    .select('id')
+    .where('tenant_id', '=', tenantId)
+    .limit(1)
+    .executeTakeFirst();
+  if (existing) return;
+  // created_by references cg.account: a seeded account, never the placeholder actor.
+  const casey = accountIds['casey.dispatch@example.org'] ?? null;
+  await trx
+    .insertInto('cg.live_source')
+    .values(
+      (
+        [
+          [
+            'wzdx',
+            'EXERCISE State DOT work zones (WZDx)',
+            'https://wzdx.exercise-dot.example/api/wzdx/v4/feed.geojson',
+          ],
+          [
+            'waze',
+            'Waze for Cities partner feed (exercise)',
+            'https://www.waze.com/partnerhub-api/feeds/exercise-westwind',
+          ],
+          [
+            'utility',
+            'EXERCISE Electric Cooperative outages',
+            'https://outages.exercise-utility.example/api/outages.geojson',
+          ],
+        ] as const
+      ).map(([kind, name, url]) => ({
+        tenant_id: tenantId,
+        kind,
+        name,
+        url,
+        enabled: true,
+        refresh_ms: 300_000,
+        last_error: null,
+        last_count: null,
+        created_by: casey,
+        updated_by: casey,
+      })),
+    )
+    .execute();
+  const event = await trx
+    .selectFrom('cg.event')
+    .select('id')
+    .where('tenant_id', '=', tenantId)
+    .where('intake_slug', '=', 'westwind')
+    .executeTakeFirst();
+  await trx
+    .insertInto('cg.live_condition')
+    .values({
+      tenant_id: tenantId,
+      source_id: null,
+      event_id: event?.id ?? null,
+      kind: 'road_closure',
+      external_id: null,
+      summary:
+        'Commercial Row closed between 3rd and 5th: downed lines, crews on site (staff entry)',
+      road: 'Commercial Row',
+      geom: sql`ST_SetSRID(ST_MakePoint(-90.89, 38.795), 4326)`,
+      severity: 'major',
+      starts_at: new Date(Date.now() - 2 * 3_600_000),
+      ends_at: null,
+      as_of: new Date(Date.now() - 20 * 60_000),
+      source_ref: null,
+      override: true,
+      entered_by: casey,
+      created_by: casey,
+      updated_by: casey,
+    })
+    .execute();
+}
+
+/**
  * SCL-10: the exercise subscriptions (invented terms and tiers). The state's coalition contract
  * covers its member jurisdictions; Westwind's own earlier contract has expired, so the
  * Subscription screen shows both, and resident reports go on regardless. Added once.
@@ -1426,6 +1806,9 @@ export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
       await ensureAgreements(trx, countyId, tenantIds);
       await ensureJobAids(trx, countyId);
       await ensureMissions(trx, countyId, tenantIds, accountIds);
+      await ensureResourceRequests(trx, countyId, accountIds);
+      await ensureIcsRecords(trx, countyId, accountIds);
+      await ensureLiveSources(trx, countyId, accountIds);
       await ensureCjisExercise(trx, countyId, accountIds);
     });
   }

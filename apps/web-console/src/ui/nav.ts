@@ -253,6 +253,30 @@ export const GROUPS: readonly WorkspaceGroup[] = [
         icon: icons.Info,
         needs: ['job_aid.edit', 'job_aid.approve'],
       },
+      {
+        path: '/console/resource-requests',
+        label: 'Resource requests',
+        icon: icons.Truck,
+        needs: ['resource_request.read'],
+      },
+      {
+        path: '/console/ics-forms',
+        label: 'ICS forms',
+        icon: icons.FileText,
+        needs: ['ics_form.read', 'incident_objective.read', 'general_message.read'],
+      },
+      {
+        path: '/console/live-conditions',
+        label: 'Live conditions',
+        icon: icons.Activity,
+        needs: ['live_condition.read'],
+      },
+      {
+        path: '/console/wall',
+        label: 'Wall display',
+        icon: icons.Rows3,
+        needs: ['briefing.read'],
+      },
     ],
   },
   {

@@ -30,6 +30,7 @@ import { submitIntake } from './public/submit.ts';
 import { publicRoutes } from './public/routes.ts';
 import { TenantResolver } from './public/tenant-resolver.ts';
 import { gisRoutes } from './routes/gis.ts';
+import { eocApiRoutes } from './routes/eoc-api.ts';
 
 const config = loadConfig(platformSchema);
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
@@ -148,6 +149,8 @@ const app = await buildApp({
     commands: { ai },
     // BRD:FR-03.02: the self-hosted Nominatim when the maps profile runs; parcels answer first.
     geocode: { nominatimUrl: config.GEOCODER_URL },
+    // CON-14, ADR-0046: the self-hosted router when the routing profile runs.
+    routing: { routingUrl: config.ROUTING_URL },
     // SEC-07: what the county gives its identity provider names the realm's public address.
     sso: { idpPublicBase: config.IDP_PUBLIC_BASE },
     drafting: { ai, objects: { client: s3, bucket: config.S3_BUCKET } },
@@ -157,6 +160,7 @@ const app = await buildApp({
     resources: { objects: { client: s3, bucket: config.S3_BUCKET } },
     exports: { objects: { client: s3, bucket: config.S3_BUCKET } },
     metrics: { productName: config.PRODUCT_NAME },
+    icsForms: { productName: config.PRODUCT_NAME },
     packagePhotos: {
       objects: {
         client: s3,
@@ -197,6 +201,8 @@ const app = await buildApp({
     }),
   ],
   gisRoutes: [gisRoutes({ resolver, db })],
+  // CON-13, SCL-09: a state system reads EOC records and updates resource requests by key.
+  eocRoutes: [eocApiRoutes({ resolver, db, productName: config.PRODUCT_NAME })],
   probes: [
     postgresProbe('db', pool),
     queueProbe('queue', () => queue),

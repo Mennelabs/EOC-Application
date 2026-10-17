@@ -105,6 +105,10 @@ import * as m0103 from './0103_public_audio_cleared.ts';
 import * as m0104 from './0104_map_package.ts';
 import * as m0105 from './0105_tenant_sso.ts';
 import * as m0106 from './0106_license_coverage.ts';
+import * as m0107 from './0107_resource_request.ts';
+import * as m0108 from './0108_ics_forms.ts';
+import * as m0109 from './0109_live_conditions.ts';
+import * as m0110 from './0110_eoc_api.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -214,4 +218,8 @@ export const migrations: Record<string, Migration> = {
   '0104_map_package': m0104,
   '0105_tenant_sso': m0105,
   '0106_license_coverage': m0106,
+  '0107_resource_request': m0107,
+  '0108_ics_forms': m0108,
+  '0109_live_conditions': m0109,
+  '0110_eoc_api': m0110,
 };

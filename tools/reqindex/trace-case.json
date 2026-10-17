@@ -1,0 +1,3 @@
+{
+  "_about": "Evidence per requirement ID for case management on the shared record (after layer 8; docs/plans/case-management.md): FL-13, FL-03, FL:FR-07, FL:FR-12, FL:FR-18, FL:FR-27 and the sharing rows it extends. Earlier evidence is kept and this work's appended after 'case management:'. status: pass | partial | deferred | designed. tools/reqindex/traceability.py merges it after trace-layer8.json."
+}

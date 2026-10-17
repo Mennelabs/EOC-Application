@@ -49,6 +49,8 @@ const LAYERS: {
   // FL:FR-01: structures searched, so no block is searched twice.
   { key: 'searched', title: 'Searched', mark: 'SR', shape: 'circle', tone: 'ok' },
   { key: 'outages', title: 'Outages', mark: 'O', shape: 'diamond', tone: 'warn' },
+  // CON-14: feed and staff conditions, each with its source and age in the detail.
+  { key: 'liveConditions', title: 'Live conditions', mark: 'L', shape: 'diamond', tone: 'warn' },
 ];
 const label = (s: string | null) => (s ? s.replace(/_/g, ' ') : '—');
 

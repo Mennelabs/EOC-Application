@@ -66,6 +66,8 @@ export const platformSchema = baseSchema.extend({
   TWILIO_AUTH_TOKEN: optionalString,
   /** BRD:FR-03.02, ADR-0015: the self-hosted Nominatim (maps profile); absent means parcels only. */
   GEOCODER_URL: z.preprocess((v) => (v === '' ? undefined : v), url.optional()),
+  /** CON-14, ADR-0046: the self-hosted OSRM (routing profile); absent means straight-line estimates. */
+  ROUTING_URL: z.preprocess((v) => (v === '' ? undefined : v), url.optional()),
   /** The URL Twilio was given for webhooks, when it differs from what the gateway reports (signature check). */
   WEBHOOK_PUBLIC_BASE: z.preprocess((v) => (v === '' ? undefined : v), url.optional()),
   /** Largest photo a resident may upload after client-side compression (PHO-05). */

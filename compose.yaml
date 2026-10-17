@@ -40,6 +40,9 @@ x-node-env: &node-env
   # Address suggestions from the self-hosted geocoder when the maps profile runs (BRD:FR-03.02):
   # set GEOCODER_URL=http://geocoder:8080; empty means the county's parcels only.
   GEOCODER_URL: ${GEOCODER_URL:-}
+  # CON-14, ADR-0046: with the routing profile running, set ROUTING_URL=http://routing:5000;
+  # empty means straight-line estimates, said so.
+  ROUTING_URL: ${ROUTING_URL:-}
   # Abuse protection per address (SEC-17); raise the deny limit only for a load generator on one host.
   PUBLIC_IP_VERIFY_PER_10MIN: ${PUBLIC_IP_VERIFY_PER_10MIN:-20}
   PUBLIC_IP_DENY_PER_10MIN: ${PUBLIC_IP_DENY_PER_10MIN:-120}
@@ -357,6 +360,47 @@ services:
     restart: 'no'
     networks: [platform]
 
+  # --- Routing (CON-14, ADR-0046). Opt in with COMPOSE_PROFILES=routing and build the
+  # graph once from the same extract as the tiles:
+  # `docker compose --profile routing-build run --rm routing-build`, again when the tiles are rebuilt.
+  routing-build:
+    profiles: [routing-build]
+    image: osrm/osrm-backend:v5.27.1
+    working_dir: /data
+    environment:
+      OSM_PBF_URL: ${OSM_PBF_URL:-https://download.geofabrik.de/north-america/us/missouri-latest.osm.pbf}
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - >-
+        (command -v curl >/dev/null || apt-get update -qq && apt-get install -y -qq curl >/dev/null) &&
+        curl -fL -o region.osm.pbf "$${OSM_PBF_URL}" &&
+        osrm-extract -p /opt/car.lua region.osm.pbf &&
+        osrm-partition region.osrm &&
+        osrm-customize region.osrm &&
+        rm -f region.osm.pbf
+    volumes:
+      - routing:/data
+    restart: 'no'
+    networks: [platform]
+
+  routing:
+    profiles: [routing]
+    image: osrm/osrm-backend:v5.27.1
+    command: ['osrm-routed', '--algorithm', 'mld', '--max-table-size', '100', '/data/region.osrm']
+    volumes:
+      - routing:/data:ro
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'wget -qO- http://127.0.0.1:5000/nearest/v1/driving/-90.9,38.8 >/dev/null || exit 1',
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 20
+      start_period: 1m
+    networks: [platform]
+
   # --- Monitoring (NFR-10, ADR-0023). Opt in with `docker compose --profile
   # monitoring up -d prometheus`: scrapes api and worker /metrics on the
   # platform network and evaluates infra/prometheus/alerts.yml. The UI is bound
@@ -390,4 +434,5 @@ volumes:
   tiles:
   tiles_work:
   geocoder_data:
+  routing:
   prometheus_data:

@@ -111,6 +111,11 @@ th {
   letter-spacing: 0.02em;
   white-space: nowrap;
 }
+/* A row header holds a name or a label, which wraps on a phone instead of
+   widening the page (WCAG 1.4.10). */
+th[scope='row'] {
+  white-space: normal;
+}
 tbody tr:last-child td {
   border-block-end: 0;
 }

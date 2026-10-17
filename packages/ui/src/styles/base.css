@@ -13,6 +13,9 @@ html {
   color: var(--cg-ink);
   background: var(--cg-bg);
   font-variant-numeric: tabular-nums;
+  /* The staff top bar is pinned (TopBar sets its height); a control scrolled into view,
+     by focus or a link, stops below it (WCAG 2.4.11). Zero where there is no bar. */
+  scroll-padding-block-start: calc(var(--cg-topbar-size, 0px) + var(--cg-space-2));
 }
 html.cg-public,
 .cg-public {

@@ -4,7 +4,7 @@
  * the frame reads the same on a wall display and a laptop. On a narrow screen
  * it also holds the "Workspaces" button that opens the navigation drawer.
  */
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { Home } from 'lucide-react';
 import { NavToggle } from './Shell.tsx';
 
@@ -25,8 +25,25 @@ export function TopBar({
   /** The end: the person, sign out. */
   end?: ReactNode;
 }) {
+  // The bar stays pinned while the page scrolls, so the page keeps that much room at
+  // its top when it scrolls a control into view: focus never lands under the bar
+  // (WCAG 2.4.11). On a phone the bar wraps to several rows, so its height is measured.
+  const bar = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = bar.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const root = document.documentElement;
+    const observer = new ResizeObserver(() =>
+      root.style.setProperty('--cg-topbar-size', `${el.offsetHeight}px`),
+    );
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty('--cg-topbar-size');
+    };
+  }, []);
   return (
-    <header className="cg-topbar">
+    <header className="cg-topbar" ref={bar}>
       <a
         className="cg-topbar__brand"
         href={homeHref}

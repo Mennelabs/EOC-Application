@@ -14,6 +14,11 @@ export const PASSWORD = 'Westwind-Exercise-2026!';
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 
 export async function expectNoViolations(page: Page, opts: { mapMarkers?: boolean } = {}) {
+  // The staff top bar is pinned (ADR-0045): content a step scrolled under it is not a
+  // target the person has to press there, so the scan reads the page from its top.
+  await page.evaluate(() => {
+    if (document.querySelector('.cg-topbar')) window.scrollTo(0, 0);
+  });
   const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
   // WCAG 2.5.8 "Equivalent" exception: map markers can sit close together at
   // a zoom, and every marker's item is in the table beside the map (ACC-07).

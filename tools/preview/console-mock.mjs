@@ -122,6 +122,26 @@ export function routesFor(role) {
   const ago = (min) => new Date(Date.now() - min * 60e3).toISOString();
   const routes = {
     '/api/v1/me': me,
+    // REC-12: the planning factors screen reads defaults and the county's overrides.
+    '/api/v1/recommendations/planning-factors': {
+      defaults: {
+        shelterSqftPerPerson: 40,
+        peoplePerShower: 25,
+        personsPerHousehold: 2.5,
+        coverageKm: 16,
+        staleDays: 365,
+        mealsPerPersonPerStop: 1,
+        stopsPerCanteen: 3,
+        feedingFirstStartHour: 11,
+        feedingWindowHours: 1.5,
+        feedingGapHours: 1,
+        feedingClusterKm: 0.8,
+        feedingSiteKm: 0.5,
+        feedingCoverageKm: 1.6,
+        languageNotePct: 5,
+      },
+      overrides: {},
+    },
     '/api/v1/events': [EVENT],
     '/api/v1/dashboard/counts': {
       asOf: ago(3),

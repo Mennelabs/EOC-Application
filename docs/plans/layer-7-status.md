@@ -8,7 +8,7 @@ Resume record for layer 7. Chat history is not the record; this file is.
 2. Run `pnpm install && pnpm typecheck && pnpm test && pnpm lint && pnpm check:product-name`. Do not build on a red tree.
 3. The plan is [`layer-7.md`](layer-7.md); the provider and command-window decisions are ADR-0043 and ADR-0044. Work the tasks below in order, one per commit, each ending green, pushed and recorded here.
 4. Layer 7 starts after the partner work ([`partners-status.md`](partners-status.md)).
-5. **Design foundation (decided 2026-10-15, after task F):** the console frame, the situation home and the shared `packages/ui` were built between F and G (PR #24) and merged after layer 7's follow-ups, on 2026-10-17, with every later workspace added to the navigation ([`design-foundation-status.md`](design-foundation-status.md), ADR-0045). From G on, every new screen starts from `@cg/ui` (tiles, cards, pills, notices, menus, selects, dialogs) and the shared stylesheet; `pnpm --filter @cg/ui showcase` shows the pieces, `tools/preview/console-preview.mjs` shows the console without the stack.
+5. **Design foundation (decided 2026-10-15, after task F):** the console frame, the situation home and the shared `packages/ui` were built between F and G and merged after layer 7's follow-ups, on 2026-10-17 (PR #24, `14fcd48`), with every later workspace added to the navigation ([`design-foundation-status.md`](design-foundation-status.md), ADR-0045). From G on, every new screen starts from `@cg/ui` (tiles, cards, pills, notices, menus, selects, dialogs) and the shared stylesheet; `pnpm --filter @cg/ui showcase` shows the pieces, `tools/preview/console-preview.mjs` shows the console without the stack.
 
 ## Environment
 

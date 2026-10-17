@@ -195,7 +195,7 @@ describe.skipIf(!appUrl || !workerUrl)('case management (database-backed)', () =
             to_tenant_id: partner,
             org_type: 'case_management',
             report_id: reportId,
-            sections: ['name', 'contact', 'need'],
+            sections: ['name', 'contact', 'need', 'recovery_plan', 'help_received', 'appointments'],
             projection: JSON.stringify({ referenceCode: `SYN-${run}-A` }),
           })
           .returning('id')

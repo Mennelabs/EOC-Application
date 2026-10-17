@@ -25,7 +25,8 @@ import { enqueueOutbox, systemAudit } from '../system.ts';
 import { staffRecipients } from './recipients.ts';
 import type { JobContext } from './types.ts';
 
-export type SyncReason = 'filed' | 'after_answers' | 'consent' | 'corrected' | 'withdrawn';
+export type SyncReason =
+  'filed' | 'after_answers' | 'consent' | 'corrected' | 'withdrawn' | 'handoff';
 
 export interface SyncResult {
   granted: number;
@@ -41,6 +42,7 @@ const REASON_TEXT: Record<SyncReason, string> = {
   consent: 'the resident withdrew consent',
   corrected: 'the resident corrected the report',
   withdrawn: 'the resident withdrew the report',
+  handoff: 'the case was handed to the long-term recovery group',
 };
 
 type Answer = { kind?: string; value?: unknown } | undefined;

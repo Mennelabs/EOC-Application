@@ -144,26 +144,32 @@ export const cast = [
     role: 'sba_representative',
     tenant: 'sba',
   },
+  {
+    email: 'rosa.ltrg@example.org',
+    name: 'Rosa Kim',
+    role: 'long_term_recovery_manager',
+    tenant: 'ltrg',
+  },
   // Partner organizations run their own accounts (ADM-02, decision 2026-10-13). Each gets
   // a tenant administrator and a security administrator, because granting a role needs a
   // second administrator inside the same organization (ADM-05 G6). The state's pair onboards
   // its own liaisons (layer 6).
-  ...(['coad', 'canteen', 'shelter-ngo', 'cleanup', 'legal', 'state', 'sba'] as const).flatMap(
-    (tenant) => [
-      {
-        email: `admin.${tenant}@example.org`,
-        name: `${tenant} administrator`,
-        role: 'tenant_admin',
-        tenant,
-      },
-      {
-        email: `security.${tenant}@example.org`,
-        name: `${tenant} security administrator`,
-        role: 'security_admin',
-        tenant,
-      },
-    ],
-  ),
+  ...(
+    ['coad', 'canteen', 'shelter-ngo', 'cleanup', 'legal', 'state', 'sba', 'ltrg'] as const
+  ).flatMap((tenant) => [
+    {
+      email: `admin.${tenant}@example.org`,
+      name: `${tenant} administrator`,
+      role: 'tenant_admin',
+      tenant,
+    },
+    {
+      email: `security.${tenant}@example.org`,
+      name: `${tenant} security administrator`,
+      role: 'security_admin',
+      tenant,
+    },
+  ]),
 ] as const;
 
 interface Loaded {

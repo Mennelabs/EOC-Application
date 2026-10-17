@@ -124,6 +124,15 @@ export const tenants: Tenant[] = [
     timezone: 'America/Chicago',
     locales: ['en', 'es'],
   },
+  // FL:FR-27: the long-term recovery group that takes cases at day 30.
+  {
+    key: 'ltrg',
+    kind: 'partner_org',
+    name: 'Westwind Long-Term Recovery Group',
+    parent: 'county',
+    timezone: 'America/Chicago',
+    locales: ['en', 'es'],
+  },
   // FL:FR-12: the SBA's disaster field office as a partner organization (plan §6 question 2).
   {
     key: 'sba',
@@ -774,6 +783,20 @@ export const agreements = [
   },
   { partner: 'legal', orgType: 'relief_agencies', service: 'legal', categories: ['contact'] },
   { partner: 'coad', orgType: 'community_groups', service: 'coordination', categories: [] },
+  // Case management (plan §3.7): the long-term recovery group reads every dollar; the SBA table
+  // reads contact and the dollars it needs for the loan (FL-13, FL:FR-12, FL:FR-27).
+  {
+    partner: 'ltrg',
+    orgType: 'long_term_recovery',
+    service: 'case_management',
+    categories: ['contact', 'location_exact', 'household', 'financial', 'free_text'],
+  },
+  {
+    partner: 'sba',
+    orgType: 'sba',
+    service: 'case_management',
+    categories: ['contact', 'financial'],
+  },
 ];
 
 /**

@@ -18,6 +18,7 @@ import { errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
 import {
   accountNames,
+  allows,
   caseAccount as account,
   inCounty,
   locateCase,
@@ -161,6 +162,8 @@ export const appointmentRoutes: FastifyPluginAsync = async (base) => {
       const s = account(request);
       const { where, row } = await locateCase(request, request.params.id);
       await request.authorize('appointment.write', { type: 'appointment', tenantId: s.tenantId });
+      // A partner schedules only when its grant carries the appointments section (plan §3.7).
+      if (!allows(where, 'appointments')) throw errors.forbidden();
       const textVisible = await readable(request, row);
       if (row.status === 'closed') throw errors.conflict({ status: row.status });
       const b = request.body;
@@ -303,6 +306,7 @@ export const appointmentRoutes: FastifyPluginAsync = async (base) => {
         id: request.params.apptId,
         tenantId: s.tenantId,
       });
+      if (!allows(where, 'appointments')) throw errors.forbidden();
       const textVisible = await readable(request, row);
       const expected = request.expectedVersion();
       const b = request.body;

@@ -8,7 +8,7 @@
  */
 import type { FastifyRequest } from 'fastify';
 import { sql, type Selectable, type Transaction } from 'kysely';
-import type { FieldDescriptor } from '@cg/authz';
+import { CASE_SECTION, type FieldDescriptor, type SharingSection } from '@cg/authz';
 import type { Database } from '@cg/db';
 import { errors } from '../errors.ts';
 
@@ -19,7 +19,13 @@ export type CaseRow = Selectable<Database['cg.case']>;
 export interface Where {
   countyId: string;
   viaGrant: boolean;
+  /** Through a grant: the sections the survivor's consent and the agreement allow (plan §3.7). */
+  sections: readonly SharingSection[] | null;
 }
+
+/** Whether the reach allows a case section: the county sees all; a partner what its grant carries. */
+export const allows = (where: Where, section: SharingSection) =>
+  where.sections === null || where.sections.includes(section);
 
 /** The parts of a case the policy engine masks by data category (RULE-16, SEC-11). */
 export const CASE_FIELDS: FieldDescriptor[] = [
@@ -39,16 +45,21 @@ export const inCounty = <T>(
   fn: (trx: Trx) => Promise<T>,
 ) => (caseAccount(request).tenantId === countyId ? request.tx(fn) : request.txAs(countyId, fn));
 
-/** The active grants a partner holds for reports (its consented records), by county. */
+/**
+ * The active case-management grants a partner holds for reports: the survivor consented to the
+ * organization type and the county's agreement names the service, so the grant carries the case
+ * sections (NED-04, NED-05). A grant for cleanup or feeding reaches no case.
+ */
 export async function grantsFor(request: FastifyRequest, reportId?: string) {
   const s = caseAccount(request);
   return request.tx((trx) => {
     let q = trx
       .selectFrom('cg.share_grant')
-      .select(['tenant_id', 'report_id', 'id'])
+      .select(['tenant_id', 'report_id', 'id', 'sections'])
       .where('to_tenant_id', '=', s.tenantId)
       .where('revoked_at', 'is', null)
-      .where('report_id', 'is not', null);
+      .where('report_id', 'is not', null)
+      .where(sql<boolean>`${CASE_SECTION} = any(sections)`);
     if (reportId) q = q.where('report_id', '=', reportId);
     return q.execute();
   });
@@ -63,10 +74,14 @@ export async function locateReport(request: FastifyRequest, reportId: string): P
       .where('id', '=', reportId)
       .executeTakeFirst(),
   );
-  if (own) return { countyId: own.tenant_id, viaGrant: false };
+  if (own) return { countyId: own.tenant_id, viaGrant: false, sections: null };
   const [grant] = await grantsFor(request, reportId);
   if (!grant) throw errors.notFound(); // never says whether the report exists (SEC-05)
-  return { countyId: grant.tenant_id, viaGrant: true };
+  return {
+    countyId: grant.tenant_id,
+    viaGrant: true,
+    sections: grant.sections as SharingSection[],
+  };
 }
 
 /** A case: in the subject's own tenant, or in a county whose grant for the case's report it holds. */
@@ -77,14 +92,18 @@ export async function locateCase(
   const own = await request.tx((trx) =>
     trx.selectFrom('cg.case').selectAll().where('id', '=', caseId).executeTakeFirst(),
   );
-  if (own) return { where: { countyId: own.tenant_id, viaGrant: false }, row: own };
+  if (own) return { where: { countyId: own.tenant_id, viaGrant: false, sections: null }, row: own };
   const grants = await grantsFor(request);
-  const reportIds = new Set(grants.map((g) => g.report_id));
   for (const countyId of new Set(grants.map((g) => g.tenant_id))) {
     const row = await request.txAs(countyId, (trx) =>
       trx.selectFrom('cg.case').selectAll().where('id', '=', caseId).executeTakeFirst(),
     );
-    if (row && reportIds.has(row.report_id)) return { where: { countyId, viaGrant: true }, row };
+    const grant = row && grants.find((g) => g.report_id === row.report_id);
+    if (row && grant)
+      return {
+        where: { countyId, viaGrant: true, sections: grant.sections as SharingSection[] },
+        row,
+      };
   }
   throw errors.notFound();
 }

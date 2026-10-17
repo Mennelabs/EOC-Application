@@ -22,6 +22,7 @@ export {
   SECTION_CATEGORY,
   SECTIONS_BY_SERVICE,
   RESTRICTED_SECTIONS,
+  CASE_SECTION,
   isSharingService,
   sectionsFor,
   deriveGrants,

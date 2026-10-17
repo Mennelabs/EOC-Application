@@ -136,6 +136,32 @@ export const westwindGraph: QuestionGraph = parseGraph({
         es: 'Organizaciones sin fines de lucro del condado que ayudan con necesidades a más largo plazo, como reparaciones y gestión de casos.',
       },
     },
+    // Case management on the shared record (decision 2026-10-15; plan §3.7). Proposed wording,
+    // in force until Adam replaces it (plan §6 question 1).
+    {
+      value: 'case_management',
+      label: { en: 'Case managers', es: 'Gestores de casos' },
+      description: {
+        en: 'Caseworkers from the county and its partners. They help you plan your recovery. They keep track of help you got and set up your appointments.',
+        es: 'Trabajadores de caso del condado y de organizaciones aliadas que le ayudan a planear su recuperación, llevan cuenta de la ayuda que ha recibido y programan citas.',
+      },
+    },
+    {
+      value: 'long_term_recovery',
+      label: { en: 'Long-term recovery group', es: 'Grupo de recuperación a largo plazo' },
+      description: {
+        en: 'The local group that takes over cases after the first month, so repairs and other long needs are not dropped. They would see the help you have already received.',
+        es: 'El grupo local que toma los casos después del primer mes, para que las reparaciones y otras necesidades largas no se pierdan. Verían la ayuda que ya recibió.',
+      },
+    },
+    {
+      value: 'sba',
+      label: { en: 'SBA disaster loans', es: 'Préstamos por desastre de la SBA' },
+      description: {
+        en: 'The U.S. Small Business Administration. It makes low-cost disaster loans to homeowners and renters, not only to shops. Sharing lets them start your loan papers at a recovery center.',
+        es: 'La Agencia Federal para el Desarrollo de la Pequeña Empresa (SBA), que ofrece préstamos por desastre a bajo interés a propietarios e inquilinos, no solo a negocios. Compartir les permite iniciar su solicitud en un centro de recuperación.',
+      },
+    },
     {
       value: 'faith_based',
       optIn: true,

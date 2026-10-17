@@ -49,6 +49,7 @@ import { assignLocationGeography } from './jobs/geography.ts';
 import { pruneReferenceSnapshots, scheduleReferencePulls } from './jobs/refdata.ts';
 import { scheduleLivePulls } from './jobs/live.ts';
 import { remindAppointments } from './jobs/appointments.ts';
+import { handOffCases } from './jobs/handoff.ts';
 import { evaluateEquityAlerts } from './jobs/equity.ts';
 import { evaluateAiHealth } from './jobs/ai-health.ts';
 import { staleAbandonedPlans, sweepCommandHistory } from './jobs/commands.ts';
@@ -246,6 +247,8 @@ const schedules: Schedule[] = [
     everyMs: 5 * 60_000,
     run: (c) => remindAppointments(c).then(() => undefined),
   },
+  // FL:FR-27: cases open for the county's hand-off period go to the long-term recovery group.
+  { name: 'case-handoff', everyMs: 60 * 60_000, run: (c) => handOffCases(c).then(() => undefined) },
   { name: 'publication-notices', everyMs: 30_000, run: noticePublications }, // PUB-06
   { name: 'ai-health', everyMs: 10 * 60_000, run: evaluateAiHealth }, // AIG-09 (alerts only)
   // CMD-36, CMD-37: personal command history past its retention; plans nobody confirmed.

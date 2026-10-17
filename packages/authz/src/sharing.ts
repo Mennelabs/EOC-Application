@@ -10,7 +10,7 @@ import type { DataCategory } from './types.ts';
 
 /** What a partner does for residents (the county's agreement names one). */
 export type SharingService =
-  'cleanup' | 'feeding' | 'shelter' | 'counseling' | 'legal' | 'coordination';
+  'cleanup' | 'feeding' | 'shelter' | 'counseling' | 'legal' | 'coordination' | 'case_management';
 
 export const SHARING_SERVICES: readonly SharingService[] = [
   'cleanup',
@@ -19,6 +19,8 @@ export const SHARING_SERVICES: readonly SharingService[] = [
   'counseling',
   'legal',
   'coordination',
+  // FL-13, FL:FR-18, FL:FR-27: caseworkers, the SBA and the long-term recovery group.
+  'case_management',
 ];
 
 /** A section of a shared record. The names are stable: they go into grants and audit rows. */
@@ -30,7 +32,11 @@ export type SharingSection =
   | 'area'
   | 'household_band'
   | 'need'
-  | 'access_needs';
+  | 'access_needs'
+  // Case management (plan §3.7): live sections read from the case, never copied into a projection.
+  | 'help_received'
+  | 'recovery_plan'
+  | 'appointments';
 
 /** The data category each section belongs to; the agreement must name it unless it is basic. */
 export const SECTION_CATEGORY: Record<SharingSection, DataCategory> = {
@@ -42,6 +48,9 @@ export const SECTION_CATEGORY: Record<SharingSection, DataCategory> = {
   household_band: 'household',
   need: 'basic',
   access_needs: 'access_needs',
+  help_received: 'financial',
+  recovery_plan: 'basic',
+  appointments: 'contact',
 };
 
 /** Sections that leave the county only encrypted (restricted); the rest is a queryable projection. */
@@ -55,7 +64,23 @@ export const SECTIONS_BY_SERVICE: Record<SharingService, readonly SharingSection
   counseling: ['contact'],
   legal: ['name', 'contact'],
   coordination: [],
+  // A case manager's organization: the household's record plus the case sections (plan §3.7).
+  // Dollar values need the financial category on the agreement as on the role (FL-13).
+  case_management: [
+    'name',
+    'contact',
+    'contact_preference',
+    'address_exact',
+    'household_band',
+    'need',
+    'recovery_plan',
+    'help_received',
+    'appointments',
+  ],
 };
+
+/** The sections a case_management grant must carry for a partner to reach the case at all. */
+export const CASE_SECTION: SharingSection = 'recovery_plan';
 
 export function isSharingService(value: unknown): value is SharingService {
   return typeof value === 'string' && (SHARING_SERVICES as readonly string[]).includes(value);

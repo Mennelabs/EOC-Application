@@ -25,6 +25,7 @@ import { errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
 import {
   accountNames as names,
+  allows,
   CASE_FIELDS as FIELDS,
   caseAccount as account,
   grantsFor,
@@ -228,13 +229,15 @@ export const caseRoutes: FastifyPluginAsync = async (base) => {
     };
   }
 
+  /** The role's categories and, through a grant, the grant's sections both cut the view (the stricter wins). */
   async function view(
     trx: Trx,
     c: CaseRow,
     me: { accountId: string; tenantId: string },
     visible: string[],
+    where: Where,
   ): Promise<CaseOut> {
-    const financialVisible = visible.includes('amount');
+    const financialVisible = visible.includes('amount') && allows(where, 'help_received');
     const textVisible = visible.includes('description');
     const [head, help, plan, appointments] = await Promise.all([
       summary(trx, c, me, financialVisible),
@@ -253,7 +256,7 @@ export const caseRoutes: FastifyPluginAsync = async (base) => {
         .orderBy('due_on')
         .orderBy('created_at')
         .execute(),
-      appointmentsOf(trx, c, textVisible),
+      allows(where, 'appointments') ? appointmentsOf(trx, c, textVisible) : Promise.resolve([]),
     ]);
     const who = await names(trx, [
       ...help.flatMap((h: HelpRow) => [h.recorded_by, h.voided_by]),
@@ -373,26 +376,46 @@ export const caseRoutes: FastifyPluginAsync = async (base) => {
         const rows = await qb.execute();
         return Promise.all(rows.map((c: CaseRow) => summary(trx, c, me, financialVisible)));
       });
-      // Cases on reports shared with this organization (a partner), while consent stands.
+      // Cases on reports shared with this organization (a partner), while consent stands and the
+      // grant carries the case sections.
       const grants = await grantsFor(request, q.reportId);
-      const byCounty = new Map<string, string[]>();
+      const byCounty = new Map<string, { reportId: string; sections: string[] }[]>();
       for (const g of grants) {
         if (g.tenant_id === s.tenantId) continue;
-        byCounty.set(g.tenant_id, [...(byCounty.get(g.tenant_id) ?? []), g.report_id!]);
+        byCounty.set(g.tenant_id, [
+          ...(byCounty.get(g.tenant_id) ?? []),
+          { reportId: g.report_id!, sections: g.sections },
+        ]);
       }
       const shared: z.infer<typeof summaryOut>[] = [];
-      for (const [countyId, reportIds] of byCounty) {
+      for (const [countyId, shared_] of byCounty) {
         const rows = await request.txAs(countyId, async (trx) => {
           let qb = trx
             .selectFrom('cg.case')
             .selectAll()
-            .where('report_id', 'in', reportIds)
+            .where(
+              'report_id',
+              'in',
+              shared_.map((x) => x.reportId),
+            )
             .orderBy('opened_at', 'desc')
             .limit(q.limit);
           if (q.status) qb = qb.where('status', '=', q.status);
           if (q.eventId) qb = qb.where('event_id', '=', q.eventId);
           const found = await qb.execute();
-          return Promise.all(found.map((c: CaseRow) => summary(trx, c, me, financialVisible)));
+          return Promise.all(
+            found.map((c: CaseRow) =>
+              summary(
+                trx,
+                c,
+                me,
+                financialVisible &&
+                  (shared_.find((x) => x.reportId === c.report_id)?.sections ?? []).includes(
+                    'help_received',
+                  ),
+              ),
+            ),
+          );
         });
         shared.push(...rows);
       }
@@ -465,7 +488,7 @@ export const caseRoutes: FastifyPluginAsync = async (base) => {
         return { created: true, row };
       });
       const out = await inCounty(request, where.countyId, async (trx) => {
-        const v = await view(trx, result.row, me, read.fields);
+        const v = await view(trx, result.row, me, read.fields, where);
         await auditRead(request, trx, result.row, where, read.restrictedRead, 'case');
         return v;
       });
@@ -486,6 +509,7 @@ export const caseRoutes: FastifyPluginAsync = async (base) => {
           row,
           { accountId: s.accountId, tenantId: s.tenantId },
           decision.fields,
+          where,
         );
         await auditRead(request, trx, row, where, decision.restrictedRead, 'case');
         return v;
@@ -499,8 +523,10 @@ export const caseRoutes: FastifyPluginAsync = async (base) => {
     { schema: { tags: ['cases'], params: uuidParam, response: { 200: duplicationOut } } },
     async (request) => {
       const { where, row, decision } = await readCase(request, request.params.id);
-      // Without the financial category there is no duplication check: the totals are the dollars.
-      if (!decision.fields.includes('amount')) throw errors.forbidden();
+      // Without the financial category on the role, or the help_received section on the grant,
+      // there is no duplication check: the totals are the dollars.
+      if (!decision.fields.includes('amount') || !allows(where, 'help_received'))
+        throw errors.forbidden();
       return inCounty(request, where.countyId, async (trx) => {
         const rows = await trx
           .selectFrom('cg.help_received')
@@ -592,7 +618,13 @@ export const caseRoutes: FastifyPluginAsync = async (base) => {
           reason,
           changes: { fields: [{ name: 'status', from: row.status, to: 'closed' }] },
         });
-        return view(trx, updated, { accountId: s.accountId, tenantId: s.tenantId }, read.fields);
+        return view(
+          trx,
+          updated,
+          { accountId: s.accountId, tenantId: s.tenantId },
+          read.fields,
+          where,
+        );
       });
     },
   );
@@ -661,7 +693,13 @@ export const caseRoutes: FastifyPluginAsync = async (base) => {
             ],
           },
         });
-        return view(trx, touched, { accountId: s.accountId, tenantId: s.tenantId }, read.fields);
+        return view(
+          trx,
+          touched,
+          { accountId: s.accountId, tenantId: s.tenantId },
+          read.fields,
+          where,
+        );
       });
       return reply.code(201).send(out);
     },
@@ -739,7 +777,13 @@ export const caseRoutes: FastifyPluginAsync = async (base) => {
           reason,
           changes: { fields: [{ name: 'voided', from: 'false', to: 'true' }] },
         });
-        return view(trx, touched, { accountId: s.accountId, tenantId: s.tenantId }, read.fields);
+        return view(
+          trx,
+          touched,
+          { accountId: s.accountId, tenantId: s.tenantId },
+          read.fields,
+          where,
+        );
       });
     },
   );
@@ -805,7 +849,13 @@ export const caseRoutes: FastifyPluginAsync = async (base) => {
             ],
           },
         });
-        return view(trx, touched, { accountId: s.accountId, tenantId: s.tenantId }, read.fields);
+        return view(
+          trx,
+          touched,
+          { accountId: s.accountId, tenantId: s.tenantId },
+          read.fields,
+          where,
+        );
       });
       return reply.code(201).send(out);
     },
@@ -885,7 +935,13 @@ export const caseRoutes: FastifyPluginAsync = async (base) => {
             fields: [{ name: 'status', from: item.status, to: updated.status }],
           },
         });
-        return view(trx, touched, { accountId: s.accountId, tenantId: s.tenantId }, read.fields);
+        return view(
+          trx,
+          touched,
+          { accountId: s.accountId, tenantId: s.tenantId },
+          read.fields,
+          where,
+        );
       });
     },
   );

@@ -261,7 +261,7 @@ describe.skipIf(!appUrl || !workerUrl)(
                 to_tenant_id: partner,
                 org_type: 'sba',
                 report_id: report.id,
-                sections: ['name', 'contact'],
+                sections: ['name', 'contact', 'recovery_plan', 'help_received', 'appointments'],
                 projection: JSON.stringify({}),
               })
               .execute();

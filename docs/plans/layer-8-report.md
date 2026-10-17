@@ -1,0 +1,64 @@
+# Layer 8 report: ICS forms and EOC functions
+
+Date: 2026-10-17. Branch `claude/determined-gates-zd5i8m`, pull request #59 (open at the time of writing; every task commit on it ran CI). Layer 8 started on Adam's word ("approve this later and do the next") with layer 7's formal approval deferred; the plan's open questions run on their recommended defaults behind configuration (`docs/decisions.md`, 2026-10-17; `layer-8-status.md`, "Defaults in force").
+
+Everything in the stack is synthetic or the WESTWIND exercise (SCL-12).
+
+**The rule under every feature:** a named person decides (a second person where the requirement says so); every record carries its source and time; nothing on a wall, a form or a state's feed names a resident.
+
+## What was built
+
+| Area                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Where                                                                                                                                                                        |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Resource requests to the state (CON-13, ICS 213 RR):** drafted in the 213 RR blocks with lines, optionally raised from a site's supply request; submitted with a reason; approved by a second person as section chief (never the submitter, ADM-05 G4, enforced by the engine and the table); placed with the state with its tracking number, or locally; en route; received; cancelled. Finance's reply gates placing only above the county's threshold. Every step is a row and an audit entry | migration 0107, `routes/resource-requests.ts`, `screens/resource-requests.tsx`                                                                                               |
+| **ICS forms as documents (CON-13):** objectives per operational period (ICS 202); general messages (ICS 213) approved by a second person, sent and replied to; the 201 incident briefing, 213, 213 RR, 214 activity log and 309 communications log built from the event's records into one content model with the edition named, previewed for a scope, issued frozen with a SHA-256 and a per-event number, downloaded as tagged PDF (PDF/UA-1, veraPDF in CI) or CSV, every download audited     | migration 0108, `packages/reporting/src/ics`, `routes/incident-objectives.ts`, `general-messages.ts`, `ics-forms.ts`, `screens/ics-forms.tsx`                                |
+| **Wall display (CON-11):** one aggregate per event (damage by degree, reports waiting, shelters with occupancy, open needs, missions by state, resource requests, the period's objectives, the last six hours, live conditions) in large type, refreshed on the county's interval and announced politely; a display role that holds the briefing and nothing else, so the wall never carries a person's session                                                                                    | `routes/briefing.ts`, `screens/wall.tsx`, template `briefing_display`                                                                                                        |
+| **Live conditions (CON-14):** feeds per county (WZDx from a state DOT, the Waze for Cities partner feed, a utility's outages, or a file), pulled by the worker on each feed's period through the allow-listed client with recorded synthetic feeds in development and CI; every item with its source and age, stale when a feed goes quiet, cleared when a feed drops it; staff entries override feeds for their area; the wall and the situation map carry them                                   | migration 0109, `packages/refdata/src/live`, worker `jobs/live.ts`, `routes/live-conditions.ts`, `screens/live-conditions.tsx`, `tools/seed/src/recordings.ts`               |
+| **Routing (CON-14, ADR-0046):** a self-hosted OSRM built from the same OpenStreetMap extract as the tiles, behind compose profiles `routing-build` and `routing`; `GET /routing/route` gives distance, time and the line with its source named, and the straight-line estimate, said so, without a router                                                                                                                                                                                          | `compose.yaml`, `routes/routing.ts`, `docs/adr/0046-self-hosted-routing.md`                                                                                                  |
+| **For a state system (CON-13, SCL-09):** API key scopes `eoc.read` (resource requests with history, significant events, issued reports, issued ICS forms as JSON or PDF, under `/api/eoc/<county>`) and `resource_request.update` (the state's tracking number and status, each a step by the key); webhooks for submitted and updated requests, logged events and issued forms; keys and webhooks keep their second-administrator approval, every use is audited                                  | migration 0110, `routes/eoc-api.ts`, worker `jobs/eoc-events.ts`                                                                                                             |
+| **Records:** launch-gate evidence, accessibility records per screen, traceability, the status file, README, known limitations                                                                                                                                                                                                                                                                                                                                                                      | `docs/plans/layer-8-gates.md`, `docs/a11y/screens/{resource-requests,ics-forms,wall-display,live-conditions}.md`, `tools/reqindex/trace-layer8.json`, `docs/traceability.md` |
+
+## What passed
+
+- **Traceability:** CON-11 and SCL-09 pass (extended from the design layer and layer 6); CON-13 and CON-14 are partial with the gaps below; DSP-10 and DSP-11 are extended with the 309 and 214 as documents. Across every layer, 515 of 666 IDs pass, 132 are partial, 17 deferred, 1 designed and 1 not started (`docs/traceability.md`).
+- **Checks:** typecheck, lint, the unit suites, the product-name check and the traceability check pass locally on every task commit; the database, worker and browser suites run in CI (local Docker is off in this environment).
+- **Gates** (`layer-8-gates.md`): GATE-02 (the acceptance suites named per row), GATE-03 (axe on every new screen, desktop and phone; records written), GATE-04 (the permission sweep now covers every new staff route; the key-served API is proven separately), GATE-07 (the wall, the forms and the dashboard read the same rows), GATE-09 (the new tables are ordinary tables in the dumped schema).
+
+## What did not pass, or is not yet proven
+
+- **CON-13 is partial** because: ICS form editions ship in code (block numbers and labels in `packages/reporting/src/ics/forms.ts`), named on every form, and must be compared with fema.gov before release (this environment cannot reach fema.gov; the same gap as DCL:DEC-12); county-editable editions, as the FEMA forms have, are not built. Direct writes into a state's WebEOC board are per state on request (question 3). Forms beyond the six named are not built.
+- **CON-14 is partial** because: the router drives the extract as built and does not avoid live closures (they are shown beside a route); Google Maps Platform waits on Adam (question 2); a real DOT or Waze feed has not been pulled (the parsers and the pull job are proven on recorded synthetic feeds; a county's feed host must be named in `REFDATA_ALLOWED_HOSTS`).
+- **CI on the final head** was not yet green when this report was written: an earlier task commit broke the stack seed (a placeholder actor on a foreign key, fixed in the L8-E commit); the compose suite re-runs on the fixed head.
+- **Screen-reader passes** of the four new screens need a person with NVDA and VoiceOver; the wall display wants a look at its real size and distance.
+- **A general message is "sent" when handed over;** sending to phones goes through Messages to the field, and the field message can be linked on the general message.
+- **Retention:** cleared live conditions and lapsed feed items are kept under the default `records` rule; a shorter sweep is a follow-up.
+
+## What was deferred and why
+
+| What                                                                 | Why                                           | When                                             |
+| -------------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------ |
+| Google Maps Platform routing and travel times                        | Paid service                                  | Only if Adam approves (question 2)               |
+| Writing into a state's WebEOC board                                  | Needs the state's account and board design    | Per state, on request (question 3)               |
+| Paid outage aggregators                                              | Paid; the free sources are built              | Ask Adam if a county's utility publishes nothing |
+| ICS forms beyond 201, 202, 213, 213 RR, 214 and 309                  | CON-13 names these                            | After the pilot, on request                      |
+| County-editable ICS form editions (as the FEMA mappings)             | A new edition is a code change today          | When a county needs an edition the code lacks    |
+| Routing around live closures                                         | Needs a rebuilt or dynamically weighted graph | If a county asks                                 |
+| Case management, Brother badge printing, CJIS mutual-aid grants, iOS | Queued before layer 8 started                 | Next, in that order, unless Adam reorders        |
+
+## Readings taken in favour of privacy and safety (flagged for you)
+
+1. **The wall shows aggregates and place names only:** no resident, no home address, no staff contact. The payload is tested for personal keys and content (`briefing.db.test.ts`).
+2. **ICS forms carry staff names and positions, never residents;** a resident need reaches a 213 RR only as a count.
+3. **Feeds never override a staff entry;** a staff entry overrides feeds for its area until it lapses or is cleared, and a feed item cannot be cleared by hand. Waze items keep no reporter.
+4. **Live feed hosts are reached only when the deployment names them** (`REFDATA_ALLOWED_HOSTS`); development and CI replay recorded synthetic feeds and never call a real service.
+5. **A state system gets only what a key's scope allows;** reads and callbacks are separate scopes, every use is audited, and keys keep the second-administrator approval. A pending, expired or wrong-scope key is refused without saying which.
+6. **The display account can read nothing but the briefing,** so a shared screen never holds a staff member's session.
+
+## Questions for you (defaults in force)
+
+1. **Approve layers 7 and 8** (`layer-7-report.md`, this report). Layer 8's defaults (self-hosted routing, a read API and webhooks for the state, a display account for the wall, a second person approves resource requests with no finance gate by default, WZDx first) stay in force until you say otherwise.
+2. **Routing:** keep the self-hosted router, or approve Google Maps Platform (paid)?
+3. **Which state first** for the read API and callbacks? The read API is generic; a WebEOC adapter is per state.
+4. **Finance gate:** should finance reply before an order is placed, and above what cost? (`resource_requests.finance_threshold`, unset by default.)
+5. **ICS editions:** who compares the shipped block numbers and labels with fema.gov before the pilot?
+6. **Order of what comes next:** case management on the shared record (decided 2026-10-15 for after layer 8), then Brother badge printing, CJIS mutual-aid grants and iOS readiness, unless you reorder.

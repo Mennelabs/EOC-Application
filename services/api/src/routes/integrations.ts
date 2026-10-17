@@ -20,7 +20,7 @@ import { errors, ApiError } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
 import { iso, uuidParam } from './helpers.ts';
 
-const SCOPES = ['pda.read'] as const;
+const SCOPES = ['pda.read', 'eoc.read', 'resource_request.update'] as const;
 const MAX_KEY_DAYS = 365;
 
 const keyOut = z.object({

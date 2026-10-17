@@ -83,5 +83,20 @@
       "zone": "MOC999"
     },
     "file": "nws-alerts-29999.json"
+  },
+  {
+    "host": "wzdx.exercise-dot.example",
+    "path": "/api/wzdx/v4/feed.geojson",
+    "file": "wzdx-exercise-westwind.json"
+  },
+  {
+    "host": "www.waze.com",
+    "path": "/partnerhub-api/feeds/exercise-westwind",
+    "file": "waze-partner-exercise-westwind.json"
+  },
+  {
+    "host": "outages.exercise-utility.example",
+    "path": "/api/outages.geojson",
+    "file": "utility-outages-exercise-westwind.json"
   }
 ]

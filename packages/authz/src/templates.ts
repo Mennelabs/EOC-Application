@@ -452,6 +452,14 @@ const templates: readonly RoleTemplate[] = [
     ],
   },
   {
+    key: 'briefing_display',
+    name: 'Wall display (briefing only)',
+    description:
+      "The account signed in on the EOC wall: the briefing of counts, place names and the event log, and nothing else. Never a person's own account (CON-11).",
+    source: 'platform',
+    grants: [g('me.read'), g('tenant.read'), g('event.read'), g('briefing.read')],
+  },
+  {
     key: 'dispatcher_call_taker',
     name: 'Dispatcher / call taker',
     description: 'Takes requests by phone and walk-in; coordinates volunteers and resources.',
@@ -1252,7 +1260,7 @@ const templates: readonly RoleTemplate[] = [
  * command only runs what the role could do by hand. The FEMA validator, who sees one
  * sample and nothing else, has nothing to run and does not get it.
  */
-const NO_COMMAND_WINDOW = new Set(['fema_validator']);
+const NO_COMMAND_WINDOW = new Set(['fema_validator', 'briefing_display']);
 
 /**
  * Layer 7 (REC-01): the facility registry. County EM approves; planning, mass
@@ -1286,6 +1294,126 @@ const FACILITY_GRANTS: Record<string, (string | Grant)[]> = {
   partner_coordinator: ['facility.read'],
 };
 
+/**
+ * CON-13: resource requests to the state (ICS 213 RR). Those who run a section ask; the EM
+ * director approves as section chief (never a request they submitted, G4); the field operations
+ * coordinator is logistics and places the order with the state or locally.
+ */
+const RESOURCE_REQUEST_GRANTS: Record<string, string[]> = {
+  county_em_director: [
+    'resource_request.read',
+    'resource_request.write',
+    'resource_request.submit',
+    'resource_request.approve',
+    'resource_request.place',
+    'resource_request.cancel',
+  ],
+  field_coordinator: [
+    'resource_request.read',
+    'resource_request.write',
+    'resource_request.submit',
+    'resource_request.place',
+    'resource_request.cancel',
+  ],
+  planning_gis_lead: [
+    'resource_request.read',
+    'resource_request.write',
+    'resource_request.submit',
+    'resource_request.cancel',
+  ],
+  mass_care_coordinator: [
+    'resource_request.read',
+    'resource_request.write',
+    'resource_request.submit',
+    'resource_request.cancel',
+  ],
+  afn_coordinator: ['resource_request.read', 'resource_request.write', 'resource_request.submit'],
+  reporting_planning: ['resource_request.read'],
+  safety_officer: ['resource_request.read'],
+};
+
+/**
+ * CON-13: ICS forms as documents. Planning writes objectives and issues the 201; section
+ * leads write and send general messages, approved by a second person; reporting staff and
+ * the director read and export; net control issues the 309 of its net.
+ */
+const ICS_GRANTS: Record<string, string[]> = {
+  county_em_director: [
+    'incident_objective.read',
+    'incident_objective.write',
+    'general_message.read',
+    'general_message.write',
+    'general_message.approve',
+    'general_message.send',
+    'ics_form.read',
+    'ics_form.issue',
+    'ics_form.export',
+  ],
+  planning_gis_lead: [
+    'incident_objective.read',
+    'incident_objective.write',
+    'general_message.read',
+    'general_message.write',
+    'general_message.approve',
+    'general_message.send',
+    'ics_form.read',
+    'ics_form.issue',
+    'ics_form.export',
+  ],
+  reporting_planning: [
+    'incident_objective.read',
+    'general_message.read',
+    'ics_form.read',
+    'ics_form.issue',
+    'ics_form.export',
+  ],
+  field_coordinator: [
+    'incident_objective.read',
+    'general_message.read',
+    'general_message.write',
+    'general_message.send',
+    'ics_form.read',
+    'ics_form.issue',
+    'ics_form.export',
+  ],
+  mass_care_coordinator: [
+    'incident_objective.read',
+    'general_message.read',
+    'general_message.write',
+    'ics_form.read',
+    'ics_form.export',
+  ],
+  afn_coordinator: [
+    'incident_objective.read',
+    'general_message.read',
+    'general_message.write',
+    'ics_form.read',
+  ],
+  safety_officer: [
+    'incident_objective.read',
+    'general_message.read',
+    'ics_form.read',
+    'ics_form.export',
+  ],
+  net_control: ['ics_form.read', 'ics_form.issue', 'ics_form.export'],
+  public_information_officer: ['incident_objective.read'],
+};
+
+/** CON-14: who reads and enters live conditions; the director and the administrator run the feeds. */
+const LIVE_GRANTS: Record<string, string[]> = {
+  county_em_director: ['live_condition.read', 'live_condition.write', 'live_source.manage'],
+  planning_gis_lead: ['live_condition.read', 'live_condition.write', 'live_source.manage'],
+  field_coordinator: ['live_condition.read', 'live_condition.write'],
+  dispatcher_call_taker: ['live_condition.read', 'live_condition.write'],
+  agency_dispatcher: ['live_condition.read'],
+  safety_officer: ['live_condition.read', 'live_condition.write'],
+  net_control: ['live_condition.read'],
+  public_information_officer: ['live_condition.read'],
+  mass_care_coordinator: ['live_condition.read'],
+  reporting_planning: ['live_condition.read'],
+  team_lead: ['live_condition.read'],
+};
+
 /** SEC-13: those who answer public-records requests; each release holds only what they may read. */
 const PUBLIC_RECORDS = new Set(['county_em_director', 'public_information_officer']);
 
@@ -1304,6 +1432,9 @@ export const roleTemplates: readonly RoleTemplate[] = templates.map((t) => ({
     ...(FACILITY_GRANTS[t.key] ?? []).map((a) => (typeof a === 'string' ? g(a) : a)),
     ...(RECOMMENDATION_GRANTS[t.key] ?? []).map((a) => g(a)),
     ...(DISCOVERY_GRANTS[t.key] ?? []).map((a) => g(a)),
+    ...(RESOURCE_REQUEST_GRANTS[t.key] ?? []).map((a) => g(a)),
+    ...(ICS_GRANTS[t.key] ?? []).map((a) => g(a)),
+    ...(LIVE_GRANTS[t.key] ?? []).map((a) => g(a)),
     ...(NO_COMMAND_WINDOW.has(t.key) ? [] : [g('command.use')]),
     ...(BULK_COMMANDS.has(t.key) ? [g('command.bulk')] : []),
     ...(PUBLIC_RECORDS.has(t.key) ? [g('public_records.export')] : []),

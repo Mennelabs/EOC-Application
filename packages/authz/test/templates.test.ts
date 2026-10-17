@@ -51,7 +51,9 @@ describe('shipped role templates (ADM-04)', () => {
       'document.capture',
       'document.read',
       'facility.approve',
+      'general_message.approve',
       'health_notice.approve',
+      'ics_form.issue',
       'job_aid.approve',
       'joint_assessment.validate',
       'license.write',
@@ -60,6 +62,7 @@ describe('shipped role templates (ADM-04)', () => {
       'official_report.issue',
       'position.read',
       'public_records.export',
+      'resource_request.approve',
       'scribe.read',
       'scribe.use',
       'site.post',
@@ -93,6 +96,45 @@ describe('shipped role templates (ADM-04)', () => {
       roleTemplates.filter((t) => t.grants.some((g) => g.action === action)).map((t) => t.key);
     expect(holders('discovery.review').sort()).toEqual(['county_em_director', 'planning_gis_lead']);
     expect(holders('discovery.manage').sort()).toEqual(['county_em_director', 'tenant_admin']);
+  });
+
+  it('CON-13: the EM director alone approves resource requests; logistics places them', () => {
+    const holders = (action: string) =>
+      roleTemplates
+        .filter((t) => t.grants.some((g) => g.action === action))
+        .map((t) => t.key)
+        .sort();
+    expect(holders('resource_request.approve')).toEqual(['county_em_director']);
+    expect(holders('resource_request.place')).toEqual(['county_em_director', 'field_coordinator']);
+    expect(holders('resource_request.submit')).toEqual(
+      expect.arrayContaining(['planning_gis_lead', 'mass_care_coordinator', 'afn_coordinator']),
+    );
+  });
+
+  it('CON-11: the wall display account reads the briefing and nothing else', () => {
+    const display = roleTemplates.find((t) => t.key === 'briefing_display')!;
+    expect(display.grants.map((g) => g.action).sort()).toEqual([
+      'briefing.read',
+      'event.read',
+      'me.read',
+      'tenant.read',
+    ]);
+    const p = previewRole(display.grants, display.key);
+    expect(p.allowedActions.map((a) => a.action)).not.toContain('report.read');
+    expect(p.visibleCategories).toEqual(['basic']);
+  });
+
+  it('CON-13: a general message is approved by planning or the director; net control issues forms', () => {
+    const holders = (action: string) =>
+      roleTemplates
+        .filter((t) => t.grants.some((g) => g.action === action))
+        .map((t) => t.key)
+        .sort();
+    expect(holders('general_message.approve')).toEqual(['county_em_director', 'planning_gis_lead']);
+    expect(holders('ics_form.issue')).toEqual(
+      expect.arrayContaining(['planning_gis_lead', 'net_control', 'reporting_planning']),
+    );
+    expect(holders('ics_form.issue')).not.toContain('tenant_admin');
   });
 
   it('partner posting (2026-10-15): only the NGO incident commander posts its own services', () => {
@@ -139,7 +181,7 @@ describe('shipped role templates (ADM-04)', () => {
     const without = roleTemplates
       .filter((t) => !t.grants.some((g) => g.action === 'command.use'))
       .map((t) => t.key);
-    expect(without).toEqual(['fema_validator']);
+    expect(without.sort()).toEqual(['briefing_display', 'fema_validator']);
   });
 
   it('REC-01: county EM alone approves the facility registry; the COAD and partners propose', () => {

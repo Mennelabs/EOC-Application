@@ -21,3 +21,4 @@ export * from './declaration-facts.ts';
 export * from './agreement.ts';
 export * from './public-records.ts';
 export * from './public-records-load.ts';
+export * from './ics/index.ts';

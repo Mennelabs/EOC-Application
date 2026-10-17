@@ -41,6 +41,8 @@ export interface AppOptions {
   webhookRoutes?: FastifyPluginAsync[];
   /** Route plugins mounted under /api/gis (the read-only feature service, SCL-09). */
   gisRoutes?: FastifyPluginAsync[];
+  /** CON-13: the state's read API and callbacks, by API key, under /api/eoc. */
+  eocRoutes?: FastifyPluginAsync[];
 }
 
 export type App = Awaited<ReturnType<typeof buildApp>>;
@@ -139,6 +141,9 @@ export async function buildApp(opts: AppOptions) {
   }
   for (const routes of opts.gisRoutes ?? []) {
     await app.register(routes, { prefix: '/api/gis' });
+  }
+  for (const routes of opts.eocRoutes ?? []) {
+    await app.register(routes, { prefix: '/api/eoc' });
   }
 
   return app;

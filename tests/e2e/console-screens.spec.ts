@@ -50,6 +50,10 @@ const SCREENS: [path: string, heading: string][] = [
   ['roster', 'Roster and check-in'],
   ['subscription', 'Subscription'],
   ['job-aids', 'Job aids'],
+  ['resource-requests', 'Resource requests'],
+  ['ics-forms', 'ICS forms'],
+  ['live-conditions', 'Live conditions'],
+  ['wall', 'Wall display'],
 ];
 
 /** Opens a screen and waits until it has loaded: heading shown, nothing still loading. */
@@ -105,6 +109,75 @@ test.describe('every console screen, one by one', () => {
             page.getByRole('row').filter({ hasText: 'Shelter standards checklist' }).first(),
           ).toContainText('Exercise draft');
           await expect(page.getByRole('button', { name: /^Approve / })).toHaveCount(0);
+        }
+
+        if (path === 'resource-requests') {
+          // CON-13: the seeded exercise requests are listed most urgent first, with the state's
+          // tracking number on the one en route; the administrator holds no approve grant.
+          const rows = page.getByRole('row').filter({ hasText: /WESTWIND-RR-000/ });
+          await expect(rows.first()).toContainText('WESTWIND-RR-0001');
+          await expect(rows.first()).toContainText('SEMA-EX-4471');
+          await expect(page.getByRole('button', { name: /^Approve / })).toHaveCount(0);
+          await page.getByRole('button', { name: 'Show WESTWIND-RR-0001' }).click();
+          await expect(
+            page.getByRole('table', { name: 'History of WESTWIND-RR-0001' }).getByRole('row'),
+          ).toHaveCount(7);
+        }
+
+        if (path === 'ics-forms') {
+          // CON-13: the seeded objectives and the replied general message are listed; the
+          // administrator holds no approve or issue grant; a preview of the 201 shows its
+          // edition and the objectives as block 7.
+          await expect(
+            page.getByRole('row').filter({ hasText: 'Shelter everyone displaced' }),
+          ).toHaveCount(1);
+          await expect(page.getByRole('row').filter({ hasText: 'WESTWIND-GM-0001' })).toContainText(
+            'Replied',
+          );
+          await expect(page.getByRole('button', { name: /^Approve / })).toHaveCount(0);
+          await expect(page.getByRole('button', { name: 'Issue the form' })).toHaveCount(0);
+          await page.getByRole('button', { name: 'Preview the form' }).click();
+          await expect(
+            page.getByRole('heading', { name: /^Preview: ICS 201 Incident Briefing/ }),
+          ).toBeVisible();
+          await expect(page.getByText(/ICS 201, FEMA 2018 edition/).first()).toBeVisible();
+          await expect(
+            page.getByRole('table', { name: '7. Current and planned objectives' }).getByRole('row'),
+          ).toHaveCount(5);
+          await expectNoViolations(page);
+        }
+
+        if (path === 'live-conditions') {
+          // CON-14: the seeded staff entry is in force with its source and age; the three
+          // exercise feeds are listed with how their last pull went; nothing names a home.
+          const entry = page
+            .getByRole('row')
+            .filter({ hasText: 'Commercial Row closed between 3rd and 5th' });
+          await expect(entry).toContainText('Staff entry');
+          await expect(entry).toContainText('In force');
+          // The feeds table lists each feed once; the conditions table above names the feed
+          // as the source of every item it pulled, so the rows are counted in the feeds table only.
+          const feeds = page.getByRole('region', {
+            name: "The county's feeds and how their last pull went",
+          });
+          await expect(
+            feeds.getByRole('row').filter({ hasText: 'EXERCISE State DOT work zones' }),
+          ).toHaveCount(1);
+          await expect(
+            feeds.getByRole('row').filter({ hasText: 'Waze for Cities partner feed' }),
+          ).toHaveCount(1);
+        }
+
+        if (path === 'wall') {
+          // CON-11: the wall names its refresh interval and that nothing personal is shown; the
+          // seeded objectives and the open shelter are on it; the navigation is hidden.
+          await expect(
+            page.getByRole('status').filter({ hasText: /refreshes every \d+ seconds/ }),
+          ).toBeVisible();
+          await expect(
+            page.getByRole('listitem').filter({ hasText: 'Shelter everyone displaced' }),
+          ).toHaveCount(1);
+          await expect(page.getByRole('navigation', { name: 'Workspaces' })).toBeHidden();
         }
 
         if (path === 'subscription') {

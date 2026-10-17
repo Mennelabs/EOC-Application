@@ -11,6 +11,7 @@ import { SHIPPED, buildPackage, samplePackageData } from './fema/index.ts';
 import { reportPdf, type IssuedContent } from './report-export.ts';
 import { metricsPdf } from './metrics.ts';
 import { sampleMetrics } from './metrics-sample.ts';
+import { ICS_FORM_KEYS, icsPdf, sampleIcsForm } from './ics/index.ts';
 
 const sampleReport: IssuedContent = {
   report: {
@@ -125,7 +126,23 @@ export async function writeReportingSamples(dir: string): Promise<string[]> {
       }),
     ),
   );
-  return [file, report, metrics];
+  // CON-13: one of each ICS form (201, 213, 213 RR, 214, 309), as issued.
+  const ics: string[] = [];
+  for (const form of ICS_FORM_KEYS) {
+    const f = join(dir, `${form.replace('_', '-')}.pdf`);
+    writeFileSync(
+      f,
+      await renderPdf(
+        icsPdf(sampleIcsForm(form), {
+          productName: 'Sample Product',
+          contentHash: 'e'.repeat(64),
+          sequence: 1,
+        }),
+      ),
+    );
+    ics.push(f);
+  }
+  return [file, report, metrics, ...ics];
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

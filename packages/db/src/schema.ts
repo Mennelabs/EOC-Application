@@ -400,7 +400,189 @@ export interface SupplyRequestTable extends Stamped {
   canceled_by: Uuid | null;
 }
 
+/** CON-13: a request to the state or a local supplier, in the ICS 213 RR blocks (migration 0107). */
+export type ResourceRequestStatus =
+  'draft' | 'submitted' | 'approved' | 'placed' | 'en_route' | 'received' | 'cancelled';
+export type ResourceRequestPriority = 'urgent' | 'high' | 'low';
+export type ResourceRequestStep =
+  | 'drafted'
+  | 'changed'
+  | 'submitted'
+  | 'approved'
+  | 'finance_replied'
+  | 'placed'
+  | 'en_route'
+  | 'received'
+  | 'cancelled'
+  | 'state_update';
+/** numeric(12, 2): read as a string, written as a number or a string. */
+type Money = ColumnType<string, number | string, number | string>;
+
+export interface ResourceRequestTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  request_number: string;
+  status: Generated<ResourceRequestStatus>;
+  priority: Generated<ResourceRequestPriority>;
+  supply_request_id: Uuid | null;
+  delivery_location: string | null;
+  requested_by_name: string;
+  requested_by_position: string | null;
+  substitutes: string | null;
+  suggested_sources: string | null;
+  notes: string | null;
+  cost_estimate: Money | null;
+  finance_reply: string | null;
+  finance_replied_at: TsNullable;
+  finance_replied_by: Uuid | null;
+  submitted_at: TsNullable;
+  submitted_by: Uuid | null;
+  approved_at: TsNullable;
+  approved_by: Uuid | null;
+  placed_at: TsNullable;
+  placed_by: Uuid | null;
+  placed_with: 'state' | 'local' | null;
+  state_tracking_number: string | null;
+  supplier: string | null;
+  logistics_order_number: string | null;
+  eta: TsNullable;
+  arrived_at: TsNullable;
+  received_at: TsNullable;
+  received_by: Uuid | null;
+  cancelled_at: TsNullable;
+  cancelled_by: Uuid | null;
+}
+
+export interface ResourceRequestLineTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  request_id: Uuid;
+  line_no: number;
+  quantity: Money;
+  unit: string | null;
+  kind: string;
+  type: string | null;
+  description: string | null;
+  eta: TsNullable;
+  cost: Money | null;
+}
+
+export interface ResourceRequestStepTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  request_id: Uuid;
+  step: ResourceRequestStep;
+  from_status: string | null;
+  to_status: string | null;
+  reason: string | null;
+  state_tracking_number: string | null;
+  occurred_at: TsGen;
+  actor_account_id: Uuid | null;
+  actor_kind: Generated<'account' | 'api_key' | 'system'>;
+}
+
 /** FLD-11: what a worker saw at a site, or a resource they came across; an observation, not the site's status of record. */
+/** CON-13: ICS forms as documents (migration 0108). */
+export type IcsFormKey = 'ics_201' | 'ics_213' | 'ics_213rr' | 'ics_214' | 'ics_309';
+export type IncidentObjectiveStatus = 'open' | 'met' | 'dropped';
+export type GeneralMessageStatus = 'draft' | 'approved' | 'sent' | 'replied' | 'cancelled';
+
+export interface IncidentObjectiveTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  period_from: ColumnType<Date, Date | string, Date | string>;
+  period_to: ColumnType<Date, Date | string, Date | string>;
+  position: number;
+  objective: string;
+  owner_position: string | null;
+  status: Generated<IncidentObjectiveStatus>;
+  note: string | null;
+}
+
+export interface GeneralMessageTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  message_number: string;
+  to_name: string;
+  to_position: string | null;
+  from_name: string;
+  from_position: string | null;
+  subject: string;
+  body: string;
+  status: Generated<GeneralMessageStatus>;
+  approved_at: TsNullable;
+  approved_by: Uuid | null;
+  sent_at: TsNullable;
+  sent_by: Uuid | null;
+  field_message_id: Uuid | null;
+  reply: string | null;
+  reply_by_name: string | null;
+  reply_by_position: string | null;
+  replied_at: TsNullable;
+  replied_by: Uuid | null;
+  cancelled_at: TsNullable;
+  cancelled_by: Uuid | null;
+}
+
+export interface IcsFormIssueTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  form: IcsFormKey;
+  edition: string;
+  sequence: number;
+  title: string;
+  scope: JsonGen<Record<string, unknown>>;
+  content: JSONColumnType<Record<string, unknown>, string, string>;
+  content_hash: string;
+  issued_at: TsGen;
+  issued_by: Uuid;
+  created_at: TsGen;
+}
+
+/** CON-14: live conditions (migration 0109). */
+export type LiveSourceKind = 'wzdx' | 'waze' | 'utility' | 'file';
+export type LiveConditionKind = 'road_closure' | 'work_zone' | 'hazard' | 'traffic' | 'outage';
+export type LiveSeverity = 'info' | 'minor' | 'major';
+
+export interface LiveSourceTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  kind: LiveSourceKind;
+  name: string;
+  url: string | null;
+  enabled: Generated<boolean>;
+  refresh_ms: Generated<number>;
+  last_pulled_at: TsNullable;
+  last_status: Generated<'never' | 'ok' | 'failed'>;
+  last_error: string | null;
+  last_count: number | null;
+}
+
+export interface LiveConditionTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  source_id: Uuid | null;
+  event_id: Uuid | null;
+  kind: LiveConditionKind;
+  external_id: string | null;
+  summary: string;
+  road: string | null;
+  geom: ColumnType<unknown, unknown, unknown> | null;
+  severity: Generated<LiveSeverity>;
+  starts_at: TsNullable;
+  ends_at: TsNullable;
+  as_of: TsGen;
+  source_ref: string | null;
+  override: Generated<boolean>;
+  entered_by: Uuid | null;
+  cleared_at: TsNullable;
+  cleared_by: Uuid | null;
+}
+
 export interface FieldReportTable extends Stamped {
   id: Generated<Uuid>;
   tenant_id: Uuid;
@@ -3244,8 +3426,14 @@ export interface EquityAlertTable {
   updated_at: TsGen;
 }
 
-export type ApiKeyScope = 'pda.read';
-export type WebhookEvent = 'official_report.issued' | 'export.ready';
+export type ApiKeyScope = 'pda.read' | 'eoc.read' | 'resource_request.update';
+export type WebhookEvent =
+  | 'official_report.issued'
+  | 'export.ready'
+  | 'resource_request.submitted'
+  | 'resource_request.updated'
+  | 'significant_event.created'
+  | 'ics_form.issued';
 
 export interface ApiKeyTable {
   id: Generated<Uuid>;
@@ -3529,6 +3717,14 @@ export interface Database {
   'cg.peer_support_request': PeerSupportRequestTable;
   'cg.field_report': FieldReportTable;
   'cg.supply_request': SupplyRequestTable;
+  'cg.resource_request': ResourceRequestTable;
+  'cg.resource_request_line': ResourceRequestLineTable;
+  'cg.resource_request_step': ResourceRequestStepTable;
+  'cg.incident_objective': IncidentObjectiveTable;
+  'cg.general_message': GeneralMessageTable;
+  'cg.ics_form_issue': IcsFormIssueTable;
+  'cg.live_source': LiveSourceTable;
+  'cg.live_condition': LiveConditionTable;
   'cg.equipment_use': EquipmentUseTable;
   'cg.canteen_stop': CanteenStopTable;
   'cg.legal_hold': LegalHoldTable;

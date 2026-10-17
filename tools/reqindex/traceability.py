@@ -35,6 +35,7 @@ TRACE_FILES = (
     "trace-design.json",
     "trace-layer7.json",
     "trace-layer8.json",
+    "trace-case.json",
 )
 
 

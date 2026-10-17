@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "pnpm -r --if-present run build",
-    "typecheck": "pnpm -r --if-present run typecheck && tsc -p tests/tsconfig.json",
+    "typecheck": "pnpm -r --if-present run typecheck && tsc -p tests/tsconfig.json && tsc -p tools/checks/tsconfig.json",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "test": "vitest run --project unit",

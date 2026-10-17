@@ -87,6 +87,7 @@ const ACTIONS = {
     'ics_form.read',
     'ics_form.issue',
     'ics_form.export',
+    'briefing.read',
   ],
   nurse: ['shelter_stay.read', 'health_note.read', 'me.read', 'event.read'],
   partner: [
@@ -158,6 +159,62 @@ export function routesFor(role) {
       overrides: {},
     },
     '/api/v1/events': [EVENT],
+    // CON-11: the wall briefing.
+    '/api/v1/briefing': {
+      asOf: ago(0),
+      refreshSeconds: 60,
+      event: {
+        id: EVENT.id,
+        name: EVENT.name,
+        hazardType: 'tornado',
+        status: 'active',
+        openedAt: EVENT.openedAt,
+      },
+      damage: {
+        byDegree: { destroyed: 14, major: 38, minor: 61, affected: 97 },
+        verified: 210,
+        awaitingReview: 346,
+      },
+      shelters: [
+        { name: 'Harmon High School gym', status: 'open', capacity: 220, occupancy: 180 },
+        { name: 'Lincoln Elementary', status: 'open', capacity: 120, occupancy: 64 },
+      ],
+      needs: { open: 612, byCategory: { food: 210, shelter: 96, medical: 41, cleanup: 265 } },
+      missions: { byState: { open: 23, en_route: 6, on_scene: 11, closed: 140 } },
+      resourceRequests: { byStatus: { submitted: 1, en_route: 1 } },
+      objectives: [
+        {
+          position: 1,
+          objective: 'Shelter everyone displaced by the tornado',
+          owner: 'Mass Care Coordinator',
+          status: 'open',
+        },
+        {
+          position: 2,
+          objective: 'Clear Commercial Row for utility crews',
+          owner: 'Operations Section Chief',
+          status: 'met',
+        },
+      ],
+      significantEvents: [
+        {
+          occurredAt: ago(12),
+          kind: 'dispatch',
+          summary: 'WW-0015 dispatched: Commercial Row debris',
+        },
+        {
+          occurredAt: ago(48),
+          kind: 'site',
+          summary: 'Lincoln Elementary shelter opened with 120 cots',
+        },
+        {
+          occurredAt: ago(130),
+          kind: 'hazard',
+          summary: 'Downed lines reported along Commercial Row',
+        },
+      ],
+      liveConditions: [],
+    },
     // CON-13: ICS forms as documents.
     '/api/v1/ics-forms': [
       {

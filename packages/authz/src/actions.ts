@@ -619,6 +619,12 @@ export const actions = {
   // by a wildcard, nor by the person who submitted the request (ADM-05 G4).
   // Layer 8 ICS forms as documents (CON-13): objectives feed the 201 and the wall; a general
   // message is approved by a second person; an issued form is frozen with its hash.
+  // CON-11: the wall display's aggregate payload; the display account holds nothing else.
+  'briefing.read': a(
+    'read',
+    'briefing',
+    'Read the wall briefing: counts, place names and the event log',
+  ),
   'incident_objective.read': a(
     'read',
     'incident_objective',

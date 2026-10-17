@@ -452,6 +452,14 @@ const templates: readonly RoleTemplate[] = [
     ],
   },
   {
+    key: 'briefing_display',
+    name: 'Wall display (briefing only)',
+    description:
+      "The account signed in on the EOC wall: the briefing of counts, place names and the event log, and nothing else. Never a person's own account (CON-11).",
+    source: 'platform',
+    grants: [g('me.read'), g('tenant.read'), g('event.read'), g('briefing.read')],
+  },
+  {
     key: 'dispatcher_call_taker',
     name: 'Dispatcher / call taker',
     description: 'Takes requests by phone and walk-in; coordinates volunteers and resources.',
@@ -1252,7 +1260,7 @@ const templates: readonly RoleTemplate[] = [
  * command only runs what the role could do by hand. The FEMA validator, who sees one
  * sample and nothing else, has nothing to run and does not get it.
  */
-const NO_COMMAND_WINDOW = new Set(['fema_validator']);
+const NO_COMMAND_WINDOW = new Set(['fema_validator', 'briefing_display']);
 
 /**
  * Layer 7 (REC-01): the facility registry. County EM approves; planning, mass

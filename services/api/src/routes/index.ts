@@ -68,6 +68,7 @@ import { resourceRequestRoutes } from './resource-requests.ts';
 import { incidentObjectiveRoutes } from './incident-objectives.ts';
 import { generalMessageRoutes } from './general-messages.ts';
 import { icsFormRoutesWith, type IcsFormDeps } from './ics-forms.ts';
+import { briefingRoutes } from './briefing.ts';
 
 /** What the server gives the routes that talk to the broker, object storage or the AI provider (absent in tests: poll fallback, no map extracts). */
 export interface RouteDeps {
@@ -164,6 +165,8 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   incidentObjectiveRoutes,
   generalMessageRoutes,
   icsFormRoutesWith(deps.icsForms),
+  // CON-11: the wall display's aggregate payload.
+  briefingRoutes,
   situationAreaRoutes,
   commandRoutesWith(deps.commands),
   commandAliasRoutes,

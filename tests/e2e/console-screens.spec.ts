@@ -52,6 +52,7 @@ const SCREENS: [path: string, heading: string][] = [
   ['job-aids', 'Job aids'],
   ['resource-requests', 'Resource requests'],
   ['ics-forms', 'ICS forms'],
+  ['wall', 'Wall display'],
 ];
 
 /** Opens a screen and waits until it has loaded: heading shown, nothing still loading. */
@@ -143,6 +144,18 @@ test.describe('every console screen, one by one', () => {
             page.getByRole('table', { name: '7. Current and planned objectives' }).getByRole('row'),
           ).toHaveCount(5);
           await expectNoViolations(page, `${heading} preview`);
+        }
+
+        if (path === 'wall') {
+          // CON-11: the wall names its refresh interval and that nothing personal is shown; the
+          // seeded objectives and the open shelter are on it; the navigation is hidden.
+          await expect(
+            page.getByRole('status').filter({ hasText: /refreshes every \d+ seconds/ }),
+          ).toBeVisible();
+          await expect(
+            page.getByRole('listitem').filter({ hasText: 'Shelter everyone displaced' }),
+          ).toHaveCount(1);
+          await expect(page.getByRole('navigation', { name: 'Workspaces' })).toBeHidden();
         }
 
         if (path === 'subscription') {

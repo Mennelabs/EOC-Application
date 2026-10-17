@@ -111,6 +111,19 @@ describe('shipped role templates (ADM-04)', () => {
     );
   });
 
+  it('CON-11: the wall display account reads the briefing and nothing else', () => {
+    const display = roleTemplates.find((t) => t.key === 'briefing_display')!;
+    expect(display.grants.map((g) => g.action).sort()).toEqual([
+      'briefing.read',
+      'event.read',
+      'me.read',
+      'tenant.read',
+    ]);
+    const p = previewRole(display.grants, display.key);
+    expect(p.allowedActions.map((a) => a.action)).not.toContain('report.read');
+    expect(p.visibleCategories).toEqual(['basic']);
+  });
+
   it('CON-13: a general message is approved by planning or the director; net control issues forms', () => {
     const holders = (action: string) =>
       roleTemplates
@@ -168,7 +181,7 @@ describe('shipped role templates (ADM-04)', () => {
     const without = roleTemplates
       .filter((t) => !t.grants.some((g) => g.action === 'command.use'))
       .map((t) => t.key);
-    expect(without).toEqual(['fema_validator']);
+    expect(without.sort()).toEqual(['briefing_display', 'fema_validator']);
   });
 
   it('REC-01: county EM alone approves the facility registry; the COAD and partners propose', () => {

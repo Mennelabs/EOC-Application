@@ -265,6 +265,12 @@ export const GROUPS: readonly WorkspaceGroup[] = [
         icon: icons.FileText,
         needs: ['ics_form.read', 'incident_objective.read', 'general_message.read'],
       },
+      {
+        path: '/console/wall',
+        label: 'Wall display',
+        icon: icons.Rows3,
+        needs: ['briefing.read'],
+      },
     ],
   },
   {

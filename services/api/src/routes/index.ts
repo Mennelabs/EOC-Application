@@ -70,6 +70,7 @@ import { generalMessageRoutes } from './general-messages.ts';
 import { icsFormRoutesWith, type IcsFormDeps } from './ics-forms.ts';
 import { briefingRoutes } from './briefing.ts';
 import { liveConditionRoutes } from './live-conditions.ts';
+import { routingRoutes, type RoutingDeps } from './routing.ts';
 
 /** What the server gives the routes that talk to the broker, object storage or the AI provider (absent in tests: poll fallback, no map extracts). */
 export interface RouteDeps {
@@ -85,6 +86,7 @@ export interface RouteDeps {
   refdata?: RefdataDeps;
   metrics?: { productName?: string };
   icsForms?: IcsFormDeps;
+  routing?: RoutingDeps;
   commands?: CommandDeps;
   drafting?: DraftingDeps;
   scribe?: ScribeDeps;
@@ -170,6 +172,8 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   briefingRoutes,
   // CON-14: live conditions from feeds and staff, with source and age.
   liveConditionRoutes,
+  // CON-14, ADR-0046: routes and travel times from the self-hosted router, straight lines without it.
+  routingRoutes(deps.routing),
   situationAreaRoutes,
   commandRoutesWith(deps.commands),
   commandAliasRoutes,

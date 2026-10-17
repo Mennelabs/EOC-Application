@@ -49,3 +49,4 @@ One record per technology choice (SCL-15). Use `0000-template.md` for new ones. 
 | [0043](0043-openai-for-every-ai-function.md)      | OpenAI behind the AI interfaces for every function; a damage classifier interface; no fake in running systems |
 | [0044](0044-command-window-execution.md)          | The command window runs catalogued actions through the console's own operations, bound to a confirmed plan    |
 | [0045](0045-design-system.md)                     | One design foundation for every web app: tokens, self-hosted fonts, React Aria components                     |
+| [0046](0046-self-hosted-routing.md)               | Routing and travel times from a self-hosted OSRM built on the same OpenStreetMap extract as the tiles         |

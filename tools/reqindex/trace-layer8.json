@@ -23,5 +23,17 @@
     "GeoJSON and CSV in the IDA package; per-tenant API keys with scopes and a second administrator (routes/integrations.ts); signed webhooks for report issued and export ready (worker jobs/webhooks.ts); the read-only GeoServices feature service for the PDA layer (routes/gis.ts); OpenAPI at /api/docs/json; ADR-0042; layer 8: API key scopes eoc.read and resource_request.update, the state's read API and callbacks under /api/eoc (routes/eoc-api.ts, migration 0110), and the webhook events resource_request.submitted, resource_request.updated, significant_event.created and ics_form.issued (worker jobs/eoc-events.ts; the console names them)",
     "services/api/test/integrations.db.test.ts, packages/adapters/test/webhooks.test.ts, packages/crypto/test/api-key.test.ts, packages/reporting/test/pda-layer.test.ts, tests/integration/layer6.int.test.ts, tests/e2e/console-l6.spec.ts (API keys and webhooks journey); layer 8: services/api/test/eoc-api.db.test.ts",
     "The feature service answers the query subset a GIS client needs to add the layer (ADR-0042), not the full ArcGIS Server API; webhooks reach only public HTTPS hosts."
+  ],
+  "DSP-10": [
+    "pass",
+    "cg.comms_log ICS 309 style; status heard → confirmed team status (source net_control), position heard → position fix (routes/field-ops.ts); layer 8: the ICS 309 communications log issued as a document from the comms log for a net and period (packages/reporting/src/ics/forms.ts, routes/ics-forms.ts)",
+    "services/api/test/fieldops.db.test.ts (DSP-10 / FLD-17), tests/integration/layer4.int.test.ts, tests/e2e/console-l4.spec.ts (net control log); layer 8: services/api/test/ics-forms.db.test.ts (the 309 issued by net control), packages/reporting/test/ics.test.ts",
+    ""
+  ],
+  "DSP-11": [
+    "pass",
+    "activity_entry (ICS 214) and significant_event written by assignments, status, messages, check-ins, alerts (routes/missions.ts, roster.ts, field-ops.ts); layer 8: the ICS 214 activity log issued as a document for a team or a person over a period from significant events, assignments, statuses and check-ins (packages/reporting/src/ics/forms.ts, routes/ics-forms.ts)",
+    "services/api/test/fieldops.db.test.ts (activity log and significant events), services/api/test/fieldwork.db.test.ts (assessment activity entry); layer 8: services/api/test/ics-forms.db.test.ts (the 214 for a team), packages/reporting/test/ics.test.ts",
+    ""
   ]
 }

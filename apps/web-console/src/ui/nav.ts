@@ -259,6 +259,12 @@ export const GROUPS: readonly WorkspaceGroup[] = [
         icon: icons.Truck,
         needs: ['resource_request.read'],
       },
+      {
+        path: '/console/ics-forms',
+        label: 'ICS forms',
+        icon: icons.FileText,
+        needs: ['ics_form.read', 'incident_objective.read', 'general_message.read'],
+      },
     ],
   },
   {

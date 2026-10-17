@@ -51,6 +51,7 @@ const SCREENS: [path: string, heading: string][] = [
   ['subscription', 'Subscription'],
   ['job-aids', 'Job aids'],
   ['resource-requests', 'Resource requests'],
+  ['ics-forms', 'ICS forms'],
 ];
 
 /** Opens a screen and waits until it has loaded: heading shown, nothing still loading. */
@@ -119,6 +120,29 @@ test.describe('every console screen, one by one', () => {
           await expect(
             page.getByRole('table', { name: 'History of WESTWIND-RR-0001' }).getByRole('row'),
           ).toHaveCount(7);
+        }
+
+        if (path === 'ics-forms') {
+          // CON-13: the seeded objectives and the replied general message are listed; the
+          // administrator holds no approve or issue grant; a preview of the 201 shows its
+          // edition and the objectives as block 7.
+          await expect(
+            page.getByRole('row').filter({ hasText: 'Shelter everyone displaced' }),
+          ).toHaveCount(1);
+          await expect(page.getByRole('row').filter({ hasText: 'WESTWIND-GM-0001' })).toContainText(
+            'Replied',
+          );
+          await expect(page.getByRole('button', { name: /^Approve / })).toHaveCount(0);
+          await expect(page.getByRole('button', { name: 'Issue the form' })).toHaveCount(0);
+          await page.getByRole('button', { name: 'Preview the form' }).click();
+          await expect(
+            page.getByRole('heading', { name: /^Preview: ICS 201 Incident Briefing/ }),
+          ).toBeVisible();
+          await expect(page.getByText(/ICS 201, FEMA 2018 edition/).first()).toBeVisible();
+          await expect(
+            page.getByRole('table', { name: '7. Current and planned objectives' }).getByRole('row'),
+          ).toHaveCount(5);
+          await expectNoViolations(page, `${heading} preview`);
         }
 
         if (path === 'subscription') {

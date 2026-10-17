@@ -557,6 +557,14 @@ interface Retention {
   note: string | null;
   version: number;
 }
+
+/** SEC-13: whole years read as years ("7 years"), anything else in days ("30 days"). */
+function keptFor(days: number | null): string {
+  if (!days) return 'not set';
+  if (days % 365 === 0) return days === 365 ? '1 year' : `${days / 365} years`;
+  return days === 1 ? '1 day' : `${days} days`;
+}
+
 interface Hold {
   id: string;
   version: number;
@@ -596,7 +604,7 @@ export function RetentionScreen() {
             header: 'Kept for',
             render: (r) =>
               r.rule === 'duration'
-                ? `${Math.round((r.keepForDays ?? 0) / 365)} years (${r.keepForDays} days)`
+                ? keptFor(r.keepForDays)
                 : r.rule === 'on_confirm'
                   ? 'deleted when the note is confirmed'
                   : 'governed elsewhere',

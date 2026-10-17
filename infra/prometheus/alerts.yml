@@ -1,0 +1,161 @@
+# Alert rules (NFR-10: "Measure save/command/integration failures, latency,
+# conflicts, duplicate prevention, and audit completeness … Define alert
+# owners."). Every rule names its owner (a role in
+# docs/operations/alerts.md#owners) and its runbook section there. The labels
+# the metrics carry are route templates, schedule, topic and feature names and
+# outcome words only: no ids, addresses or anything a person wrote.
+groups:
+  - name: availability
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: critical
+          owner: platform-oncall
+        annotations:
+          summary: '{{ $labels.job }} has not answered a scrape for 5 minutes'
+          runbook: docs/operations/alerts.md#servicedown
+
+  - name: saves
+    rules:
+      - alert: ResidentSubmissionFailures
+        expr: |
+          sum(increase(cg_http_requests_total{route=~"/api/public/intake/.*", method=~"POST|PUT", status="5xx"}[10m])) > 0
+        for: 0m
+        labels:
+          severity: critical
+          owner: platform-oncall
+        annotations:
+          summary: Resident intake answered with a server error (SCL-06 says never fail a submission)
+          runbook: docs/operations/alerts.md#residentsubmissionfailures
+      - alert: SaveFailureRate
+        expr: |
+          sum(rate(cg_http_requests_total{method=~"POST|PUT|PATCH|DELETE", status="5xx"}[10m]))
+            / clamp_min(sum(rate(cg_http_requests_total{method=~"POST|PUT|PATCH|DELETE"}[10m])), 1e-9) > 0.02
+        for: 10m
+        labels:
+          severity: warning
+          owner: platform-oncall
+        annotations:
+          summary: More than 2% of saves failed with a server error for 10 minutes (BRD:FR-00.06)
+          runbook: docs/operations/alerts.md#savefailurerate
+      - alert: SaveConflictSpike
+        expr: sum(rate(cg_api_errors_total{code="version_conflict"}[15m])) * 900 > 50
+        for: 15m
+        labels:
+          severity: warning
+          owner: platform-oncall
+        annotations:
+          summary: More than 50 save conflicts in 15 minutes (BRD:FR-00.05)
+          runbook: docs/operations/alerts.md#saveconflictspike
+
+  - name: latency
+    rules:
+      - alert: ApiLatencyHigh
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(cg_http_request_duration_seconds_bucket[10m]))) > 2.5
+        for: 15m
+        labels:
+          severity: warning
+          owner: platform-oncall
+        annotations:
+          summary: 95th-percentile API latency above 2.5 s for 15 minutes (NFR-10)
+          runbook: docs/operations/alerts.md#apilatencyhigh
+      - alert: CommandWindowSlow
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(cg_http_request_duration_seconds_bucket{route=~"/api/v1/commands(/:id/confirm)?", method="POST"}[15m]))) > 15
+        for: 15m
+        labels:
+          severity: warning
+          owner: platform-oncall
+        annotations:
+          summary: Command window answers slower than its 15 s deadline at the 95th percentile (CMD-38)
+          runbook: docs/operations/alerts.md#commandwindowslow
+
+  - name: commands
+    rules:
+      - alert: FieldCommandRejections
+        expr: |
+          sum(rate(cg_field_commands_total{result=~"rejected|conflict"}[15m]))
+            / clamp_min(sum(rate(cg_field_commands_total[15m])), 1e-9) > 0.10
+        for: 15m
+        labels:
+          severity: warning
+          owner: platform-oncall
+        annotations:
+          summary: More than 10% of commands from phones were rejected or conflicted (NFR-08, BRD:FR-00.05)
+          runbook: docs/operations/alerts.md#fieldcommandrejections
+      - alert: QueueRequeues
+        expr: sum by (topic) (increase(cg_queue_messages_total{result="requeued"}[15m])) > 10
+        for: 0m
+        labels:
+          severity: warning
+          owner: platform-oncall
+        annotations:
+          summary: '{{ $labels.topic }} messages keep failing and being retried (ADR-0007)'
+          runbook: docs/operations/alerts.md#queuerequeues
+      - alert: JobFailing
+        expr: sum by (schedule) (increase(cg_job_runs_total{result="failed"}[30m])) >= 3
+        for: 0m
+        labels:
+          severity: warning
+          owner: platform-oncall
+        annotations:
+          summary: 'Scheduled job {{ $labels.schedule }} failed 3 or more times in 30 minutes'
+          runbook: docs/operations/alerts.md#jobfailing
+
+  - name: integrations
+    rules:
+      - alert: SmsDeliveryFailures
+        expr: |
+          sum(rate(cg_integration_calls_total{integration="sms", outcome="failed"}[15m]))
+            / clamp_min(sum(rate(cg_integration_calls_total{integration="sms"}[15m])), 1e-9) > 0.05
+        for: 10m
+        labels:
+          severity: critical
+          owner: messaging
+        annotations:
+          summary: More than 5% of texts to residents failed to send for 10 minutes (NFR-10, SCL-03)
+          runbook: docs/operations/alerts.md#smsdeliveryfailures
+      - alert: EmailDeliveryFailures
+        expr: sum(increase(cg_integration_calls_total{integration="email", outcome="failed"}[30m])) >= 5
+        for: 0m
+        labels:
+          severity: warning
+          owner: messaging
+        annotations:
+          summary: Five or more emails failed to send in 30 minutes (NFR-10)
+          runbook: docs/operations/alerts.md#emaildeliveryfailures
+      - alert: AiCallsFailing
+        expr: |
+          sum(rate(cg_ai_calls_total{outcome=~"error|timeout"}[15m]))
+            / clamp_min(sum(rate(cg_ai_calls_total[15m])), 1e-9) > 0.20
+        for: 15m
+        labels:
+          severity: warning
+          owner: ai-governance
+        annotations:
+          summary: More than 20% of AI calls failed or timed out for 15 minutes; features fall back (AI-10, AIG-09)
+          runbook: docs/operations/alerts.md#aicallsfailing
+
+  - name: audit
+    rules:
+      - alert: AuditChainBroken
+        expr: max(cg_audit_chains_broken) > 0
+        for: 0m
+        labels:
+          severity: critical
+          owner: security
+        annotations:
+          summary: A county's audit chain failed verification; anchoring stopped for it (SEC-11)
+          runbook: docs/operations/alerts.md#auditchainbroken
+      - alert: AuditAnchoringStopped
+        expr: sum(increase(cg_job_runs_total{schedule="audit-anchor", result="ok"}[1h])) < 1
+        for: 30m
+        labels:
+          severity: critical
+          owner: security
+        annotations:
+          summary: The audit chain has not been verified and anchored for over an hour (SEC-11)
+          runbook: docs/operations/alerts.md#auditanchoringstopped

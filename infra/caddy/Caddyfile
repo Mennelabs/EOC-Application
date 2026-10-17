@@ -35,6 +35,16 @@ objects.{$GATEWAY_HOST:localhost} {
 		reverse_proxy api:8080
 	}
 
+	# Keycloak's administration and its master realm are never public (SEC-15,
+	# Keycloak's guidance on exposed paths): the worker administers realms on the
+	# platform network, and on a laptop an administrator uses 127.0.0.1:IDP_PORT.
+	handle /auth/admin* {
+		respond 404
+	}
+	handle /auth/realms/master* {
+		respond 404
+	}
+
 	# Keycloak sets its own CSP for its pages.
 	handle /auth/* {
 		reverse_proxy idp:8080

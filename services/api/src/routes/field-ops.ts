@@ -32,7 +32,15 @@ import type { Database } from '@cg/db';
 import { ApiError, errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
 import { configValue } from '../public/submit.ts';
-import { classifierFor, enqueueOutbox, iso, listQuery, stamped, uuidParam } from './helpers.ts';
+import {
+  classifierFor,
+  enqueueOutbox,
+  iso,
+  listQuery,
+  occurredAtOf,
+  stamped,
+  uuidParam,
+} from './helpers.ts';
 
 type Trx = Transaction<Database>;
 type HazardRow = Selectable<Database['cg.hazard']>;
@@ -259,6 +267,8 @@ const activityOut = z.object({
   personnelId: z.uuid().nullable(),
   teamId: z.uuid().nullable(),
   occurredAt: z.iso.datetime(),
+  /** AC-08A: when the server recorded it (later than occurredAt for an entry made after the fact). */
+  recordedAt: z.iso.datetime(),
   kind: z.string(),
   summary: z.string(),
   refKind: z.string().nullable(),
@@ -269,6 +279,8 @@ const significantOut = z.object({
   id: z.uuid(),
   eventId: z.uuid(),
   occurredAt: z.iso.datetime(),
+  /** AC-08A: when the server recorded it (later than occurredAt for an entry made after the fact). */
+  recordedAt: z.iso.datetime(),
   kind: z.string(),
   summary: z.string(),
   missionId: z.uuid().nullable(),
@@ -280,13 +292,13 @@ const significantOut = z.object({
 
 /** Badge codes: 12 unambiguous characters, hashed at rest; the clear code is on the badge only. */
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-function newBadgeCode(): string {
+export function newBadgeCode(): string {
   const bytes = randomBytes(12);
   let out = '';
   for (const b of bytes) out += CODE_ALPHABET[b % CODE_ALPHABET.length];
   return `${out.slice(0, 4)}-${out.slice(4, 8)}-${out.slice(8, 12)}`;
 }
-const hashCode = (tenantId: string, code: string): Buffer =>
+export const hashCode = (tenantId: string, code: string): Buffer =>
   createHash('sha256')
     .update(`${tenantId}:${code.replace(/[^A-Z0-9]/gi, '').toUpperCase()}`)
     .digest();
@@ -1850,7 +1862,6 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
           roleLabel: z.string().max(80).optional(),
           /** FR-13.03: printed text, never a permission. */
           accessLabel: z.string().max(80).optional(),
-          photoKey: z.string().max(400).optional(),
           validDays: z.number().int().min(1).max(366).default(14),
           replacesBadgeId: z.uuid().optional(),
         }),
@@ -1889,7 +1900,8 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
             agency: person.agency,
             role_label: b.roleLabel ?? person.operational_role,
             access_label: b.accessLabel ?? null,
-            photo_key: b.photoKey ?? person.photo_key,
+            // BRD:FR-13.01: only the person's approved photo is printed; a request cannot name another.
+            photo_key: person.photo_key,
             credentials_snapshot: JSON.stringify(
               creds.map((c) => ({ kind: c.kind, expiresAt: c.expires_at })),
             ),
@@ -2115,12 +2127,26 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
         }),
         response: {
           200: z.object({
-            result: z.enum(['valid', 'expired', 'revoked', 'not_yet_printed', 'unknown']),
+            result: z.enum([
+              'valid',
+              'expired',
+              'revoked',
+              'not_yet_printed',
+              'not_yet_valid',
+              'unknown',
+            ]),
+            /** FL:FR-03: a staff badge, or a resident's re-entry pass. */
+            kind: z.enum(['badge', 'reentry']).optional(),
             displayName: z.string().optional(),
             agency: z.string().nullable().optional(),
             roleLabel: z.string().nullable().optional(),
             accessLabel: z.string().nullable().optional(),
             validTo: z.iso.datetime().optional(),
+            /** A re-entry pass: the zone, how many people, and (to match an ID) who and which home. */
+            zone: z.string().optional(),
+            people: z.number().int().optional(),
+            holderName: z.string().optional(),
+            address: z.string().optional(),
           }),
         },
       },
@@ -2135,6 +2161,80 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
           .selectAll()
           .where('code_hash', '=', hash)
           .executeTakeFirst();
+        // FL:FR-03: not a badge? Perhaps a resident's re-entry pass.
+        const pass = badge
+          ? undefined
+          : await trx
+              .selectFrom('cg.reentry_pass')
+              .selectAll()
+              .where('code_hash', '=', hash)
+              .executeTakeFirst();
+        if (pass) {
+          const now = Date.now();
+          const passResult: 'valid' | 'expired' | 'revoked' | 'not_yet_valid' =
+            pass.state === 'revoked'
+              ? 'revoked'
+              : new Date(pass.valid_to).getTime() < now
+                ? 'expired'
+                : new Date(pass.valid_from).getTime() > now
+                  ? 'not_yet_valid'
+                  : 'valid';
+          await trx
+            .insertInto('cg.reentry_check')
+            .values({
+              tenant_id: pass.tenant_id,
+              event_id: pass.event_id,
+              pass_id: pass.id,
+              checkpoint: request.body.checkpoint ?? null,
+              result: passResult,
+              checked_by: s.accountId,
+            })
+            .execute();
+          // Who and which home only for a valid pass and a role that checks passes (restricted).
+          const mayCheck =
+            passResult === 'valid' &&
+            (await request
+              .authorize('reentry_pass.verify', {
+                type: 'reentry_pass',
+                tenantId: s.tenantId,
+                eventId: pass.event_id,
+              })
+              .then(
+                () => true,
+                () => false,
+              ));
+          await request.audit(trx, {
+            action: 'badge.verify',
+            targetType: 'reentry_pass',
+            targetId: pass.id,
+            changes: {
+              fields: [
+                { name: 'result', to: passResult },
+                { name: 'checkpoint', to: request.body.checkpoint ?? null },
+                { name: 'holder_shown', to: mayCheck },
+              ],
+            },
+          });
+          const shown = mayCheck
+            ? {
+                holderName: await app.fieldCrypto
+                  .decrypt(pass.tenant_id, pass.holder_name_enc)
+                  .catch(() => undefined),
+                address: await app.fieldCrypto
+                  .decrypt(pass.tenant_id, pass.address_enc)
+                  .catch(() => undefined),
+              }
+            : {};
+          return {
+            result: passResult,
+            kind: 'reentry' as const,
+            zone: pass.zone,
+            people: pass.people,
+            validTo: iso(pass.valid_to)!,
+            ...(shown.holderName ? { holderName: shown.holderName } : {}),
+            ...(shown.address ? { address: shown.address } : {}),
+          };
+        }
         const result: 'valid' | 'expired' | 'revoked' | 'not_yet_printed' | 'unknown' = !badge
           ? 'unknown'
           : badge.state === 'revoked' || badge.state === 'replaced'
@@ -2178,6 +2278,7 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
         return badge && result !== 'unknown'
           ? {
               result,
+              kind: 'badge' as const,
               displayName: badge.display_name,
               agency: badge.agency,
               roleLabel: badge.role_label,
@@ -2484,6 +2585,7 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
         personnelId: a.personnel_id,
         teamId: a.team_id,
         occurredAt: iso(a.occurred_at)!,
+        recordedAt: iso(a.created_at)!,
         kind: a.kind,
         summary: a.summary,
         refKind: a.ref_kind,
@@ -2516,6 +2618,7 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
         eventId: request.body.eventId,
       });
       const b = request.body;
+      const occurredAt = occurredAtOf(b.occurredAt);
       const row = await request.tx(async (trx) => {
         const own = b.personnelId
           ? null
@@ -2539,7 +2642,7 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
             kind: 'note',
             summary: b.summary,
             actor_account_id: s.accountId,
-            ...(b.occurredAt ? { occurred_at: new Date(b.occurredAt) } : {}),
+            ...(occurredAt ? { occurred_at: occurredAt } : {}),
           } as Insertable<Database['cg.activity_entry']>)
           .returningAll()
           .executeTakeFirstOrThrow();
@@ -2550,6 +2653,7 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
         personnelId: row.personnel_id,
         teamId: row.team_id,
         occurredAt: iso(row.occurred_at)!,
+        recordedAt: iso(row.created_at)!,
         kind: row.kind,
         summary: row.summary,
         refKind: row.ref_kind,
@@ -2593,6 +2697,7 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
         id: e.id,
         eventId: e.event_id,
         occurredAt: iso(e.occurred_at)!,
+        recordedAt: iso(e.created_at)!,
         kind: e.kind,
         summary: e.summary,
         missionId: e.mission_id,
@@ -2628,6 +2733,7 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
         eventId: request.body.eventId,
       });
       const b = request.body;
+      const occurredAt = occurredAtOf(b.occurredAt);
       const row = await request.tx((trx) =>
         trx
           .insertInto('cg.significant_event')
@@ -2639,7 +2745,7 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
             mission_id: b.missionId ?? null,
             team_id: b.teamId ?? null,
             actor_account_id: s.accountId,
-            ...(b.occurredAt ? { occurred_at: new Date(b.occurredAt) } : {}),
+            ...(occurredAt ? { occurred_at: occurredAt } : {}),
           } as Insertable<Database['cg.significant_event']>)
           .returningAll()
           .executeTakeFirstOrThrow(),
@@ -2648,6 +2754,7 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
         id: row.id,
         eventId: row.event_id,
         occurredAt: iso(row.occurred_at)!,
+        recordedAt: iso(row.created_at)!,
         kind: row.kind,
         summary: row.summary,
         missionId: row.mission_id,

@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, describeFailure, download } from '../api/client.ts';
 import { DataTable, Field, Status, fmt } from '../ui/primitives.tsx';
 import { EventPicker, useOpenEvents } from './dispatch.tsx';
+import { fromZoneInput } from '../ui/time.ts';
 
 interface MetricValue {
   key: string;
@@ -41,6 +42,7 @@ const GROUPS: [string, string][] = [
   ['badges', 'Badges'],
   ['needs', 'Help for residents'],
   ['information', 'Recovery information'],
+  ['ai', 'Computer help (AI)'],
   ['accountability', 'Privacy and accountability'],
 ];
 const KINDS = [
@@ -60,7 +62,7 @@ const label = (s: string) => (s.charAt(0).toUpperCase() + s.slice(1)).replace(/_
 const show = (v: number | null, unit: string) =>
   v === null ? 'Unknown' : unit === 'percent' ? `${v}%` : `${v.toLocaleString('en-US')} ${unit}`;
 /** A datetime-local value as an ISO instant, or nothing. */
-const instant = (v: string) => (v ? new Date(v).toISOString() : '');
+const instant = (v: string) => (v ? fromZoneInput(v).toISOString() : '');
 
 export function MetricsScreen() {
   const { events, error: eventsError } = useOpenEvents();

@@ -26,6 +26,8 @@ export type FieldKind =
   | { type: 'multiline'; key: string; label: L; hint?: L; max: number; required?: boolean }
   | { type: 'toggle'; key: string; label: L }
   | { type: 'site'; key: string; label: L; required: boolean }
+  /** One of the person's work orders on this phone (FL:FR-19). */
+  | { type: 'mission'; key: string; label: L; required: boolean }
   | { type: 'checklist'; key: string; label: L; items: { value: string; label: L }[] }
   | { type: 'signature'; key: string; label: L };
 
@@ -619,6 +621,61 @@ export const MODULES: Module[] = [
     ],
     summary: (v, l) => pick(MODULES[11]!, 'kind', v['kind'], l),
   },
+  {
+    kind: 'equipment_use',
+    action: 'equipment_use.write',
+    readAction: 'equipment_use.read',
+    title: { en: 'Equipment used', es: 'Equipo usado' },
+    intro: {
+      en: 'Which equipment ran on a work order and for how many hours today. Your own hours come from check-in.',
+      es: 'Qué equipo funcionó en una orden de trabajo y cuántas horas hoy. Sus propias horas salen del registro de llegada.',
+    },
+    where: false,
+    photos: false,
+    fields: [
+      {
+        type: 'mission',
+        key: 'missionId',
+        label: { en: 'Work order', es: 'Orden de trabajo' },
+        required: true,
+      },
+      {
+        type: 'choice',
+        key: 'equipment',
+        label: { en: 'Equipment', es: 'Equipo' },
+        options: [
+          o('chainsaw', 'Chainsaw', 'Motosierra'),
+          o('pump', 'Pump', 'Bomba'),
+          o('generator', 'Generator', 'Generador'),
+          o('skid_steer', 'Skid steer or loader', 'Minicargadora'),
+          o('dump_truck', 'Dump truck', 'Camión de volteo'),
+          o('chipper', 'Chipper', 'Astilladora'),
+          o('pressure_washer', 'Pressure washer', 'Hidrolavadora'),
+          o('dehumidifier', 'Dehumidifier', 'Deshumidificador'),
+          o('other', 'Other', 'Otro'),
+        ],
+      },
+      {
+        type: 'text',
+        key: 'equipmentNote',
+        label: {
+          en: 'Unit number, or what it was (optional)',
+          es: 'Número de unidad, o qué era (opcional)',
+        },
+        max: 120,
+      },
+      {
+        type: 'number',
+        key: 'hours',
+        label: { en: 'Hours it ran today', es: 'Horas que funcionó hoy' },
+        min: 1,
+        max: 24,
+        initial: 1,
+      },
+    ],
+    summary: (v, l) =>
+      `${pick(MODULES[MODULES.length - 1]!, 'equipment', v['equipment'], l)}: ${String(v['hours'] ?? '')} h`,
+  },
 ];
 
 export const moduleByKind = new Map(MODULES.map((m) => [m.kind, m]));
@@ -660,7 +717,7 @@ export function missing(m: Module, values: Record<string, unknown>): string[] {
     const empty = v === undefined || v === null || (typeof v === 'string' && !v.trim());
     if (f.type === 'choice' && empty && !f.initial) out.push(f.key);
     if ((f.type === 'text' || f.type === 'multiline') && f.required && empty) out.push(f.key);
-    if (f.type === 'site' && f.required && empty) out.push(f.key);
+    if ((f.type === 'site' || f.type === 'mission') && f.required && empty) out.push(f.key);
     if (f.type === 'signature' && empty) out.push(f.key);
   }
   return out;

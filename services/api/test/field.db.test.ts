@@ -476,6 +476,200 @@ describe.skipIf(!appUrl || !workerUrl)(
         .execute();
     });
 
+    it('BRD:FR-03.05: an old position is flagged stale; a phone that blocks location is told to dispatch on the check-in and the board, through the field queue; an older answer is ignored', async () => {
+      const county = tenants['county']!;
+      // Someone on the same team whose last position is 40 minutes old.
+      const other = await withTenant(dbWorker, { tenantId: county }, async (trx) => {
+        const p = await trx
+          .insertInto('cg.personnel')
+          .values({ tenant_id: county, name: 'Exercise quiet phone' })
+          .returning('id')
+          .executeTakeFirstOrThrow();
+        const c = await trx
+          .insertInto('cg.check_in')
+          .values({
+            tenant_id: county,
+            personnel_id: p.id,
+            event_id: eventId,
+            team_id: teamId,
+            method: 'console',
+          })
+          .returning('id')
+          .executeTakeFirstOrThrow();
+        const at = new Date(Date.now() - 40 * 60_000);
+        await sql`select cg.ensure_position_partition(${at.toISOString().slice(0, 10)}::date)`.execute(
+          trx,
+        );
+        await trx
+          .insertInto('cg.position')
+          .values({
+            tenant_id: county,
+            check_in_id: c.id,
+            personnel_id: p.id,
+            team_id: teamId,
+            geom: sql`ST_SetSRID(ST_MakePoint(-90.9, 38.79), 4326)`,
+            recorded_at: at,
+            source: 'app',
+          } as never)
+          .execute();
+        return { personnelId: p.id, checkInId: c.id };
+      });
+      try {
+        const latest = (
+          await call('priya', 'GET', `/api/v1/positions/latest?eventId=${eventId}&staleMinutes=15`)
+        ).json<Position[]>();
+        expect(latest.find((p) => p.personnelId === other.personnelId)?.stale).toBe(true);
+        expect(latest.find((p) => p.personnelId === volunteerPersonnelId)?.stale).toBe(false);
+
+        // The phone says it may not read location, through the field queue as the app sends it.
+        const denied = await call('volunteer', 'POST', '/api/v1/field/commands', {
+          commands: [
+            {
+              id: randomUUID(),
+              kind: 'check_in.location_permission',
+              body: { permission: 'denied', observedAt: new Date().toISOString() },
+            },
+          ],
+        });
+        expect(denied.status, denied.body).toBe(200);
+        expect(denied.json<{ results: { result: string }[] }>().results[0]!.result).toBe('applied');
+        const seen = (
+          await call('priya', 'GET', `/api/v1/check-ins?eventId=${eventId}&open=true`)
+        ).json<(CheckIn & { locationPermission: string | null })[]>();
+        expect(seen.find((c) => c.id === checkIn.id)?.locationPermission).toBe('denied');
+        const board = await call('priya', 'GET', `/api/v1/dispatch/board?eventId=${eventId}`);
+        expect(board.status, board.body).toBe(200);
+        const team = board
+          .json<{ teams: { id: string; locationBlocked: number }[] }>()
+          .teams.find((t) => t.id === teamId)!;
+        expect(team.locationBlocked).toBe(1);
+
+        // An answer older than the one kept changes nothing; a newer one clears it.
+        const older = await call(
+          'volunteer',
+          'POST',
+          '/api/v1/check-ins/current/location-permission',
+          {
+            permission: 'granted',
+            observedAt: new Date(Date.now() - 3_600_000).toISOString(),
+          },
+        );
+        expect(older.json<{ locationPermission: string }>().locationPermission).toBe('denied');
+        const granted = await call(
+          'volunteer',
+          'POST',
+          '/api/v1/check-ins/current/location-permission',
+          {
+            permission: 'granted',
+            observedAt: new Date().toISOString(),
+          },
+        );
+        expect(granted.json<{ locationPermission: string }>().locationPermission).toBe('granted');
+        const after = (await call('priya', 'GET', `/api/v1/dispatch/board?eventId=${eventId}`))
+          .json<{ teams: { id: string; locationBlocked: number }[] }>()
+          .teams.find((t) => t.id === teamId)!;
+        expect(after.locationBlocked).toBe(0);
+        // Only the person checked in says it, never someone else.
+        expect(
+          (
+            await call('priya', 'POST', '/api/v1/check-ins/current/location-permission', {
+              permission: 'denied',
+              observedAt: new Date().toISOString(),
+            })
+          ).status,
+        ).toBeGreaterThanOrEqual(400);
+      } finally {
+        await withTenant(dbWorker, { tenantId: county }, (trx) =>
+          trx
+            .updateTable('cg.check_in')
+            .set({ ended_at: new Date(), end_reason: 'coordinator' })
+            .where('id', '=', other.checkInId)
+            .execute(),
+        );
+      }
+    });
+
+    it('FLD-03: a coordinator sets or replaces the staging check-in code of an event; a replaced code stops working at once; codes are unique in the county; a role without the grant cannot', async () => {
+      const county = tenants['county']!;
+      const staging = (
+        await dbWorker
+          .insertInto('cg.event')
+          .values({
+            tenant_id: county,
+            name: `Exercise staging ${randomUUID().slice(0, 8)}`,
+            hazard_type: 'flood',
+            status: 'active',
+            opened_at: new Date(),
+          })
+          .returning('id')
+          .executeTakeFirstOrThrow()
+      ).id;
+      const version = async () =>
+        (await call('priya', 'GET', `/api/v1/events/${staging}`)).json<{
+          version: number;
+          checkInCode: string | null;
+        }>();
+      expect((await version()).checkInCode).toBeNull();
+      const setCode = (who: string, body: Record<string, unknown>, v: number) =>
+        call(who, 'POST', `/api/v1/events/${staging}/check-in-code`, body, {
+          'if-match': String(v),
+        });
+      // Letters and digits only; another event's code is refused.
+      expect((await setCode('priya', { code: 'stage-42' }, (await version()).version)).status).toBe(
+        400,
+      );
+      const clash = await setCode('priya', { code: 'westwind' }, (await version()).version);
+      expect(clash.status).toBe(400);
+      expect(clash.body).toContain('another event uses this code');
+      // A role without the grant: the event answers as not found.
+      expect((await setCode('pio', {}, (await version()).version)).status).toBe(404);
+
+      const typed = await setCode('priya', { code: 'Stage42' }, (await version()).version);
+      expect(typed.status, typed.body).toBe(200);
+      expect(typed.json<{ checkInCode: string }>().checkInCode).toBe('STAGE42');
+      // The code is recognised however it is typed (this volunteer is already checked in elsewhere).
+      expect(
+        (await call('volunteer', 'POST', '/api/v1/check-ins', { eventCode: 'stage42' })).status,
+      ).toBe(409);
+
+      // A new code, made without typing one: six letters and digits that cannot be confused.
+      const fresh = await setCode('coordinator', {}, (await version()).version);
+      expect(fresh.status, fresh.body).toBe(200);
+      const made = fresh.json<{ checkInCode: string }>().checkInCode;
+      expect(made).toMatch(/^[ACDEFHJKMNPRTUVWXY3479]{6}$/);
+      // The replaced code no longer finds the event; the new one does.
+      const retired = await call('volunteer', 'POST', '/api/v1/check-ins', {
+        eventCode: 'STAGE42',
+      });
+      expect(retired.status).toBe(400);
+      expect(
+        (await call('volunteer', 'POST', '/api/v1/check-ins', { eventCode: made })).status,
+      ).toBe(409);
+      // A stale version is refused; a closed event keeps its code.
+      expect((await setCode('priya', {}, 1)).status).toBe(409);
+      await dbWorker
+        .updateTable('cg.event')
+        .set({ status: 'closed', closed_at: new Date(), close_reason: 'Exercise over' })
+        .where('id', '=', staging)
+        .execute();
+      expect((await setCode('priya', {}, (await version()).version)).status).toBe(409);
+      const trail = await dbWorker
+        .selectFrom('cg.audit_event')
+        .select(['changes', 'actor_account_id'])
+        .where('tenant_id', '=', county)
+        .where('action', '=', 'event.check_in_code')
+        .where('target_id', '=', staging)
+        .orderBy('seq')
+        .execute();
+      expect(trail.map((a) => JSON.stringify(a.changes))).toEqual([
+        expect.stringContaining('"set"'),
+        expect.stringContaining('"replaced"'),
+      ]);
+      // The code itself never goes into the audit record.
+      expect(JSON.stringify(trail)).not.toContain(made);
+      expect(JSON.stringify(trail)).not.toContain('STAGE42');
+    });
+
     it('DSP-07: a silent team turns overdue once and raises one alert; "we are OK" clears it; an unacknowledged dispatch alerts after the window (DSP-04)', async () => {
       // Nothing yet: the team checked in moments ago.
       await watchFieldSafety(worker);

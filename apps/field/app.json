@@ -63,7 +63,15 @@
           "microphonePermission": false,
           "recordAudioAndroid": false
         }
-      ]
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Records a conversation only with the survivor's consent, while the listening sign shows. The recording is deleted when the note is saved.",
+          "enableBackgroundRecording": false
+        }
+      ],
+      "@maplibre/maplibre-react-native"
     ],
     "extra": {
       "apiBase": "",

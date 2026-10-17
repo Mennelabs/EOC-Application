@@ -99,14 +99,33 @@ export interface AreaPackage {
     unverified: boolean;
   }[];
   sites: { id: string; name: string; kind: string; status: string }[];
-  jobAids: { id: string; key: string; title: string; bodyHtml: string; lang: string }[];
-  maps: { areaKey: string; available: boolean; url: string | null }[];
+  jobAids: {
+    id: string;
+    key: string;
+    title: string;
+    bodyHtml: string;
+    lang: string;
+    /** FL-15: false for an exercise draft the county has not approved. */
+    reviewed?: boolean;
+  }[];
+  /** FLD-13: the offline map package of each area, with what the phone checks it against. */
+  maps: {
+    areaKey: string;
+    available: boolean;
+    url: string | null;
+    bytes: number | null;
+    sha256: string | null;
+    version: number | null;
+    bounds: [number, number, number, number] | null;
+  }[];
   /** County choices the screens follow (DCL:DEC-17: ask tribal ownership). */
   options: AreaOptions;
 }
 
 export interface AreaOptions {
   tribalOwnership: boolean;
+  /** FL-16: hours on shift after which the phone reminds the worker to rest. */
+  restAfterHours: number;
 }
 
 export interface VoiceDraft {
@@ -188,8 +207,14 @@ export class Api implements FieldApi, PhotoApi {
     return this.call<{ id: string; status: string }>('POST', '/devices', input);
   }
 
-  checkIn(input: { eventCode: string; deviceId?: string; locationSharing: boolean }) {
-    return this.call<CheckIn>('POST', '/check-ins', { ...input, method: 'event_code' });
+  /** FLD-03: `qr` when the staging code was scanned, `event_code` when typed. */
+  checkIn(input: {
+    eventCode: string;
+    deviceId?: string;
+    locationSharing: boolean;
+    method?: 'qr' | 'event_code';
+  }) {
+    return this.call<CheckIn>('POST', '/check-ins', { method: 'event_code', ...input });
   }
 
   async openCheckIn(): Promise<CheckIn | null> {
@@ -198,7 +223,8 @@ export class Api implements FieldApi, PhotoApi {
   }
 
   area(eventId: string | null, lang: string): Promise<AreaPackage> {
-    const q = new URLSearchParams({ lang, ...(eventId ? { eventId } : {}) });
+    // FLD-04: with the lots' outlines, so "Is this the property?" can show the lot.
+    const q = new URLSearchParams({ lang, geometry: 'true', ...(eventId ? { eventId } : {}) });
     return this.call('GET', `/field/area?${q.toString()}`);
   }
 

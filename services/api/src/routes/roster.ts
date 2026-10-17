@@ -139,6 +139,9 @@ const checkInOut = z.object({
   credentials: z.array(z.object({ kind: z.string(), status: z.string() })),
   deviceId: z.uuid().nullable(),
   locationSharing: z.boolean(),
+  /** BRD:FR-03.05: what the phone said it allows, and when; null until it says. */
+  locationPermission: z.enum(['granted', 'foreground_only', 'denied', 'unavailable']).nullable(),
+  locationPermissionAt: z.iso.datetime().nullable(),
   startedAt: z.iso.datetime(),
   endedAt: z.iso.datetime().nullable(),
   endReason: z.string().nullable(),
@@ -1216,6 +1219,8 @@ export const rosterRoutes: FastifyPluginAsync = async (instance) => {
     credentials: (r.credentials_snapshot as { kind: string; status: string }[]) ?? [],
     deviceId: r.device_id,
     locationSharing: r.location_sharing,
+    locationPermission: r.location_permission,
+    locationPermissionAt: iso(r.location_permission_at),
     startedAt: iso(r.started_at)!,
     endedAt: iso(r.ended_at),
     endReason: r.end_reason,
@@ -1441,17 +1446,17 @@ export const rosterRoutes: FastifyPluginAsync = async (instance) => {
       const q = request.query;
       if (q.mine) {
         await request.authorize('me.read', { type: 'account', tenantId: s.tenantId });
-        const rows = await request.tx((trx) =>
-          trx
+        const rows = await request.tx((trx) => {
+          let x = trx
             .selectFrom('cg.check_in as c')
             .innerJoin('cg.personnel as p', 'p.id', 'c.personnel_id')
             .selectAll('c')
             .select('p.name as personnel_name')
-            .where('p.account_id', '=', s.accountId)
-            .orderBy('c.started_at', 'desc')
-            .limit(q.limit)
-            .execute(),
-        );
+            .where('p.account_id', '=', s.accountId);
+          // FL-07: "I'm done here" looks for the person's own open shift only.
+          if (q.open) x = x.where('c.ended_at', 'is', null);
+          return x.orderBy('c.started_at', 'desc').limit(q.limit).execute();
+        });
         return rows.map(toCheckIn);
       }
       await request.authorize('check_in.read', { type: 'check_in', tenantId: s.tenantId });
@@ -1935,6 +1940,63 @@ export const rosterRoutes: FastifyPluginAsync = async (instance) => {
     const dLon = metres / (111_320 * Math.cos((lat * Math.PI) / 180) || 1);
     return { lat: Math.round(lat / dLat) * dLat, lon: Math.round(lon / dLon) * dLon };
   }
+
+  /**
+   * BRD:FR-03.05: the phone says what it allows on this shift (location granted, only while
+   * the app is open, denied, or unable to get a position). A change is kept with its time; the
+   * same answer again changes nothing. An older answer than the one kept is ignored.
+   */
+  app.post(
+    '/check-ins/current/location-permission',
+    {
+      schema: {
+        tags: ['roster'],
+        body: z.object({
+          permission: z.enum(['granted', 'foreground_only', 'denied', 'unavailable']),
+          observedAt: z.iso.datetime(),
+        }),
+        response: { 200: checkInOut },
+      },
+    },
+    async (request) => {
+      const s = account(request);
+      await request.authorize('position.record', { type: 'position', tenantId: s.tenantId });
+      const person = await ownPersonnel(request);
+      const b = request.body;
+      const at = new Date(b.observedAt);
+      if (at.getTime() > Date.now() + 5 * 60_000)
+        throw errors.validation([{ name: 'observedAt', message: 'a time in the future' }]);
+      return request.tx(async (trx) => {
+        const open = await trx
+          .selectFrom('cg.check_in')
+          .selectAll()
+          .where('personnel_id', '=', person.id)
+          .where('ended_at', 'is', null)
+          .forUpdate()
+          .executeTakeFirst();
+        if (!open) throw new ApiError(409, 'not_checked_in', 'Not checked in.');
+        const older = open.location_permission_at && open.location_permission_at >= at;
+        if (open.location_permission === b.permission || older) return toCheckIn(open);
+        const row = await trx
+          .updateTable('cg.check_in')
+          .set({ location_permission: b.permission, location_permission_at: at })
+          .where('id', '=', open.id)
+          .returningAll()
+          .executeTakeFirstOrThrow();
+        await request.audit(trx, {
+          action: 'position.record',
+          targetType: 'check_in',
+          targetId: row.id,
+          changes: {
+            fields: [
+              { name: 'location_permission', from: open.location_permission, to: b.permission },
+            ],
+          },
+        });
+        return toCheckIn(row);
+      });
+    },
+  );
 
   app.get(
     '/positions/latest',

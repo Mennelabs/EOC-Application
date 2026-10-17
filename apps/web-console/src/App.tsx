@@ -23,6 +23,11 @@ import {
 import type { RuntimeConfig } from './runtime-config.ts';
 import { AccountsScreen, EventsScreen, PersonnelScreen, TenantsScreen } from './screens/admin.tsx';
 import {
+  BrandingScreen,
+  EventTemplatesScreen,
+  PlanningFactorsScreen,
+} from './screens/settings.tsx';
+import {
   ApprovalsScreen,
   AuditScreen,
   BreakGlassScreen,
@@ -31,6 +36,7 @@ import {
 } from './screens/permissions.tsx';
 import { AiRegisterScreen, AssistedScreen, IntakeSetupScreen } from './screens/intake.tsx';
 import { ContactsScreen } from './screens/contacts.tsx';
+import { PeerSupportScreen } from './screens/peer-support.tsx';
 import { DispatchScreen, ReplayScreen } from './screens/dispatch.tsx';
 import { SheltersScreen, VolunteerReceptionScreen } from './screens/masscare.tsx';
 import { SituationScreen } from './screens/situation.tsx';
@@ -55,6 +61,9 @@ import { RecommendationsScreen } from './screens/recommendations.tsx';
 import { DiscoveryScreen } from './screens/discovery.tsx';
 import { FemaMappingsScreen } from './screens/fema-mappings.tsx';
 import { IntegrationsScreen } from './screens/integrations.tsx';
+import { SsoScreen } from './screens/sso.tsx';
+import { SubscriptionScreen } from './screens/subscription.tsx';
+import { JobAidsScreen } from './screens/job-aids.tsx';
 import { MetricsScreen } from './screens/metrics.tsx';
 import { JointAssessmentScreen } from './screens/joint-assessment.tsx';
 import { SharedDeclarationsScreen } from './screens/shared-declarations.tsx';
@@ -62,9 +71,15 @@ import { OfficialReportScreen, OfficialReportsScreen } from './screens/official-
 import { RefdataScreen } from './screens/refdata.tsx';
 import { ReportDetailScreen, ReviewQueueScreen } from './screens/review.tsx';
 import { PublicationsScreen, SitesScreen } from './screens/sites.tsx';
+import { PublicRecordsScreen } from './screens/public-records.tsx';
+import { FindSurvivorScreen } from './screens/find-survivor.tsx';
+import { HealthNoticesScreen } from './screens/health-notices.tsx';
+import { ParcelsScreen } from './screens/parcels.tsx';
+import { ReentryScreen } from './screens/reentry.tsx';
 import { CommandWindow } from './ui/command-window.tsx';
 import { ConfirmDialog, Field, Status } from './ui/primitives.tsx';
 import { visibleGroups, type NavCount } from './ui/nav.ts';
+import { formatTime, setDisplayZone } from './ui/time.ts';
 
 /**
  * Console shell (CON-01): one console, role-based workspaces. The navigation
@@ -78,6 +93,7 @@ interface Me {
   accountId: string;
   tenantId: string;
   tenantKind?: string;
+  timeZone?: string;
   roles: { key: string; version: number; templateKey?: string | null }[];
   breakGlass: { id: string; expiresAt: string } | null;
   /** Actions the account may take (ADM-04); the navigation and the home read them. */
@@ -190,6 +206,8 @@ export function App({ config }: { config: RuntimeConfig }) {
     if (!session) return;
     api<Me>('/me')
       .then((m) => {
+        // BRD:FR-00.08: every time from here on is shown and typed on the tenant's clock.
+        setDisplayZone(m.timeZone);
         setMe(m);
         setMeError(null);
       })
@@ -345,6 +363,12 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <SheltersScreen me={me} />;
       case '/console/reception':
         return <VolunteerReceptionScreen />;
+      case '/console/health-notices':
+        return <HealthNoticesScreen />;
+      case '/console/reentry':
+        return <ReentryScreen />;
+      case '/console/parcels':
+        return <ParcelsScreen />;
       case '/console/roster':
         return <RosterScreen />;
       case '/console/net-control':
@@ -355,6 +379,8 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <BadgesScreen />;
       case '/console/reminders':
         return <RemindersScreen />;
+      case '/console/peer-support':
+        return <PeerSupportScreen />;
       case '/console/devices':
         return <DevicesScreen />;
       case '/console/reference-data':
@@ -363,6 +389,12 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <FemaMappingsScreen />;
       case '/console/integrations':
         return <IntegrationsScreen />;
+      case '/console/sso':
+        return <SsoScreen />;
+      case '/console/subscription':
+        return <SubscriptionScreen />;
+      case '/console/job-aids':
+        return <JobAidsScreen />;
       case '/console/facilities':
         return <FacilitiesScreen />;
       case '/console/facility-approvals':
@@ -409,6 +441,12 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <PartnersScreen me={me} />;
       case '/console/events':
         return <EventsScreen />;
+      case '/console/event-templates':
+        return <EventTemplatesScreen />;
+      case '/console/planning-factors':
+        return <PlanningFactorsScreen />;
+      case '/console/branding':
+        return <BrandingScreen />;
       case '/console/tenants':
         return <TenantsScreen />;
       case '/console/accounts':
@@ -427,6 +465,10 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <RetentionScreen />;
       case '/console/briefing':
         return <HomeScreen me={me} events={events} navigate={navigate} briefing />;
+      case '/console/public-records':
+        return <PublicRecordsScreen />;
+      case '/console/find-survivor':
+        return <FindSurvivorScreen navigate={navigate} />;
       default:
         return <HomeScreen me={me} events={events} navigate={navigate} />;
     }
@@ -484,9 +526,8 @@ export function App({ config }: { config: RuntimeConfig }) {
           <>
             {me?.breakGlass ? (
               <p className="banner" role="status">
-                Emergency access is active until{' '}
-                {new Date(me.breakGlass.expiresAt).toLocaleTimeString()}. Every record you open is
-                audited as restricted.
+                Emergency access is active until {formatTime(new Date(me.breakGlass.expiresAt))}.
+                Every record you open is audited as restricted.
               </p>
             ) : null}
             {meError ? <Status kind="error">{meError}</Status> : null}

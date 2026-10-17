@@ -37,3 +37,15 @@ export function htmlToLines(html: string): string[] {
     .map((l) => l.trim())
     .filter(Boolean);
 }
+
+/** FL-01: a resident's code from their confirmation's QR link (`…/my-report?ref=…`) or as typed. */
+export function codeFrom(raw: string): string {
+  const text = raw.trim();
+  try {
+    const ref = new URL(text).searchParams.get('ref');
+    if (ref) return ref.trim();
+  } catch {
+    // not a link: the code itself
+  }
+  return text;
+}

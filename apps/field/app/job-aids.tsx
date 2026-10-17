@@ -2,7 +2,8 @@
  * Job aids offline (FL-15): the checklists, FEMA matrix, safety briefings
  * and standards for the volunteer's role and language, from the area
  * package. Tenant content is shown as text (headings, paragraphs and
- * bullets), never as markup.
+ * bullets), never as markup. Only aids the county approved reach a phone; an
+ * exercise draft (synthetic stack only) says it is not yet reviewed.
  */
 import { useEffect, useState } from 'react';
 import { useField } from '../src/field';
@@ -14,6 +15,7 @@ interface JobAid {
   key: string;
   title: string;
   bodyHtml: string;
+  reviewed?: boolean;
 }
 
 export default function JobAids() {
@@ -33,6 +35,7 @@ export default function JobAids() {
       {aids.map((a) => (
         <Card key={a.id} label={a.title}>
           <Heading level={2}>{a.title}</Heading>
+          {a.reviewed === false ? <Body muted>{t('aids.unreviewed')}</Body> : null}
           {open === a.id ? (
             htmlToLines(a.bodyHtml).map((line, i) => <Body key={i}>{line}</Body>)
           ) : (

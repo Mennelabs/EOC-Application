@@ -5,7 +5,14 @@
  */
 import { describe, expect, it } from 'vitest';
 import sharp from 'sharp';
-import { blurRegions, blurredDerivatives, DERIVATIVES, processImage } from '../src/jobs/photos.ts';
+import {
+  blurRegions,
+  blurredDerivatives,
+  DERIVATIVES,
+  hashDistance,
+  NEAR_IDENTICAL_BITS,
+  processImage,
+} from '../src/jobs/photos.ts';
 
 async function jpegWithExif(width: number, height: number, orientation = 1): Promise<Buffer> {
   return sharp({ create: { width, height, channels: 3, background: '#3b6ea5' } })
@@ -61,6 +68,28 @@ describe('photo processing', () => {
     expect(a.sha256.equals(b.sha256)).toBe(true);
     const other = await processImage(await jpegWithExif(640, 481));
     expect(a.sha256.equals(other.sha256)).toBe(false);
+  });
+
+  it('finds a photo that looks the same though resized and recompressed, and not a different one (PHO-15)', async () => {
+    const scene = (fill: string, x: number) =>
+      sharp({ create: { width: 1200, height: 900, channels: 3, background: '#556b2f' } })
+        .composite([
+          {
+            input: Buffer.from(
+              `<svg width="1200" height="900"><rect x="${x}" y="120" width="420" height="380" fill="${fill}"/><circle cx="900" cy="650" r="160" fill="#202020"/></svg>`,
+            ),
+          },
+        ])
+        .jpeg({ quality: 92 })
+        .toBuffer();
+    const original = await scene('#f5f5dc', 80);
+    const smaller = await sharp(original).resize(600).jpeg({ quality: 55 }).toBuffer();
+    const other = await scene('#8b0000', 640);
+    const [a, b, c] = await Promise.all([original, smaller, other].map((x) => processImage(x)));
+    expect(a!.sha256.equals(b!.sha256)).toBe(false);
+    expect(hashDistance(a!.phash, b!.phash)).toBeLessThanOrEqual(NEAR_IDENTICAL_BITS);
+    expect(hashDistance(a!.phash, c!.phash)).toBeGreaterThan(NEAR_IDENTICAL_BITS);
+    expect(hashDistance(a!.phash, a!.phash)).toBe(0);
   });
 
   it('does not enlarge a small photo', async () => {

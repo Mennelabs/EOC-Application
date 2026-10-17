@@ -79,6 +79,21 @@ export class Outbox {
     await this.persist();
   }
 
+  /**
+   * Shared devices (ACC-41, AC-A07): drops every report the county has, and leaves nothing stored
+   * when none is left. A report still waiting to send stays (SCL-06). Returns whether one does.
+   */
+  async clearDelivered(): Promise<boolean> {
+    this.items = this.items.filter((i) => i.state !== 'received');
+    if (this.items.length > 0) {
+      await this.persist();
+      return true;
+    }
+    this.store.remove(NAME);
+    this.notify();
+    return false;
+  }
+
   async flush(): Promise<void> {
     const now = Date.now();
     for (const item of this.items) {

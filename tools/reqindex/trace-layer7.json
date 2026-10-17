@@ -1,0 +1,879 @@
+{
+  "_about": "Evidence per requirement ID for layer 7 (AI assistance, the command window, facilities and recommendations, discovery, drafting, scribe, hand-over, translation, the photo pre-sort; layer-7 plan §1), plus earlier rows layer 7 finishes or extends: for those the earlier evidence is kept and layer 7's appended after 'layer 7:'. status: pass | partial | deferred | designed. The cited suites passed locally on the compose stack and run in CI on every push; the layer merges only when CI is green. tools/reqindex/traceability.py merges trace-layer1..7.json in order.",
+  "CMD-01": [
+    "pass",
+    "apps/web-console/src/ui/command-window.tsx in the header of every console workspace (App.tsx), a native dialog over the current screen; field app screen apps/field/app/command.tsx (home button for roles with command.use); action command.use on the role templates",
+    "tests/e2e/console-l7.spec.ts (opened from the header over the current screen, Escape returns focus; desktop and phone), tests/e2e/field.spec.ts (Ask or command from the field app home)",
+    ""
+  ],
+  "CMD-02": [
+    "pass",
+    "command-window.tsx: always-visible button with aria-keyshortcuts; Ctrl+K or Command+K, and \"/\" outside text fields (letter and \"/\" changeable on the device); Escape closes and returns focus to the opener; unsent text kept in the tab",
+    "tests/e2e/console-l7.spec.ts (Control+K opens with focus in the command field; \"/\" opens from outside a text field; Escape returns focus to the opener; axe)",
+    "Section 30.2 shortcut defaults, approved 2026-10-15. The remapping is kept per device, not per account."
+  ],
+  "CMD-03": [
+    "pass",
+    "services/api/src/commands/parse.ts (Section 30.2 shorthand: slash verb, object, id, key:value pairs; case-insensitive; Spanish verbs as synonyms; no model); references resolved to record ids among records the person may see (routes/commands.ts resolveTarget); /help and GET /commands/catalog",
+    "services/api/test/commands.test.ts (shorthand: verb, object, id, pairs; Spanish synonyms; unknown verbs unsupported), services/api/test/commands.db.test.ts (CMD-12: /ayuda lists the commands), tests/e2e/console-l7.spec.ts (/help)",
+    "Section 30.2's tab-completion is not built; /help lists every command with its usage. The CMD-03 examples /mission new, /assign, /damage draft and /resource find are not catalogued (CMD-13–CMD-17)."
+  ],
+  "CMD-04": [
+    "pass",
+    "migration 0059 cg.command_alias; routes/command-aliases.ts (list, add, change, retire; versioned, audited); commands/aliases.ts (personal: lookups and drafts only; organization: explicit command_alias.manage with a reason; no command verb EN/ES; never a consequential command; re-checked at use); expansion shown as \"Read as\"",
+    "services/api/test/commands.test.ts (CMD-04 alias rules), services/api/test/commands.db.test.ts (CMD-04, BRD:FR-18.05: owner-only personal aliases, confirmed organization aliases, expansion shown and re-checked, changes audited), tests/e2e/console-l7.spec.ts (Aliases panel)",
+    ""
+  ],
+  "CMD-05": [
+    "pass",
+    "Shorthand is parsed without a model (commands/parse.ts) and runs through the same plan, confirmation and in-process console operations as plain words (routes/commands.ts, ADR-0044); every catalogued command keeps its own screen; plain words with the assistant off are refused with a pointer to /help",
+    "services/api/test/commands.db.test.ts (CMD-12: shorthand runs while plain words are refused with the assistant off; CMD-03: one plan path once it is on), services/api/test/commands.test.ts (the parser needs no model)",
+    ""
+  ],
+  "CMD-06": [
+    "pass",
+    "apps/web-console/src/ui/screen-record.ts: the mission detail screen and the needs board's open panel offer their record; the window names it in a checkbox the person can clear; \"this\" (esta, este) in shorthand, or in plain words read by the model (told only the kind on screen, prompt command-interpret-2), resolves it through GET /missions/:id or /needs/:id with the person's own credentials (routes/commands.ts resolveOnScreen), so a record they cannot see is not found; otherwise targets come from identifiers named in the command (resolveTarget); the plan shows the one record it affects; in the field app, a job's screen opens the command screen with that job's mission as \"this\" and says so (apps/field/app/work/[id].tsx, apps/field/app/command.tsx), read again by the server under the lead's own event and held-record scope",
+    "services/api/test/commands.db.test.ts (CMD-06: this with and without context, another kind, a record not visible, a planned change, plain words), services/api/test/commands.test.ts (CMD-06 parse), tests/e2e/console-l7.spec.ts (CMD-06, CMD-29, AC-C09 journey), packages/ai evaluation cases cmd-en-this-mission and cmd-es-this-need, tests/e2e/field.spec.ts (CMD-06: a job assigned to the lead's team, opened on the phone, /mission this answers that job)",
+    "Nothing on a screen is used unless the command says \"this\"."
+  ],
+  "CMD-07": [
+    "pass",
+    "The window sits in every console workspace's header and is not bound to the displayed feature (App.tsx, command-window.tsx); each command calls its own console operation with the person's credentials, so every referenced record is authorized on its own (routes/commands.ts op, ADR-0044)",
+    "tests/e2e/console-l7.spec.ts (need lookup and claim from the console home), services/api/test/commands.db.test.ts (missions, needs, reminders and sitrep drafts from one window; CMD-21 refusal per command)",
+    "Cross-feature reach is limited to the catalogued commands (CMD-13–CMD-19)."
+  ],
+  "CMD-08": [
+    "pass",
+    "routes/commands.ts resolveTarget: names become ids among records the person may see; several matches answer \"clarify\" with the options (radio group \"Which one?\" in command-window.tsx); none answers not_found; several open events ask which; parse.ts asks rather than guess \"tomorrow morning\"",
+    "services/api/test/commands.db.test.ts (CMD-08, AC-C02: two matching reminders ask which; another person's are never matched), services/api/test/commands.test.ts (CMD-10: \"tomorrow morning\" is not guessed)",
+    "Properties are not command targets (assessments are drafted on the phone, CMD-15); a person on the roster is (CMD-14)."
+  ],
+  "CMD-09": [
+    "pass",
+    "Confirm re-reads the target through the console's own route and refuses a plan whose record version changed (plan_stale); changes send If-Match with the planned version; a plan unconfirmed for 15 minutes goes stale (routes/commands.ts; worker jobs/commands.ts staleAbandonedPlans, job command-plans)",
+    "services/api/test/commands.db.test.ts (AC-C04, CMD-09: a record changed between plan and confirmation makes the plan stale; nothing runs), services/api/test/command-history.db.test.ts (CMD-09, CMD-37: stale after 15 minutes)",
+    ""
+  ],
+  "CMD-10": [
+    "pass",
+    "commands/parse.ts resolveWhen and wallClock: \"in 30m\", \"14:30\", \"tomorrow 08:00\", \"mañana 08:00\" on the tenant's time zone (cg.tenant.timezone), daylight-saving safe; \"tomorrow morning\" asks for a time; the plan states the time it will use and, for plain words, the shorthand read",
+    "services/api/test/commands.test.ts (CMD-10: times on the organization clock, across a DST change, no guess), services/api/test/commands.db.test.ts (CMD-10: \"14:30\" on the county's clock)",
+    "The plan states the interpreted time as an ISO timestamp in UTC rather than on the county's clock."
+  ],
+  "CMD-11": [
+    "pass",
+    "The interpreter gets only the redacted request between staff_request tags and the commands the person may use, never record content (packages/ai/src/prompt.ts buildCommandPrompt); its reply must be one shorthand line, parsed and checked like typed input; injection is refused and recorded as filtered (routes/commands.ts interpretWords)",
+    "packages/ai/test/openai.test.ts (CMD-03, CMD-11, CMD-12: the request is data; one line from the listed commands), services/api/test/commands.db.test.ts (injection refused, recorded as filtered), packages/ai/test/ai.test.ts (command evaluation injection cases)",
+    "Lookup results are worded by fixed catalog code, not a model, so record text is only ever shown as data."
+  ],
+  "CMD-12": [
+    "pass",
+    "services/api/src/commands/catalog.ts: 12 commands, each with name, version, phase, authorization action, zod arguments, target kind, confirmation class, reversal policy, side effects and the console operation it calls; anything else answers unsupported; the model gets no SQL, shell or code path",
+    "services/api/test/commands.test.ts (CMD-12: every command names a real action, once; unknown verbs unsupported), services/api/test/commands.db.test.ts (CMD-12: only catalogued shorthand runs; unsupported is never reported as done)",
+    ""
+  ],
+  "CMD-13": [
+    "partial",
+    "catalog.ts: missions.find and mission.show (phase 1), mission.note (phase 2, narrative entry), mission.status (phase 3: open, en route, on scene, cleared through /missions/:id/transitions with If-Match); locks and the transition graph are the console route's own (RULE-05, AC-02C); mission.priority (consequential, full review with a reason), mission.assign (the named person resolved among those the caller may see, the dispatch board's conflict checks), mission.release (/mission <number> release <person>: the person's one open assignment on the mission found through the engine's `within` lookup, released after a full review whose reason becomes the release reason; none or several open is answered, not guessed), mission.close (disposition, releases everyone), mission.reopen, all phase 3; mission.draft (/mission new <kind> <what is needed>, Spanish /mision nueva: phase 1, a draft in the open event, nothing dispatched, the words kept only in the mission)",
+    "services/api/test/commands.db.test.ts (CMD-13: a Spanish draft runs at once as a draft, its words out of the execution record; CMD-13, Section 30.2 phase 3: a release after a full review keeps the reason, none open is answered, a role without the release refused) (lookups; CMD-27 mission note; Section 30.2 phase 3 and AC-02C: a locked mission refuses the command as it refuses the screen; Spanish /mision estado en_sitio); services/api/test/commands.db.test.ts (CMD-13, AC-C01, CMD-08: priority, assignment of a named person, closure and reopening)",
+    "Updates of other mission fields stay on the dispatch screens; releasing a team is on the board."
+  ],
+  "CMD-14": [
+    "partial",
+    "catalog.ts people.find (phase 1, personnel.read): GET /personnel gains q, skill, department, availability and onDuty filters; the answer lists only recorded skills (\"no skills recorded\" otherwise), never contact details; mission.assign requests an assignment through the dispatch board's own rules (conflicts stop it); person.status (/person <name> available/unavailable/on duty/off duty, Spanish too; phase 3, personnel.update, one tap, undo for 15 minutes puts back what the plan saw): routes/commands.ts personnel target by name among the people the caller may see, read through the list (GET /personnel gains an id filter), so neither the plan nor its re-check decrypts or audits a contact; \"assigned\" is never set from the window",
+    "services/api/test/commands.db.test.ts (CMD-14, CMD-15, CMD-17: people by recorded skill and availability …; CMD-13, AC-C01: assignment; CMD-14, Section 30.2 phase 3: status set, undone, two matches ask, stale plan, no contact read, a role without the update refused), services/api/test/commands.test.ts",
+    "Profile fields (name, agency, department, skills, contact) stay on the Personnel screen, where skills become credentials with their evidence; assignment conflicts are shown by the board, and an override stays there."
+  ],
+  "CMD-15": [
+    "partial",
+    "catalog.ts reports.find (phase 1, report.read): the review queue by state, flags, danger and reference, the verification level kept apart from the review state and possible duplicates named; report.claim (/report <code> review: phase 3, one tap, POST /reports/:id/claim), report.approve and report.reject (phase 4, report.review, full review with a reason; the decision's own reason and evidence references go to the review decision, the verification level is untouched and the plan says so), report.ask (phase 4: the resident is sent the question through the county's number; reviewed with a reason), report.duplicate (/report <code> duplicate <other code> <why>, phase 4, full review: the other report is found by its code among those the reviewer may see, through the engine's `also` resolution; itself or an unknown code is refused; the other is not changed); the author never reviews (A7, the route's guardrail); routes/commands.ts report target by reference code",
+    "services/api/test/commands.db.test.ts (CMD-14, CMD-15, CMD-17 lookups; CMD-15: claim, phase 4 off, a role without the review refused, approval refused without a reason then saved with its evidence, the verification level unchanged, the reason kept out of the execution record, a question to the resident in Spanish; CMD-15, CMD-08: a duplicate names the other report, which stays unchanged; itself or an unknown code refused), services/api/test/commands.test.ts (CMD-15 shorthand, phases and confirmations)",
+    "Assessment drafts are created and updated on the phone (with voice drafting, FLD-09), not from the window."
+  ],
+  "CMD-16": [
+    "pass",
+    "catalog.ts sitrep.draft (a draft through POST /official-reports, never issued, RULE-10), reminders.list, reminder.create, reminder.snooze, reminder.complete (the note of what was done saves before the reminder completes), service.log and shift.end (FL-07); AI summary drafting from the facts (routes/official-reports.ts, routes/drafting.ts, task G); exports with their scope and period in the plan: ida.export (/export ida: every jurisdiction, the whole event, phase 3, one tap), report.export (/export sitrep or briefing by number or latest, PDF or CSV: only issued reports are found, read from the frozen copy, phase 3, one tap; routes/commands.ts official_report target) and public_records.export (/export records with the request, kinds and dates: phase 4, full review with a reason, the request reference kept only as a digest once run); each answers queued and names the screen that lists the file",
+    "services/api/test/commands.db.test.ts (Section 30.2: /sitrep drafted, not issued; reminders set, completed, ambiguous titles asked; CMD-16: a draft is not found for export, an issued sitrep exported as CSV by number and as the latest in Spanish, the IDA package, a records release refused without a reason and for a role without the action, the export files and their scope), services/api/test/commands.test.ts (CMD-16: done only with what was done; export shorthand, phases and confirmations), services/api/test/drafting.db.test.ts (CMD-16, AI-04: drafted from the facts)",
+    "Modifying a reminder means moving its time (snooze); no screen changes a reminder's text, so a new reminder replaces it. Exports for one jurisdiction stay on the declaration screen."
+  ],
+  "CMD-17": [
+    "partial",
+    "catalog.ts resources.find (published resources) and contacts.find (active partner contacts by type and agency; restricted reads audited), phase 1; GET /contacts gains an agency filter ; resource.draft (/resource new <type> <title>, phase 1, resource.edit: an English draft whose text no person has reviewed yet, so nobody sees it; publishing stays on the Resources screen with its named approver), resource.review (review date, phase 2) and resource.expiry (phase 3: a future time on the county's clock, a date alone meaning the end of that day; a past time is refused because taking a page down now is Unpublish on the screen), each one tap with undo to what the plan saw; routes/commands.ts resource target by slug or English title; badge.print (/badge <person> printed/failed <why>/handed out, phase 3, badge.print, one tap, no undo: the person's one badge waiting for that outcome is found through the engine's `within` lookup; printed is never handed out, RULE-11, FR-13.06)",
+    "services/api/test/commands.db.test.ts (CMD-14, CMD-15, CMD-17 …; CMD-17, Section 30.2: drafted unpublished and unreviewed, review date and expiry set and undone, phase 3 off by default, a role without the edit refused; CMD-17, RULE-11: print outcomes recorded in order, none waiting answered, no undo, the badge's code never in the answer or the record), services/api/test/commands.test.ts (CMD-17 shorthand, the county's clock across the daylight-time change, a past expiry refused, badge outcomes)",
+    "Generating or reprinting a badge stays on the Badges screen: its code is shown once, to print, and the window never holds it. Printing on Brother printers (decided 2026-10-15) is a later task."
+  ],
+  "CMD-18": [
+    "pass",
+    "catalog.ts, Section 30.2 phase 4, each with the full review and a reason: account.suspend (/account <name or email> suspend, undo for 15 minutes reactivates), account.deactivate (no undo: a deactivated account cannot be activated again, the undo answer says so), account.activate, through the Accounts screen's own lifecycle routes (the account lifecycle row keeps the reason; the identity provider is told); role.request (/role request <role> to:<name or email>: a permission change request only, so nothing is granted until a second administrator approves it on the approvals screen, ADM-05); role.revoke (/role revoke <role> from:<name or email>: the one active assignment found through `within`, revoked with the reason); routes/commands.ts account target by exact email or name (the plan names the person, never the email) and role target by name or key",
+    "services/api/test/commands.db.test.ts (CMD-18, ADM-05: a role without the actions refused; suspend by email, 428 without a reason, the lifecycle reason kept, undone; deactivate in Spanish, no undo; a role requested stays pending with no assignment made; a held role revoked with its reason; one not held answered), services/api/test/commands.test.ts (CMD-18 shorthand); the injection case in commands.db.test.ts still runs nothing when plain words ask for permissions",
+    "Account invitations and role edits stay on their screens; destructive configuration is not catalogued."
+  ],
+  "CMD-19": [
+    "pass",
+    "POST /api/public/help/:tenant/ask (services/api/src/public/help.ts, rules in public/ask.ts): fixed EN/ES rules, no model, nothing stored, no-store; answers with published sites and resources, links to the form, the resume page and the verified status check only; \"Ask a question\" beside the list (apps/web-help/src/main.ts)",
+    "services/api/test/help.db.test.ts (CMD-19, AC-C03: published help only; status through the verified check; nothing private), services/api/test/public-ask.test.ts (EN/ES intents, whole words), tests/e2e/help.spec.ts (CMD-19, ACC-31)",
+    "Section 30.2 public coverage, approved 2026-10-15: published resources, starting or resuming one's own report, own status after verification; nothing else. Every answer carries the 911 notice; no report becomes dispatch."
+  ],
+  "CMD-20": [
+    "pass",
+    "routes/commands.ts Plan: command, version, checked arguments, the target with its version, the event and the reading; shown as what will happen, effect, confirmation and reversal (command-window.tsx \"Check the plan\"); kinds lookup, draft and change and statuses help, clarify, unsupported keep questions, drafts and execution apart",
+    "services/api/test/commands.db.test.ts (AC-C06: plan before confirmation; Section 30.2: lookups and drafts run at once), tests/e2e/console-l7.spec.ts (Check the plan with the target and undo terms)",
+    "One command per request: multi-action requests are not accepted, so there is no sequence to show."
+  ],
+  "CMD-21": [
+    "pass",
+    "Every command route checks command.use; holds() checks the command's own action at prepare and again at confirm; the operation runs in process with the person's own credentials and checks again (routes/commands.ts op, ADR-0044); aliases re-checked at use; executions and history are the owner's only",
+    "services/api/test/commands.db.test.ts (CMD-21: a role without the action is refused; AC-C05: a role removed after the plan blocks it), services/api/test/authz-sweep.db.test.ts (every /api/v1 route refuses no token and no role)",
+    ""
+  ],
+  "CMD-22": [
+    "pass",
+    "catalog.ts confirmation classes: none for lookups and drafts, one_tap for a single reversible change; confirm requires the full review (x-confirm and a reason) for full_review or consequential actions (routes/commands.ts); the confirmation is bound to the plan hash, never inferred",
+    "services/api/test/commands.test.ts (CMD-22, Section 30.2: lookups and drafts need none, every change does), services/api/test/commands.db.test.ts (AC-C06: nothing changes before confirming; another plan hash refused)",
+    "No catalogued command needs the full review or a second person yet (dispatch, priority, approval, closure, permissions and messages are not catalogued); that path is coded but not exercised."
+  ],
+  "CMD-23": [
+    "pass",
+    "Commands call the console's own routes in process (routes/commands.ts op), so required fields, transitions, locks, assignment rules and privacy controls are the manual ones; arguments are checked against each command's zod schema first; problems answer \"clarify\" in plain words and the console keeps the text",
+    "services/api/test/commands.db.test.ts (AC-02C: a locked mission refuses the command as it refuses the screen), services/api/test/commands.test.ts (CMD-16: done needs what was done; usage answers)",
+    ""
+  ],
+  "CMD-24": [
+    "pass",
+    "Each command is one console operation in its own transaction (routes/commands.ts execute); the result is what the operation answered; an operation that does not answer is reported as no_answer, never as done or undone; nothing is retried by itself",
+    "services/api/test/commands.db.test.ts (AC-02C: a refused status change is reported failed and the mission is unchanged; AC-C06: one effect)",
+    "Multi-action plans and assignment commands are not offered yet, so per-step partial results are not exercised (AC-C07)."
+  ],
+  "CMD-25": [
+    "pass",
+    "The client's execution id, unique per tenant (migration 0056 cg.command_execution): the same id returns the same execution; confirm claims the plan once (state guard) and sends the execution id as the operation's idempotency key; undo is idempotent by its own execution id",
+    "services/api/test/commands.db.test.ts (AC-C06, CMD-25: same id, same execution; confirming twice gives one claim; AC-C08: an undo replay returns the same execution)",
+    ""
+  ],
+  "CMD-26": [
+    "pass",
+    "catalog.ts verify() builds the result from the operation's own response (found, drafted, saved, queued) with record references and versions; failures carry the operation's code, 403 and 404 as \"not available\"; the console links to the records touched (command-window.tsx)",
+    "services/api/test/commands.db.test.ts (Section 30.2: lookups and drafts with results from the operation itself (CMD-26); the sitrep \"drafted\", not issued), tests/e2e/console-l7.spec.ts (Saved after confirming; the board shows claimed)",
+    "Sent and delivered do not arise: no message-sending command is catalogued."
+  ],
+  "CMD-27": [
+    "pass",
+    "POST /commands/:id/cancel (routes/commands.ts): cancels only a plan awaiting confirmation, drops its free text and audits command.cancel; once running or run it says cancelling cannot stop or reverse it",
+    "services/api/test/commands.db.test.ts (CMD-27: cancelled before it runs, free text gone, a later confirm stays cancelled)",
+    ""
+  ],
+  "CMD-28": [
+    "pass",
+    "Reversal policy per command (catalog.ts undo_15_min, compensating, none); POST /commands/:id/undo runs a linked execution (reversal_of, undone_by) once within 15 minutes; compensating commands answer that a correcting entry is needed and the original stays",
+    "services/api/test/commands.test.ts (CMD-28: only reversible commands offer undo), services/api/test/commands.db.test.ts (AC-C08, CMD-28: linked undo, once, inside its window), tests/e2e/console-l7.spec.ts (Undo puts the need back on the board)",
+    "Section 30.2, approved 2026-10-15: one-click undo for 15 minutes on reversible internal changes; everything else by a compensating action."
+  ],
+  "CMD-29": [
+    "pass",
+    "Screens register forms with unsaved text (screen-record.ts useOpenDraft: the mission narrative, closing note and lock reason; the need note); a change planned for that record shows an \"Unsaved changes\" group naming the form, with keep (cancels, focus back in the form) or discard and confirm, and no plain Confirm; a change carries the version it was planned against and a changed record makes the plan stale; after a change the screen showing the record reads it again; unsent command text stays in the tab",
+    "tests/e2e/console-l7.spec.ts (CMD-06, CMD-29, AC-C09: kept, then discarded, the note), services/api/test/commands.db.test.ts (AC-C04, CMD-09: a changed record makes the plan stale)",
+    ""
+  ],
+  "CMD-30": [
+    "pass",
+    "catalog.ts BATCH_ONE_CONFIRMATION (50), BATCH_MAX (500), BulkSpec; needs.claim_many and needs.release_many (phase 4, full review with a reason); routes/commands.ts: the batch is listed through GET /needs as the person may see it and bound into the plan hash; over 50 the confirmation carries the typed count (422 batch_count_required otherwise); over 500 is refused; one operation per record with its own idempotency key; per-record failures named; state partially_succeeded (migration 0075); action command.bulk (explicit) on the county EM director, mass care, NGO incident commander and COAD chair templates; 30 confirmed commands a minute per person (429); ADR-0044 addendum",
+    "services/api/test/commands.db.test.ts (CMD-30: phase 4 off, a role without command.bulk told to act one by one, 3 planned and 2 claimed with the closed one named, confirming twice runs nothing twice, release the same way, 51 needs the typed count, 501 refused; Section 30.2: the 31st command in a minute is refused), services/api/test/commands.test.ts (CMD-30 parse), packages/authz/test/templates.test.ts, tests/e2e/console-l7.spec.ts (CMD-30: typed count, Partly done, Not changed; desktop and phone with axe)",
+    "Batches exist for need claims and releases only; other batch commands are added as catalog entries. Over 500 has no scheduled bulk job: the person narrows the filter or uses the screen."
+  ],
+  "CMD-31": [
+    "partial",
+    "command-window.tsx: native dialog named by its heading, focus to the command field and back to the opener, one polite atomic live region, choices as a labelled radio group, native buttons, errors tied by aria-describedby; reflows at 320 px; field screen with named controls (apps/field/app/command.tsx)",
+    "tests/e2e/console-l7.spec.ts (keyboard journey including the clarification and a cancel, axe on each state, reflow on the phone project), tests/e2e/field.spec.ts (axe on the field screen); docs/a11y/screens/command-window.md",
+    "Screen-reader and voice-control passes are pending a person (GATE-03)."
+  ],
+  "CMD-32": [
+    "pass",
+    "Plain words become one line of shorthand through the tenant's provider when the register's command.interpret is on (routes/commands.ts interpretWords; migration 0057, off until evaluated); the plan shows \"Read as\"; unsupported and usage answers say what to type; Spanish verbs in the parser; EN/ES field strings",
+    "services/api/test/commands.db.test.ts (CMD-03: plain words read only with the feature on; the plan shows the reading; an unclear request gets a question), services/api/test/commands.test.ts (Spanish synonyms), packages/ai/test/ai.test.ts (command cases in English and Spanish)",
+    "OpenAI interprets (decided 2026-10-15); without OPENAI_API_KEY or with the feature off, plain words are refused with a pointer to /help. No catalogued command is consequential, so the extra review for translated consequential commands does not arise. The console is English (staff)."
+  ],
+  "CMD-33": [
+    "pass",
+    "Field app \"Ask or command\": words from the keyboard's microphone land in an editable field; nothing runs until Go, and a change waits for Confirm on screen (apps/field/app/command.tsx); typing is fully equivalent; every change needs a confirmation bound to its plan (routes/commands.ts)",
+    "tests/e2e/field.spec.ts (a typed request on the field screen), services/api/test/commands.db.test.ts (AC-C06: a change waits for its confirmation)",
+    "Section 29.1: dictation approved, always with review. A pass with the microphone on a real device is pending."
+  ],
+  "CMD-34": [
+    "pass",
+    "Console keeps unsent text in the tab only (sessionStorage), says \"Not sent: the connection dropped. Nothing changed.\" and retries nothing (command-window.tsx); the field screen needs a connection and keeps or sends nothing later (OfflineError); unconfirmed plans go stale after 15 minutes; shorthand works without AI",
+    "services/api/test/command-history.db.test.ts (stale after 15 minutes; a late confirm runs nothing), services/api/test/commands.db.test.ts (shorthand with the assistant off), tests/e2e/console-l7.spec.ts (CMD-34: offline, the line is not sent, the window says so, the text stays, and back online nothing was created), tests/e2e/field.spec.ts (CMD-34: offline, the phone says nothing was sent and nothing will be later; back online nothing was created)",
+    ""
+  ],
+  "CMD-35": [
+    "pass",
+    "interpretWords sends only the redacted request (names, contacts and addresses tokenized by packages/ai redact) and the usage lines of commands the person may use, never records; the OpenAI call has store off and a strict schema; a feature is enabled only for a register row with US region, zero retention, no training (AIG-06)",
+    "packages/ai/test/openai.test.ts (CMD-03, CMD-11, CMD-12: store false, request as data, only the listed commands), packages/ai/test/redact.test.ts (names tokenized), services/api/test/commands.db.test.ts (CMD-03)",
+    "OpenAI for every AI function, with zero data retention (decided 2026-10-15)."
+  ],
+  "CMD-36": [
+    "pass",
+    "migration 0058 cg.command_message (encrypted; row policy on the account and tenant); kept only when the client sends remember (off on a device marked shared, never from the field app); GET/DELETE /me/command-history (clearing refused under a legal hold, logged and audited; executions stay); worker job command-history (30 days)",
+    "services/api/test/command-history.db.test.ts (CMD-36: kept only off shared devices, encrypted, owner-only, administrators included; SEC-13 hold; RULE-15 executions stay; 30-day sweep), tests/e2e/console-l7.spec.ts (Clear my history)",
+    "Section 30.2, approved 2026-10-15: personal conversations 30 days and clearable; the execution audit follows the 7-year default and cannot be cleared."
+  ],
+  "CMD-37": [
+    "pass",
+    "cg.command_execution (0056): account, input kind, command and version, plan with targets and versions, confirming account, time, reason, verified result, reversal links; audit command.execute, command.undo, command.cancel; free text kept as digest and length once run (worker job command-plans too); the operation's own audit holds the change",
+    "services/api/test/commands.db.test.ts (AC-C06: confirmed_by recorded, audit command.execute, the note gone from the record), services/api/test/command-history.db.test.ts (CMD-37: the worker strips every free-text argument)",
+    ""
+  ],
+  "CMD-38": [
+    "pass",
+    "services/api/src/commands/timing.ts (TARGETS: shorthand 1 s, interpretation 2.5 s, execution 2 s at p95; DEADLINE_MS 15 s; within, p95); routes/commands.ts: the model's reading is given up at the deadline and recorded as timed out; an execution past it answers \"still running\" and finishes in the background, recording its own result (GET /commands/:id; the window's \"Check again\"); prepare_ms and execute_ms per execution (migration 0076); GET /commands/performance (ai_register.read) gives count, p95 and whether each target is met, separately, with timeouts and executions still running; the AI register screen shows it",
+    "services/api/test/command-timing.test.ts, services/api/test/commands.db.test.ts (CMD-38: timed-out reading recorded, \"still running\" then succeeded with its timings, the report against the targets, refused to a field coordinator), tests/e2e/console.spec.ts (the section on the AI register screen)",
+    "Completion, clarification and duplicate rates are reported from per-day counts by command and outcome (FR-C11, migration 0086). The report table itself is shown in the browser only to the register's readers; the journey's reviewer sees the permission message."
+  ],
+  "AC-C01": [
+    "pass",
+    "The command window is in the header of every console workspace (App.tsx, command-window.tsx) and acts on missions by reference from any screen (catalog.ts mission.show, mission.note, mission.status); /mission <reference> assign <person> (mission.assign, phase 3) from any screen, the person resolved by name among those the dispatcher may see",
+    "tests/e2e/console-l7.spec.ts (the window over the current screen), services/api/test/commands.db.test.ts (mission status from the window); services/api/test/commands.db.test.ts (CMD-13, AC-C01, CMD-08: assignment of a named person)",
+    "Phase 3 is on per county (Section 30.2)."
+  ],
+  "AC-C02": [
+    "pass",
+    "routes/commands.ts resolveTarget answers \"clarify\" with the authorized matches and plans nothing until one is chosen; the person a command names is resolved the same way: two people matching \"Cara Diaz\" ask which",
+    "services/api/test/commands.db.test.ts (CMD-08, AC-C02: two matching reminders ask which; nothing runs until one is chosen); services/api/test/commands.db.test.ts (CMD-13, AC-C01, CMD-08: two matching people ask which)",
+    ""
+  ],
+  "AC-C03": [
+    "pass",
+    "Public users have no command window: /commands needs a signed-in account with command.use; the public ask (services/api/src/public/ask.ts, help.ts) answers only from published pages; command failures map 403 and 404 to one \"not available\" message (routes/commands.ts errorOf); generic denials (plugins/authorize.ts)",
+    "services/api/test/help.db.test.ts (CMD-19, AC-C03: a mission number and \"staff roster\" find nothing private), services/api/test/errors.test.ts (denials are generic), packages/authz/test/guardrail-G2.test.ts, services/api/test/authz-sweep.db.test.ts",
+    ""
+  ],
+  "AC-C04": [
+    "pass",
+    "Plan hash over the plan (command, version, arguments, target id and version), tenant and account (routes/commands.ts planHash); confirm refuses another hash (plan_changed) and re-reads the record: a different version makes the plan stale",
+    "services/api/test/commands.db.test.ts (AC-C06: another plan hash is refused; AC-C04, CMD-09: a record changed in between makes the plan stale; nothing runs)",
+    "No approval command is catalogued; the binding is shown with a need claim and holds for every command."
+  ],
+  "AC-C05": [
+    "pass",
+    "routes/commands.ts confirm re-checks the person's roles for the command's action before running, and the console operation checks again",
+    "services/api/test/commands.db.test.ts (AC-C05, CMD-21: a role removed between plan and confirm gives 403; the need stays open)",
+    ""
+  ],
+  "AC-C06": [
+    "pass",
+    "Execution id unique per tenant (migration 0056); the same id returns the same execution; confirm claims the plan once (state guard) and sends the execution id as the operation's idempotency key",
+    "services/api/test/commands.db.test.ts (AC-C06, CMD-25: confirming twice gives one claim event; the same execution id returns the same execution)",
+    ""
+  ],
+  "AC-C07": [
+    "pass",
+    "routes/commands.ts executeBatch: a batch reports each record it changed and each it did not, ends partially succeeded, and never claims a rollback; single commands record succeeded or failed from their own answer; a command with a second step (`then`: /message <team> <text> mission:<number> sends, then notes it on the mission) runs it with its own derived idempotency key once the first succeeded; when it fails the execution is partially succeeded, the answer names the step done and the step not done with its reason, and says nothing was rolled back; a role without the second step's action is refused before anything is sent",
+    "services/api/test/commands.db.test.ts (CMD-30: 2 of 3 changed, the third named, state partially_succeeded; AC-C07, CMD-24: the message sent, the note refused by a lock placed after the plan, partially succeeded, the message's recipient count kept, no note written, nothing claimed rolled back; a safety officer refused before sending)",
+    ""
+  ],
+  "AC-C08": [
+    "pass",
+    "Undo only for undo_15_min commands, once, within 15 minutes, as a linked execution; anything else answers undo_unavailable, compensating ones with \"correct it on the screen with a new entry; the original stays\" (routes/commands.ts); team.message (/message <team> <text>, phase 4, full review with a reason) is answered as sent, never as delivered, and \"undo\" on it says a sent message cannot be recalled from people's phones and a correction is a new message (catalog.ts undoUnavailable); the plan states the reversal terms (command-window.tsx)",
+    "services/api/test/commands.db.test.ts (AC-C08, CMD-28: undo once inside its window; a further undo refused with undo_unavailable; AC-C08: a message to a team reviewed with a reason, answered \"Not yet delivered\", and undo refused as unrecallable)",
+    "Plain words \"undo that\" map to no command; the window's Undo button is the way."
+  ],
+  "AC-C09": [
+    "pass",
+    "apps/web-console/src/ui/command-window.tsx (the unsaved-changes choice before confirming), screen-record.ts (open-draft registry), screens/needs.tsx and screens/missions.tsx register their forms",
+    "tests/e2e/console-l7.spec.ts (CMD-06, CMD-29, AC-C09: a claim over an unsaved note asks first; keep returns to the note with its text; discard empties it and the claim runs)",
+    ""
+  ],
+  "AC-C10": [
+    "pass",
+    "The interpreter never receives record content: only the redacted request between tags and the allowed commands (packages/ai/src/prompt.ts); its answer is one shorthand line checked like typed input and confirmed before any change; injection is refused and recorded; intake extraction drafts nothing from text that instructs the model",
+    "services/api/test/commands.db.test.ts (injection refused, nothing planned, recorded as filtered), packages/ai/test/openai.test.ts (CMD-11), services/api/test/public.db.test.ts (extraction blocks injection in a resident's report), packages/ai/test/ai.test.ts",
+    ""
+  ],
+  "AC-C11": [
+    "partial",
+    "command-window.tsx: shortcut and visible button, focus management, one polite live region for progress, questions and results, a labelled radio group for choices, native Confirm, Cancel and Undo buttons",
+    "tests/e2e/console-l7.spec.ts (keyboard: Control+K, Enter, Confirm, Undo; two matching reminders answered in the \"Which one?\" radio group with Space and the arrow keys, Continue, then the plan cancelled with Cancel; Escape back to the opener; axe on each state)",
+    "The screen-reader pass is pending a person (docs/a11y/screens/command-window.md, GATE-03)."
+  ],
+  "AC-C12": [
+    "pass",
+    "Shorthand needs no model and runs with the AI feature off or failing (routes/commands.ts interpretWords answers with a pointer to /help); every command keeps its screen; clients never resend (command-window.tsx, apps/field/app/command.tsx) and plans unconfirmed for 15 minutes go stale (worker job command-plans)",
+    "services/api/test/commands.db.test.ts (CMD-12: shorthand runs, plain words refused with the assistant off), services/api/test/command-history.db.test.ts (a stale plan; a late confirm runs nothing)",
+    "No dispatch command is catalogued. AI health alerts and never switches a feature off (decided 2026-10-15)."
+  ],
+  "BRD:FR-C01": [
+    "pass",
+    "CMD-01–CMD-05: command-window.tsx (button, Ctrl/Command+K and \"/\", remappable), commands/parse.ts (shorthand without a model, Spanish synonyms), plain words through command.interpret, /help and GET /commands/catalog, aliases (routes/command-aliases.ts)",
+    "services/api/test/commands.test.ts, services/api/test/commands.db.test.ts, tests/e2e/console-l7.spec.ts (shortcut, help, alias)",
+    "Section 30.2's tab-completion is not built."
+  ],
+  "BRD:FR-C02": [
+    "pass",
+    "CMD-06–CMD-11: resolveTarget among authorized records with a question when several match, re-read at confirmation, the tenant's time zone, the request as data (routes/commands.ts, commands/parse.ts, packages/ai/src/prompt.ts); \"this\" is the record open in the console or the job open on the phone, read again under the person's own permissions (CMD-06); a second record or a person named in the command is resolved the same way (`also`, `person`, `within`)",
+    "services/api/test/commands.db.test.ts (CMD-08, AC-C02, AC-C04, CMD-10, injection), services/api/test/commands.test.ts (CMD-10), packages/ai/test/openai.test.ts (CMD-11)",
+    ""
+  ],
+  "BRD:FR-C03": [
+    "pass",
+    "services/api/src/commands/catalog.ts CommandSpec: name, version, phase, action (permission), zod arguments, target kind, needsEvent prerequisite, confirmation class, side effects, free-text fields, the operation request, verify (shared result shape), reversal policy and undo operation",
+    "services/api/test/commands.test.ts (CMD-12, CMD-22, CMD-28 catalog checks)",
+    "Idempotency is declared once for every entry by the engine (the execution id is the operation's idempotency key), not per entry."
+  ],
+  "BRD:FR-C04": [
+    "pass",
+    "catalog.ts: missions (find, show, note, status), needs (find, claim, release), reminders (list, create, snooze, complete), situation-report draft, each through the console's validated route; public coverage through /api/public/help/:tenant/ask; people, reports, resources and contacts lookups; mission priority, assignment, closure and reopening",
+    "services/api/test/commands.db.test.ts, services/api/test/help.db.test.ts (CMD-19)",
+    "By design: assessment drafts stay on the phone (FLD-09); badge generation stays on the Badges screen because its code is shown once; invitations and role edits stay on their screens. Administration is account suspension, deactivation and activation, and role requests and revocations (CMD-18)."
+  ],
+  "BRD:FR-C05": [
+    "pass",
+    "routes/commands.ts: kinds and statuses keep questions, drafts and changes apart; targets resolved before the plan; the plan shows target, effect and reversal; confirmation bound to the plan hash (plan, version, tenant, account) and the record version; a change or a 15-minute wait prepares again",
+    "services/api/test/commands.db.test.ts (AC-C06 binding; AC-C04, CMD-09 stale; AC-C05 roles checked again), services/api/test/command-history.db.test.ts (stale after 15 minutes)",
+    ""
+  ],
+  "BRD:FR-C06": [
+    "pass",
+    "routes/commands.ts execute: one console operation per command in its own transaction, the client's execution id as the idempotency key, no automatic retry, the result from the operation's answer with its error code",
+    "services/api/test/commands.db.test.ts (AC-C06; AC-02C: a failure reported, nothing changed)",
+    "Multi-step plans are not offered yet (AC-C07)."
+  ],
+  "BRD:FR-C07": [
+    "pass",
+    "routes/commands.ts: POST /commands/:id/cancel (only before execution; says when it cannot stop or reverse), POST /commands/:id/undo (linked execution, 15 minutes, once; compensating otherwise); reversal_of and undone_by keep both in the history",
+    "services/api/test/commands.db.test.ts (CMD-27 cancel; AC-C08, CMD-28 undo), tests/e2e/console-l7.spec.ts (Undo)",
+    ""
+  ],
+  "BRD:FR-C08": [
+    "pass",
+    "Rate limit of 30 a minute (routes/commands.ts); one record per command; an alias expands to one governed command; versions and stale plans stop writes over newer records; a change planned for a record with unsaved text on its screen names that form and offers keep, or discard and confirm, never a plain Confirm (CMD-29, AC-C09); bulk commands state their scope, confirm over 50 by the typed count and refuse over 500, each record its own governed operation (CMD-30)",
+    "services/api/test/commands.db.test.ts (CMD-04 alias re-check; AC-C04 stale)",
+    "Batches cover need claims and releases (CMD-30)."
+  ],
+  "BRD:FR-C09": [
+    "partial",
+    "command-window.tsx (keyboard, focus, live region, labelled controls, reflow); field screen (dictation through the keyboard with review, typed equivalent, EN/ES); no replay after reconnect; shorthand in English and Spanish",
+    "tests/e2e/console-l7.spec.ts (axe, keyboard including clarify and cancel, reflow, offline), tests/e2e/field.spec.ts (offline), services/api/test/commands.test.ts (Spanish), services/api/test/command-history.db.test.ts (stale plans)",
+    "Screen-reader pass pending a person (CMD-31, GATE-03)."
+  ],
+  "BRD:FR-C10": [
+    "pass",
+    "Minimum context to the interpreter (redacted request, allowed commands; CMD-35); personal history encrypted, owner-only, 30 days, clearable (migration 0058, /me/command-history); the execution audit kept apart and never cleared (cg.command_execution, audit events; CMD-37)",
+    "services/api/test/command-history.db.test.ts (CMD-36, SEC-13, RULE-15), services/api/test/commands.db.test.ts (CMD-37 audit), packages/ai/test/openai.test.ts",
+    ""
+  ],
+  "BRD:FR-C11": [
+    "pass",
+    "Progress announced in the live region; outcome and latency of each interpretation in cg.ai_output; execution states in cg.command_execution; verified results (CMD-26); response times against the Section 30.2 targets with the 15-second deadline (CMD-38); every answer counted per day by command and outcome only, with no account, words or record (migration 0086, cg.command_outcome), so GET /commands/performance reports the completion, clarification and duplicate rates and the AI register screen shows them",
+    "services/api/test/commands.db.test.ts (interpretation outcomes recorded; results from the operation; FR-C11, CMD-38: a run, a repeat, an unsupported line, a confirmation sent twice and a clarification counted; the rates reported)",
+    ""
+  ],
+  "BRD:FR-C12": [
+    "pass",
+    "AI-01 every command keeps its screen, shorthand needs no model; AI-02 redacted minimum context; AI-03 \"Read as\", input_kind natural; AI-05 clarify; AI-06/07 confirmation, confirmed_by, accepted/rejected on cg.ai_output; AI-08 same validation; AI-09 results only from operations; AI-10 shorthand fallback; AI-11 register gate; AI-12 eval cases",
+    "services/api/test/commands.db.test.ts (CMD-03, AIG-01, AIG-09), packages/ai/test/ai.test.ts (command evaluation cases), packages/ai/test/openai.test.ts, services/api/test/commands.test.ts (AIG-08: evaluation set equals the catalog)",
+    "OpenAI for every AI function (decided 2026-10-15); AI health alerts and never switches the feature off (AIG-09 as decided). The live suite needs OPENAI_API_KEY, not yet set in the cloud environment."
+  ],
+  "BRD:FR-18.05": [
+    "pass",
+    "routes/definitions.ts, cg.governed_definition; layer 7: routes/command-aliases.ts and commands/aliases.ts, migration 0059 cg.command_alias (versioned; organization aliases only with the explicit command_alias.manage, confirmed with a reason; every create, change and retire audited)",
+    "layer 7: services/api/test/commands.db.test.ts (CMD-04, BRD:FR-18.05: organization aliases need the explicit, confirmed action; changes audited), services/api/test/commands.test.ts (CMD-04 alias rules)",
+    "Classifications and definitions governed since layer 1; alias changes governed and audited in layer 7."
+  ],
+  "ACC-31": [
+    "pass",
+    "apps/web-console, apps/web-resident; layer 7: apps/web-help/src/main.ts askForm (\"Ask a question\" beside the list and the form, never instead) over POST /api/public/help/:tenant/ask with fixed EN/ES rules and no model (services/api/src/public/ask.ts); the console window's /help lists every command",
+    "tests/e2e (axe WCAG 2.2 AA on released screens); layer 7: tests/e2e/help.spec.ts (CMD-19, ACC-31: the ask box answers, the list stays; axe), services/api/test/public-ask.test.ts, services/api/test/help.db.test.ts (CMD-19, AC-C03)",
+    "No public task needs a conversation. Professional review of the Spanish strings remains the EQ-07 go-live gate."
+  ],
+  "AC-A01": [
+    "partial",
+    "Field errors in text next to the field with role=alert, aria-describedby and aria-invalid (apps/web-resident/src/ui/primitives.tsx, Flow.tsx; the optional questions after sending, screens/Submit.tsx, since 2026-10-16); the address is a form, never a map; the reference code is spelled out for screen readers",
+    "tests/e2e/resident.spec.ts (keyboard only, English: deep link to reference number, axe on every screen; AC-A01/A02/A05: Continue with nothing chosen is announced and fixed by keyboard, an out-of-range number is announced with its range and marked aria-invalid, then corrected), apps/web-resident/test/state.test.ts (spells the reference code, ACC-50), tests/e2e/a11y.spec.ts (keyboard only: Start is reachable and announces status)",
+    "The screen-reader pass is pending a person (docs/a11y/screens/resident-intake.md check 2)."
+  ],
+  "AC-A02": [
+    "partial",
+    "Layout reflows to 320 CSS px; the whole suite also runs on the phone project",
+    "tests/e2e/a11y.spec.ts (ACC-07: reflows at 320 CSS px, welcome), tests/e2e/resident.spec.ts (ACC-07: a question screen reflows at 320 px; AC-A01/A02/A05: a whole report at 320 px, with no sideways scroll on the review, the confirmation and the optional questions)",
+    "My report is not checked at 320 px; 200 % zoom and text spacing are not tested; nothing asserts that controls and required text are still present beyond the steps the test presses."
+  ],
+  "AC-A03": [
+    "partial",
+    "Keyboard only with Tab, Space and Enter; no drag or swipe; 44 px targets (styles.css, axe wcag22aa target size); the kiosk confirmation stays until Done or 2 minutes idle, warned 20 s ahead with \"I need more time\" (apps/web-resident/src/intake/idle.ts; before 2026-10-16 it left after 10 s)",
+    "tests/e2e/resident.spec.ts (the whole report by keyboard), apps/web-resident/test/idle.test.ts (warning, extend, Done)",
+    "Remaining limits: the one-time code lasts 10 minutes, the my-report token 30 minutes, dictation 2 minutes; asking again is always possible."
+  ],
+  "AC-A04": [
+    "pass",
+    "The whole flow is text; dictation is optional and hidden when the county has no AI service; the footer on every resident screen and Help near you (resident app and Find help) say to text the county help line or call it through relay at 711; the danger screen says to text 911 where that works, and adds that line when a county's own emergency wording leaves it out; follow-up and the one-time code go by text or email (2026-10-16)",
+    "tests/e2e/resident.spec.ts (AC-A04: relay line in English and Spanish, text 911 kept under a county's own wording, Help near you; danger: the default wording says to text 911 and it is not said twice; completes by email with no \"Speak instead\"), docs/a11y/checklist.md check 15",
+    "Relay reaches the county only if its help line answers relay calls; that is the county's operation, not the platform's."
+  ],
+  "AC-A05": [
+    "partial",
+    "Every resident string in English and Spanish, type-checked complete (i18n/messages.ts); answer errors are translated from the engine's codes (intake/validation-text.ts), on the questions and on the optional questions after sending; My report's errors, the county's questions and a failed send are shown in the resident's language (2026-10-16; before, some came in English or as the server's reason)",
+    "apps/web-resident/test/validation-text.test.ts (every error on every question of the shipped graph has its English and Spanish message), tests/e2e/resident.spec.ts and a11y.spec.ts (Spanish: the flow switches language; AC-A01/A02/A05: an optional-question error reads in Spanish after switching, never the engine's English)",
+    "Consent and confirmation in Spanish are not exercised end to end. Spanish strings are reviewed drafts; professional review is the EQ-07 gate."
+  ],
+  "AC-A06": [
+    "pass",
+    "The resident app never asks for location: the address is typed; photos are optional with \"Skip photos\", and \"Choose from my photos\" works without the camera; a refused microphone is said in words and typing goes on",
+    "tests/e2e/resident.spec.ts (AC-A06: camera, microphone and location refused with dictation offered; \"Speak instead\" says the microphone is not available, a photo is chosen from the device, the report is sent and numbered), apps/web-resident/test/photos.test.ts",
+    ""
+  ],
+  "AC-A07": [
+    "pass",
+    "Answers encrypted under a session key; \"Clear my answers\" and an automatic clear after 2 minutes on a personal device; on the kiosk the answers leave the device as soon as the county has the report and Done hands over a clean kiosk; pausing removes the flow; \"Close my report\" removes the token, and an open My report closes by itself after 10 minutes without use, warned a minute before with \"I need more time\" (2026-10-16). Fixed 2026-10-16: clearing showed \"Not sent yet\" in place of the reference number, clearing wrote the outbox again under a new key, and the kiosk's Done opened the personal welcome page; a report still waiting to send is kept when the device is cleared (SCL-06)",
+    "tests/e2e/resident.spec.ts (AC-A07: after \"Clear my answers\" no stored key or answers remain and the next person starts clean; on the kiosk after Done nothing of the report is in what the device keeps, read with its own key, nor on screen, nor one step back; AC-A07, WCAG 2.2.1: an open report warns at 9 minutes, \"I need more time\" keeps it, then it closes and the lookup screen says why, with nothing left in session storage), apps/web-resident/test/outbox.test.ts (clearing keeps a report still waiting, leaves nothing when none waits), apps/web-resident/test/storage.test.ts, apps/web-resident/test/idle.test.ts",
+    "The kiosk keeps its device key so unsent reports survive a restart (CHN-07), by design."
+  ],
+  "AC-A09": [
+    "pass",
+    "Questions helper_name, helper_consent (required) and subject_name; the contact question is asked of the helper as the helper and never of the person helped; the worker files separate helper and subject parties, the subject with no contact; lookup matches only the reporter's contact; an assisted entry records on the report, for the reviewer, whether the person agreed (flags assisted_consent or assisted_no_consent; the kiosk derives it from the relationship and the helper's answer, 2026-10-16)",
+    "tests/e2e/resident.spec.ts (AC-A09: \"I am helping someone else report\" by keyboard, the helper's name, \"I cannot ask them right now\", the person's name and the helper's contact in that order, both names on the review; only the helper's email gets a one-time code and opens the report, another address gets none), packages/intake/test/graph.test.ts (HLP-01), services/worker/test/intake.db.test.ts (separate affected-person party), services/api/test/reports.db.test.ts (assisted intake; the helper cannot approve it), apps/web-resident/test/state.test.ts (the kiosk's consent record)",
+    "What a helper may see later follows DEC-10."
+  ],
+  "AC-A08": [
+    "pass",
+    "layer 7: the Find help ask box uses fixed rules, no model, and sits beside the list and the form without replacing them (apps/web-help/src/main.ts, services/api/src/public/ask.ts); the resident form's questions and guidance stand without AI, extraction suggestions are optional (layer 2)",
+    "layer 7: tests/e2e/help.spec.ts (the list stays beside the ask box, AC-A08), services/api/test/public.db.test.ts (AI-10: a provider that times out leaves the resident answering directly), services/api/test/public-ask.test.ts",
+    ""
+  ],
+  "RULE-13": [
+    "pass",
+    "AI output takes effect only through a person: an interpreted command is a plan run on confirmation through the console's own operation (routes/commands.ts, ADR-0044); drafts come back unsaved or marked drafted (routes/drafting.ts); the severity suggestion never sets the degree (reports.ts); extraction candidates need the resident's confirm",
+    "services/api/test/commands.db.test.ts (CMD-03: the plan shows the reading; cancel and confirm recorded), drafting.db.test.ts (summary still drafted and unapprovable; Boxes 8/9 not saved), severity.db.test.ts (PHO-11), tests/e2e/console-l7.spec.ts (confirmed plan, undo)",
+    ""
+  ],
+  "RULE-15": [
+    "pass",
+    "DELETE /me/command-history (routes/commands.ts) removes only the person's messages, writes cg.deletion_log and audits command.history_cleared; cg.command_execution (0056) and the audit are never cleared; worker jobs/commands.ts sweeps history after 30 days, never under a legal hold (0058)",
+    "services/api/test/command-history.db.test.ts (SEC-13: a legal hold stops clearing; RULE-15: clearing is logged and audited and the executions stay), packages/authz/test/guardrail-G5.test.ts (nobody edits or deletes audit records)",
+    ""
+  ],
+  "RULE-18": [
+    "pass",
+    "routes/commands.ts resolveTarget: names and references become ids among the records the person may see, through the console's list operations; more than one asks (CMD-08); times are read on the organization's clock and vague ones refused (commands/parse.ts resolveWhen, CMD-10); the plan binds record versions before confirmation",
+    "services/api/test/commands.db.test.ts (CMD-08, AC-C02: more than one match asks; CMD-10: \"14:30\" on the organization's clock), services/api/test/commands.test.ts (CMD-10: daylight saving; does not guess \"tomorrow morning\")",
+    "Command targets are missions, needs and reminders; no command acts on a property by address yet, so property resolution has no case."
+  ],
+  "AI-01": [
+    "pass",
+    "Every AI feature is provisioned off (cg.ai_use_register, 0054) and every caller keeps its manual path: the rules' drafts stay (drafting.ts, 409 ai_off), shorthand needs no model (commands/parse.ts), the reviewer sets the degree without a suggestion, residents answer directly (public/routes.ts), translation off points to an interpreter",
+    "services/api/test/drafting.db.test.ts (AI-10: off, the rules' summary stays), severity.db.test.ts (AI-10), scribe.db.test.ts and translation.db.test.ts (AI-10), commands.db.test.ts (Section 30.2 shorthand), tests/e2e/console-l7.spec.ts and console-l6.spec.ts (assistant off)",
+    ""
+  ],
+  "AI-02": [
+    "pass",
+    "Command targets resolve through the console's list operations with the person's own credentials (routes/commands.ts resolveTarget, CMD-21); drafting routes authorize first and send only that record's computed facts (drafting.ts, declaration.ts, sites.ts, official-reports.ts); the hand-over reads the worker's own shift; redaction first (redact.ts)",
+    "services/api/test/commands.db.test.ts (CMD-08: someone else's reminders are not matched; CMD-21: refused before anything is planned), drafting.db.test.ts (a role without the action refused), scribe.db.test.ts (contact details never reach the model)",
+    ""
+  ],
+  "AI-03": [
+    "pass",
+    "cg.ai_output (0055) records each output's provider, model and what a person did (accepted, edited, rejected); report sections stay 'drafted' until saved; suggestions read \"AI suggestion — not verified\" (reports.ts); machine translation labelled (translation.ts, reports.ts); scribe drafts await the worker; AI audio says it is computer-generated",
+    "services/api/test/drafting.db.test.ts (still labelled as drafted; saving clears it and records accepted), severity.db.test.ts (PHO-10), translation.db.test.ts (FL-14, AIG-01: comes back labelled), reports.db.test.ts (translation labelled, EQ-08), scribe.db.test.ts",
+    ""
+  ],
+  "AI-04": [
+    "pass",
+    "LanguageModel.draft returns sentences each citing fact ids (packages/ai/src/types.ts, prompt.ts); checkDraft refuses an uncited sentence or a figure its facts do not hold (packages/ai/src/drafting.ts); the report summary carries the 'Figures as of' fact and keeps the citations (official-reports.ts); the console shows the facts each sentence uses",
+    "packages/ai/test/drafting.test.ts (the draft check), services/api/test/drafting.db.test.ts (CMD-16, AI-04: drafted from the facts, cited; DCL:DEC-14 Boxes 8 and 9 cited)",
+    ""
+  ],
+  "AI-05": [
+    "pass",
+    "Unknown facts are null and the draft prompt says \"not known yet\", never a number (packages/ai/src/prompt.ts); checkDraft refuses a figure for an unknown; Box 8 facts state what is not verified yet (packages/reporting/src/declaration-facts.ts); the severity suggestion carries a confidence or \"cannot tell\"; extraction candidates carry a confidence",
+    "packages/ai/test/drafting.test.ts (refuses ... a figure for an unknown), packages/ai/test/openai.test.ts (PHO-12: one of the degrees or cannot tell), services/api/test/severity.db.test.ts (confidence shown)",
+    ""
+  ],
+  "AI-06": [
+    "pass",
+    "Every change from the command window waits for a confirmation bound to the plan's hash and record versions (routes/commands.ts, ADR-0044); setting the degree, enabling a feature and running an evaluation need the confirmation with a reason (reports.ts /fema-degree, ai-register.ts); drafts and scribe notes are saved only by a person",
+    "services/api/test/commands.db.test.ts (AC-C06: a change waits for a confirmation bound to its plan; AC-C04: stale plan), ai-register.db.test.ts (evaluation refused without confirmation), severity.db.test.ts (PHO-11), tests/e2e/console-l7.spec.ts",
+    ""
+  ],
+  "AI-07": [
+    "pass",
+    "cg.command_execution.confirmed_by and the command.execute audit (0056); cg.ai_output human_action, acted_by and acted_at (0055, recordHumanAction) for kept, edited or rejected drafts, interpretations and suggestions; review_decision.ai_suggestion_id and agreed_with_ai with the reviewer (reports.ts)",
+    "services/api/test/commands.db.test.ts (AC-C06: confirmed_by and the command.execute audit; CMD-03: cancel and confirm recorded), severity.db.test.ts (PHO-11: rejected, by the reviewer), drafting.db.test.ts (AIG-01: kept and edited recorded)",
+    ""
+  ],
+  "AI-08": [
+    "pass",
+    "Structured replies use strict JSON schemas and are validated on the server (providers/openai.ts, extraction.ts validateExtraction); an interpreted command is one shorthand line parsed and checked like typed shorthand and run through the console's own operation (routes/commands.ts); drafts pass checkDraft and the output filter",
+    "packages/ai/test/ai.test.ts (AIG-03: drops unknown questions, invalid values, restricted questions), packages/ai/test/openai.test.ts (PHO-12: an unlisted degree becomes cannot tell), services/api/test/commands.db.test.ts (CMD-03)",
+    ""
+  ],
+  "AI-09": [
+    "pass",
+    "checkDraft refuses figures the facts do not hold (packages/ai/src/drafting.ts); scribe lines whose words were not said are dropped (routes/scribe.ts); discovery keeps only places a cited page states (providers/openai.ts); the severity suggestion is never a finding (reports.ts); recommendations come from rules, never a model (REC-12)",
+    "packages/ai/test/drafting.test.ts, services/api/test/drafting.db.test.ts (AI-04, AI-09: refused, recorded, never shown), scribe.db.test.ts (AI-09, AIG-02: a line nobody said is dropped), packages/ai/test/openai.test.ts (REC-13: only places a cited page states)",
+    ""
+  ],
+  "AI-10": [
+    "pass",
+    "callAi turns every failure, refusal, timeout or bad reply into an outcome (packages/ai/src/records.ts); each caller records it and takes its manual path (public/routes.ts intake, drafting.ts, commands.ts shorthand, worker photos.ts and severity.ts); per-call timeouts (providers/openai.ts, BRD:INT-04); the ai-health job raises a failures alert",
+    "packages/ai/test/records.test.ts (callAi), openai.test.ts (AI-10, BRD:INT-04: typed errors), services/api/test/public.db.test.ts (AI-10, AIG-01: a timeout; the resident answers directly), services/worker/test/ai-health.db.test.ts (AI-10), severity.db.test.ts, drafting.db.test.ts",
+    ""
+  ],
+  "AI-11": [
+    "pass",
+    "OPENAI_COMPLIANCE (US processing, zero retention, no training; Adam's statement of 2026-10-15) in packages/ai/src/providers/openai.ts; register columns us_region, zero_retention, no_training (0016, set for OpenAI by 0054); canEnable refuses a non-compliant or unevaluated provider (registry.ts, PATCH /ai-register/:feature)",
+    "packages/ai/test/ai.test.ts (a feature can be enabled only for a compliant, evaluated provider (AIG-06)), services/api/test/ai-register.db.test.ts (nothing enabled without a configured, evaluated provider)",
+    "Approved by Adam on 2026-10-15 (docs/decisions.md, ADR-0043); the agreement itself is still to be attached to the register (see AIG-06)."
+  ],
+  "AI-12": [
+    "pass",
+    "packages/ai/src/evaluation/harness.ts scores, per language, the expected answers found and the wrong ones (omissions and errors), plus injection and command cases, against THRESHOLDS; checkDraft refuses any draft stating a figure its facts do not hold (packages/ai/src/drafting.ts)",
+    "packages/ai/test/ai.test.ts (the labelled set in both languages; command window cases), packages/ai/test/live.test.ts (the same set against OpenAI on demand), packages/ai/test/drafting.test.ts",
+    "Drafting, scribe and translation faithfulness are checked on every output, not by labelled cases in the suite (see AIG-08)."
+  ],
+  "AIG-01": [
+    "pass",
+    "cg.ai_register (migration 0016), packages/ai/src/registry.ts, routes/ai-register.ts, console AI use register; layer 7: 16 features in AI_FEATURES (command window, scribe, hand-over, translation, discovery, drafting, speech, photo.severity), register rows by 0054, 0057, 0065–0070; cg.ai_output (0055) records each call's provider, model, template version, latency, outcome and human action; photo.quality retired from the register by migration 0074 (no provider call ever existed; PHO-03 runs on the device)",
+    "packages/ai/test/ai.test.ts (register lists every feature with a human checkpoint), services/api/test/public.db.test.ts (register seeded), tests/e2e/console.spec.ts; layer 7: public.db.test.ts (ADR-0043, AIG-01, AIG-08), severity.db.test.ts, drafting.db.test.ts and commands.db.test.ts (AIG-01 records)",
+    "The layer-2 table is named cg.ai_use_register. The register now lists only features that call a provider (plan reading 20)."
+  ],
+  "AIG-02": [
+    "pass",
+    "packages/ai/src/prompt.ts (delimited data fields, instructions ignored inside); layer 7: OpenAI calls carry untrusted content only as delimited data in the user input (providers/openai.ts): resident text, staff requests, conversations, draft facts, web pages; an injection attempt yields nothing (fail closed)",
+    "packages/ai/test/ai.test.ts (injection cases), services/api/test/public.db.test.ts (injection blocked); layer 7: openai.test.ts (AIG-02, AIG-03; CMD-11; FL-04, AIG-02), drafting.test.ts (facts as data), scribe.db.test.ts (AI-09, AIG-02), commands.db.test.ts (injection refused)",
+    ""
+  ],
+  "AIG-03": [
+    "pass",
+    "packages/ai/src/extraction.ts (fixed JSON schema validated server side; no tools); layer 7: OpenAI Responses API with a strict JSON schema and store off, no tools; the server still validates before display (providers/openai.ts, public/routes.ts)",
+    "packages/ai/test/ai.test.ts; layer 7: packages/ai/test/openai.test.ts (AIG-02, AIG-03: strict schema with store off)",
+    ""
+  ],
+  "AIG-04": [
+    "pass",
+    "command.interpret returns at most one shorthand line from the catalog (providers/openai.ts interpretCommand; no tools, no credentials); the server parses it and runs only catalogued actions through the console's own operations with the person's credentials and authorization (routes/commands.ts, commands/catalog.ts, ADR-0044)",
+    "packages/ai/test/openai.test.ts (CMD-03, CMD-11, CMD-12: at most one line of shorthand), services/api/test/commands.test.ts (CMD-12: every command names an authorization action), commands.db.test.ts (CMD-21; CMD-03: injection refused)",
+    ""
+  ],
+  "AIG-05": [
+    "pass",
+    "packages/ai/src/redact.ts (tokens for phones, emails, addresses, identifiers); layer 7: names join the redaction (names the record knows, self-introductions and titles, English and Spanish), applied before the command window, scribe, hand-over and field voice calls and put back for the worker; discovery sends no personal data; layer 7: names joined the redaction (redact.ts); the scribe transcript, hand-over facts and discovery scope are redacted before a model sees them; the severity classifier gets only blurred, detector-cleared photos",
+    "packages/ai/test/ai.test.ts; layer 7: packages/ai/test/redact.test.ts, services/api/test/scribe.db.test.ts (FL-04, AIG-05), handover.db.test.ts (AI-10, AIG-05: addresses never reach the model); layer 7: packages/ai/test/redact.test.ts, services/api/test/scribe.db.test.ts (contact details never reach the model), handover.db.test.ts (addresses never reach the model), severity.db.test.ts (uncleared photos never sent)",
+    ""
+  ],
+  "AIG-06": [
+    "partial",
+    "registry.ts provider flags usRegion/zeroRetention/noTraining gate enablement; layer 7: OPENAI_COMPLIANCE records US processing, zero retention and no training for OpenAI (providers/openai.ts, ADR-0043); migration 0054 sets the register rows; PATCH /ai-register/:feature refuses a provider not configured or not compliant",
+    "packages/ai/test/ai.test.ts (a feature can be enabled only for a compliant, evaluated provider); layer 7: services/api/test/ai-register.db.test.ts (nothing enabled without a configured provider)",
+    "OpenAI is recorded on Adam's statement of 2026-10-15 that the Mennelabs organization has zero data retention; the agreement itself is not yet attached to the register as ADR-0043 asks."
+  ],
+  "AIG-07": [
+    "pass",
+    "packages/ai/src/filter.ts; layer 7: every AI draft passes filterGeneratedText after checkDraft (routes/drafting.ts); a public text may carry the county's own published numbers (publicContacts), anyone else's is refused; the staff-facing scribe marks advice-like lines for a second look (routes/scribe.ts)",
+    "packages/ai/test/ai.test.ts (blocks eligibility, promises, medical and legal advice, contact data); layer 7: ai.test.ts (the county's own help line, nobody else's), drafting.db.test.ts (PUB-11, AIG-07)",
+    ""
+  ],
+  "AIG-08": [
+    "partial",
+    "packages/ai/src/evaluation (labelled set in both launch languages), pnpm --filter @cg/ai evaluate; layer 7: command-window cases join the set; the live run against OpenAI (evaluate:live); POST /ai-register/evaluate queues worker ai.evaluate, which records the result and model on the register; enabling refuses an unevaluated or failed provider; packages/ai/src/evaluation/photos.ts and `evaluate:photos`: the damage classifier on an operator-supplied labelled set, accuracy by hazard, home type and income band, fails on a group behind or a regression against a baseline",
+    "packages/ai/test/ai.test.ts (passes the labelled set, blocks every injection case); layer 7: ai.test.ts (command window cases), live.test.ts (skipped without OPENAI_API_KEY), services/api/test/ai-register.db.test.ts (AIG-08: confirmed, queued, recorded, then enabled); packages/ai/test/photo-eval.test.ts",
+    "The photo harness exists but no labelled photo set ships; someone must supply and run a licensed or synthetic set before the severity suggestion is relied on. Re-evaluation after a model change is an administrator action, not automatic."
+  ],
+  "AIG-09": [
+    "partial",
+    "worker jobs/ai-health.ts every 10 minutes: per tenant, feature and language, corrections (incl. what residents did with extraction suggestions, worker intake.ts) and failures in the last 50 outputs; severity agreement by group (reporting agreement.ts); alerts in cg.ai_health_alert (0055, 0073), emailed once, audited; GET /ai-register/alerts; complaints (migration 0087): residents say the help went wrong by a fixed reason with no words (POST /api/public/intake/:tenant/ai-complaint, the same answer whether or not there was such help; \"This computer help got something wrong\" on the own-words step, English and Spanish), kept on that output once and counted as a third measure (default line 10%)",
+    "services/worker/test/ai-health.db.test.ts (AIG-09: one alert, told once, audited, the feature stays on; AI-10; clears), services/worker/test/intake.db.test.ts (AIG-09), services/api/test/severity.db.test.ts (PHO-13, AIG-09), tests/e2e/console.spec.ts (open alerts), services/api/test/public.db.test.ts (AIG-09: a fixed reason kept once, no words, the same answer for no such help, other reasons and staff features refused), services/worker/test/ai-health.db.test.ts (AIG-09 complaints: raised over 10%, cleared under it), tests/e2e/resident.spec.ts (AIG-09: the resident sends a reason by keyboard and is told the report is not changed; axe)",
+    "Alerts only, no automatic switch-off (Adam, 2026-10-15): a person switches a feature off in the register and the manual path runs."
+  ],
+  "AIG-10": [
+    "pass",
+    "Flow.tsx notice \"A computer helped fill in these answers\" with an off switch for the session; layer 7: unchanged with OpenAI behind extraction; when the feature is off or the provider fails the resident is told plainly to answer directly (public/routes.ts ai_off, ai_unavailable)",
+    "services/api/test/public.db.test.ts (AIG-10), apps/web-resident/test/state.test.ts; layer 7: public.db.test.ts (AI-10, AIG-01: a timeout; the resident answers directly)",
+    ""
+  ],
+  "AIG-11": [
+    "pass",
+    "docs/ai-rmf.md: the AI governance mapped to NIST AI RMF 1.0 (Govern, Map, Measure, Manage) and the Generative AI Profile (NIST AI 600-1), each row with its evidence and what is left to the buyer, plus the known gaps",
+    "",
+    "Written in layer-7 task K; a procurement document, so no automated test."
+  ],
+  "AIG-12": [
+    "pass",
+    "packages/ai/src/types.ts (LLM, speech, translation, image interfaces), providers/fake.ts, per-tenant providerFor; layer 7: OpenAIProvider fills every interface plus text to speech and the damage classifier (providers/openai.ts, ADR-0043), models from configuration; tenant setting ai.provider picks it (services/api/src/main.ts); the fake is a test double only; every output records provider and model",
+    "packages/ai/test/ai.test.ts; layer 7: openai.test.ts (ADR-0043: no key, no provider; models and base URL from configuration), services/api/test/ai-register.db.test.ts, public.db.test.ts (never the fake provider)",
+    ""
+  ],
+  "PHO-07": [
+    "pass",
+    "pipeline with blur_status, originals restricted, links only for roles with the evidence category; layer 7: the detector is OpenAI's vision model (photo.sensitive_regions, providers/openai.ts): boxes widened, content it cannot box precisely blurs the whole photo, a failed call keeps it restricted (worker photos.ts); the thumbnail comes from the blurred copy; the severity classifier sees only photos the detector cleared (blur_status = applied, worker severity.ts)",
+    "services/api/test/reports.db.test.ts, tests/integration/layer2.int.test.ts, services/worker/test/photos.test.ts (blurs the regions a detector reports); layer 7: packages/ai/test/openai.test.ts (PHO-07, reading 6), photos.test.ts (thumbnail from the blurred image), services/worker/test/intake.db.test.ts (no detector, restricted); services/api/test/severity.db.test.ts (PHO-07, AIG-05, GATE-08: a photo the detector did not clear is never sent; PHO-07, AIG-01, GATE-08: the detector through the register)",
+    "The detector is off until the tenant enables it; until then derivatives stay restricted (fail closed)."
+  ],
+  "PHO-09": [
+    "pass",
+    "worker jobs/severity.ts (report.severity, queued when a photo is processed): the DamageClassifier sees up to four blurred review copies with the home type and hazard and returns a degree or cannot_tell, a confidence and the visible features; cg.damage_suggestion (0071) keeps them with provider, model and prompt version; GET /reports/:id/suggestion",
+    "services/api/test/severity.db.test.ts (PHO-09, PHO-12, AIG-01: classified, recorded, not twice), packages/ai/test/openai.test.ts (PHO-12: one of the degrees or cannot tell)",
+    "From OpenAI's vision model (decided 2026-10-15); photo.severity starts off for every tenant."
+  ],
+  "PHO-10": [
+    "pass",
+    "GET /reports/:id/suggestion (reports.ts) answers only those who may set the degree, labelled \"AI suggestion — not verified\"; the console review panel after the FEMA matrix (apps/web-console/src/screens/review.tsx SeveritySuggestion); no resident route carries it",
+    "services/api/test/severity.db.test.ts (PHO-10: a reviewer reads it labelled as not verified; a role without review does not)",
+    ""
+  ],
+  "PHO-11": [
+    "pass",
+    "POST /reports/:id/fema-degree (report.set_degree, confirmation and reason) writes review_decision with ai_suggestion_id and agreed_with_ai and marks the AI record accepted or rejected by the reviewer (reports.ts); the suggestion never sets the degree",
+    "services/api/test/severity.db.test.ts (PHO-11, PHO-13: setting the degree records whether the reviewer agreed), services/api/test/reports.db.test.ts (DEC-02, DEC-03: set by reviewers with a reason)",
+    ""
+  ],
+  "PHO-12": [
+    "partial",
+    "DamageClassifier interface (packages/ai/src/types.ts, ADR-0043) filled by OpenAI's vision model (providers/openai.ts classify, template damage-classifier-1, at most four photos); register photo.severity starts off; each suggestion records provider, model and prompt version (0071) so a validated model replaces it by configuration",
+    "packages/ai/test/openai.test.ts (PHO-12), packages/ai/test/ai.test.ts (severity starts off), services/api/test/severity.db.test.ts (PHO-09, PHO-12)",
+    "Deviation decided by Adam on 2026-10-15: OpenAI's general vision model supplies the severity instead of a purpose-trained classifier evaluated on FEMA-matrix labels; the university-partner model, its model card and independent validation wait for the partnership."
+  ],
+  "PHO-13": [
+    "partial",
+    "packages/reporting/src/agreement.ts: reviewer agreement with the suggestion per model version, overall and by hazard, home type (conventional or manufactured) and income band (tract poverty quintile); GET /ai-register/severity-agreement and the console register table; a group behind raises a fairness alert (worker ai-health.ts, 0073); packages/ai/src/evaluation/photos.ts (`evaluate:photos`): accuracy by the same groups on a labelled set before launch, failing when a group is materially behind",
+    "packages/reporting/test/agreement.test.ts (per model; PHO-13: behind; unknown never behind), services/api/test/severity.db.test.ts (PHO-13, AIG-09), tests/e2e/console.spec.ts (agreement section, axe); packages/ai/test/photo-eval.test.ts (PHO-13)",
+    "Before launch: the harness is built, but the labelled set must be supplied and run. After launch: reviewer agreement by group with fairness alerts. A group behind alerts but does not stop the model (AIG-09 as decided 2026-10-15). The results are shown in the tenant register, not yet as a published model card."
+  ],
+  "PHO-14": [
+    "pass",
+    "queue ordered by need signals first (routes/reports.ts); layer 7: the latest AI severity suggestion orders only among reports with the same need signals (destroyed first, none or cannot tell last), then the oldest; the console says so",
+    "services/api/test/reports.db.test.ts, packages/intake/test/graph.test.ts (need signals); layer 7: severity.db.test.ts (PHO-14: the more severe suggestion first among equal needs; a need signal still first)",
+    ""
+  ],
+  "PHO-15": [
+    "partial",
+    "exact-image hash and address duplicates flagged for a person (worker intake.ts, photos.ts); layer 7: a 64-bit difference hash per photo (cg.photo.phash, 0072); a photo on another report of the tenant, from any event, within 6 bits flags near_duplicate_photo for a person",
+    "services/worker/test/intake.db.test.ts, services/worker/test/photos.test.ts; layer 7: photos.test.ts (a resized, recompressed copy within 6 bits; a different scene not), services/api/test/severity.db.test.ts (PHO-15)",
+    "Reverse-image matching against stock photos is not built: it waits for a provider that offers it."
+  ],
+  "DCL:DEC-02": [
+    "pass",
+    "services/api/src/routes/reports.ts /fema-degree (reviewers only, confirmation + reason), apps/web-console/src/screens/fema-matrix.ts; residents are never asked; layer 7: the AI suggestion informs the reviewer in a labelled panel after the matrix (screens/review.tsx), never residents; the decision records whether the reviewer agreed",
+    "services/api/test/reports.db.test.ts, tests/integration/layer2.int.test.ts (DEC-02/03), tests/e2e/console.spec.ts (console journey); layer 7: severity.db.test.ts (PHO-10, PHO-11)",
+    ""
+  ],
+  "DCL:DEC-14": [
+    "pass",
+    "Form 010-0-13 data drafted from the records (packages/reporting fema/package.ts), Box 10 from the joint assessment schedule; layer 7: POST /events/:id/declaration/ai-draft drafts Box 8 or 9 (at most 3,000 characters) from boxFacts (packages/reporting/src/declaration-facts.ts), each sentence cited and checked, returned unsaved; the save records kept or edited",
+    "packages/reporting/test/fema-package.test.ts, services/api/test/joint-pda.db.test.ts; layer 7: drafting.db.test.ts (DCL:DEC-14), tests/e2e/console-l6.spec.ts (the assistant says it is off)",
+    "The governor's office files; the platform never submits."
+  ],
+  "PUB-11": [
+    "pass",
+    "services/api/src/public/alerts.ts (WEA 90/360 and mass notification, EN/ES), POST /alerts/draft logged; layer 7: POST /alerts/ai-draft (public.drafting, publication.draft) redrafts one text within its channel length (90, 360, 1,000) from the site's facts, never a confidential site; /alerts/ai-draft/:outputId/kept records the copy; the county's help line passes the filter",
+    "services/api/test/help-units.test.ts; layer 7: drafting.db.test.ts (PUB-11, PUB-12, PUB-14, AI-04; PUB-11, AIG-07), tests/e2e/console-l7.spec.ts (PIO journey, assistant off)",
+    "Drafts only; the county sends through its own alert system."
+  ],
+  "PUB-12": [
+    "pass",
+    "services/api/src/public/alerts.ts drafts a social post (at most 280 characters) per site change in English and Spanish, with a card (heading, details, 911 and help line, alt text); POST /alerts/ai-draft (pio_post); console screens/sites.tsx draws the card as a 1200 × 630 graphic, downloads it as PNG and copies the text for the PIO",
+    "services/api/test/help-units.test.ts (PUB-12: the graphic's lines and alt text; social post), drafting.db.test.ts (PUB-11, PUB-12, PUB-14), tests/e2e/console-l7.spec.ts (graphics named by their alt text, PNG download, axe)",
+    "Drafts only; the PIO approves and posts."
+  ],
+  "PUB-14": [
+    "pass",
+    "services/api/src/public/alerts.ts drafts a Travelers' Information Station loop and an ARES/RACES net read-out per site change; POST /alerts/ai-draft (radio_script); POST /alerts/audio speaks an approved script with the AI voice (TextToSpeech, public.speech), saying the voice is computer-generated, kept in cg.public_audio (0067); the file plays for listening at once and is downloaded for air only once cleared by someone who may publish, after playing it to the end, with a reason (POST /alerts/audio/:id/clear, 0103; GATE-08); console 'Radio audio'",
+    "services/api/test/help-units.test.ts (PUB-12, PUB-14), drafting.db.test.ts (PUB-14, AIG-01, GATE-08: off, made, listed, listened, refused for air until cleared with a reason by the PIO, downloaded, recorded and audited), packages/ai/test/openai.test.ts (PUB-14), tests/e2e/console-l7.spec.ts (PIO journey: Clear off until the file has played to the end, cleared with a reason, downloaded for air, axe)",
+    "Scripts and audio in English and Spanish, the launch languages."
+  ],
+  "CON-12": [
+    "pass",
+    "apps/web-console/src/ui/command-window.tsx in the header of every signed-in workspace (App.tsx: always-visible button, Ctrl/Command+K, \"/\"); the field app's \"Ask or command\" (apps/field/app/command.tsx); one server path routes/commands.ts and commands/catalog.ts (0056–0059); command.use on every role template but the FEMA validator",
+    "packages/authz/test/templates.test.ts (CON-12, CMD-21: every role but the FEMA validator opens it), tests/e2e/console-l7.spec.ts (command window journey, desktop and phone, axe), tests/e2e/field.spec.ts (FL-07 step), services/api/test/commands.db.test.ts",
+    "The FEMA validator (outside, read-only) is the one role without it, and the CJIS enclave's separate app (apps/web-cjis) has none. Phases 1 and 2 are on by default, 3 and 4 per county (decided 2026-10-15)."
+  ],
+  "REC-01": [
+    "partial",
+    "0060 cg.facility and cg.facility_change, 0061 facility_recheck; routes/facilities.ts (/facilities, /facilities/:id/confirm, /facility-changes and decision: county EM approves, never their own proposal); POST /api/public/facilities/:tenant/register (form in apps/web-help/src/offer.ts); worker facility-recheck; screens/facilities.tsx; owners keep their own entry current: the yearly re-check email to the facility's own contacts carries a single-use link (migration 0079, only its SHA-256 stored, expires 30 days after the re-check date, travels encrypted to the message job, redacted from request logs); GET and POST /api/public/facilities/:tenant/update/:token show the entry without contacts and take corrections or \"nothing has changed\" as an owner_link proposal for the approval queue; approved, it starts the next yearly cycle; Find help opens the form filled in; spent links are swept with one-time codes",
+    "services/api/test/facilities.db.test.ts (REC-01: direct entry, COAD and mass care propose, stale after 12 months, public offer queued once, yearly re-check notice once), packages/authz/test/templates.test.ts (REC-01), tests/e2e/console-l7.spec.ts (REC-01), tests/e2e/help.spec.ts (REC-01 offer); services/api/test/facilities.db.test.ts (REC-01: the owner's link in the re-check email, shown without contacts, nothing changed, spent, approved and re-checked; a correction waits for approval), services/api/test/logging.test.ts (the link token never logged), tests/e2e/help.spec.ts (REC-01: the re-check link page and a spent link, with axe)",
+    "A partner organization's proposals are marked as the owner's but are untested, and partner row security does not see the county registry (layer-7 open item E2)."
+  ],
+  "REC-02": [
+    "pass",
+    "packages/reporting/src/recommend.ts (rules shelter-1) and recommend-sites.ts (feeding-1, pod-1, marc-1): hard filters before any score: no location, major or destroyed homes within 250 m, flood zone, road blockage within the radius plus 200 m, ADA no or unknown, outage with no or unknown backup power; recommend-load.ts reads the live conditions",
+    "packages/reporting/test/recommend.test.ts (REC-02, REC-10: hard filters run first, unknown never taken as yes), packages/reporting/test/recommend-sites.test.ts (unsafe or unknown places set aside), services/api/test/recommendations.db.test.ts (docs/02 scenario)",
+    ""
+  ],
+  "REC-03": [
+    "pass",
+    "recommend.ts weighted capacity, proximity, amenities, agreement and pets; POD and MARC weights in recommend-sites.ts; tenant recommendation.weights.shelter/.pod/.marc and recommendation.planning_factors; defaults and sources in docs/recommendations.md; every answer names what would change the top pick and stores the weights in force (0062)",
+    "packages/reporting/test/recommend.test.ts (REC-03: the tenant weights decide; what would change the top pick is named), services/api/test/recommendations.db.test.ts (tenant planning factors and weights recorded with the answer)",
+    ""
+  ],
+  "REC-04": [
+    "pass",
+    "POST /recommendations and /recommendations/:id/decision (routes/recommendations.ts, 0062): top three with reasons, every place set aside with why; accept, edit (another approved place, or feeding stops swapped) or reject with a reason, once, against the version, audited; recommendation.decide for county EM and mass care; screens/recommendations.tsx",
+    "services/api/test/recommendations.db.test.ts (REC-04: accept, edit or reject with a reason; decided once; the COAD may ask but not decide), tests/e2e/console-l7.spec.ts (REC-02–REC-12: top three, places set aside, accepted with a reason)",
+    ""
+  ],
+  "REC-05": [
+    "pass",
+    "recommend-sites.ts feeding-1: open food and water requests grouped within 2 km, the largest groups become stops, two windows a day per canteen (11:00–13:30, 16:30–19:00), meals per stop, the nearest safe site with parking, setup notes for a language (30% or more), pets and a chaplain or counselor; an edit swaps a stop",
+    "packages/reporting/test/recommend-sites.test.ts (docs/02 Sunday noon; the Cedar Ridge stop with Spanish, pet food and a chaplain), services/api/test/recommendations.db.test.ts (REC-05, REC-06: stops, windows, meals and setup notes; edited stop by stop)",
+    ""
+  ],
+  "REC-06": [
+    "partial",
+    "recommend-load.ts reads the active canteens on the roster (the county's and partners' shared with it) with their declared meals an hour (0063 cg.team.meals_per_hour, roster API mealsPerHour) and staff count; recommend-sites.ts caps a stop by the canteen's rate and says when it is unknown; teamIds picks canteens; the crew on the roster is a limit (engine feeding-2, planning factor canteenMinCrew 3): a full crew is a reason, a short crew a note to add volunteers, no crew an unknown; the console shows each canteen's crew",
+    "packages/reporting/test/recommend-sites.test.ts (REC-06, REC-10: an undeclared rate is unknown, never guessed; a canteen that cannot serve the window), services/api/test/recommendations.db.test.ts (REC-05, REC-06: the declared canteens and rates); packages/reporting/test/recommend-sites.test.ts (REC-06: crews), tests/e2e/console-l7.spec.ts (the crew column)",
+    "A partner cannot ask from its own workspace (its row security does not see the county registry or requests), so the county asks on its behalf (layer-7 open item E2)."
+  ],
+  "REC-07": [
+    "pass",
+    "recommend-sites.ts pod-1: people without power (customers × 2.5), half a day's share, the smallest FEMA type that serves them (III, II, I; more than one Type I past 20,000 a day), the first 72 hours' water, ice and meals from the planning factors; sites need semi-truck access and a large lot outside damage, flood zones, debris and blockages",
+    "packages/reporting/test/recommend-sites.test.ts (docs/02 Monday 10 am: one Type II POD and its 72-hour supplies; sizes up past 20,000), services/api/test/recommendations.db.test.ts (REC-07, REC-08: Type II POD on the fairgrounds lot)",
+    ""
+  ],
+  "REC-08": [
+    "pass",
+    "recommend-sites.ts pod-1: walk-up points where an affected tract has 15% or more households without a vehicle (Census ACS profile read by recommend-load.ts; factor walkUpNoVehiclePct), with a communications trailer while power is out; says so when vehicle data is not loaded",
+    "packages/reporting/test/recommend-sites.test.ts (a walk-up point where 23% have no vehicle; none where the tract is not affected), services/api/test/recommendations.db.test.ts (without Census data it says walk-up points cannot be suggested)",
+    ""
+  ],
+  "REC-09": [
+    "pass",
+    "recommend-sites.ts marc-1: the five largest recovery services from verified major and destroyed homes under the counting rule (housing, insurance help, disaster loans, legal aid for renters) and open requests; tables per 25 households and floor space; accessible sites near the damaged homes; interpreters from the languages residents reported in",
+    "packages/reporting/test/recommend-sites.test.ts (docs/02 Wednesday: partner mix, tables and floor space; interpreters Spanish first), services/api/test/recommendations.db.test.ts (REC-09: partner mix from verified damage, interpreters from the reports)",
+    ""
+  ],
+  "REC-10": [
+    "pass",
+    "facility attributes not known stay null and are listed as unknown (routes/facilities.ts, 0060); the rules never take unknown as yes (a must-have unknown sets a place aside) and list the other unknowns; every input carries its age with a stale warning (recommend.ts, recommend-load.ts); an undeclared canteen rate is said",
+    "packages/reporting/test/recommend.test.ts (REC-10: every input carries its age; unknown never yes), recommend-sites.test.ts (REC-06, REC-10), services/api/test/facilities.db.test.ts (REC-01, REC-10: unknowns stay unknown), services/api/test/recommendations.db.test.ts (inputs dated)",
+    ""
+  ],
+  "REC-11": [
+    "pass",
+    "every answer carries the equity check: households within reach by tract income band, renter share and limited English, with high-need tracts left uncovered flagged (recommend.ts, recommend-sites.ts over the tract profile from recommend-load.ts); shown on /console/recommendations",
+    "packages/reporting/test/recommend.test.ts (REC-11: coverage by income band, renters and language; a high-need tract out of reach flagged), recommend-sites.test.ts (Far Hills left out by the POD), services/api/test/recommendations.db.test.ts (REC-11), tests/e2e/console-l7.spec.ts",
+    ""
+  ],
+  "REC-12": [
+    "pass",
+    "pure, deterministic rules in packages/reporting (recommend.ts shelter-1; recommend-sites.ts feeding-1, pod-1, marc-1) with no language model in the path; the answer is stored exactly as shown with the rules version, weights and factors in force (0062 cg.recommendation)",
+    "packages/reporting/test/recommend.test.ts (REC-12: the same inputs always give the same answer), recommend-sites.test.ts (deterministic whatever the input order), services/api/test/recommendations.db.test.ts (REC-12: factors and weights recorded)",
+    "No AI-drafted explanation is offered yet: the reasons shown are the rules' own words (docs/recommendations.md, \"Not yet\"), so no generated text can depart from them."
+  ],
+  "REC-13": [
+    "pass",
+    "0064 cg.discovery_source, _run, _candidate; 0065 feature discovery.web_search; worker discovery (jobs/discovery.ts, discovery/places.ts): partner posts first, county HSDS/CSV/GeoJSON feeds via publicGet, OpenAI web search (discoverPlaces); source links, unknowns, pre-check, fingerprint; /discovery/* routes; screens/discovery.tsx",
+    "services/api/test/discovery.db.test.ts (REC-13: drafted, qualified in or set aside with a reason, rejected not proposed again, web search only once listed and on, closure left to a person), services/worker/test/discovery-places.test.ts, packages/ai/test/openai.test.ts (REC-13), tests/e2e/console-l7.spec.ts",
+    "OpenAI web search per decision 2026-10-15; it stays off until the county lists it and the register enables it, and its zero-retention coverage (AIG-06) awaits Adam's confirmation. Changes to registered places come from web search only; the feeds skip registered places."
+  ],
+  "REC-14": [
+    "pass",
+    "worker notifyDiscovery (jobs/discovery.ts): a candidate within 3 km of open food or shelter requests in an active event raised at once (discovery_alert, once); a digest of what is new, daily in an active event, weekly otherwise, by email (discovery_digest, EN/ES) to the reviewers, else the administrator; the console queue lists near-need first",
+    "services/api/test/discovery.db.test.ts (REC-14: the place near unmet need is raised at once; one digest per period, none again), services/worker/test/discovery-places.test.ts (REC-14: the ISO week across the year)",
+    ""
+  ],
+  "FL-04": [
+    "pass",
+    "0068 cg.scribe_session; routes/scribe.ts (/scribe/consent, /scribe/sessions: audio encrypted; OpenAI transcription, then scribeNote on the redacted text keeping only lines grounded in what was said; confirm deletes audio, transcript and draft, keeps the encrypted note); apps/field/app/scribe.tsx (consent, listening sign and timer, stop, check screen)",
+    "services/api/test/scribe.db.test.ts (FL-04: consent kept, audio encrypted, grounded draft, confirming keeps only the note), services/api/test/scribe-units.test.ts, packages/ai/test/openai.test.ts (FL-04 request shape), tests/e2e/field.spec.ts (consent in Spanish; off without a provider)",
+    "The 30-second review target is not measured. A recorded conversation through OpenAI on a device is a manual check (field-app accessibility record, check 10); automated tests use the test double. OpenAI transcription (decided 2026-10-15)."
+  ],
+  "FL-05": [
+    "pass",
+    "routes/scribe.ts: counseling and spiritual care refused for everyone; legal aid and child contexts off unless the tenant sets scribe.legal_aid or scribe.children; scribe.use never on the counselor/chaplain or nurse templates (packages/authz templates.ts); apps/field/app/scribe.tsx never offers counseling or spiritual care and says so",
+    "services/api/test/scribe.db.test.ts (AI-10, FL-05, FL:FR-16: counseling refused; legal aid and children off until turned on), packages/authz/test/templates.test.ts (FL-04, FL-05, FL:FR-16), tests/e2e/field.spec.ts (never for counseling, said on screen)",
+    ""
+  ],
+  "FL-07": [
+    "partial",
+    "apps/field/app/command.tsx \"Ask or command\" (home button for command.use): said with the keyboard's microphone or typed, plain words (read by the model when command.interpret is on) or shorthand; the plan is shown and confirmed on screen before anything saves; needs a connection and keeps nothing; routes/commands.ts over the catalog, which now has service.log (\"log two meals\": one tap, undone by a counter-entry, never an edit) and shift.end (\"I'm done here\": checks out the person's own open shift and puts them off duty); GET /check-ins?mine=true honours open",
+    "tests/e2e/field.spec.ts (FL-07: asks for its reminders from the phone), services/api/test/commands.db.test.ts (FL-07: log two meals and undo, check out, nothing to check out of; AC-C06: a change waits for a confirmation bound to its plan; CMD-03: plain words with the feature on), services/api/test/commands.test.ts (FL-07 shorthand in English and Spanish)",
+    "Referral to case management waits for the case-management work after layer 8 (decision 2026-10-15). A mission status change is the phase-3 command, on per county. Voice is the phone's own dictation, not server speech-to-text."
+  ],
+  "FL-12": [
+    "pass",
+    "0069 cg.shift_handover and feature field.handover; routes/handover.ts (GET /check-ins/:id/handover: facts and the rules' draft from the shift's own ICS 214 entries, open assignments and follow-ups; POST …/handover/ai-draft redacted and checked by checkDraft; POST …/handover before check-out; GET /handovers); apps/field/app/handover.tsx",
+    "services/api/test/handover.db.test.ts (FL-12: rules draft, AI off then on with no address reaching the model, kept recorded, the team reads it, too late after check-out), services/api/test/handover-units.test.ts, tests/e2e/field.spec.ts (FL-12: drafted, saved with check-out, read back)",
+    "The rules draft the summary; the OpenAI rewrite runs only when the register enables field.handover, and the worker confirms either."
+  ],
+  "FL-14": [
+    "pass",
+    "POST /translations (routes/translation.ts): one turn of a general conversation, English and Spanish either way, labelled with provider and model; consent, legal and medical refused (409 human_interpreter); the call recorded, never the words; 0070 field.translation; never the nurse; apps/field/app/translate.tsx with \"Bring in an interpreter\"",
+    "services/api/test/translation.db.test.ts (FL-14: off says ask for an interpreter; a labelled turn both ways, nothing of the words kept; consent, legal and medical refused; a nurse refused), tests/e2e/field.spec.ts (FL-14: medical points to an interpreter; one requested)",
+    "The one tap files a phone interpreter request into the queue (the interpreter screen also takes video); the interpreter joins outside the platform (FL:FR-24). OpenAI translation (decided 2026-10-15)."
+  ],
+  "FL-18": [
+    "pass",
+    "scribe.enabled per organization (each tenant, partners included) and register features scribe.transcription/scribe.note (0068); consent statement and method stored in the survivor's language; recording only on the scribe screen with the listening sign, stopped when the app or screen is left; audio deleted on confirmation; worker ai-health per-language alerts",
+    "services/api/test/scribe.db.test.ts (FL-18: the organization turns it off; FL-04: consent kept, audio deleted on confirming), services/api/test/scribe-units.test.ts (FL-18 consent statement), services/worker/test/ai-health.db.test.ts (AIG-09: per-language corrections alert; the feature stays on)",
+    "AI health alerts only (decided 2026-10-15): a language whose correction rate crosses the threshold alerts the administrator and the scribe keeps running; FL-18's automatic switch-off is not built. The no-background rule is checked by hand on a device."
+  ],
+  "FL:FR-16": [
+    "partial",
+    "layer 7: the counselor/chaplain template (crisis_counselor) has no scribe.use; routes/scribe.ts refuses the counseling and spiritual care contexts for everyone; apps/field/app/scribe.tsx says it is never for counseling, spiritual care or prayer",
+    "layer 7: services/api/test/scribe.db.test.ts (AI-10, FL-05, FL:FR-16: a counselor has no scribe; counseling refused), packages/authz/test/templates.test.ts (FL-04, FL-05, FL:FR-16), tests/e2e/field.spec.ts",
+    "The scribe part is met. The contact log (when, follow-up date, referral, no content) is not built; it comes with case management on the shared record after layer 8 (decided 2026-10-15)."
+  ],
+  "FL:FR-23": [
+    "partial",
+    "layer 7: a legal aid scribe conversation is off unless the tenant sets scribe.legal_aid, and its note is readable only by its author (scribe.read never covers legal aid; routes/scribe.ts); the attorney accepts and finishes referrals through routes/referrals.ts (referral.respond, earlier layers); a legal aid response to a referral shares only the status (accepted, declined, done as \"service given\"): the note is not stored, shown to the referring organization or written to the county audit (routes/referrals.ts keepsNotes; the legal aid attorney role or tenant setting referrals.confidential_outcomes)",
+    "layer 7: services/api/test/scribe.db.test.ts (FL:FR-23: with legal aid turned on, the note is only ever its author's), services/api/test/updates.db.test.ts (the legal aid attorney accepts and finishes a referral); services/api/test/updates.db.test.ts (FL:FR-23: the referring organization, the stored row and the audit carry no note text)",
+    "Legal aid's own case notes outside the shared record come with case management after layer 8 (decided 2026-10-15)."
+  ],
+  "FL:FR-24": [
+    "partial",
+    "interpreter_request queue by language with accept, start, finish and minutes (0033, routes/field-records.ts, apps/field/app/interpreter.tsx); layer 7: live translation's \"Bring in an interpreter\" files a request by language into that queue in one tap (apps/field/app/translate.tsx); every role with translation.use holds interpreter.request (packages/authz templates.ts)",
+    "services/api/test/fieldrecords.db.test.ts (FL:FR-24); layer 7: tests/e2e/field.spec.ts (FL:FR-24: requested from live translation, in mass care's queue), packages/authz/test/templates.test.ts (translation holders may request interpreters)",
+    "Joining a conversation remotely is still not built: the interpreter calls in by phone or video outside the platform."
+  ],
+  "EQ-08": [
+    "pass",
+    "routes/reports.ts /translate (labelled, provider recorded, original kept), packages/ai translation interface; layer 7: OpenAI translation behind the same interface (packages/ai/src/providers/openai.ts), gated by feature review.translation and recorded with provider and model; field live translation (POST /translations) labelled, keeping nothing",
+    "services/api/test/reports.db.test.ts (translation labelled, original kept, refused without free text); layer 7: packages/ai/test/openai.test.ts (translates text passed as data, keeping the detected language), services/api/test/translation.db.test.ts (labelled turn, nothing of the words kept)",
+    "OpenAI is the translation provider (decided 2026-10-15); without OPENAI_API_KEY translation is off and the original is shown."
+  ],
+  "SEC-13": [
+    "partial",
+    "position_trail retention with daily partitions dropped whole and logged (worker dropPositionTrails, 0029); categories field_records, badges (3 years), safety, comms, child_records (1 year); phone purge (field-core purge.ts); enclave retention per agency and category with floors in the schema (records at least 1 year, audit at least 7 years), default 7 years, legal holds, deletion log, hourly sweep (services/cjis-api/src/jobs.ts sweepRetention); layer 7: scribe audio deleted on confirming the note, logged as scribe_audio (routes/scribe.ts); unconfirmed conversations expire after 30 days, holds respected (worker scribe-expiry); command history 30 days, clearable, kept under a hold (0058, worker command-history); category sweeps (worker retention.ts, daily, migration 0077 worker-only delete policies): one-time codes, intake drafts, abuse signals, SMS and voice sessions, device commands, finished reminders and notices with their history, checked-out child records (1 year), badges no longer valid (3 years), inactive partner contacts not referenced (3 years) and resolved safety alerts; holds on category, record or event respected; deletion log and audit; public-records release (export kind public_records, migration 0078; packages/reporting public-records.ts): per event, period and kinds of record, column by column from the data dictionary, restricted, sensitive and criminal-justice columns, security values, residents' reference codes, links to people and places, free-form detail and household needs withheld and listed in REDACTIONS.csv; confidential sites left out; only issued reports; explicit action public_records.export (EM director, PIO), confirmed with a reason, only kinds the person may read; no webhook; console Records requests; 7-year sweeps (migration 0080 worker-only delete policies): field messages with their receipts and the communications log, finished referrals, revoked share grants not used by an open referral, superseded or withdrawn publications; field records 7 years after their event closes (migration 0081 worker-only delete policies): hand-overs, service logs, search marks, placards, road reports, debris tickets, inspections, pet intakes, interpreter requests, canvass visits, field assessments, assignments with their history, check-ins with the team status reports made under them and site walk-throughs; records of an open event never expire; a hold on the event, or on the mission, report or site a field record belongs to, keeps it; a check-in a log entry or alert still names stays; the field change feed is pruned after the sessions period (migration 0083: a per-tenant mark of the highest sequence removed, worker-only delete); a phone whose cursor is below the mark gets 410 cursor_expired, downloads its area package again and resumes from the package's cursor, once a round (routes/field-sync.ts, field-core sync.ts onResync, apps/field loadArea); conversation notes (scribe sessions) kept for the field-records period after confirmation, never while audio is stored, a hold on the related record keeping them (migration 0084); the roster (migration 0085): a person the records period after they were archived, with their credentials and team memberships, an archived team (a standing one from then, an event's from its close) and a lapsed credential; every record pointing at them keeps them, read from the database's foreign keys at each run; stored files (badge photo, certificate scan) deleted from object storage first, rows kept when storage cannot delete; a status report a communications entry names keeps its check-in or team",
+    "services/api/test/field.db.test.ts (SEC-13 / DSP-08), services/api/test/roster.db.test.ts (a 40-day-old day dropped); packages/cjis-db/test/enclave.db.test.ts (floors, holds), services/cjis-api/test/api.db.test.ts (retention sweep honours holds); layer 7: services/api/test/scribe.db.test.ts (FL-04, SEC-13: confirming deletes the audio; never confirmed expires after 30 days), services/api/test/command-history.db.test.ts (sweep past 30 days, not under a hold; a hold stops clearing); services/worker/test/retention.db.test.ts (also: old feed entries pruned and the mark set; the roster: an archived person, a lapsed credential and an archived team go with their stored files first, while a lead, a held, a recent and an active person, a valid credential, an open event's team and a team a communications entry names stay; without a store that can delete, files and rows stay), services/api/test/dispatch-sync.db.test.ts (SEC-13: below the mark 410, at it 200), packages/field-core/test/sync.test.ts (SEC-13: resync once a round, a failed resync keeps the cursor) (expired and finished rows go with their history, the 7-year communications, referrals, grants and publications included; fresh, open, referenced and held rows stay; logged and audited; the API role still cannot delete a badge); packages/reporting/test/public-records.test.ts (no restricted, sensitive or CJI column of any kind released; the ZIP's files), services/api/test/exports.db.test.ts (SEC-13: 428 without a reason, 403 for a kind the PIO cannot read, no address, reference code or confidential site in any file, audited), tests/e2e/console-l7.spec.ts (SEC-13 journey)",
+    "Not yet swept: the core records (reports, needs, missions, photos and their free text), whose deletion runs across many linked tables and object storage; the plan for them waits on four questions (docs/plans/sec-13-core-records.md). Devices and stock are equipment, not personal data, and follow the core records they serve; The public-records release withholds sensitive columns as well as restricted ones (plan reading, for Adam to confirm)."
+  ],
+  "INT-12": [
+    "pass",
+    "Flow.tsx own words typed or dictated (browser speech), services/api/src/public/routes.ts /extract, packages/ai/src/extraction.ts; layer 7: dictation goes through the tenant provider, never the browser speech recognition (which sends audio to Google or Apple): POST /api/public/intake/:tenant/dictation (public/dictation.ts, intake.transcription on the register), the resident app records on the device (intake/speech.ts) and the words come back into the text box",
+    "services/api/test/public.db.test.ts (extraction through the fake provider), packages/ai/test/ai.test.ts, tests/e2e/resident.spec.ts (own words); layer 7: services/api/test/public.db.test.ts (INT-12, AIG-06, AI-10: dictation through the tenant provider only when allowed; nothing kept; the call recorded), tests/e2e/resident.spec.ts (no \"Speak instead\" without the service)",
+    "Dictation needs OPENAI_API_KEY and the register switch; without them residents type or use their phone keyboard dictation (plan reading 19)."
+  ],
+  "PHO-03": [
+    "pass",
+    "apps/web-resident/src/intake/photos.ts dark/flat frame check with one retake suggestion; layer 7: the on-device check is the only quality coaching; the unused AI register row photo.quality was retired (0074)",
+    "apps/web-resident/test/photos.test.ts",
+    ""
+  ],
+  "GATE-02": [
+    "pass",
+    "",
+    "layer 5 adds tests/integration/layer5.int.test.ts, services/cjis-api/test/api.db.test.ts, packages/cjis-db/test/enclave.db.test.ts, services/api/test/cjislink.db.test.ts, tests/e2e/cjis.spec.ts, tests/e2e/console-l5.spec.ts on top of the earlier suites; layer 7: every layer-7 database suite in CI, packages/ai and packages/reporting unit suites, tests/e2e/console-l7.spec.ts, console.spec.ts, field.spec.ts, help.spec.ts, resident.spec.ts (docs/plans/layer-7-gates.md)",
+    "Acceptance cases listed in this table; the layer merges only on green CI."
+  ],
+  "GATE-03": [
+    "partial",
+    "design foundation: packages/ui showcase under axe in both themes on desktop and phone (CI checks job); tools/preview/console-preview.mjs and public-preview.mjs; docs/a11y/screens/console-frame-and-home.md",
+    "axe on every released screen, including the enclave screens and the console's CJIS panel (tests/e2e/cjis.spec.ts, tests/e2e/console-l5.spec.ts); layer 7: axe on every layer-7 screen state the journeys reach, with reflow on the phone; records docs/a11y/screens/command-window.md, facilities.md, recommendations.md, discovery.md and the layer-7 notes on earlier records; every console screen no task journey opens (layer-1 administration, layer-3 resources and partner agreements, layer-4 replay, shelters, reception, net control, messages, badges, reminders, devices) opened one by one with axe on desktop and phone (tests/e2e/console-screens.spec.ts); packages/ui/test/showcase.spec.ts (the design showcase under axe in both themes on desktop and phone)",
+    "Manual screen-reader passes pending a person, as before; the field app also needs a device pass."
+  ],
+  "GATE-04": [
+    "pass",
+    "",
+    "guardrail suites, layer1.int.test.ts, stack.int.test.ts; tests/integration/layer5.int.test.ts (no CJI across the boundary), services/api/test/cjislink.db.test.ts, services/cjis-api/test/api.db.test.ts (qualification and agency scope); layer 7: services/api/test/authz-sweep.db.test.ts (all 364 staff routes: no success and no server error without a token or with no role; an administrator gets 200 through the same harness), per-feature permission cases (docs/plans/layer-7-gates.md)",
+    "No known bypass in released functionality."
+  ],
+  "GATE-05": [
+    "pass",
+    "",
+    "layer1.int.test.ts (idempotency, versions), DB tests; services/cjis-api/test/api.db.test.ts (enclave versions and idempotency); layer 7: commands.db.test.ts (confirming twice claims once; stale plan runs nothing; undo once), facilities.db.test.ts (old version refused; retried offer makes no second), recommendations.db.test.ts (decided once), discovery.db.test.ts, handover.db.test.ts, severity.db.test.ts",
+    ""
+  ],
+  "GATE-08": [
+    "partial",
+    "",
+    "docs/plans/layer-7-gates.md and layer-7-gate-08.md: every AI feature against confirmation, scope, injection defences, verified results and manual fallback, with the tests; J2 added the off and failing paths for review translation, extraction, scribe, field translation, discovery, declaration and public drafting, the hand-over refusal, the classifier and the detector; 2026-10-16: scribe.db.test.ts (the note model failing), fieldwork.db.test.ts FLD-09 (the voice draft provider failing), packages/ai/test/ai.test.ts (GATE-08: hidden instructions for the scribe note, drafting, translation, the damage classifier, the sensitive-region detector (an exercise plate under a sign saying the photo is already redacted) and discovery (a listed place's name telling it to report every listed place closed) in the evaluation set; a provider that follows one fails), tests/e2e/resident.spec.ts (GATE-08: each answer from the words waits for a yes; only a yes is submitted), tests/e2e/field.spec.ts (each drafted field waits for the volunteer; only the one used changes the assessment); drafting.db.test.ts and console-l7.spec.ts (PUB-14: AI radio audio cleared for air only once played to the end, with a reason)",
+    "Every AI feature now has its hidden-instruction case in the evaluation set. Remaining: the two newest (the detector's plate under a sign, discovery's listed name, added 2026-10-16) have run only against the test double; the live run with the provider's key (live.test.ts, AIG-08) is still to be done by someone who holds it."
+  ]
+}

@@ -14,12 +14,19 @@ import type {
   CommandInterpretRequest,
   DiscoveryOutput,
   DiscoveryRequest,
+  DraftOutput,
+  DraftRequest,
   ExtractionOutput,
   ExtractionRequest,
   ImageAnalysis,
   LanguageModel,
   ProviderInfo,
+  ScribeNote,
+  ScribeNoteLine,
+  ScribeNoteRequest,
+  SpeechRequest,
   SpeechToText,
+  TextToSpeech,
   Translator,
 } from '../types.ts';
 
@@ -27,7 +34,7 @@ const INFO: ProviderInfo = { provider: 'fake', model: 'keyword-rules', version: 
 
 /** Text that tries to instruct the system rather than describe damage (AIG-02 test cases). */
 const INJECTION =
-  /\b(ignore (all |the )?(previous|above|prior) instructions|system prompt|you are now|approve (this|my) report|mark (this|it) as (approved|destroyed)|developer mode|<\/?(system|instruction)>)\b/i;
+  /\b(ignore (all |the )?(previous|above|prior) instructions|system prompt|you are now|approve (this|my) report|mark (this|it) as (approved|destroyed)|developer mode|<\/?(system|instruction)>|ignora (todas )?las instrucciones (anteriores|previas)|ahora eres|modo (de )?desarrollador|aprueba (este|mi) (informe|reporte))\b/i;
 
 type Rule = { re: RegExp; questionId: string; value: string | string[]; confidence: number };
 
@@ -224,17 +231,99 @@ export class FakeLanguageModel implements LanguageModel {
     request: CommandInterpretRequest,
   ): Promise<AiOutput<CommandInterpretation>> {
     const started = performance.now();
-    const output = { ...interpret(request.text), language: detectLanguage(request.text) };
+    const output = {
+      ...interpret(request.text, request.onScreen ?? null),
+      language: detectLanguage(request.text),
+    };
     return { output, provider: INFO, latencyMs: performance.now() - started };
+  }
+
+  /**
+   * Tests only: each sentence of the conversation sorted by its words into
+   * needs, help given, follow-ups and referrals, quoted as said. Never more
+   * than was said; a sentence that tries to instruct the model sets the flag.
+   */
+  async scribeNote(request: ScribeNoteRequest): Promise<AiOutput<ScribeNote>> {
+    const started = performance.now();
+    const note: ScribeNote = {
+      needsHeard: [],
+      helpGiven: [],
+      followUps: [],
+      referrals: [],
+      injectionSuspected: INJECTION.test(request.transcript),
+    };
+    const rules: [keyof Omit<ScribeNote, 'injectionSuspected'>, RegExp][] = [
+      [
+        'referrals',
+        /\b(refer|referred|red cross|salvation army|case manag|cruz roja|ej[eé]rcito de salvaci[oó]n|refer[ií])/i,
+      ],
+      [
+        'followUps',
+        /\b(tomorrow|next week|come back|follow up|call you|ma[ñn]ana|la pr[oó]xima semana|volver[eé]|le llamo)/i,
+      ],
+      [
+        'helpGiven',
+        /\b(i gave|we gave|here is|here are|brought|le di|le dimos|aqu[ií] tiene|traje)/i,
+      ],
+      ['needsHeard', /\b(need|needs|we have no|out of|necesit|no tenemos|nos falta)/i],
+    ];
+    for (const sentence of request.transcript.split(/(?<=[.!?])\s+/)) {
+      const said = sentence.trim();
+      if (!said || INJECTION.test(said)) continue;
+      const hit = rules.find(([, re]) => re.test(said));
+      if (!hit) continue;
+      const line: ScribeNoteLine = { text: said.replace(/[.!?]+$/, ''), quote: said };
+      note[hit[0]].push(line);
+    }
+    return { output: note, provider: INFO, latencyMs: performance.now() - started };
+  }
+
+  /**
+   * Tests only: the rules' own draft, sentence by sentence, each citing the
+   * facts whose figures it holds; without a template, one sentence per fact.
+   */
+  async draft(request: DraftRequest): Promise<AiOutput<DraftOutput>> {
+    const started = performance.now();
+    const figures = (t: string) => new Set(figuresOf(t));
+    const sentences = request.template
+      ? request.template
+          .split(/(?<=[.!?])\s+/)
+          .filter((t) => t.trim())
+          .map((text) => {
+            const want = figures(text);
+            const cites = request.facts
+              .filter((f) => [...figures(`${f.label} ${f.value ?? ''}`)].some((x) => want.has(x)))
+              .map((f) => f.id);
+            return {
+              text,
+              factIds: cites.length ? cites : request.facts.slice(0, 1).map((f) => f.id),
+            };
+          })
+      : request.facts.map((f) => ({
+          text: `${f.label}: ${f.value ?? (request.language === 'es' ? 'aún no se sabe' : 'not known yet')}.`,
+          factIds: [f.id],
+        }));
+    // AIG-02: a fact whose words try to instruct the model is flagged; the draft check then refuses it.
+    const injectionSuspected = request.facts.some((f) =>
+      INJECTION.test(`${f.label} ${f.value ?? ''}`),
+    );
+    return {
+      output: { sentences, injectionSuspected },
+      provider: INFO,
+      latencyMs: performance.now() - started,
+    };
   }
 
   /**
    * Tests only: one fictional hall in the area with a fictional page, and a
    * closure for any listed place whose name says it closed. Never a real place.
+   * A listed name that tries to instruct the search is flagged and never acted
+   * on (AIG-02).
    */
   async discoverPlaces(request: DiscoveryRequest): Promise<AiOutput<DiscoveryOutput>> {
     const started = performance.now();
     const town = request.area.split(',')[0]!.trim();
+    const injectionSuspected = request.registered.some((r) => INJECTION.test(r.name));
     const places: DiscoveryOutput['places'] = [
       {
         name: `Exercise ${town} Community Hall`,
@@ -248,7 +337,7 @@ export class FakeLanguageModel implements LanguageModel {
         note: null,
       },
       ...request.registered
-        .filter((r) => /\bclosed\b/i.test(r.name))
+        .filter((r) => !INJECTION.test(r.name) && /\bclosed\b/i.test(r.name))
         .map((r) => ({
           name: r.name,
           kind: 'other' as const,
@@ -262,7 +351,7 @@ export class FakeLanguageModel implements LanguageModel {
         })),
     ].slice(0, request.max);
     return {
-      output: { places, injectionSuspected: false, dropped: 0 },
+      output: { places, injectionSuspected, dropped: 0 },
       provider: INFO,
       latencyMs: performance.now() - started,
     };
@@ -288,17 +377,30 @@ const STATUS_WORDS: [RegExp, string][] = [
  * one line of shorthand, a question, or nothing. The server parses the line
  * like typed shorthand, so these rules decide nothing.
  */
-function interpret(text: string): CommandInterpretation {
+function interpret(text: string, onScreen: 'mission' | 'need' | null): CommandInterpretation {
   if (COMMAND_INJECTION.test(text))
     return { shorthand: null, question: null, injectionSuspected: true };
   const t = text.toLowerCase();
-  const mission = MISSION_REF.exec(text)?.[0];
-  const need = mission ? undefined : NEED_REF.exec(text.toUpperCase())?.[0];
+  // CMD-06: "this" or "it" with a record open and no number given means that record.
+  const here = /\b(this|it|esta|este|esto)\b/i.test(t) ? onScreen : null;
+  const mission = MISSION_REF.exec(text)?.[0] ?? (here === 'mission' ? 'this' : undefined);
+  const need = mission
+    ? undefined
+    : (NEED_REF.exec(text.toUpperCase())?.[0] ?? (here === 'need' ? 'this' : undefined));
   if (need && /\b(claim|reclam|toma)/i.test(t))
     return { shorthand: `/need ${need} claim`, question: null };
   if (need && /\b(release|liber|suelta)/i.test(t))
     return { shorthand: `/need ${need} release`, question: null };
   if (mission) {
+    // DSP-04: "send the nearest chainsaw team" / "el equipo de motosierra más cercano".
+    const nearest =
+      /\b(?:nearest|closest)\s+(?:(\p{L}+)\s+)?(?:team|crew)\b/iu.exec(text) ??
+      /\bequipo\s+(?:de\s+)?(\p{L}+)?\s*m[aá]s\s+cercano\b/iu.exec(text);
+    if (nearest)
+      return {
+        shorthand: `/mission ${mission} send nearest ${nearest[1] ? `${nearest[1].toLowerCase()} ` : ''}team`,
+        question: null,
+      };
     for (const [re, to] of STATUS_WORDS)
       if (re.test(t)) return { shorthand: `/mission ${mission} status ${to}`, question: null };
     const note = /\b(?:note|nota)\b[:\s]+(.+)$/i.exec(text)?.[1];
@@ -323,6 +425,43 @@ function interpret(text: string): CommandInterpretation {
       question: null,
     };
   }
+  // FL-07: "log two meals", "registra tres comidas", "I'm done here".
+  const NUM: Record<string, string> = {
+    one: '1',
+    two: '2',
+    three: '3',
+    four: '4',
+    five: '5',
+    uno: '1',
+    una: '1',
+    dos: '2',
+    tres: '3',
+    cuatro: '4',
+    cinco: '5',
+  };
+  const logged =
+    /\b(?:log|registra|anota)\s+(\d+|one|two|three|four|five|uno|una|dos|tres|cuatro|cinco)\s+(meals?|comidas?|tarps?|lonas?|cots?|catres?|rides?|viajes?)\b/i.exec(
+      text,
+    );
+  if (logged)
+    return {
+      shorthand: `/log ${NUM[logged[1]!.toLowerCase()] ?? logged[1]} ${logged[2]!.toLowerCase()}`,
+      question: null,
+    };
+  if (
+    /\b(i'?m done here|i am done here|check me out|ya terminé aquí|ya termine aqui|terminé mi turno)\b/i.test(
+      t,
+    )
+  )
+    return { shorthand: '/checkout', question: null };
+  // CMD-14: who is free, by a recorded skill; nothing inferred.
+  if (/\b(who|quién|quien|people|personas)\b/i.test(t) && /\b(available|disponibles?)\b/i.test(t)) {
+    const skill = /\b(?:with|con)\s+(?:a\s+|an\s+)?([a-záéíóúñ]+)\b/i.exec(text)?.[1];
+    return {
+      shorthand: `/people available${skill ? ` skill:${skill.toLowerCase()}` : ''}`,
+      question: null,
+    };
+  }
   if (/\b(sitrep|situation report|informe de situaci[oó]n)\b/i.test(t)) {
     const hours = /(\d{1,3})\s*(hours?|horas?)/i.exec(t)?.[1];
     return { shorthand: `/sitrep${hours ? ` ${hours}` : ''}`, question: null };
@@ -339,6 +478,34 @@ export class FakeSpeechToText implements SpeechToText {
       provider: INFO,
       latencyMs: 0,
     };
+  }
+}
+
+/**
+ * Tests only: a silent 8 kHz WAV whose length follows the number of words
+ * (a tenth of a second each, at most ten seconds), so a test can tell a file
+ * was made for the script it sent. Never a voice.
+ */
+export class FakeTextToSpeech implements TextToSpeech {
+  async speak(request: SpeechRequest) {
+    const rate = 8000;
+    const words = request.text.split(/\s+/).filter(Boolean).length;
+    const samples = Math.min(rate * 10, Math.max(rate / 10, words * (rate / 10)));
+    const audio = Buffer.alloc(44 + samples, 128);
+    audio.write('RIFF', 0, 'ascii');
+    audio.writeUInt32LE(36 + samples, 4);
+    audio.write('WAVE', 8, 'ascii');
+    audio.write('fmt ', 12, 'ascii');
+    audio.writeUInt32LE(16, 16);
+    audio.writeUInt16LE(1, 20);
+    audio.writeUInt16LE(1, 22);
+    audio.writeUInt32LE(rate, 24);
+    audio.writeUInt32LE(rate, 28);
+    audio.writeUInt16LE(1, 32);
+    audio.writeUInt16LE(8, 34);
+    audio.write('data', 36, 'ascii');
+    audio.writeUInt32LE(samples, 40);
+    return { output: { audio, mimeType: 'audio/wav' }, provider: INFO, latencyMs: 0 };
   }
 }
 
@@ -376,6 +543,12 @@ export const fakeProvider: AiProvider = {
   languages: ['en', 'es'],
   llm: new FakeLanguageModel(),
   stt: new FakeSpeechToText(),
+  tts: new FakeTextToSpeech(),
   translation: new FakeTranslator(),
   image: new FakeImageAnalysis(),
 };
+
+/** Figures in a text, as the draft check reads them. */
+function figuresOf(text: string): number[] {
+  return [...text.matchAll(/\d[\d,]*(?:\.\d+)?/g)].map((m) => Number(m[0].replace(/,/g, '')));
+}

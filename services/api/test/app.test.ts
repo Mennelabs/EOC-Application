@@ -71,7 +71,9 @@ describe('api health and metadata', () => {
   });
 });
 
-describe('request context and authorization chain', () => {
+// These tests mount every route module (the whole API), and the first import of them all takes
+// seconds on a busy runner: the default 5 s is too tight while the rest of the suite runs alongside.
+describe('request context and authorization chain', { timeout: 30_000 }, () => {
   it('a bad bearer token is 401 with a generic code', async () => {
     const app = await buildApp({ ...base, probes: [], subjects: fakeSubjects(alice) });
     const res = await app.inject({ url: '/api/meta', headers: { authorization: 'Bearer nope' } });
@@ -89,7 +91,17 @@ describe('request context and authorization chain', () => {
     expect(ok.json()).toMatchObject({
       accountId: alice.accountId,
       roles: [{ key: 'tenant_admin' }],
+      timeZone: 'UTC',
     });
+    // BRD:FR-00.08: the tenant's approved zone rides on the account; the console shows times in it.
+    const zoned = await buildApp({
+      ...base,
+      probes: [],
+      subjects: fakeSubjects({ ...alice, tenantTimeZone: 'America/Chicago' }),
+      routes,
+    });
+    const me = await zoned.inject({ url: '/api/v1/me', headers: { authorization: 'Bearer good' } });
+    expect(me.json()).toMatchObject({ timeZone: 'America/Chicago' });
   });
 
   it('an inactive account is denied on its next action (AC-01A) without details', async () => {

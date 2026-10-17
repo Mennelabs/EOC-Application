@@ -7,12 +7,22 @@
  * server, which answers with a plan; nothing changes until the person
  * confirms it. Questions are labelled form controls; progress and results are
  * announced once in a polite live region. Unsent text stays in this tab only;
- * nothing is replayed by itself after a lost connection (CMD-34).
+ * nothing is replayed by itself after a lost connection (CMD-34). The record
+ * open on the screen is shown and is what "this" means, unless the person
+ * sets it aside (CMD-06); a change to a record with unsaved changes in a form
+ * asks before it runs (CMD-29, AC-C09).
  */
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { icons } from '@cg/ui';
 import { api, ApiFailure, describeFailure } from '../api/client.ts';
 import { Field } from './primitives.tsx';
+import {
+  announceChanged,
+  useCurrentScreenRecord,
+  useOpenDrafts,
+  type ScreenRecord,
+} from './screen-record.ts';
+import { formatTime } from './time.ts';
 
 interface CommandMeta {
   name: string;
@@ -39,6 +49,7 @@ export interface Execution {
     | 'awaiting_confirmation'
     | 'executing'
     | 'succeeded'
+    | 'partially_succeeded'
     | 'failed'
     | 'canceled'
     | 'stale';
@@ -49,6 +60,8 @@ export interface Execution {
     description: string;
     interpretation: string | null;
     target: { kind: string; id: string; label: string } | null;
+    /** CMD-30: how many records a batch covers. */
+    count: number | null;
   } | null;
   planHash: string | null;
   options: { kind: string; id: string; label: string }[];
@@ -56,6 +69,7 @@ export interface Execution {
     state: string;
     summary: string | null;
     records: { kind: string; id: string; label?: string }[];
+    failures?: { id: string; label: string; message: string }[];
   } | null;
   error: { status: number; code: string; message: string } | null;
   undoUntil: string | null;
@@ -75,6 +89,8 @@ interface Alias {
 }
 
 const DRAFT_KEY = 'cg.command.draft';
+/** Section 30.2: one confirmation covers this many records; more needs the count typed. */
+const BATCH_ONE_CONFIRMATION = 50;
 const PREFS_KEY = 'cg.command.prefs';
 
 interface Prefs {
@@ -146,15 +162,32 @@ const recordHref = (r: { kind: string; id: string }): string | null => {
       return `/console/official-reports/${r.id}`;
     case 'need':
       return '/console/needs';
+    case 'report':
+      return `/console/reports/${r.id}`;
     case 'reminder':
       return '/console/reminders';
+    case 'personnel':
+      return '/console/personnel';
+    case 'resource':
+      return '/console/resources';
+    case 'account':
+      return '/console/accounts';
+    // ADM-05: a requested role waits on the second administrator's approvals screen.
+    case 'permission_change_request':
+      return '/console/approvals';
+    case 'role_assignment':
+      return '/console/roles';
+    // CMD-16: an export is listed where it was asked for.
+    case 'ida_package':
+      return '/console/declaration';
+    case 'public_records':
+      return '/console/public-records';
     default:
       return null;
   }
 };
 
-const until = (iso: string) =>
-  new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+const until = (iso: string) => formatTime(new Date(iso));
 
 const reversalText = (c: CommandMeta) =>
   c.reversal === 'undo_15_min'
@@ -162,6 +195,15 @@ const reversalText = (c: CommandMeta) =>
     : c.reversal === 'compensating'
       ? 'This is not undone here: a mistake is corrected by a new entry, and both stay in the history.'
       : '';
+
+/** What a "which one?" answer sets: the event, the person or the record. */
+type Choice = { targetId?: string; eventId?: string; personId?: string };
+const choiceOf = (o: { kind: string; id: string }): Choice =>
+  o.kind === 'event'
+    ? { eventId: o.id }
+    : o.kind === 'personnel'
+      ? { personId: o.id }
+      : { targetId: o.id };
 
 export function CommandWindow({ navigate }: { navigate: (to: string) => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -173,6 +215,8 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
   const [current, setCurrent] = useState<Execution | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [choice, setChoice] = useState<string>('');
+  // CMD-30: a batch over 50 records is confirmed by typing how many.
+  const [typedCount, setTypedCount] = useState('');
   const [announce, setAnnounce] = useState('');
   const [history, setHistory] = useState<HistoryItem[] | null>(null);
   const [aliases, setAliases] = useState<Alias[] | null>(null);
@@ -180,6 +224,11 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
   const [aliasLine, setAliasLine] = useState('');
   const [aliasScope, setAliasScope] = useState<'personal' | 'organization'>('personal');
   const [aliasProblem, setAliasProblem] = useState<string | null>(null);
+  const onScreen = useCurrentScreenRecord();
+  // CMD-06: the person can set the screen's record aside; a new record is offered afresh.
+  const [setAside, setSetAside] = useState<string | null>(null);
+  const context: ScreenRecord | null = onScreen && setAside !== onScreen.id ? onScreen : null;
+  const drafts = useOpenDrafts();
   const titleId = useId();
   const shortcutLabel = `${navigator.platform.startsWith('Mac') ? 'Command' : 'Ctrl'}+${prefs.letter.toUpperCase()}`;
 
@@ -222,10 +271,18 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
 
   const settle = (e: Execution) => {
     setCurrent(e);
+    setTypedCount('');
+    // A screen showing the changed record reads it again.
+    if (e.status === 'succeeded' && e.plan?.target && e.command?.kind === 'change')
+      announceChanged(e.plan.target.kind, e.plan.target.id);
     setChoice('');
+    const unsaved =
+      e.status === 'awaiting_confirmation' &&
+      e.command?.kind === 'change' &&
+      drafts.some((d) => d.kind === e.plan?.target?.kind && d.id === e.plan?.target?.id);
     setAnnounce(
       e.status === 'awaiting_confirmation'
-        ? `Plan ready: ${e.plan?.description ?? ''} Check it, then confirm or cancel.`
+        ? `Plan ready: ${e.plan?.description ?? ''} ${unsaved ? 'You have unsaved changes to it on your screen: keep them or discard them first.' : 'Check it, then confirm or cancel.'}`
         : e.message,
     );
   };
@@ -240,9 +297,12 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
     setAnnounce(msg);
   };
 
-  const prepare = async (extra: { targetId?: string; eventId?: string } = {}) => {
+  // Choices made while answering "which one?" for this line: a mission, then a person, add up.
+  const chosen = useRef<Choice>({});
+  const prepare = async (extra: Choice | null = null) => {
     const line = text.trim();
     if (!line) return;
+    chosen.current = extra ? { ...chosen.current, ...extra } : {};
     setBusy(true);
     setProblem(null);
     setAnnounce('Working…');
@@ -252,7 +312,8 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
           executionId: crypto.randomUUID(),
           input: line,
           remember: !prefs.shared,
-          ...extra,
+          ...chosen.current,
+          ...(context ? { context: { kind: context.kind, id: context.id } } : {}),
         },
       });
       settle(e);
@@ -286,11 +347,34 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
     }
   };
 
+  const needsCount = (current?.plan?.count ?? 0) > BATCH_ONE_CONFIRMATION;
   const confirmPlan = () =>
     current?.id
-      ? act(`/commands/${current.id}/confirm`, { planHash: current.planHash })
+      ? act(`/commands/${current.id}/confirm`, {
+          planHash: current.planHash,
+          ...(needsCount ? { count: Number(typedCount) } : {}),
+        })
       : undefined;
   const cancelPlan = () => (current?.id ? act(`/commands/${current.id}/cancel`) : undefined);
+
+  // CMD-29, AC-C09: forms on the screen with unsaved changes to the record this change touches.
+  const target = current?.status === 'awaiting_confirmation' ? current.plan?.target : null;
+  const clash =
+    target && current?.command?.kind === 'change'
+      ? drafts.filter((d) => d.kind === target.kind && d.id === target.id)
+      : [];
+  const backToDrafts = async () => {
+    const draft = clash[0];
+    await cancelPlan();
+    // Focus goes to the form with the changes, not back to the window's button.
+    opener.current = null;
+    close();
+    draft?.focus();
+  };
+  const discardAndConfirm = async () => {
+    for (const d of clash) d.discard();
+    await confirmPlan();
+  };
   const undo = () =>
     current?.id
       ? act(`/commands/${current.id}/undo`, { executionId: crypto.randomUUID() })
@@ -371,6 +455,7 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
         denied: 'Not allowed for your role',
         awaiting_confirmation: 'Check the plan',
         executing: 'Running',
+        partially_succeeded: 'Partly done',
         succeeded: current.reversalOf
           ? 'Undone'
           : current.result?.state === 'drafted'
@@ -406,7 +491,7 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
         <form onSubmit={submit}>
           <Field
             label="Command"
-            hint="Shorthand starts with / (try /help), or ask in plain words. Nothing changes until you confirm a plan."
+            hint={`Shorthand starts with / (try /help), or ask in plain words.${context ? ` "This" means ${context.kind} ${context.label}.` : ''} Nothing changes until you confirm a plan.`}
             {...(problem ? { error: problem } : {})}
           >
             {({ id, describedBy, invalid }) => (
@@ -425,6 +510,16 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
               />
             )}
           </Field>
+          {onScreen ? (
+            <label className="choice">
+              <input
+                type="checkbox"
+                checked={context !== null}
+                onChange={(e) => setSetAside(e.target.checked ? null : onScreen.id)}
+              />{' '}
+              Let &ldquo;this&rdquo; mean {onScreen.kind} {onScreen.label}, open on your screen
+            </label>
+          ) : null}
           <div className="actions">
             <button type="submit" className="primary" disabled={busy}>
               {busy ? 'Working…' : 'Go'}
@@ -471,7 +566,7 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
                   e.preventDefault();
                   const o = current.options.find((x) => x.id === choice);
                   if (!o) return;
-                  void prepare(o.kind === 'event' ? { eventId: o.id } : { targetId: o.id });
+                  void prepare(choiceOf(o));
                 }}
               >
                 <fieldset>
@@ -519,20 +614,72 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
                     </>
                   ) : null}
                 </dl>
-                <div className="actions">
-                  <button type="button" onClick={() => void cancelPlan()} disabled={busy}>
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="primary"
-                    onClick={() => void confirmPlan()}
-                    disabled={busy}
+                {needsCount ? (
+                  <Field
+                    label={`Type ${current.plan.count} to confirm all of them`}
+                    hint={`This changes ${current.plan.count} records, more than ${BATCH_ONE_CONFIRMATION} at once.`}
                   >
-                    Confirm
-                  </button>
-                </div>
+                    {({ id, describedBy }) => (
+                      <input
+                        id={id}
+                        aria-describedby={describedBy}
+                        inputMode="numeric"
+                        autoComplete="off"
+                        value={typedCount}
+                        onChange={(e) => setTypedCount(e.target.value)}
+                      />
+                    )}
+                  </Field>
+                ) : null}
+                {clash.length ? (
+                  <div className="status info" role="group" aria-label="Unsaved changes">
+                    <p>
+                      You have unsaved changes to this {target!.kind} on your screen (
+                      {clash.map((d) => d.form).join(', ')}). This command changes the same{' '}
+                      {target!.kind}; nothing runs over your changes without your say.
+                    </p>
+                    <div className="actions">
+                      <button type="button" onClick={() => void backToDrafts()} disabled={busy}>
+                        Keep my changes and go back to them
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void discardAndConfirm()}
+                        disabled={busy}
+                      >
+                        Discard my changes and confirm
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="actions">
+                    <button type="button" onClick={() => void cancelPlan()} disabled={busy}>
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="primary"
+                      onClick={() => void confirmPlan()}
+                      disabled={busy || (needsCount && Number(typedCount) !== current.plan.count)}
+                    >
+                      Confirm
+                    </button>
+                  </div>
+                )}
               </>
+            ) : null}
+
+            {current.status === 'executing' && current.id ? (
+              <div className="actions">
+                {/* CMD-38: a command past the deadline is still running; ask again for its result. */}
+                <button
+                  type="button"
+                  onClick={() => void api<Execution>(`/commands/${current.id}`).then(settle, fail)}
+                  disabled={busy}
+                >
+                  Check again
+                </button>
+              </div>
             ) : null}
 
             {current.status === 'stale' ? (
@@ -543,7 +690,8 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
               </div>
             ) : null}
 
-            {current.status === 'succeeded' && current.result?.records.length ? (
+            {(current.status === 'succeeded' || current.status === 'partially_succeeded') &&
+            current.result?.records.length ? (
               <ul className="command-records">
                 {current.result.records
                   .map((r) => ({ r, href: recordHref(r) }))
@@ -564,6 +712,19 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
                     </li>
                   ))}
               </ul>
+            ) : null}
+
+            {current.result?.failures?.length ? (
+              <>
+                <h4>Not changed</h4>
+                <ul className="command-records">
+                  {current.result.failures.map((f) => (
+                    <li key={f.id}>
+                      {f.label}: {f.message}
+                    </li>
+                  ))}
+                </ul>
+              </>
             ) : null}
 
             {current.status === 'succeeded' && current.undoUntil ? (

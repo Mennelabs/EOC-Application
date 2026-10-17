@@ -53,6 +53,39 @@ const VERBS: Record<string, string> = {
   recuerdame: 'remind',
   sitrep: 'sitrep',
   informe: 'sitrep',
+  people: 'people',
+  personnel: 'people',
+  personas: 'people',
+  personal: 'people',
+  person: 'person',
+  persona: 'person',
+  reports: 'reports',
+  reportes: 'reports',
+  report: 'report',
+  reporte: 'report',
+  message: 'message',
+  mensaje: 'message',
+  resources: 'resources',
+  recursos: 'resources',
+  resource: 'resource',
+  recurso: 'resource',
+  contacts: 'contacts',
+  contactos: 'contacts',
+  log: 'log',
+  registrar: 'log',
+  anotar: 'log',
+  checkout: 'checkout',
+  check_out: 'checkout',
+  salida: 'checkout',
+  export: 'export',
+  exportar: 'export',
+  badge: 'badge',
+  credencial: 'badge',
+  gafete: 'badge',
+  account: 'account',
+  cuenta: 'account',
+  role: 'role',
+  rol: 'role',
   help: 'help',
   ayuda: 'help',
 };
@@ -77,6 +110,28 @@ const SUBVERBS: Record<string, string> = {
   complete: 'done',
   hecho: 'done',
   completar: 'done',
+  priority: 'priority',
+  prioridad: 'priority',
+  assign: 'assign',
+  asignar: 'assign',
+  // DSP-04: "send the nearest chainsaw team".
+  send: 'assign',
+  enviar: 'assign',
+  mandar: 'assign',
+  close: 'close',
+  cerrar: 'close',
+  reopen: 'reopen',
+  reabrir: 'reopen',
+};
+
+const PRIORITIES: Record<string, string> = {
+  low: 'low',
+  baja: 'low',
+  normal: 'normal',
+  high: 'high',
+  alta: 'high',
+  urgent: 'urgent',
+  urgente: 'urgent',
 };
 
 const MISSION_STATES: Record<string, string> = {
@@ -109,7 +164,315 @@ const NEED_FILTERS: Record<string, string> = {
 };
 
 /** The keys a key:value pair may use; anything else with a colon stays part of the text. */
-const KEYS = new Set(['reason', 'text', 'note', 'role', 'to', 'minutes', 'title']);
+const KEYS = new Set([
+  'reason',
+  'text',
+  'note',
+  'role',
+  'to',
+  'minutes',
+  'title',
+  'skill',
+  'department',
+  'agency',
+  'disposition',
+  'category',
+  'categoria',
+  'postal',
+  'from',
+  'desde',
+  'hasta',
+  'request',
+  'solicitud',
+  'evidence',
+  'evidencia',
+  'summary',
+  'resumen',
+  'mission',
+  'mision',
+]);
+
+/** CMD-14: availability as the roster records it. */
+const AVAILABILITY: Record<string, string> = {
+  available: 'available',
+  disponible: 'available',
+  disponibles: 'available',
+  assigned: 'assigned',
+  asignado: 'assigned',
+  asignados: 'assigned',
+  unavailable: 'unavailable',
+  no_disponible: 'unavailable',
+};
+
+/**
+ * CMD-14: what the window may set on a person's roster entry, by the last
+ * words of the command. "Assigned" is not here: it comes from an assignment.
+ */
+const PERSON_SETTINGS: Record<string, string> = {
+  available: 'available',
+  disponible: 'available',
+  unavailable: 'unavailable',
+  no_disponible: 'unavailable',
+  on_duty: 'on_duty',
+  de_turno: 'on_duty',
+  en_turno: 'on_duty',
+  off_duty: 'off_duty',
+  fuera_de_turno: 'off_duty',
+  libre: 'off_duty',
+};
+const PERSON_USAGE = '/person <name> <available|unavailable|on duty|off duty>';
+
+/** CMD-17: the kinds of resource the Resources screen offers. */
+const RESOURCE_TYPES: Record<string, string> = {
+  hotline: 'hotline',
+  linea: 'hotline',
+  program: 'program',
+  programa: 'program',
+  deadline: 'deadline',
+  plazo: 'deadline',
+  guidance: 'guidance',
+  guia: 'guidance',
+  link: 'link',
+  enlace: 'link',
+  document: 'document',
+  documento: 'document',
+};
+const RESOURCE_DATES: Record<string, 'expiresAt' | 'reviewAt'> = {
+  expires: 'expiresAt',
+  expiry: 'expiresAt',
+  vence: 'expiresAt',
+  review: 'reviewAt',
+  revisar: 'reviewAt',
+  revision: 'reviewAt',
+};
+const NONE_WORDS = new Set(['none', 'ninguna', 'ninguno', 'clear', 'borrar']);
+const RESOURCE_USAGE =
+  '/resource new <hotline|program|deadline|guidance|link|document> <title> | /resource <slug or title> <expires YYYY-MM-DD [HH:MM]|review YYYY-MM-DD|… none>';
+
+/** CMD-17, RULE-11: what a person saw happen to a badge, by the last words of the command. */
+const BADGE_OUTCOMES: Record<string, string> = {
+  printed: 'confirmed',
+  impreso: 'confirmed',
+  impresa: 'confirmed',
+  failed: 'failed',
+  fallo: 'failed',
+  handed_out: 'handed_out',
+  given: 'handed_out',
+  entregado: 'handed_out',
+  entregada: 'handed_out',
+};
+const BADGE_USAGE = '/badge <person> <printed|failed <why>|handed out>';
+
+/** CMD-18: what the window may do to an account, as the Accounts screen does. */
+const ACCOUNT_STEPS: Record<string, string> = {
+  suspend: 'suspend',
+  suspender: 'suspend',
+  deactivate: 'deactivate',
+  desactivar: 'deactivate',
+  activate: 'activate',
+  reactivate: 'activate',
+  activar: 'activate',
+  reactivar: 'activate',
+};
+const ROLE_STEPS: Record<string, 'request' | 'revoke'> = {
+  request: 'request',
+  give: 'request',
+  solicitar: 'request',
+  pedir: 'request',
+  revoke: 'revoke',
+  remove: 'revoke',
+  quitar: 'revoke',
+  revocar: 'revoke',
+};
+const ROLE_USAGE =
+  '/role request <role> to:<name or email> | /role revoke <role> from:<name or email>';
+
+/** CMD-15: the review queue's states and filters. */
+const REPORT_FILTERS: Record<string, [string, string | boolean]> = {
+  new: ['state', 'submitted'],
+  submitted: ['state', 'submitted'],
+  nuevos: ['state', 'submitted'],
+  under_review: ['state', 'under_review'],
+  en_revision: ['state', 'under_review'],
+  needs_information: ['state', 'needs_information'],
+  needs_info: ['state', 'needs_information'],
+  falta_informacion: ['state', 'needs_information'],
+  approved: ['state', 'approved'],
+  aprobados: ['state', 'approved'],
+  rejected: ['state', 'rejected'],
+  rechazados: ['state', 'rejected'],
+  duplicate: ['state', 'duplicate'],
+  duplicados: ['state', 'duplicate'],
+  flagged: ['flagged', true],
+  marcados: ['flagged', true],
+  danger: ['danger', true],
+  peligro: ['danger', true],
+};
+
+/** FL-07: what a frontline worker counts, in English and Spanish, singular or plural. */
+const SERVICE_KINDS: Record<string, string> = {
+  meal: 'meal',
+  meals: 'meal',
+  comida: 'meal',
+  comidas: 'meal',
+  water: 'water_case',
+  waters: 'water_case',
+  water_case: 'water_case',
+  water_cases: 'water_case',
+  agua: 'water_case',
+  aguas: 'water_case',
+  tarp: 'tarp',
+  tarps: 'tarp',
+  lona: 'tarp',
+  lonas: 'tarp',
+  cot: 'cot',
+  cots: 'cot',
+  catre: 'cot',
+  catres: 'cot',
+  ride: 'ride',
+  rides: 'ride',
+  viaje: 'ride',
+  viajes: 'ride',
+  people: 'person_served',
+  person: 'person_served',
+  persons: 'person_served',
+  personas: 'person_served',
+  voucher: 'voucher',
+  vouchers: 'voucher',
+  vale: 'voucher',
+  vales: 'voucher',
+  pet_food: 'pet_food',
+};
+
+const NUMBER_WORDS: Record<string, number> = {
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  uno: 1,
+  una: 1,
+  dos: 2,
+  tres: 3,
+  cuatro: 4,
+  cinco: 5,
+  seis: 6,
+  siete: 7,
+  ocho: 8,
+  nueve: 9,
+  diez: 10,
+};
+
+/** CMD-17: the kinds of partner contact. */
+const CONTACT_TYPES: Record<string, string> = {
+  operations: 'operations',
+  operaciones: 'operations',
+  '24h': 'twenty_four_hour',
+  twenty_four_hour: 'twenty_four_hour',
+  '24_horas': 'twenty_four_hour',
+  backup: 'backup',
+  respaldo: 'backup',
+  media: 'media',
+  medios: 'media',
+  prensa: 'media',
+  liaison: 'liaison',
+  enlace: 'liaison',
+};
+
+/** CMD-13: the kinds of mission a draft can be, in English and Spanish. */
+const MISSION_KINDS: Record<string, string> = {
+  welfare_check: 'welfare_check',
+  welfare: 'welfare_check',
+  bienestar: 'welfare_check',
+  verification_route: 'verification_route',
+  verification: 'verification_route',
+  verificacion: 'verification_route',
+  cleanup_work_order: 'cleanup_work_order',
+  cleanup: 'cleanup_work_order',
+  limpieza: 'cleanup_work_order',
+  delivery: 'delivery',
+  entrega: 'delivery',
+  outreach_sweep: 'outreach_sweep',
+  outreach: 'outreach_sweep',
+  alcance: 'outreach_sweep',
+  site_staffing: 'site_staffing',
+  staffing: 'site_staffing',
+  personal_de_sitio: 'site_staffing',
+  search: 'search',
+  busqueda: 'search',
+  road_clearance: 'road_clearance',
+  road: 'road_clearance',
+  despeje: 'road_clearance',
+  traffic_control: 'traffic_control',
+  traffic: 'traffic_control',
+  trafico: 'traffic_control',
+  debris: 'debris',
+  escombros: 'debris',
+  other: 'other',
+  otra: 'other',
+  otro: 'other',
+};
+const NEW_WORDS = new Set(['new', 'nueva', 'nuevo']);
+const MISSION_DRAFT_USAGE = `/mission new <${[...new Set(Object.values(MISSION_KINDS))].join('|')}> <what is needed>`;
+
+/** CMD-15: what a reviewer does to one report, in English and Spanish. */
+const REPORT_ACTIONS: Record<string, 'claim' | 'approve' | 'reject' | 'ask' | 'duplicate'> = {
+  duplicate: 'duplicate',
+  duplicado: 'duplicate',
+  dup: 'duplicate',
+  review: 'claim',
+  revisar: 'claim',
+  claim: 'claim',
+  tomar: 'claim',
+  approve: 'approve',
+  aprobar: 'approve',
+  reject: 'reject',
+  rechazar: 'reject',
+  ask: 'ask',
+  info: 'ask',
+  preguntar: 'ask',
+  pedir_informacion: 'ask',
+};
+const REPORT_USAGE =
+  '/report <reference code> review | approve <why> | reject <why> | ask <question> | duplicate <other reference code> <why>';
+
+/** CMD-16: the exports the window can prepare. */
+const EXPORT_IDA = new Set(['ida', 'ida_package', 'paquete_ida']);
+const EXPORT_RECORDS = new Set(['records', 'public_records', 'registros', 'registros_publicos']);
+const REPORT_KINDS: Record<string, string> = {
+  sitrep: 'sitrep',
+  informe: 'sitrep',
+  briefing: 'briefing',
+  sesion_informativa: 'briefing',
+};
+const LATEST = new Set(['latest', 'last', 'ultimo', 'ultima']);
+/** SEC-13: the kinds of record a public-records release can hold, in either language. */
+const RECORD_TYPE_WORDS: Record<string, string> = {
+  reports: 'reports',
+  reportes: 'reports',
+  needs: 'needs',
+  necesidades: 'needs',
+  missions: 'missions',
+  misiones: 'missions',
+  timeline: 'mission_timeline',
+  mission_timeline: 'mission_timeline',
+  cronologia: 'mission_timeline',
+  sites: 'sites',
+  sitios: 'sites',
+  official_reports: 'official_reports',
+  informes: 'official_reports',
+  field_messages: 'field_messages',
+  mensajes: 'field_messages',
+  comms: 'comms_log',
+  comms_log: 'comms_log',
+  comunicaciones: 'comms_log',
+};
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Separates key:value pairs from the words around them. */
 function split(tokens: string[]): { words: string[]; pairs: Record<string, string> } {
@@ -122,6 +485,33 @@ function split(tokens: string[]): { words: string[]; pairs: Record<string, strin
   }
   return { words, pairs };
 }
+
+/**
+ * CMD-06: "this" stands for the record open on the person's screen, which the
+ * window shows and sends as context; the server resolves it under the
+ * person's own permissions. Nothing on the screen is used unless named.
+ */
+export const ON_SCREEN = '@screen';
+const THIS_WORDS = new Set(['this', 'esta', 'este', 'esto']);
+/** DSP-04: words that ask for the suggested team rather than name one. */
+const NEAREST_WORDS = new Set(['nearest', 'closest', 'cercano', 'cercana', 'proximo', 'proxima']);
+const TEAM_FILLER = new Set([
+  'the',
+  'a',
+  'team',
+  'teams',
+  'crew',
+  'el',
+  'la',
+  'de',
+  'del',
+  'mas',
+  'equipo',
+  'cuadrilla',
+]);
+
+const onScreen = (ref: string | undefined) =>
+  ref !== undefined && THIS_WORDS.has(norm(ref)) ? ON_SCREEN : ref;
 
 const usage = (message: string, u: string): Parsed => ({
   ok: false,
@@ -174,7 +564,16 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
     }
 
     case 'mission': {
-      const [ref, sub, ...rest] = words;
+      // CMD-13, Section 30.2 phase 1: a mission draft; nothing is dispatched.
+      if (NEW_WORDS.has(norm(words[0] ?? ''))) {
+        const kind = MISSION_KINDS[norm(words[1] ?? '')];
+        if (!kind) return usage('What kind of mission?', MISSION_DRAFT_USAGE);
+        const summary = (pairs['text'] ?? words.slice(2).join(' ')).trim();
+        if (summary.length < 3) return usage('What is needed?', MISSION_DRAFT_USAGE);
+        return ok('mission.draft', { kind, summary });
+      }
+      const [first, sub, ...rest] = words;
+      const ref = onScreen(first);
       if (!ref) return usage('Which mission? Give its number.', '/mission <number>');
       if (!sub) return ok('mission.show', {}, ref, 'mission');
       const s = SUBVERBS[norm(sub)];
@@ -198,14 +597,74 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
         const role = pairs['role'];
         return ok('mission.note', { text: body, ...(role ? { role } : {}) }, ref, 'mission');
       }
+      if (s === 'priority') {
+        const p = PRIORITIES[norm(rest[0] ?? '')];
+        if (!p)
+          return usage(
+            'Which priority? low, normal, high or urgent.',
+            '/mission <number> priority <low|normal|high|urgent>',
+          );
+        return ok('mission.priority', { priority: p }, ref, 'mission');
+      }
+      if (s === 'assign') {
+        // DSP-04: "send nearest chainsaw team": the best suggestion, among teams with that skill.
+        if (rest.some((w) => NEAREST_WORDS.has(norm(w)))) {
+          const skill = rest
+            .filter((w) => !NEAREST_WORDS.has(norm(w)) && !TEAM_FILLER.has(norm(w)))
+            .join(' ')
+            .trim();
+          return ok('mission.assign_nearest', skill ? { skill } : {}, ref, 'mission');
+        }
+        const person = rest.join(' ').trim();
+        if (!person) return usage('Assign whom?', '/mission <number> assign <person>');
+        return ok('mission.assign', { person }, ref, 'mission');
+      }
+      // CMD-13: the reason is asked at confirmation; it becomes the release reason.
+      if (s === 'release') {
+        const person = rest.join(' ').trim();
+        if (!person) return usage('Release whom?', '/mission <number> release <person>');
+        return ok('mission.release', { person }, ref, 'mission');
+      }
+      if (s === 'close') {
+        const d = pairs['disposition'] ? norm(pairs['disposition']) : undefined;
+        return ok('mission.close', d ? { disposition: d } : {}, ref, 'mission');
+      }
+      if (s === 'reopen') return ok('mission.reopen', {}, ref, 'mission');
       return usage(
         `"${sub}" is not something the command window can do to a mission yet.`,
-        '/mission <number> [status <state> | note <text>]',
+        '/mission <number> [status <state> | note <text> | priority <level> | assign <person> | send nearest [<skill>] team | close | reopen]',
       );
     }
 
     case 'needs': {
       const args: Record<string, unknown> = {};
+      // CMD-30: "/needs open category:food claim" claims every open need the filter names.
+      const at = words.findIndex((w) => ['claim', 'release'].includes(SUBVERBS[norm(w)] ?? ''));
+      if (at >= 0) {
+        const verb = SUBVERBS[norm(words[at]!)] as 'claim' | 'release';
+        const want = verb === 'claim' ? 'open' : 'claimed';
+        const u =
+          verb === 'claim'
+            ? '/needs open [category:<category>] [postal:<code>] claim [note]'
+            : '/needs claimed [category:<category>] [postal:<code>] release [note]';
+        for (const w of words.slice(0, at)) {
+          const f = NEED_FILTERS[norm(w)];
+          if (f !== want)
+            return usage(
+              verb === 'claim'
+                ? `Only open needs can be claimed; "${w}" does not fit before claim.`
+                : `Only needs your organization holds can be released; "${w}" does not fit before release.`,
+              u,
+            );
+        }
+        const category = pairs['category'] ?? pairs['categoria'];
+        const note = (pairs['note'] ?? words.slice(at + 1).join(' ')).trim();
+        return ok(verb === 'claim' ? 'needs.claim_many' : 'needs.release_many', {
+          ...(category ? { category: norm(category) } : {}),
+          ...(pairs['postal'] ? { postal: pairs['postal'] } : {}),
+          ...(note ? { note } : {}),
+        });
+      }
       for (const w of words) {
         const f = NEED_FILTERS[norm(w)];
         if (f) args['status'] = f;
@@ -217,7 +676,8 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
     }
 
     case 'need': {
-      const [ref, sub, ...rest] = words;
+      const [first, sub, ...rest] = words;
+      const ref = onScreen(first);
       if (!ref || !sub)
         return usage(
           'Which need, and claim or release?',
@@ -281,6 +741,278 @@ export function parseShorthand(input: string, ctx: ParseContext): Parsed {
       if (!h) return usage('For how many hours back?', '/sitrep [hours, e.g. 12]');
       return ok('sitrep.draft', { hours: h });
     }
+
+    case 'people': {
+      const args: Record<string, unknown> = {};
+      const name: string[] = [];
+      for (const w of words) {
+        const n = norm(w);
+        if (AVAILABILITY[n]) args['availability'] = AVAILABILITY[n];
+        else if (n === 'on_duty' || n === 'de_turno' || n === 'en_turno') args['onDuty'] = true;
+        else name.push(w);
+      }
+      if (pairs['skill']) args['skill'] = pairs['skill'];
+      if (pairs['department']) args['department'] = pairs['department'];
+      if (name.length) args['name'] = name.join(' ');
+      return ok('people.find', args);
+    }
+
+    // CMD-14: the longest status phrase at the end wins ("no disponible" before "disponible").
+    case 'person': {
+      for (const n of [3, 2, 1]) {
+        if (words.length <= n) continue;
+        const set = PERSON_SETTINGS[words.slice(-n).map(norm).join('_')];
+        if (set) return ok('person.status', { set }, words.slice(0, -n).join(' '), 'personnel');
+      }
+      return usage('Whom, and what should their roster entry say?', PERSON_USAGE);
+    }
+
+    case 'reports': {
+      const args: Record<string, unknown> = {};
+      for (const w of words) {
+        const f = REPORT_FILTERS[norm(w)];
+        if (f) args[f[0]] = f[1];
+        // A reference code has a digit, so a mistyped filter word is not taken for one.
+        else if (/^(?=.*\d)[a-z0-9-]{6,12}$/iu.test(w)) args['reference'] = w;
+        else
+          return usage(
+            `"${w}" is not a reports filter.`,
+            '/reports [submitted|under_review|needs_information|flagged|danger|<reference code>]',
+          );
+      }
+      return ok('reports.find', args);
+    }
+
+    // AC-C08, Section 30.2 phase 4: a message to a team's phones; the first word (or to:) names the team.
+    case 'message': {
+      const to = (pairs['to'] ?? words[0] ?? '').trim();
+      const text = (pairs['text'] ?? (pairs['to'] ? words : words.slice(1)).join(' ')).trim();
+      if (!to || !text)
+        return usage(
+          'Which team, and what should it say?',
+          '/message <team> <text> [mission:<number>]',
+        );
+      const mission = (pairs['mission'] ?? pairs['mision'] ?? '').trim();
+      return ok('team.message', mission ? { text, mission } : { text }, to, 'team');
+    }
+
+    // CMD-15: take a report into review, decide it, or ask the resident; never two at once.
+    case 'report': {
+      const [ref, sub, ...rest] = words;
+      if (!ref) return usage('Which report? Give its reference code.', REPORT_USAGE);
+      if (!sub) return ok('reports.find', { reference: ref });
+      const act = REPORT_ACTIONS[norm(sub)];
+      if (!act) return usage(`"${sub}" is not something a reviewer does here.`, REPORT_USAGE);
+      const text = (pairs['reason'] ?? pairs['text'] ?? rest.join(' ')).trim();
+      const evidence = (pairs['evidence'] ?? pairs['evidencia'] ?? '')
+        .split(',')
+        .map((e) => e.trim())
+        .filter(Boolean);
+      if (act === 'claim') return ok('report.claim', {}, ref, 'report');
+      if (act === 'duplicate') {
+        const [of, ...why] = rest;
+        const reason = (pairs['reason'] ?? pairs['text'] ?? why.join(' ')).trim();
+        if (!of || !/^(?=.*\d)[a-z0-9-]{6,12}$/iu.test(of))
+          return usage('A duplicate of which report? Give its reference code.', REPORT_USAGE);
+        if (reason.length < 3) return usage('Say why, for the record.', REPORT_USAGE);
+        return ok('report.duplicate', { of, reason, evidenceRefs: evidence }, ref, 'report');
+      }
+      if (act === 'ask') {
+        if (!text) return usage('What should the resident be asked?', REPORT_USAGE);
+        return ok('report.ask', { message: text }, ref, 'report');
+      }
+      if (text.length < 3) return usage('Say why, for the record.', REPORT_USAGE);
+      return ok(
+        act === 'approve' ? 'report.approve' : 'report.reject',
+        { reason: text, evidenceRefs: evidence },
+        ref,
+        'report',
+      );
+    }
+
+    // CMD-17: a resource is drafted here and published on the Resources screen; its dates are
+    // changed here with undo. An expiry in the past would take a page down now: that stays on
+    // the screen, as Unpublish.
+    case 'resource': {
+      if (NEW_WORDS.has(norm(words[0] ?? ''))) {
+        const type = RESOURCE_TYPES[norm(words[1] ?? '')];
+        if (!type) return usage('What kind of resource?', RESOURCE_USAGE);
+        const title = (pairs['title'] ?? words.slice(2).join(' ')).trim();
+        if (title.length < 3) return usage('What is it called?', RESOURCE_USAGE);
+        const args: Record<string, unknown> = { type, title };
+        const category = pairs['category'] ?? pairs['categoria'];
+        if (category) args['category'] = norm(category);
+        const summary = pairs['summary'] ?? pairs['resumen'];
+        if (summary) args['summary'] = summary;
+        return ok('resource.draft', args);
+      }
+      const at = words.findIndex((w, i) => i > 0 && RESOURCE_DATES[norm(w)]);
+      if (at < 1) return usage('Which resource, and which date?', RESOURCE_USAGE);
+      const field = RESOURCE_DATES[norm(words[at]!)]!;
+      const ref = words.slice(0, at).join(' ');
+      const [day, time] = words.slice(at + 1);
+      const command = field === 'expiresAt' ? 'resource.expiry' : 'resource.review';
+      if (day && NONE_WORDS.has(norm(day))) return ok(command, { value: null }, ref, 'resource');
+      const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day ?? '');
+      if (!d) return usage('Give the date as YYYY-MM-DD.', RESOURCE_USAGE);
+      if (field === 'reviewAt') {
+        if (time) return usage('A review date has no time.', RESOURCE_USAGE);
+        return ok(command, { value: day }, ref, 'resource');
+      }
+      // A date alone means the end of that day on the organization's clock.
+      const t = /^(\d{1,2}):(\d{2})$/.exec(time ?? '23:59');
+      if (!t || Number(t[1]) > 23 || Number(t[2]) > 59)
+        return usage('Give the time as HH:MM.', RESOURCE_USAGE);
+      const local = new Date(ctx.now.getTime() + zoneOffset(ctx.now, ctx.timeZone));
+      const daysOn = Math.round(
+        (Date.UTC(Number(d[1]), Number(d[2]) - 1, Number(d[3])) -
+          Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate())) /
+          86_400_000,
+      );
+      const when = wallClock(ctx.now, ctx.timeZone, Number(t[1]), Number(t[2]), daysOn);
+      if (when.getTime() <= ctx.now.getTime())
+        return usage(
+          'That time has passed. To take a page down now, use Unpublish on the Resources screen.',
+          RESOURCE_USAGE,
+        );
+      return ok(
+        command,
+        {
+          value: when.toISOString(),
+          local: `${day} ${(time ?? '23:59').padStart(5, '0')} ${ctx.timeZone}`,
+        },
+        ref,
+        'resource',
+      );
+    }
+
+    // CMD-17, RULE-11: a print outcome somebody saw. "failed" may carry why, after it.
+    case 'badge': {
+      for (let i = words.length - 1; i > 0; i -= 1) {
+        const two =
+          i + 1 < words.length
+            ? BADGE_OUTCOMES[`${norm(words[i]!)}_${norm(words[i + 1]!)}`]
+            : undefined;
+        const outcome = two ?? BADGE_OUTCOMES[norm(words[i]!)];
+        if (!outcome) continue;
+        const after = words
+          .slice(i + (two ? 2 : 1))
+          .join(' ')
+          .trim();
+        if (after && outcome !== 'failed') continue;
+        const why = (pairs['reason'] ?? after).trim();
+        return ok('badge.print', {
+          person: words.slice(0, i).join(' '),
+          outcome,
+          ...(why ? { reason: why } : {}),
+        });
+      }
+      return usage('Whose badge, and what happened to it?', BADGE_USAGE);
+    }
+
+    // CMD-18: the last word is what happens to the account; everything before it names it.
+    case 'account': {
+      const step = ACCOUNT_STEPS[norm(words[words.length - 1] ?? '')];
+      const ref = words.slice(0, -1).join(' ').trim();
+      if (!step || !ref)
+        return usage(
+          'Which account, and suspend, deactivate or activate?',
+          '/account <name or email> <suspend|deactivate|activate>',
+        );
+      return ok(`account.${step}`, {}, ref, 'account');
+    }
+
+    // CMD-18: a role is requested (a second administrator approves it) or taken away.
+    case 'role': {
+      const step = ROLE_STEPS[norm(words[0] ?? '')];
+      const role = words.slice(1).join(' ').trim();
+      const who = (step === 'request' ? pairs['to'] : (pairs['from'] ?? pairs['desde'])) ?? '';
+      if (!step || !role || !who.trim()) return usage('Which role, and for whom?', ROLE_USAGE);
+      return ok(`role.${step}`, { role }, who.trim(), 'account');
+    }
+
+    case 'resources': {
+      const category = words.map(norm).join('_');
+      return ok('resources.find', category ? { category } : {});
+    }
+
+    case 'log': {
+      let count: number | null = null;
+      let kind: string | null = null;
+      for (const w of words) {
+        const n = norm(w);
+        if (/^\d{1,4}$/.test(n)) count = Number(n);
+        else if (NUMBER_WORDS[n]) count = NUMBER_WORDS[n]!;
+        else if (SERVICE_KINDS[n]) kind = SERVICE_KINDS[n]!;
+      }
+      if (!count || !kind)
+        return usage(
+          'How many of what? For example "/log 2 meals".',
+          '/log <count> <meals|water|tarps|cots|rides|people|vouchers|pet_food>',
+        );
+      return ok('service.log', { count, kind });
+    }
+
+    case 'checkout':
+      return ok('shift.end', {}, '', 'check_in');
+
+    case 'contacts': {
+      const args: Record<string, unknown> = {};
+      const agency: string[] = [];
+      for (const w of words) {
+        const t = CONTACT_TYPES[norm(w)];
+        if (t) args['type'] = t;
+        else agency.push(w);
+      }
+      const a = (pairs['agency'] ?? agency.join(' ')).trim();
+      if (a) args['agency'] = a;
+      return ok('contacts.find', args);
+    }
+
+    // CMD-16: every export states its scope and its period; nothing is exported unasked.
+    case 'export': {
+      const what = norm(words[0] ?? '');
+      const rest = words.slice(1);
+      if (EXPORT_IDA.has(what)) return ok('ida.export', {});
+      const reportKind = REPORT_KINDS[what];
+      if (reportKind) {
+        let format = 'pdf';
+        let which = 'latest';
+        for (const w of rest) {
+          const n = norm(w);
+          if (n === 'pdf' || n === 'csv') format = n;
+          else if (/^\d{1,4}$/.test(n)) which = String(Number(n));
+          else if (!LATEST.has(n))
+            return usage(`"${w}" is not a report number or format.`, EXPORT_USAGE);
+        }
+        return ok('report.export', { format }, `${reportKind} ${which}`, 'official_report');
+      }
+      if (EXPORT_RECORDS.has(what)) {
+        const reference = (pairs['request'] ?? pairs['solicitud'] ?? rest[0] ?? '').trim();
+        const kinds = pairs['request'] || pairs['solicitud'] ? rest : rest.slice(1);
+        if (!reference) return usage('Which records request does this answer?', EXPORT_USAGE);
+        const recordTypes: string[] = [];
+        for (const w of kinds) {
+          const t = RECORD_TYPE_WORDS[norm(w).replace(/,$/, '')];
+          if (!t)
+            return usage(`"${w}" is not a kind of record that can be released.`, EXPORT_USAGE);
+          if (!recordTypes.includes(t)) recordTypes.push(t);
+        }
+        if (recordTypes.length === 0)
+          return usage('Which kinds of record? For example: reports needs missions.', EXPORT_USAGE);
+        const from = pairs['from'] ?? pairs['desde'];
+        const to = pairs['to'] ?? pairs['hasta'];
+        if ((from && !ISO_DATE.test(from)) || (to && !ISO_DATE.test(to)))
+          return usage('Give dates as YYYY-MM-DD.', EXPORT_USAGE);
+        return ok('public_records.export', {
+          requestReference: reference,
+          recordTypes,
+          ...(from ? { from } : {}),
+          ...(to ? { to } : {}),
+        });
+      }
+      return usage('Export what?', EXPORT_USAGE);
+    }
   }
   return { ok: false, error: 'unsupported', message: 'Not a command here.' };
 }
@@ -296,6 +1028,9 @@ export function parseMinutes(s: string): number | null {
   const n = Number(m[1] ?? 0) * 60 + Number(m[2] ?? 0);
   return n > 0 ? n : null;
 }
+
+const EXPORT_USAGE =
+  '/export ida | /export sitrep|briefing [number|latest] [pdf|csv] | /export records <request> <kinds> [from:YYYY-MM-DD] [to:YYYY-MM-DD]';
 
 function parseHours(s: string): number | null {
   const m = /^(\d{1,3})h?$/i.exec(s.trim());

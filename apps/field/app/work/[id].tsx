@@ -6,7 +6,7 @@
  * any job can record a property.
  */
 import { router, useLocalSearchParams } from 'expo-router';
-import { distanceM } from '@cg/field-core';
+import { distanceM, hazardsAround } from '@cg/field-core';
 import { useField } from '../../src/field';
 import { label } from '../../src/vocab';
 import { Alert, Body, Button, Card, Heading, NavBar, Page, SyncBadge } from '../../src/ui';
@@ -26,6 +26,8 @@ export default function Work() {
   const m = a.mission;
   const where = m?.location?.position ?? null;
   const near = fix && where ? distanceM(fix, where) <= 100 : false;
+  // HAZ-01, BRD:FR-04.05: the hazard areas the job is in or within 100 m of, from the area package.
+  const atJob = where ? hazardsAround(where, f.hazards, 100) : [];
   const can = (to: string) =>
     (to === 'en_route' && ['acknowledged', 'dispatched', 'assigned'].includes(a.state)) ||
     (to === 'on_scene' && ['acknowledged', 'en_route'].includes(a.state)) ||
@@ -43,6 +45,22 @@ export default function Work() {
         <Body>{label(locale, 'assignmentStates', a.state)}</Body>
         <SyncBadge state={a.syncState} />
       </Card>
+      {atJob.length ? (
+        <>
+          <Heading level={2}>{t('work.hazards')}</Heading>
+          {atJob.map((w) => (
+            <Alert key={w.hazard.id} tone="danger">
+              {w.inside
+                ? t('work.hazardAt', { kind: label(locale, 'hazardKinds', w.hazard.kind) })
+                : t('work.hazardNearJob', {
+                    kind: label(locale, 'hazardKinds', w.hazard.kind),
+                    distance: String(w.distanceM),
+                  })}
+              {w.hazard.summary ? ` — ${w.hazard.summary}` : ''}
+            </Alert>
+          ))}
+        </>
+      ) : null}
       {near && can('on_scene') ? <Alert>{t('work.arrivedSuggest')}</Alert> : null}
       <Heading level={2}>{t('work.facts')}</Heading>
       {a.state === 'dispatched' || a.state === 'assigned' ? (
@@ -91,6 +109,19 @@ export default function Work() {
             }
           />
         </>
+      ) : null}
+      {m && f.can('command.use') && f.can('mission.read') ? (
+        // CMD-06: the command screen opened from here takes this job's mission as "this".
+        <Button
+          kind="secondary"
+          label={t('command.aboutJob')}
+          onPress={() =>
+            router.push({
+              pathname: '/command',
+              params: { missionId: m.id, missionRef: m.reference ?? '' },
+            })
+          }
+        />
       ) : null}
       {m && f.can('mission.person.edit') ? (
         <Button

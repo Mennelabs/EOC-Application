@@ -7,7 +7,8 @@ export const STRINGS = {
     title: 'Find help',
     intro:
       'Open shelters, food, supplies and help sites, from the county. Updated as sites confirm.',
-    danger: 'If anyone is in danger right now, call 911. This page does not send help.',
+    danger:
+      'If anyone is in danger right now, call 911. If you cannot call, text 911 where that works. This page does not send help.',
     notEligibility: 'This page never decides who is eligible for help. It lists where help is.',
     searchLabel: 'Your ZIP code, address or a landmark',
     searchHint: 'Nearest sites come first when we know where you are. We keep nothing you type.',
@@ -60,6 +61,60 @@ export const STRINGS = {
       thanks: 'Thank you. The county will review the offer and contact you.',
       failed: 'The offer was not sent. Check the fields marked and try again.',
       back: 'Back to Find help',
+      // REC-01: an owner's yearly re-check link.
+      updateTitle: 'Check your place in the facility registry',
+      updateIntro:
+        'This is what the county has for your place. Correct anything that changed and send it, or say that nothing has changed. The county reviews what you send before the registry changes.',
+      unchanged: 'Nothing has changed',
+      submitUpdate: 'Send the changes',
+      authorizedUpdate: 'I am allowed to update the details of this place.',
+      thanksUnchanged: 'Thank you. The county will mark the entry as checked.',
+      thanksUpdate:
+        'Thank you. The county will review the changes and contact you if it has questions.',
+      linkGone:
+        'This link has expired or was already used. Contact the county to update the entry.',
+      loading: 'Loading…',
+    },
+    // FL:FR-20: a walk-up volunteer signs up through the code at the volunteer desk.
+    volunteer: {
+      title: 'Sign up to volunteer',
+      intro:
+        'Fill this in while you wait. Then show your desk code at the volunteer desk, where staff finish your sign-up and tell you where to go.',
+      forEvent: 'Volunteering for: {event}',
+      you: 'About you',
+      name: 'Your full name',
+      phone: 'Phone (optional)',
+      email: 'Email (optional)',
+      reach: 'Staff use these only to reach you about volunteering.',
+      agency: 'Group or organization (optional)',
+      skills: 'Skills you have (staff check them later)',
+      skillNames: {
+        chainsaw: 'Chainsaw',
+        spanish_speaker: 'Speaks Spanish',
+        cert: 'CERT trained',
+        ham_operator: 'Ham radio operator',
+        medical: 'Medical training',
+        driver_cdl: 'Commercial driver (CDL)',
+        heavy_equipment: 'Heavy equipment',
+        shelter_management: 'Shelter work',
+        food_safety: 'Food safety',
+        child_safeguarding: 'Working with children',
+        mental_health_first_aid: 'Mental health first aid',
+      } as Record<string, string>,
+      waiver: 'Volunteer waiver ({version})',
+      waiverOtherLanguage:
+        'The county gave this waiver in English. Ask at the desk for help with it.',
+      accept: 'I have read the waiver and I accept it.',
+      atDesk: 'You will read and sign the volunteer waiver ({version}) at the desk.',
+      backgroundCheck:
+        'Some volunteer jobs need a background check. Staff at the desk will tell you if yours does.',
+      submit: 'Sign up',
+      sending: 'Sending…',
+      done: 'Thank you. Show this code at the volunteer desk:',
+      doneAfter: 'Staff will finish your sign-up there.',
+      failed: 'Your sign-up was not sent. Check the fields marked and try again.',
+      linkGone: 'This sign-up code has closed. Please ask at the volunteer desk.',
+      loading: 'Loading…',
     },
     askLabel: 'Ask a question',
     askHint:
@@ -131,11 +186,25 @@ export const STRINGS = {
     posterQr:
       'Scan to open the list of open sites. The QR code is never the only way in: the address and phone number are above.',
     helpLine: 'County help line',
+    relay:
+      'Deaf, hard of hearing or unable to speak? Text the help line, or call it through relay by dialing 711.',
+    website: 'Website',
     a11yTitle: 'Accessibility',
     a11yContact:
       'If something on this page does not work for you, call the help line and we will help another way.',
     language: 'Language',
     updated: 'Page updated',
+    // FL:FR-06: health notices from public health.
+    healthNotices: 'Health notices',
+    forYourArea: 'For your area',
+    noticeArea: 'Area: {area}',
+    noticeSince: 'Since {date}',
+    noticeUntil: 'Until {date}',
+    noticeKinds: {
+      boil_water: 'Boil water before use',
+      do_not_use_water: 'Do not use the tap water',
+      safety: 'Safety notice',
+    } as Record<string, string>,
     offline: 'You are offline. Showing the last list we loaded.',
     loadFailed:
       'We could not load the list right now. Text SHELTER with your ZIP code or call the help line.',
@@ -148,7 +217,8 @@ export const STRINGS = {
     title: 'Encuentre ayuda',
     intro:
       'Albergues, comida, suministros y sitios de ayuda abiertos, según el condado. Se actualiza cuando los sitios confirman.',
-    danger: 'Si alguien está en peligro ahora mismo, llame al 911. Esta página no envía ayuda.',
+    danger:
+      'Si alguien está en peligro ahora mismo, llame al 911. Si no puede llamar, envíe un mensaje al 911 donde funcione. Esta página no envía ayuda.',
     notEligibility: 'Esta página nunca decide quién recibe ayuda. Muestra dónde está la ayuda.',
     searchLabel: 'Su código postal, dirección o un punto de referencia',
     searchHint:
@@ -202,6 +272,58 @@ export const STRINGS = {
       thanks: 'Gracias. El condado revisará la oferta y se comunicará con usted.',
       failed: 'La oferta no se envió. Revise los campos marcados e intente de nuevo.',
       back: 'Volver a Encuentre ayuda',
+      updateTitle: 'Revise su lugar en el registro de instalaciones',
+      updateIntro:
+        'Esto es lo que el condado tiene de su lugar. Corrija lo que haya cambiado y envíelo, o diga que nada cambió. El condado revisa lo que envíe antes de cambiar el registro.',
+      unchanged: 'Nada ha cambiado',
+      submitUpdate: 'Enviar los cambios',
+      authorizedUpdate: 'Tengo permiso para actualizar los datos de este lugar.',
+      thanksUnchanged: 'Gracias. El condado marcará el registro como revisado.',
+      thanksUpdate:
+        'Gracias. El condado revisará los cambios y se comunicará con usted si tiene preguntas.',
+      linkGone:
+        'Este enlace venció o ya se usó. Comuníquese con el condado para actualizar el registro.',
+      loading: 'Cargando…',
+    },
+    volunteer: {
+      title: 'Inscríbase como voluntario',
+      intro:
+        'Llene esto mientras espera. Luego muestre su código en la mesa de voluntarios, donde el personal termina su inscripción y le dice adónde ir.',
+      forEvent: 'Voluntariado para: {event}',
+      you: 'Sus datos',
+      name: 'Su nombre completo',
+      phone: 'Teléfono (opcional)',
+      email: 'Correo electrónico (opcional)',
+      reach: 'El personal los usa solo para comunicarse con usted sobre el voluntariado.',
+      agency: 'Grupo u organización (opcional)',
+      skills: 'Habilidades que tiene (el personal las verifica después)',
+      skillNames: {
+        chainsaw: 'Motosierra',
+        spanish_speaker: 'Habla español',
+        cert: 'Capacitación CERT',
+        ham_operator: 'Radioaficionado',
+        medical: 'Capacitación médica',
+        driver_cdl: 'Conductor comercial (CDL)',
+        heavy_equipment: 'Maquinaria pesada',
+        shelter_management: 'Trabajo en refugios',
+        food_safety: 'Seguridad de alimentos',
+        child_safeguarding: 'Trabajo con niños',
+        mental_health_first_aid: 'Primeros auxilios de salud mental',
+      } as Record<string, string>,
+      waiver: 'Exención de responsabilidad del voluntario ({version})',
+      waiverOtherLanguage:
+        'El condado dio esta exención en inglés. Pida ayuda con ella en la mesa de voluntarios.',
+      accept: 'Leí la exención de responsabilidad y la acepto.',
+      atDesk: 'Leerá y firmará la exención de responsabilidad ({version}) en la mesa.',
+      backgroundCheck:
+        'Algunos trabajos voluntarios requieren una verificación de antecedentes. El personal de la mesa le dirá si el suyo la requiere.',
+      submit: 'Inscribirme',
+      sending: 'Enviando…',
+      done: 'Gracias. Muestre este código en la mesa de voluntarios:',
+      doneAfter: 'El personal terminará su inscripción allí.',
+      failed: 'Su inscripción no se envió. Revise los campos marcados e intente de nuevo.',
+      linkGone: 'Este código de inscripción ya cerró. Pregunte en la mesa de voluntarios.',
+      loading: 'Cargando…',
     },
     askLabel: 'Haga una pregunta',
     askHint:
@@ -273,11 +395,24 @@ export const STRINGS = {
     posterQr:
       'Escanee para abrir la lista de sitios abiertos. El código QR nunca es la única entrada: la dirección y el teléfono están arriba.',
     helpLine: 'Línea de ayuda del condado',
+    relay:
+      '¿Es sordo, tiene pérdida auditiva o no puede hablar? Envíe un mensaje a la línea de ayuda, o llame por el servicio de retransmisión marcando 711.',
+    website: 'Sitio web',
     a11yTitle: 'Accesibilidad',
     a11yContact:
       'Si algo en esta página no le funciona, llame a la línea de ayuda y le ayudaremos de otra manera.',
     language: 'Idioma',
     updated: 'Página actualizada',
+    healthNotices: 'Avisos de salud',
+    forYourArea: 'Para su zona',
+    noticeArea: 'Zona: {area}',
+    noticeSince: 'Desde {date}',
+    noticeUntil: 'Hasta {date}',
+    noticeKinds: {
+      boil_water: 'Hierva el agua antes de usarla',
+      do_not_use_water: 'No use el agua de la llave',
+      safety: 'Aviso de seguridad',
+    } as Record<string, string>,
     offline: 'Está sin conexión. Mostramos la última lista cargada.',
     loadFailed:
       'No pudimos cargar la lista ahora. Envíe REFUGIO con su código postal o llame a la línea de ayuda.',

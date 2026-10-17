@@ -1,4 +1,5 @@
 /** The navigation lists only the workspaces the person's actions answer for (CON-01, ADM-04). */
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { GROUPS, allWorkspaces, canUse, visibleGroups } from '../src/ui/nav.ts';
 
@@ -70,5 +71,14 @@ describe('console navigation', () => {
     const item = groups.flatMap((g) => g.items).find((i) => i.path === '/console/reports');
     expect(item).toMatchObject({ label: 'Review queue', count: 874, countLabel: 'in the queue' });
     expect(GROUPS.length).toBeGreaterThan(5);
+  });
+
+  it('lists every workspace the console routes to, so none is reachable only by address', () => {
+    const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+    const routed = [...app.matchAll(/case '(\/console\/[a-z-]+)':/g)].map((m) => m[1]);
+    const listed = new Set(allWorkspaces().map((w) => w.path));
+    // Briefing mode is the home at wall size, chosen from the person menu (CON-11).
+    expect(routed.filter((p) => p !== '/console/briefing' && !listed.has(p!))).toEqual([]);
+    expect(routed.length).toBeGreaterThan(50);
   });
 });

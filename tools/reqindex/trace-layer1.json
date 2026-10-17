@@ -43,10 +43,10 @@
     "Field-level validation errors, generic denials, no internals on 5xx."
   ],
   "BRD:FR-00.08": [
-    "partial",
-    "timestamptz columns (all migrations), cg.tenant.timezone",
-    "",
-    "Stored in UTC with the tenant's zone recorded; display in the tenant zone is wired into views in layer 2 (console currently shows the browser zone)."
+    "pass",
+    "timestamptz columns (all migrations), cg.tenant.timezone; the subject carries the tenant's zone and `/me` returns it (auth/subject.ts, routes/me.ts); the console shows every time on that clock with the zone named and reads typed dates and times on it (apps/web-console/src/ui/time.ts: fmt, the command window, emergency access, badges, find a survivor; reminders, metrics, board replay, official reports with their 07:00/19:00 operational period, declaration data); official reports and metrics name their zone; unknown values stay \"Unknown\", never 0",
+    "services/api/test/app.test.ts (BRD:FR-00.08: /me carries the tenant's zone), apps/web-console/test/time.test.ts (BRD:FR-00.08: shown and typed on the county clock whatever the machine's zone, daylight-saving changes, unknown zone names; run under UTC and Asia/Tokyo), tests/e2e/console-screens.spec.ts (a reminder's due time reads in Central time with the zone named in a browser running on UTC)",
+    "Plan reading 22."
   ],
   "BRD:FR-00.09": [
     "partial",
@@ -55,19 +55,19 @@
     "Automated checks pass on released screens; manual assistive-technology passes pending (docs/a11y)."
   ],
   "BRD:FR-00.10": [
-    "partial",
-    "cg.governed_definition (0008), services/api/src/routes/definitions.ts",
-    "",
-    "Versioned definitions implemented; route not yet covered by the integration suite."
+    "pass",
+    "cg.governed_definition (0008), services/api/src/routes/definitions.ts (publish a version with a confirmed reason, history newest first, current view honours a later start date; retention policies read in days from the stored interval)",
+    "services/api/test/definitions.db.test.ts (BRD:FR-00.10: numbered versions with a reason and audited, a later version waits for its start, history newest first, versions never edited or removed by the application role, a reader cannot publish, a role without the grant cannot read, another county sees nothing; SEC-13: audit floor of 7 years, CJIS retention refused, policy versions and audit, defaults read back in days; legal hold placed and released once, audited, invisible to another county)",
+    "Test found and fixed: retention days were always reported empty (the driver reads an interval as an object), so the console showed \"0 years (null days)\"."
   ],
   "AC-00A": ["pass", "", "layer1.int.test.ts (denied generically, denial audited)", ""],
   "AC-00B": ["pass", "", "layer1.int.test.ts (stale If-Match → 409 with current record)", ""],
   "AC-00C": ["pass", "", "layer1.int.test.ts (Idempotency-Key replay)", ""],
   "AC-00D": [
-    "partial",
-    "services/api/src/errors.ts, apps/web-console/src/ui/primitives.tsx (Status)",
-    "errors.test.ts",
-    "No success shown on failure; input kept in console forms. Resident-side recovery with the intake outbox (layer 2)."
+    "pass",
+    "services/api/src/errors.ts, apps/web-console/src/ui/primitives.tsx (Status); resident intake outbox (apps/web-resident/src/intake/outbox.ts); console command window keeps the line",
+    "errors.test.ts; apps/web-resident/test/outbox.test.ts (AC-00D: an offline save keeps the report as not sent, with no receipt and the answers on the device, and is restored after a restart); tests/e2e/console-l7.spec.ts (CMD-34: offline, \"Not sent … Nothing changed\" and the line stays in the box)",
+    "No success shown on failure; input kept in console forms and on the resident's device."
   ],
   "BRD:FR-01.01": [
     "pass",
@@ -100,10 +100,10 @@
     "Accounts never deleted (no delete policy); personnel link optional."
   ],
   "BRD:FR-01.06": [
-    "deferred",
-    "",
-    "",
-    "Residents never have accounts; reference code + one-time code lookup is layer 2 (SEC-09, RES-01)."
+    "pass",
+    "services/api/src/public/routes.ts lookup/start (reference code and the contact on file, matched by blind index; the same answer either way) and lookup/verify (6-digit code, hashed, 10 minutes, 5 tries; 30 lookups per address, then 429); resident token 30 minutes; lookup/recover (2026-10-16): a lost reference number is sent again, by the registered confirmation text or email, only to the phone or email on the report, up to three recent reports not withdrawn, the same answer either way, at most twice an hour per contact, audited; apps/web-resident/src/screens/MyReport.tsx (\"Lost your reference number?\")",
+    "services/api/test/public.db.test.ts (a reference code alone retrieves nothing; the lookup answer is the same either way), services/api/test/reports.db.test.ts (BRD:FR-01.06, SEC-09: five tries, then even the right code is refused; too many lookups from one address wait; a lost reference number goes again to the email on the report, never to the screen, withdrawn reports left out, the same answer for an unknown address, a third ask within the hour sends nothing), tests/integration/layer2.int.test.ts, tests/e2e/resident.spec.ts (my report through the one-time code, keyboard only, axe; BRD:FR-01.06: the number comes again by email and is never on the screen, axe)",
+    "The reference code is never treated as a secret: it opens nothing alone. A resident whose phone or email changed, or whose report has no contact, asks the county's help line, where staff find the report without its code (FL-02). The screen-reader pass is pending a person (docs/a11y/screens/resident-intake.md check 2)."
   ],
   "AC-01A": [
     "pass",
@@ -136,10 +136,10 @@
     ""
   ],
   "BRD:FR-08.03": [
-    "deferred",
-    "",
-    "",
-    "Manual operational entries (notes, situation updates) arrive with missions in layer 4; the audit table is already out of their reach."
+    "pass",
+    "routes/missions.ts POST /missions/:id/narratives (mission.narrative; an amendment links to the entry it amends and never edits it); migration 0030 drops update and delete on cg.mission_event; 0006 revokes update, delete and truncate on cg.audit_event, with triggers; issued official reports never change (RULE-10)",
+    "services/api/test/missions.db.test.ts (narratives by role and attributable amendments keep the history), services/api/test/audit-immutable.db.test.ts (an audit record cannot be updated, deleted or truncated by either role; a timeline entry cannot be changed or removed), services/api/test/official-reports.db.test.ts (RULE-10)",
+    ""
   ],
   "BRD:FR-08.04": [
     "pass",
@@ -154,10 +154,10 @@
     "Restricted values are hashed at write time, so exports carry no restricted data."
   ],
   "AC-08A": [
-    "partial",
-    "cg.audit_chain() sets recorded_at; occurred_at is caller-supplied",
-    "",
-    "Verified by SQL during development; an automated assertion joins the integration suite with layer-2 delayed entries."
+    "pass",
+    "cg.audit_chain() sets recorded_at; occurred_at is caller-supplied; entries made after the fact (mission narratives, activity notes, significant events, service counts from a phone that was offline) keep occurred_at beside the server's created_at, and the API returns both as occurredAt and recordedAt (routes/missions.ts, routes/field-ops.ts, routes/field-assessments.ts; helpers.ts occurredAtOf: dated back, never more than 5 minutes ahead); a count's activity log entry takes the count's own time; the console timeline says \"(recorded …)\" for an entry recorded more than a minute late",
+    "services/api/test/fieldwork.db.test.ts (AC-08A: a count made offline three hours earlier keeps that time in the counter and the activity log, with the time recorded; an hour ahead refused), services/api/test/missions.db.test.ts (AC-08A: a narrative written two hours later keeps both times on the timeline; ahead refused)",
+    "Test found and fixed: the activity log entry made from an offline count was stamped with the time the phone synced."
   ],
   "AC-08B": [
     "pass",
@@ -166,10 +166,10 @@
     "Structural: no deletes, actor ids retained."
   ],
   "AC-08C": [
-    "deferred",
-    "",
-    "",
-    "Undo arrives with the command window (layer 7, CMD-28); audit design already forbids deletion."
+    "pass",
+    "services/api/src/routes/commands.ts: undo is a new command_execution with reversal_of; the original is kept and marked undone_by; audited as command.undo; compensating commands refuse undo (\"correct it on the screen with a new entry; the original stays\")",
+    "services/api/test/commands.db.test.ts (AC-C08, CMD-28: undo is a linked execution, once, inside its window: the original stays, marked undone, and both the execution and the undo are audited), services/api/test/commands.test.ts (CMD-28), tests/e2e/console-l7.spec.ts (a coordinator claims a need through a confirmed plan and undoes it)",
+    ""
   ],
   "BRD:FR-18.01": [
     "pass",
@@ -184,10 +184,10 @@
     ""
   ],
   "BRD:FR-18.03": [
-    "deferred",
-    "",
-    "",
-    "Human-reviewed guidance and field definitions arrive with the intake content (layer 2)."
+    "partial",
+    "Every intake question carries \"Why we ask\" and \"For example\" in English and Spanish (packages/intake/src/graphs/westwind.ts) under a reading-grade and tone lint (lint.ts); public resources publish only when each text is marked human-reviewed (routes/resources.ts); definitions are versioned with a reason (routes/definitions.ts); column definitions in packages/db/src/dictionary.ts; field job aids are human-reviewed: approved by someone other than the last editor before phones show them (routes/job-aids.ts); known limitations for counties and the help desk, built from the open traceability notes (docs/operations/known-limitations.md, draft of 2026-10-16 for Adam's review), kept true by a check that help text never claims what the page lists as not built (AC-18C)",
+    "packages/intake/test/graph.test.ts (one example and one reason per question in each language), packages/intake/test/lint.test.ts, services/api/test/help.db.test.ts (resources publish only when every text is human-reviewed), services/api/test/definitions.db.test.ts, services/api/test/reports.db.test.ts (question graphs: draft, string rules, publish with confirmation), services/api/test/job-aids.db.test.ts, tools/checks/test/help-claims.test.ts (AC-18C)",
+    "Not built: a question graph is published by its author with no second reviewer; console screens have no field-definition help. The known-limitations page is a draft until Adam reviews it. Job aids need a second person's approval (2026-10-16)."
   ],
   "BRD:FR-18.04": [
     "partial",
@@ -209,7 +209,12 @@
   ],
   "AC-18A": ["pass", "", "layer1.int.test.ts (director denied legal holds), templates.test.ts", ""],
   "AC-18B": ["pass", "", "stack.int.test.ts (meta keys)", ""],
-  "AC-18C": ["deferred", "", "", "Product help content is written with the features it describes."],
+  "AC-18C": [
+    "pass",
+    "The command window's /help is generated from the command catalog with what is enabled and allowed (routes/commands.ts, ui/command-window.tsx); the field app's location text says it shares only while the app is open (apps/field/src/i18n.ts); the printing it mentions exists (public poster, badge print outcome); a check over the text people read in every app, the API's command help, job aids, question graphs and seed content fails on claims of live tracking, printing straight to a printer, or anything else docs/operations/known-limitations.md lists as not built, each rule tied to its line on that page (tools/checks/test/help-claims.test.ts, 2026-10-16)",
+    "services/api/test/commands.db.test.ts (CMD-12: unsupported verbs are answered as unsupported, never as done; disabled commands listed as disabled), tests/e2e/console-l7.spec.ts (/help), tools/checks/test/help-claims.test.ts (each rule catches its claim and lets the apps' honest wording through; no scanned file makes a claim)",
+    "There is no user guide yet: when one is written, add its folder to the check's sources. The check is a list of phrasings, not a reading: a person still reviews help text (BRD:FR-18.03)."
+  ],
   "NFR-02": [
     "pass",
     "infra/caddy/Caddyfile (TLS, HSTS, CSP), infra/postgres/init.sh (least privilege), zod validation, services/api/src/logging.ts",
@@ -235,10 +240,10 @@
     "RPO/RTO numbers belong to the cloud deployment (SCL-05)."
   ],
   "NFR-10": [
-    "partial",
-    "pino structured logs with redaction, request ids",
-    "",
-    "Metrics and traces (OpenTelemetry) arrive in layer 2 with intake load tests."
+    "pass",
+    "pino structured logs with redaction, request ids; packages/adapters/src/metrics.ts (registry, label guard, series cap); services/api/src/plugins/metrics.ts (/metrics: requests by route template, latency, error codes incl. version_conflict, idempotent replays, field command results, AI outcomes); services/worker/src/metrics.ts (schedules, queue results, outbox, SMS/email sends, audit chain checks); infra/prometheus/alerts.yml (14 rules, owner and runbook each); docs/operations/alerts.md (owners, runbooks); compose profile monitoring; ADR-0023",
+    "packages/adapters/test/metrics.test.ts; services/api/test/metrics.test.ts; services/worker/test/alerts.test.ts; infra/prometheus/alerts.test.yml (promtool, scripts/check-alerts.sh in CI); tests/e2e/dast.spec.ts (gateway never serves /metrics)",
+    "Save, command and integration failures, latency, conflicts, duplicate prevention and audit completeness are measured with labels from fixed vocabularies only (no ids or content). Every alert names an owner role and a runbook. The people in each role come from the deployment's on-call roster. Distributed traces wait for the cloud collector (ADR-0023)."
   ],
   "NFR-11": [
     "pass",
@@ -277,10 +282,10 @@
     ""
   ],
   "SEC-07": [
-    "partial",
-    "Keycloak realm: password + passkey browser flow, no shared accounts",
-    "console.spec.ts (passkey on a virtual authenticator)",
-    "SAML/OIDC brokering to a tenant's own IdP is configured per realm but not yet exercised by a test."
+    "pass",
+    "Keycloak realm: password + passkey browser flow, no shared accounts; enclave: password then passkey with user verification, the second factor required in amr by the API (ADR-0036); single sign-on through the county's identity provider: cg.tenant_sso (0105), routes/sso.ts (propose, second-administrator approve or decline, switch off; SAML metadata screened, OIDC https only, client secret encrypted), worker sso.apply and KeycloakAdmin.ensureSsoProvider (provider county-sso, cg-first-broker links to invited accounts only, cg-post-broker requires the passkey), passkey-only invitations under SSO, console Single sign-on screen (ADR-0008)",
+    "console.spec.ts (passkey on a virtual authenticator); services/cjis-api/test/token.test.ts, tests/integration/stack.int.test.ts (password alone refused), tests/e2e/cjis.spec.ts (passkey on a virtual authenticator); tests/e2e/sso.spec.ts (stand-in SAML provider: proposed, approved by a second administrator, applied, invited person signs in with the county account then registers a passkey, uninvited county user refused); services/api/test/sso.db.test.ts; services/api/test/sso-config.test.ts; services/worker/test/sso-keycloak.test.ts",
+    "OpenID Connect brokering is covered by unit and database tests; the browser journey uses SAML (a local OIDC provider would need back-channel addresses the gateway does not route). The enclave keeps its own accounts (no county SSO into the enclave)."
   ],
   "SEC-08": [
     "pass",
@@ -307,10 +312,10 @@
     "Framework and housekeeping deletions in place; record-category sweeps are added as record tables arrive (layer 2+)."
   ],
   "SEC-14": [
-    "designed",
-    "",
-    "",
-    "US-region residency is a deployment property; no training on resident data is enforced by the AI adapter policy (layer 7)."
+    "partial",
+    "packages/config/src/index.ts (S3_REGION must be a US region, or the service does not start); packages/ai/src/registry.ts canEnable (a provider is enabled only when it processes in the US, keeps nothing and never trains: AIG-06); providers/openai.ts OPENAI_COMPLIANCE",
+    "packages/config/test/worker.test.ts (SEC-14: object storage outside a US region is refused at start); packages/ai/test/ai.test.ts (a feature can be enabled only for a compliant, evaluated provider (AIG-06): a non-US provider is refused)",
+    "No resident data trains a model: a provider that may train cannot be enabled at all, which is stricter than the tenant opt-in the requirement allows (no opt-in path is built). Residency in code: object storage and AI processing are held to the US. The database, backups and the cloud account itself are a deployment property of the government cloud (SCL-05)."
   ],
   "SEC-15": [
     "partial",
@@ -343,10 +348,10 @@
     "Per-tenant configuration without code changes; infrastructure as code for the cloud is deferred (Gov)."
   ],
   "SCL-10": [
-    "partial",
-    "cg.license (0002)",
-    "",
-    "Stored; no metering by design (intake never capped); administration UI later."
+    "pass",
+    "cg.license (0002); 0106 license_coverage() and covers check; routes/license.ts (GET /license, read only); screens/subscription.tsx; worker scripts/license.ts (operator writes, audited); license.write explicit; seed contracts",
+    "services/api/test/license.db.test.ts (coverage through a state contract, other members never named, covers only members, audit, surge of 30 reports accepted with no contract in force); services/api/test/license.test.ts (no code but the view and the operator command reads a contract; no role can write one); tests/e2e/console-screens.spec.ts (axe, reflow)",
+    "Tier, term and covered jurisdictions stored per tenant; a state or coalition contract covers member jurisdictions and the county sees it. Never metered or capped: intake never reads a contract. Tier names and population breakpoints deferred (Section 21, 2026-10-12): the tier is kept as the contract states it."
   ],
   "SCL-11": [
     "pass",
@@ -362,10 +367,10 @@
   ],
   "SCL-15": ["pass", "docs/adr/0001–0023", "", ""],
   "ADM-01": [
-    "partial",
-    "routes/tenants.ts, accounts.ts, roles.ts; console administration workspaces",
-    "layer1.int.test.ts, console.spec.ts",
-    "Event templates, question graphs, planning factors and language/branding editors arrive with their layers; all are audited through the same path."
+    "pass",
+    "routes/tenants.ts, accounts.ts, roles.ts; console administration workspaces; question graphs (routes/intake-graphs.ts, screens/intake.tsx); layer 7: the Event templates editor (screens/settings.tsx EventTemplatesScreen over PUT /event-templates/:id, version-checked), the Planning factors editor (PlanningFactorsScreen: GET /recommendations/planning-factors, saved with a reason through PUT /tenants/:id/config/recommendation.planning_factors) and the Branding and languages editor (BrandingScreen over PATCH /tenants/:id: the agency name per language, website and header colour checked by services/api/src/branding.ts, languages limited to reviewed catalogs with English and Spanish kept for residents); the resident and Find help pages show the branding and the county's own help line (apps/web-resident/src/intake/brand.ts, apps/web-help/src/main.ts)",
+    "layer1.int.test.ts (ADM-01: faint colour, unknown field, plain-http site and dropped Spanish refused; saved with a reason, audited, shown on the public intake and help pages, put back), services/api/test/branding.test.ts, console.spec.ts; services/api/test/event-templates.db.test.ts, services/api/test/recommendations.db.test.ts, tests/e2e/console-screens.spec.ts (ADM-01: a template's layers saved and put back, a wrong keyword named; a planning factor changed with a reason and put back; the county's name, website and colour saved with a reason, seen by residents, put back; axe and reflow)",
+    "Branding is the agency's name per language, its website and the header colour; there is no logo upload (layer-7 plan reading 45)."
   ],
   "ADM-03": [
     "pass",
@@ -452,9 +457,9 @@
   "NFR-01": ["partial", "", "tests/e2e", "Automated only; manual passes pending."],
   "NFR-09": [
     "partial",
-    "packages/i18n via react-intl in the resident app, Keycloak realm locales",
+    "apps/web-resident/src/i18n via react-intl in the resident app, Keycloak realm locales",
     "a11y.spec.ts (Spanish)",
-    "Staff console English in layer 1."
+    "English and Spanish throughout the resident, help, field and text channels; the staff console and the enclave screens are English only, and no right-to-left language is enabled (EQ-09)."
   ],
   "RULE-01": [
     "deferred",
@@ -469,10 +474,10 @@
     "Reference code + one-time code lookup is layer 2 (RES-01); residents already have no accounts."
   ],
   "GATE-06": [
-    "deferred",
-    "",
-    "",
-    "Public submissions and resources without staff credentials: layers 2 and 3."
+    "pass",
+    "Public routes under /api/public need no staff token (services/api/src/public/routes.ts): resident intake, my report, Find help, facility self-registration, volunteer sign-up",
+    "tests/e2e/resident.spec.ts (submit and my report with no sign-in), tests/e2e/help.spec.ts (Find help with no sign-in; a place offered through the public form), tests/integration/layer2.int.test.ts, tests/integration/layer3.int.test.ts, services/api/test/public.db.test.ts, services/api/test/help.db.test.ts",
+    ""
   ],
   "GATE-07": ["deferred", "", "", "Official reports and exports: layer 6."],
   "GATE-08": [

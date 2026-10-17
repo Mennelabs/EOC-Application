@@ -51,4 +51,27 @@ describe('worker reference-data settings', () => {
       }).REFDATA_MODE,
     ).toBe('live');
   });
+
+  it('FLD-13: exercise map packages are off by default and refused in production', () => {
+    const c = loadConfig(workerSchema, env);
+    expect(c.MAP_EXERCISE).toBe(false);
+    expect(c.MAP_TILES_PATH).toBe('/srv/tiles/region.pmtiles');
+    expect(loadConfig(workerSchema, { ...env, MAP_EXERCISE: 'true' }).MAP_EXERCISE).toBe(true);
+    expect(() =>
+      loadConfig(workerSchema, {
+        ...env,
+        DATA_CLASSIFICATION_MODE: 'production',
+        REFDATA_MODE: 'live',
+        MAP_EXERCISE: 'true',
+      }),
+    ).toThrow(ConfigError);
+  });
+
+  it('SEC-14: object storage outside a US region is refused at start', () => {
+    expect(loadConfig(workerSchema, env).S3_REGION).toBe('us-east-1');
+    for (const region of ['us-gov-west-1', 'usgovvirginia', 'US-WEST-2'])
+      expect(loadConfig(workerSchema, { ...env, S3_REGION: region }).S3_REGION).toBe(region);
+    for (const region of ['eu-west-1', 'ca-central-1', 'ap-southeast-2'])
+      expect(() => loadConfig(workerSchema, { ...env, S3_REGION: region })).toThrow(ConfigError);
+  });
 });

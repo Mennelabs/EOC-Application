@@ -11,6 +11,7 @@ import { actions } from '@cg/authz';
 import { checkAlias } from '../src/commands/aliases.ts';
 import { CATALOG, DEFAULT_PHASES } from '../src/commands/catalog.ts';
 import {
+  ON_SCREEN,
   parseMinutes,
   parseShorthand,
   resolveWhen,
@@ -47,6 +48,7 @@ describe('the command catalog', () => {
   it('Section 30.2: phases 1 and 2 are on by default; status changes are phase 3', () => {
     expect([...DEFAULT_PHASES]).toEqual([1, 2]);
     expect(CATALOG.find((c) => c.name === 'mission.status')?.phase).toBe(3);
+    expect(CATALOG.find((c) => c.name === 'person.status')?.phase).toBe(3);
     expect(CATALOG.filter((c) => c.phase === 1).every((c) => c.kind !== 'change')).toBe(true);
   });
 
@@ -106,6 +108,157 @@ describe('shorthand', () => {
     expect(parse('/ayuda')).toMatchObject({ ok: false, error: 'help' });
   });
 
+  it('CMD-14, CMD-15, CMD-17: people, reports, resources and contacts, in English and Spanish', () => {
+    expect(parse('/people available skill:chainsaw department:"Public Works" Ana')).toEqual({
+      ok: true,
+      command: 'people.find',
+      args: {
+        availability: 'available',
+        skill: 'chainsaw',
+        department: 'Public Works',
+        name: 'Ana',
+      },
+      ref: null,
+      refKind: null,
+    });
+    expect(parse('/personas disponibles de_turno skill:motosierra')).toMatchObject({
+      command: 'people.find',
+      args: { availability: 'available', onDuty: true, skill: 'motosierra' },
+    });
+    // CMD-14: the longest status phrase at the end wins; "assigned" comes from assignments only.
+    expect(parse('/person Dana Ruiz unavailable')).toEqual({
+      ok: true,
+      command: 'person.status',
+      args: { set: 'unavailable' },
+      ref: 'Dana Ruiz',
+      refKind: 'personnel',
+    });
+    expect(parse('/persona Dana Ruiz no disponible')).toMatchObject({
+      args: { set: 'unavailable' },
+      ref: 'Dana Ruiz',
+    });
+    expect(parse('/persona Dana fuera de turno')).toMatchObject({
+      args: { set: 'off_duty' },
+      ref: 'Dana',
+    });
+    expect(parse('/person Dana on duty')).toMatchObject({ args: { set: 'on_duty' }, ref: 'Dana' });
+    expect(parse('/person Dana assigned')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/person available')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/reports new flagged')).toMatchObject({
+      command: 'reports.find',
+      args: { state: 'submitted', flagged: true },
+    });
+    expect(parse('/reportes peligro WW-7K3Q9')).toMatchObject({
+      command: 'reports.find',
+      args: { danger: true, reference: 'WW-7K3Q9' },
+    });
+    expect(parse('/reports everything')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/recursos vivienda')).toMatchObject({
+      command: 'resources.find',
+      args: { category: 'vivienda' },
+    });
+    expect(parse('/contacts 24h Red Cross')).toMatchObject({
+      command: 'contacts.find',
+      args: { type: 'twenty_four_hour', agency: 'Red Cross' },
+    });
+    expect(parse('/contactos prensa')).toMatchObject({
+      command: 'contacts.find',
+      args: { type: 'media' },
+    });
+  });
+
+  it('CMD-13, AC-C01: priority, assignment, closure and reopening of a mission', () => {
+    expect(parse('/mission M-00012 priority urgent')).toEqual({
+      ok: true,
+      command: 'mission.priority',
+      args: { priority: 'urgent' },
+      ref: 'M-00012',
+      refKind: 'mission',
+    });
+    expect(parse('/misión M-00012 prioridad alta')).toMatchObject({ args: { priority: 'high' } });
+    expect(parse('/mission M-00012 priority whenever')).toMatchObject({ error: 'usage' });
+    expect(parse('/mission M-00012 assign Ana Ruiz')).toMatchObject({
+      command: 'mission.assign',
+      args: { person: 'Ana Ruiz' },
+    });
+    expect(parse('/mision M-00012 asignar')).toMatchObject({ error: 'usage' });
+    // DSP-04: the suggested team, among those with a skill, rather than a named person.
+    expect(parse('/mission M-00012 send nearest chainsaw team')).toEqual({
+      ok: true,
+      command: 'mission.assign_nearest',
+      args: { skill: 'chainsaw' },
+      ref: 'M-00012',
+      refKind: 'mission',
+    });
+    expect(parse('/mission "Willow Bend lot 41" assign the closest team')).toMatchObject({
+      command: 'mission.assign_nearest',
+      args: {},
+      ref: 'Willow Bend lot 41',
+    });
+    expect(parse('/misión M-00012 enviar el equipo más cercano de motosierra')).toMatchObject({
+      command: 'mission.assign_nearest',
+      args: { skill: 'motosierra' },
+    });
+    // The release reason is asked at confirmation, not typed with the command.
+    expect(parse('/mision M-00012 liberar Ana Ruiz')).toMatchObject({
+      command: 'mission.release',
+      args: { person: 'Ana Ruiz' },
+      ref: 'M-00012',
+    });
+    expect(parse('/mission M-00012 release')).toMatchObject({ error: 'usage' });
+    expect(parse('/mission M-00012 close disposition:referred')).toMatchObject({
+      command: 'mission.close',
+      args: { disposition: 'referred' },
+    });
+    expect(parse('/mission M-00012 cerrar')).toMatchObject({ command: 'mission.close', args: {} });
+    expect(parse('/mission M-00012 reabrir')).toMatchObject({ command: 'mission.reopen' });
+  });
+
+  it('CMD-06: "this" (or esta, este) stands for the record on the screen; any other word is a reference', () => {
+    expect(parse('/mission this status on_scene')).toMatchObject({
+      ok: true,
+      command: 'mission.status',
+      ref: ON_SCREEN,
+      refKind: 'mission',
+    });
+    expect(parse('/necesidad esta reclamar')).toMatchObject({
+      command: 'need.claim',
+      ref: ON_SCREEN,
+    });
+    expect(parse('/mission 20261009-003')).toMatchObject({ ref: '20261009-003' });
+  });
+
+  it('CMD-30: "/needs open … claim" and "/needs claimed … release" are batches over a filter; a status that cannot be claimed or released is refused', () => {
+    expect(
+      parse('/needs open category:food_water postal:63003 claim note:"Exercise: pantry"'),
+    ).toMatchObject({
+      ok: true,
+      command: 'needs.claim_many',
+      args: { category: 'food_water', postal: '63003', note: 'Exercise: pantry' },
+    });
+    expect(parse('/necesidades reclamadas categoria:agua liberar')).toMatchObject({
+      command: 'needs.release_many',
+      args: { category: 'agua' },
+    });
+    expect(parse('/needs claimed claim')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/needs open')).toMatchObject({ command: 'needs.find' });
+  });
+
+  it('FL-07: "log two meals" and "I\'m done here" as shorthand, in English and Spanish', () => {
+    expect(parse('/log 2 meals')).toEqual({
+      ok: true,
+      command: 'service.log',
+      args: { count: 2, kind: 'meal' },
+      ref: null,
+      refKind: null,
+    });
+    expect(parse('/registrar tres comidas')).toMatchObject({ args: { count: 3, kind: 'meal' } });
+    expect(parse('/log water 12')).toMatchObject({ args: { count: 12, kind: 'water_case' } });
+    expect(parse('/log some meals')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/checkout')).toMatchObject({ command: 'shift.end', refKind: 'check_in' });
+    expect(parse('/salida')).toMatchObject({ command: 'shift.end' });
+  });
+
   it('free text after a sub-verb keeps its colons; only known keys are pairs', () => {
     expect(parse('/mission M-1 note Crew says: road closed at Elm')).toMatchObject({
       command: 'mission.note',
@@ -115,8 +268,247 @@ describe('shorthand', () => {
 
   it('CMD-12: unknown verbs and actions are unsupported, never guessed', () => {
     expect(parse('/delete everything')).toMatchObject({ ok: false, error: 'unsupported' });
-    expect(parse('/mission M-1 close')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/mission M-1 delete')).toMatchObject({ ok: false, error: 'usage' });
     expect(parse('claim the food need')).toMatchObject({ ok: false, error: 'unsupported' });
+  });
+
+  it('CMD-17: "/resource new" drafts a resource of a known kind; dates are read on the organization\'s clock and a past expiry is refused', () => {
+    expect(
+      parse(
+        '/resource new hotline Flood debris pickup line category:debris summary:"Call to book"',
+      ),
+    ).toEqual({
+      ok: true,
+      command: 'resource.draft',
+      args: {
+        type: 'hotline',
+        title: 'Flood debris pickup line',
+        category: 'debris',
+        summary: 'Call to book',
+      },
+      ref: null,
+      refKind: null,
+    });
+    expect(parse('/recurso nuevo programa Ayuda con renta')).toMatchObject({
+      command: 'resource.draft',
+      args: { type: 'program', title: 'Ayuda con renta' },
+    });
+    expect(parse('/resource new poster Something')).toMatchObject({ ok: false, error: 'usage' });
+    // A date alone is the end of that day in Chicago, across the change back from daylight time.
+    expect(parse('/resource flood-hotline expires 2026-10-20')).toMatchObject({
+      command: 'resource.expiry',
+      args: { value: '2026-10-21T04:59:00.000Z', local: '2026-10-20 23:59 America/Chicago' },
+      ref: 'flood-hotline',
+      refKind: 'resource',
+    });
+    expect(parse('/resource Debris pickup line vence 2026-11-05 8:30')).toMatchObject({
+      command: 'resource.expiry',
+      args: { value: '2026-11-05T14:30:00.000Z' },
+      ref: 'Debris pickup line',
+    });
+    expect(parse('/resource flood-hotline expires 2026-10-15 12:00')).toMatchObject({
+      args: { value: '2026-10-15T17:00:00.000Z' },
+    });
+    // Ten in the morning has passed: taking a page down now stays on the screen.
+    expect(parse('/resource flood-hotline expires 2026-10-15 09:00')).toMatchObject({
+      ok: false,
+      error: 'usage',
+      message: expect.stringContaining('Unpublish'),
+    });
+    expect(parse('/resource flood-hotline expires none')).toMatchObject({
+      command: 'resource.expiry',
+      args: { value: null },
+    });
+    expect(parse('/resource flood-hotline review 2026-12-01')).toMatchObject({
+      command: 'resource.review',
+      args: { value: '2026-12-01' },
+    });
+    expect(parse('/resource flood-hotline review 2026-12-01 10:00')).toMatchObject({
+      ok: false,
+      error: 'usage',
+    });
+    // RULE-11: what a person saw at the printer; only a failure carries why.
+    expect(parse('/badge Dana Ruiz printed')).toEqual({
+      ok: true,
+      command: 'badge.print',
+      args: { person: 'Dana Ruiz', outcome: 'confirmed' },
+      ref: null,
+      refKind: null,
+    });
+    expect(parse('/badge Dana Ruiz failed printer out of labels')).toMatchObject({
+      args: { person: 'Dana Ruiz', outcome: 'failed', reason: 'printer out of labels' },
+    });
+    expect(parse('/gafete Dana Ruiz entregado')).toMatchObject({
+      args: { person: 'Dana Ruiz', outcome: 'handed_out' },
+    });
+    expect(parse('/badge Dana Ruiz handed out')).toMatchObject({
+      args: { person: 'Dana Ruiz', outcome: 'handed_out' },
+    });
+    expect(parse('/badge printed')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/badge Dana Ruiz generate')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/resource flood-hotline expires next week')).toMatchObject({
+      ok: false,
+      error: 'usage',
+    });
+    // CMD-18: the last word says what happens to the account; a role is requested or revoked.
+    expect(parse('/account dana@example.org suspend')).toEqual({
+      ok: true,
+      command: 'account.suspend',
+      args: {},
+      ref: 'dana@example.org',
+      refKind: 'account',
+    });
+    expect(parse('/cuenta Dana Ruiz desactivar')).toMatchObject({
+      command: 'account.deactivate',
+      ref: 'Dana Ruiz',
+    });
+    expect(parse('/role request Mass care coordinator to:"Dana Ruiz"')).toMatchObject({
+      command: 'role.request',
+      args: { role: 'Mass care coordinator' },
+      ref: 'Dana Ruiz',
+      refKind: 'account',
+    });
+    expect(parse('/rol quitar Mass care coordinator from:dana@example.org')).toMatchObject({
+      command: 'role.revoke',
+      ref: 'dana@example.org',
+    });
+    expect(parse('/role request Mass care coordinator')).toMatchObject({
+      ok: false,
+      error: 'usage',
+    });
+    expect(parse('/account Dana delete')).toMatchObject({ ok: false, error: 'usage' });
+  });
+
+  it('CMD-13, AC-C08: "/mission new" drafts a mission of a known kind; "/message" names a team and the words', () => {
+    expect(parse('/mission new welfare Check on the family at 14 Elm')).toMatchObject({
+      command: 'mission.draft',
+      args: { kind: 'welfare_check', summary: 'Check on the family at 14 Elm' },
+    });
+    expect(parse('/mision nueva escombros Calle 5 bloqueada')).toMatchObject({
+      command: 'mission.draft',
+      args: { kind: 'debris', summary: 'Calle 5 bloqueada' },
+    });
+    expect(parse('/mission new rescue now')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/mission new delivery')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/message FX-1 Water is safe to drink')).toMatchObject({
+      command: 'team.message',
+      ref: 'FX-1',
+      refKind: 'team',
+      args: { text: 'Water is safe to drink' },
+    });
+    expect(parse('/mensaje to:"Field Exercise Team" El agua es potable')).toMatchObject({
+      command: 'team.message',
+      ref: 'Field Exercise Team',
+      args: { text: 'El agua es potable' },
+    });
+    expect(parse('/message FX-1')).toMatchObject({ ok: false, error: 'usage' });
+    const added = CATALOG.filter((c) => ['mission.draft', 'team.message'].includes(c.name));
+    expect(added.map((c) => [c.name, c.phase, c.confirmation, c.kind])).toEqual([
+      ['mission.draft', 1, 'none', 'draft'],
+      ['team.message', 4, 'full_review', 'change'],
+    ]);
+    // AC-C07: with mission:, the message is then noted on the mission.
+    expect(parse('/message CC-1 Water at the school is safe mission:M-00012')).toMatchObject({
+      command: 'team.message',
+      args: { text: 'Water at the school is safe', mission: 'M-00012' },
+      ref: 'CC-1',
+    });
+  });
+
+  it('CMD-15: a reviewer takes a report into review, decides it with a reason and evidence, or asks the resident', () => {
+    expect(parse('/report AB12CD review')).toMatchObject({
+      command: 'report.claim',
+      ref: 'AB12CD',
+      refKind: 'report',
+    });
+    expect(parse('/report AB12CD approve photos match evidence:photo-1,visit-2')).toMatchObject({
+      command: 'report.approve',
+      args: { reason: 'photos match', evidenceRefs: ['photo-1', 'visit-2'] },
+    });
+    expect(parse('/reporte AB12CD rechazar reason:"not in the county"')).toMatchObject({
+      command: 'report.reject',
+      args: { reason: 'not in the county', evidenceRefs: [] },
+    });
+    expect(parse('/report AB12CD ask How many people live there?')).toMatchObject({
+      command: 'report.ask',
+      args: { message: 'How many people live there?' },
+    });
+    expect(parse('/report AB12CD')).toMatchObject({
+      command: 'reports.find',
+      args: { reference: 'AB12CD' },
+    });
+    expect(parse('/report AB12CD approve')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/report AB12CD ask')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/report AB12CD delete')).toMatchObject({ ok: false, error: 'usage' });
+    // The other report is named by its code; the reason follows it.
+    expect(parse('/report AB12CD duplicate WX34YZ same house, same photos')).toMatchObject({
+      command: 'report.duplicate',
+      args: { of: 'WX34YZ', reason: 'same house, same photos', evidenceRefs: [] },
+      ref: 'AB12CD',
+      refKind: 'report',
+    });
+    expect(parse('/reporte AB12CD duplicado WX34YZ reason:"misma casa"')).toMatchObject({
+      args: { of: 'WX34YZ', reason: 'misma casa' },
+    });
+    expect(parse('/report AB12CD duplicate same house')).toMatchObject({
+      ok: false,
+      error: 'usage',
+    });
+    expect(parse('/report AB12CD duplicate WX34YZ')).toMatchObject({ ok: false, error: 'usage' });
+    const review = CATALOG.filter((c) => c.name.startsWith('report.'));
+    expect(review.map((c) => [c.name, c.phase, c.confirmation])).toEqual([
+      ['report.claim', 3, 'one_tap'],
+      ['report.approve', 4, 'full_review'],
+      ['report.reject', 4, 'full_review'],
+      ['report.duplicate', 4, 'full_review'],
+      ['report.ask', 4, 'full_review'],
+      ['report.export', 3, 'one_tap'],
+    ]);
+  });
+
+  it('CMD-16: exports name their scope; a report by number or the latest, PDF unless CSV is asked; a release names its request, kinds and dates', () => {
+    expect(parse('/export ida')).toMatchObject({ command: 'ida.export', args: {} });
+    expect(parse('/export sitrep 3 csv')).toMatchObject({
+      command: 'report.export',
+      ref: 'sitrep 3',
+      refKind: 'official_report',
+      args: { format: 'csv' },
+    });
+    expect(parse('/exportar informe ultimo')).toMatchObject({
+      command: 'report.export',
+      ref: 'sitrep latest',
+      args: { format: 'pdf' },
+    });
+    expect(parse('/export briefing')).toMatchObject({ ref: 'briefing latest' });
+    expect(parse('/export sitrep draft')).toMatchObject({ ok: false, error: 'usage' });
+    expect(
+      parse('/export records PRR-114 reports needs, missions from:2026-10-01 to:2026-10-15'),
+    ).toMatchObject({
+      command: 'public_records.export',
+      args: {
+        requestReference: 'PRR-114',
+        recordTypes: ['reports', 'needs', 'missions'],
+        from: '2026-10-01',
+        to: '2026-10-15',
+      },
+    });
+    expect(parse('/exportar registros solicitud:"PRR 7" reportes cronologia')).toMatchObject({
+      args: { requestReference: 'PRR 7', recordTypes: ['reports', 'mission_timeline'] },
+    });
+    expect(parse('/export records PRR-1')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/export records PRR-1 residents')).toMatchObject({ ok: false, error: 'usage' });
+    expect(parse('/export records PRR-1 needs from:10/01/2026')).toMatchObject({
+      ok: false,
+      error: 'usage',
+    });
+    expect(parse('/export everything')).toMatchObject({ ok: false, error: 'usage' });
+    // Exports are confirmed and never in phase 1; a records release is phase 4 with a full review.
+    const exports = CATALOG.filter((c) => /export/.test(c.name));
+    expect(exports.map((c) => [c.name, c.phase, c.confirmation])).toEqual([
+      ['ida.export', 3, 'one_tap'],
+      ['report.export', 3, 'one_tap'],
+      ['public_records.export', 4, 'full_review'],
+    ]);
   });
 
   it('CMD-16: a reminder is done only with what was done', () => {

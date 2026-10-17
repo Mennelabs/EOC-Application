@@ -18,6 +18,7 @@ import { DataTable, Field, Status, fmt } from '../ui/primitives.tsx';
 import { EventPicker, useOpenEvents } from './dispatch.tsx';
 import { ExportFile, useExports } from './fema-package.tsx';
 import { PartnerRollupChooser, type RollupValue } from './partner-rollup.tsx';
+import { fromZoneInput, toZoneInput, wallClock } from '../ui/time.ts';
 
 type State = 'draft' | 'reviewed' | 'issued' | 'superseded' | 'withdrawn';
 const STATE_TEXT: Record<State, string> = {
@@ -63,6 +64,12 @@ interface Section {
     text?: string;
     rows?: { key: string; label: string; value: number | null; detail?: string }[];
     note?: string | null;
+    /** Layer-7 task G: drafted by the AI assistant from the facts, each sentence citing them. */
+    ai?: {
+      provider: string;
+      model: string;
+      sentences: { text: string; factIds: string[] }[];
+    };
   };
   definition: { key: string; version: number; text: string } | null;
   recordCount: number;
@@ -112,23 +119,19 @@ const inZone = (iso: string, timeZone: string) =>
     timeZoneName: 'short',
   }).format(new Date(iso));
 
-const local = (d: Date) => {
-  const p = (x: number) => String(x).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-};
-
-/** The operational period now: 07:00–19:00 or 19:00–07:00 local (plan §14 question 2, default in force). */
+/**
+ * The operational period now: 07:00–19:00 or 19:00–07:00 on the tenant's clock
+ * (plan §14 question 2, default in force; BRD:FR-00.08), as datetime-local values.
+ */
 function currentPeriod(now = new Date()): { from: string; to: string } {
-  const from = new Date(now);
-  from.setMinutes(0, 0, 0);
-  const h = now.getHours();
-  if (h >= 7 && h < 19) from.setHours(7);
-  else {
-    if (h < 7) from.setDate(from.getDate() - 1);
-    from.setHours(19);
-  }
-  const to = new Date(from.getTime() + 12 * 3_600_000);
-  return { from: local(from), to: local(to) };
+  const w = wallClock(now);
+  const start = w.hour >= 7 && w.hour < 19 ? 7 : 19;
+  // Before 07:00 the night period began at 19:00 the day before.
+  const day = new Date(Date.UTC(w.year, w.month - 1, w.day - (w.hour < 7 ? 1 : 0)));
+  const p = (x: number) => String(x).padStart(2, '0');
+  const from = `${day.getUTCFullYear()}-${p(day.getUTCMonth() + 1)}-${p(day.getUTCDate())}T${p(start)}:00`;
+  const to = toZoneInput(new Date(fromZoneInput(from).getTime() + 12 * 3_600_000));
+  return { from, to };
 }
 
 function useMe() {
@@ -230,9 +233,9 @@ export function OfficialReportsScreen({ navigate }: { navigate: (to: string) => 
         clientUuid: crypto.randomUUID(),
         eventId,
         kind: form.kind,
-        periodFrom: new Date(form.from).toISOString(),
-        periodTo: new Date(form.to).toISOString(),
-        ...(form.cutoff ? { cutoff: new Date(form.cutoff).toISOString() } : {}),
+        periodFrom: fromZoneInput(form.from).toISOString(),
+        periodTo: fromZoneInput(form.to).toISOString(),
+        ...(form.cutoff ? { cutoff: fromZoneInput(form.cutoff).toISOString() } : {}),
         classification: form.classification,
       },
     })
@@ -381,17 +384,38 @@ function TextSection({
   section,
   editable,
   onSave,
+  onAiDraft,
 }: {
   section: Section;
   editable: boolean;
   onSave: (text: string) => void;
+  /** The summary only: ask the AI assistant to redraft it from the facts. */
+  onAiDraft?: () => void;
 }) {
   const [text, setText] = useState(section.content.text ?? '');
   const id = `sec-${section.key}`;
   return (
     <section aria-labelledby={id}>
       <h2 id={id}>{section.title}</h2>
-      {section.drafted ? (
+      {section.drafted && section.content.ai ? (
+        <>
+          <p className="status info">
+            Drafted by the AI assistant ({section.content.ai.provider}, {section.content.ai.model})
+            from the facts below; every figure was checked against them. The author reads it,
+            changes what needs changing and saves it before review.
+          </p>
+          <details>
+            <summary>The facts each sentence uses</summary>
+            <ol>
+              {section.content.ai.sentences.map((x, i) => (
+                <li key={i}>
+                  {x.text} <span className="hint">({x.factIds.join(', ')})</span>
+                </li>
+              ))}
+            </ol>
+          </details>
+        </>
+      ) : section.drafted ? (
         <p className="status info">
           Drafted from the facts. The author reads it, changes what needs changing and saves it
           before review.
@@ -426,6 +450,11 @@ function TextSection({
           </Field>
           <div className="toolbar">
             <button type="submit">Save {section.title.toLowerCase()}</button>
+            {onAiDraft ? (
+              <button type="button" onClick={onAiDraft}>
+                Draft the {section.title.toLowerCase()} with the AI assistant
+              </button>
+            ) : null}
           </div>
         </form>
       ) : (
@@ -813,6 +842,19 @@ export function OfficialReportScreen({
                   : `${s.title} saved.`,
               )
             }
+            {...(s.key === 'summary'
+              ? {
+                  onAiDraft: () =>
+                    void act(
+                      () =>
+                        api<Report>(`/official-reports/${r.id}/sections/summary/ai-draft`, {
+                          body: { language: 'en' },
+                          ...v,
+                        }),
+                      'Summary drafted by the AI assistant from the facts. Read it and save it before review.',
+                    ),
+                }
+              : {})}
           />
         ),
       )}

@@ -3,10 +3,13 @@
  * ACC-35/49/51): hotlines, programs, deadlines and guidance with English and
  * Spanish text, each marked human-reviewed by the person saving it; the
  * accessibility check of the HTML shown before publishing; review and expiry
- * dates; the outside-link check; publish with the approval dialog.
+ * dates; the outside-link check; publish with the approval dialog. A
+ * resource may carry a decorative thumbnail (FR-16.01): uploaded here, shown
+ * to the public from the next publish on, removed from the public at once.
  */
 import { useState, type FormEvent } from 'react';
-import { api, describeFailure } from '../api/client.ts';
+import { api, describeFailure, upload } from '../api/client.ts';
+import { useImage } from '../ui/badge-photo.tsx';
 import { DataTable, Field, Status, fmt } from '../ui/primitives.tsx';
 import { useList } from './admin.tsx';
 
@@ -31,7 +34,88 @@ interface Resource {
   linkStatus: string;
   linkCheckedAt: string | null;
   published: boolean;
+  thumbnail: {
+    uploaded: boolean;
+    uploadedAt: string | null;
+    publicPicture: boolean;
+    waitingForPublish: boolean;
+  };
   texts: Text[];
+}
+
+const titleOf = (r: Resource) => r.texts.find((t) => t.locale === 'en')?.title ?? r.slug;
+
+function thumbnailState(r: Resource): string {
+  if (!r.thumbnail.uploaded) return 'None';
+  if (r.thumbnail.waitingForPublish)
+    return r.published ? 'New picture: shown after the next publish' : 'Shown once published';
+  return r.published ? 'Shown to the public' : 'Shown once published';
+}
+
+/** FR-16.01: the resource's decorative picture: preview, replace, remove. */
+function ThumbnailPanel({ r, onChanged }: { r: Resource; onChanged: () => void }) {
+  const title = titleOf(r);
+  const preview = useImage(
+    r.thumbnail.uploaded ? `/resources/${r.id}/thumbnail?v=${r.version}` : null,
+  );
+  const [msg, setMsg] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const send = async (file: File | undefined) => {
+    if (!file) return;
+    setMsg(null);
+    try {
+      await upload(`/resources/${r.id}/thumbnail`, file, file.type || 'image/jpeg', {
+        version: r.version,
+      });
+      setMsg({
+        kind: 'success',
+        text: r.published
+          ? 'Picture saved, cropped to 3:2. The public sees it after you publish again.'
+          : 'Picture saved, cropped to 3:2. The public sees it once the resource is published.',
+      });
+      onChanged();
+    } catch (e) {
+      setMsg({ kind: 'error', text: describeFailure(e) });
+    }
+  };
+  const remove = async () => {
+    setMsg(null);
+    try {
+      await api(`/resources/${r.id}/thumbnail`, { method: 'DELETE', version: r.version });
+      setMsg({ kind: 'success', text: 'Picture removed, from the public page too.' });
+      onChanged();
+    } catch (e) {
+      setMsg({ kind: 'error', text: describeFailure(e) });
+    }
+  };
+  return (
+    <section className="panel" aria-labelledby="thumb-h">
+      <h2 id="thumb-h">Picture for {title}</h2>
+      <p className="hint">
+        Optional and decorative: screen readers skip it, so the title and text must say everything.
+        Pictures of people or homes that could identify someone do not belong here.
+      </p>
+      {msg ? <Status kind={msg.kind}>{msg.text}</Status> : null}
+      <p>{thumbnailState(r)}</p>
+      {preview ? (
+        <img src={preview} alt={`Picture uploaded for ${title}`} width={240} height={160} />
+      ) : null}
+      <div className="actions" style={{ justifyContent: 'flex-start' }}>
+        <label>
+          {r.thumbnail.uploaded ? 'Replace the picture' : 'Choose a picture'} (JPEG, PNG or WebP)
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={(e) => void send(e.target.files?.[0])}
+          />
+        </label>
+        {r.thumbnail.uploaded ? (
+          <button type="button" onClick={() => void remove()}>
+            Remove the picture
+          </button>
+        ) : null}
+      </div>
+    </section>
+  );
 }
 
 const TYPES = ['hotline', 'program', 'deadline', 'guidance', 'link', 'document'];
@@ -116,6 +200,8 @@ export function ResourcesScreen() {
   const { rows, error, reload } = useList<Resource>('/resources?limit=200');
   const [form, setForm] = useState(blank);
   const [msg, setMsg] = useState<string | null>(null);
+  const [pictureFor, setPictureFor] = useState<string | null>(null);
+  const picked = rows?.find((r) => r.id === pictureFor) ?? null;
   const create = async (e: FormEvent) => {
     e.preventDefault();
     setMsg(null);
@@ -163,7 +249,7 @@ export function ResourcesScreen() {
           {
             key: 'title',
             header: 'Title',
-            render: (r) => r.texts.find((t) => t.locale === 'en')?.title ?? r.slug,
+            render: (r) => titleOf(r),
           },
           { key: 'type', header: 'Type', render: (r) => r.type },
           { key: 'status', header: 'Status', render: (r) => r.status },
@@ -179,6 +265,7 @@ export function ResourcesScreen() {
             render: (r) => r.texts.flatMap((t) => t.problems).join('; ') || 'ok',
           },
           { key: 'expires', header: 'Expires', render: (r) => fmt(r.expiresAt) },
+          { key: 'picture', header: 'Picture', render: (r) => thumbnailState(r) },
           {
             key: 'link',
             header: 'Outside link',
@@ -192,6 +279,9 @@ export function ResourcesScreen() {
             header: 'Actions',
             render: (r) => (
               <span className="actions">
+                <button type="button" onClick={() => setPictureFor(r.id)}>
+                  Picture for {titleOf(r)}
+                </button>
                 {r.referenceUrl ? (
                   <button type="button" onClick={() => act(r, 'check-link')}>
                     Check link
@@ -211,6 +301,7 @@ export function ResourcesScreen() {
           },
         ]}
       />
+      {picked ? <ThumbnailPanel r={picked} onChanged={reload} /> : null}
       <h2>Add a resource</h2>
       <form onSubmit={create} className="form-grid">
         <Field label="Type">

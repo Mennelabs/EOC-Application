@@ -19,6 +19,7 @@ import {
   type StepNode,
 } from '@cg/intake';
 import { useT, type Shell } from '../App.tsx';
+import { validationText } from '../intake/validation-text.ts';
 import {
   ApiFailure,
   Offline,
@@ -30,15 +31,19 @@ import {
   saveDraft,
   type ExtractionCandidate,
   type IntakeInfo,
+  aiComplaint,
+  dictate,
+  type ComplaintReason,
 } from '../api/public.ts';
 import { preparePhoto } from '../intake/photos.ts';
-import { dictationAvailable, startDictation, type Dictation } from '../intake/speech.ts';
+import { recordingSupported, startRecording, type Recording } from '../intake/speech.ts';
 import {
   advance,
   answer as setAnswer,
   contextOf,
   currentNode,
   engineAnswers,
+  FLOW_KEY,
   goBack,
   jumpTo,
   markStep,
@@ -52,8 +57,6 @@ import { ButtonRow, Card, ChoiceGroup, Field, Progress, Status } from '../ui/pri
 import { Icon } from '../ui/icons.tsx';
 import { Submit } from './Submit.tsx';
 import { fallbackIntake, useIntake } from './useIntake.ts';
-
-const FLOW_KEY = 'flow';
 
 interface Candidates {
   extractionId: string;
@@ -195,9 +198,14 @@ export function Flow({
         setAfterMode={setAfterMode}
         update={update}
         onDone={() => {
+          // AC-A07: nothing of this person's report stays for the next one, and a kiosk stays a
+          // kiosk (CHN-05, CHN-07); before, Done opened the personal welcome page.
           shell.store.remove(FLOW_KEY);
           setState(null);
-          shell.navigate(`/${tenant}/${event}`);
+          setCandidates(null);
+          setPaused(null);
+          setAfterMode(false);
+          shell.navigate(kiosk ? `/${tenant}/${event}/kiosk` : `/${tenant}/${event}`);
         }}
       />
     );
@@ -255,20 +263,24 @@ export function Flow({
           />
         </main>
       );
-    case 'info':
+    case 'info': {
+      const ownText =
+        node.tenantKey && info.graph.emergencyInstructions
+          ? text(info.graph.emergencyInstructions, locale)
+          : null;
       return (
         <main id="main" tabIndex={-1}>
           {chrome}
           <Card tone="safety">
             <h1>{text(node.title, locale)}</h1>
-            <p>
-              {node.tenantKey && info.graph.emergencyInstructions
-                ? text(info.graph.emergencyInstructions, locale)
-                : text(node.body, locale)}
-            </p>
+            <p>{ownText ?? text(node.body, locale)}</p>
             <p>
               <a href="tel:911">{t('safety.body')}</a>
             </p>
+            {/* AC-A04: a county's own wording may leave out texting; the way without a voice stays. */}
+            {ownText !== null && ownText !== text(node.body, locale) ? (
+              <p>{t('safety.text')}</p>
+            ) : null}
           </Card>
           <ButtonRow>
             <button
@@ -287,6 +299,7 @@ export function Flow({
           </ButtonRow>
         </main>
       );
+    }
     case 'free_text':
       return (
         <main id="main" tabIndex={-1}>
@@ -297,6 +310,7 @@ export function Flow({
             state={state}
             locale={locale}
             online={shell.online}
+            dictation={info.dictation === true}
             candidates={candidates}
             setCandidates={setCandidates}
             update={update}
@@ -483,7 +497,9 @@ function QuestionScreen({
   const commit = (value: AnswerValue) => {
     const errors = validateAnswer(node, value);
     if (errors.length > 0) {
-      setError(errors[0]!.message);
+      // AC-A05: the resident's language, never the engine's English.
+      const shown = validationText(node, errors[0]!);
+      setError(t(shown.id, shown.values));
       return;
     }
     setError(null);
@@ -785,6 +801,7 @@ function OwnWords({
   update,
   onDone,
   onSkip,
+  dictation,
 }: {
   node: StepNode;
   graph: QuestionGraph;
@@ -796,34 +813,57 @@ function OwnWords({
   update: (fn: (s: FlowState) => FlowState) => void;
   onDone: () => void;
   onSkip: () => void;
+  /** INT-12: the county's AI service may write down what the resident says. */
+  dictation: boolean;
 }) {
   const t = useT();
   const [words, setWords] = useState(state.ownWords ?? '');
   const [listening, setListening] = useState(false);
+  const [writing, setWriting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<Record<string, boolean>>({});
-  const dictation = useRef<Dictation | null>(null);
+  const [dictated, setDictated] = useState(false);
+  const recording = useRef<Recording | null>(null);
 
-  useEffect(() => () => dictation.current?.stop(), []);
+  // Leaving the step throws away a clip still recording; nothing is sent.
+  useEffect(() => () => recording.current?.cancel(), []);
 
-  const toggleDictation = () => {
-    if (listening) {
-      dictation.current?.stop();
-      setListening(false);
-      return;
-    }
-    const base = words;
-    const d = startDictation(
-      locale,
-      (spoken) => setWords(`${base}${base && spoken ? ' ' : ''}${spoken}`),
-      () => setListening(false),
-    );
-    if (d) {
-      dictation.current = d;
-      setListening(true);
+  const finishRecording = async () => {
+    const r = recording.current;
+    recording.current = null;
+    setListening(false);
+    if (!r) return;
+    const clip = await r.stop();
+    if (!clip) return;
+    setWriting(true);
+    try {
+      const heard = await dictate(state.tenant, state.executionId, locale, clip);
+      if (heard.text) {
+        setWords((before) => `${before}${before && heard.text ? ' ' : ''}${heard.text}`);
+        setDictated(true);
+      }
+    } catch {
+      setNote(t('ownWords.dictateFailed'));
+    } finally {
+      setWriting(false);
     }
   };
+
+  const toggleDictation = async () => {
+    if (listening) {
+      await finishRecording();
+      return;
+    }
+    setNote(null);
+    try {
+      recording.current = await startRecording(() => void finishRecording());
+      setListening(true);
+    } catch {
+      setNote(t('ownWords.micBlocked'));
+    }
+  };
+  const canDictate = dictation && online && !state.aiOff && recordingSupported();
 
   const ask = async () => {
     setBusy(true);
@@ -894,8 +934,13 @@ function OwnWords({
         )}
       </Field>
       <ButtonRow>
-        {dictationAvailable() ? (
-          <button type="button" onClick={toggleDictation} aria-pressed={listening}>
+        {canDictate ? (
+          <button
+            type="button"
+            onClick={() => void toggleDictation()}
+            aria-pressed={listening}
+            disabled={writing}
+          >
             {listening ? t('ownWords.stop') : t('ownWords.dictate')}
           </button>
         ) : null}
@@ -909,8 +954,18 @@ function OwnWords({
           </button>
         ) : null}
       </ButtonRow>
-      {listening ? <p role="status">{t('ownWords.listening')}</p> : null}
+      {canDictate ? <p className="hint">{t('ownWords.dictateNote')}</p> : null}
+      <p role="status">
+        {listening ? t('ownWords.listening') : writing ? t('ownWords.writing') : ''}
+      </p>
       {note ? <Status kind="info">{note}</Status> : null}
+      {dictated && online ? (
+        <AiComplaint
+          tenant={state.tenant}
+          executionId={state.executionId}
+          feature="intake.transcription"
+        />
+      ) : null}
       {state.aiOff ? <p className="hint">{t('ownWords.offNote')}</p> : null}
       {candidates && candidates.items.length > 0 ? (
         <section aria-labelledby="cand-heading">
@@ -956,6 +1011,13 @@ function OwnWords({
               {t('ownWords.off')}
             </button>
           </ButtonRow>
+          {online ? (
+            <AiComplaint
+              tenant={state.tenant}
+              executionId={state.executionId}
+              feature="intake.extraction"
+            />
+          ) : null}
         </section>
       ) : (
         <ButtonRow>
@@ -1356,5 +1418,71 @@ function Review({
         </button>
       </ButtonRow>
     </>
+  );
+}
+
+/**
+ * AIG-09: the resident can tell the county that computer help went wrong, by
+ * a fixed reason; no words are sent. Their report is not changed by it.
+ */
+function AiComplaint({
+  tenant,
+  executionId,
+  feature,
+}: {
+  tenant: string;
+  executionId: string;
+  feature: 'intake.extraction' | 'intake.transcription';
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState<string[]>([]);
+  const [sent, setSent] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  if (sent) return <Status kind="info">{t('complain.thanks')}</Status>;
+  if (!open)
+    return (
+      <p>
+        <button type="button" className="link" onClick={() => setOpen(true)}>
+          {t('complain.open')}
+        </button>
+      </p>
+    );
+  const send = async () => {
+    const r = reason[0] as ComplaintReason | undefined;
+    if (!r) return;
+    setBusy(true);
+    setFailed(false);
+    try {
+      await aiComplaint(tenant, { executionId, feature, reason: r });
+      setSent(true);
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div>
+      <ChoiceGroup
+        legend={t('complain.legend')}
+        multiple={false}
+        choices={(['wrong', 'not_my_language', 'hard_to_understand', 'other'] as const).map(
+          (k) => ({ value: k, label: t(`complain.${k}`) }),
+        )}
+        value={reason}
+        onChange={setReason}
+      />
+      <ButtonRow>
+        <button type="button" disabled={busy || reason.length === 0} onClick={() => void send()}>
+          {t('complain.send')}
+        </button>
+        <button type="button" className="quiet" onClick={() => setOpen(false)}>
+          {t('complain.cancel')}
+        </button>
+      </ButtonRow>
+      {failed ? <Status kind="info">{t('complain.failed')}</Status> : null}
+    </div>
   );
 }

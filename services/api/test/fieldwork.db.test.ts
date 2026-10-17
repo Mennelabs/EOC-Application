@@ -15,7 +15,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest';
-import { fakeProvider } from '@cg/ai';
+import { fakeProvider, type AiProvider } from '@cg/ai';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
 import { createDb, withTenant, type Database } from '@cg/db';
@@ -58,6 +58,8 @@ describe.skipIf(!appUrl || !workerUrl)('field assessments and counters (database
   let eventId: string;
   let reportId: string;
   let siteId: string;
+  /** The provider voice drafting asks; a test swaps in a failing one. */
+  let voiceProvider: AiProvider = fakeProvider;
   const parcelId = `SYN-TEST-${randomUUID().slice(0, 8)}`;
   const objects = new Map<string, Buffer>();
   const crypto = new FieldCrypto(new InMemoryKeyService(), new MemoryKeyStore());
@@ -192,6 +194,14 @@ describe.skipIf(!appUrl || !workerUrl)('field assessments and counters (database
             .returning('id')
             .executeTakeFirstOrThrow()
         ).id;
+      // A re-run on the same database: the account may still be linked to the person an
+      // earlier run picked; one account belongs to one person.
+      await dbWorker
+        .updateTable('cg.personnel')
+        .set({ account_id: null })
+        .where('account_id', '=', account)
+        .where('id', '<>', member.personnel_id)
+        .execute();
       await dbWorker
         .updateTable('cg.personnel')
         .set({ account_id: account, status: 'active' })
@@ -265,7 +275,7 @@ describe.skipIf(!appUrl || !workerUrl)('field assessments and counters (database
       fieldCrypto: crypto,
       subjects: loader,
       routes: routesWith({
-        fieldVoice: { ai: { providerFor: async () => fakeProvider }, defaultGraph: westwindGraph },
+        fieldVoice: { ai: { providerFor: async () => voiceProvider }, defaultGraph: westwindGraph },
         fieldSync: {
           objects: {
             client: s3 as unknown as import('@aws-sdk/client-s3').S3Client,
@@ -449,6 +459,51 @@ describe.skipIf(!appUrl || !workerUrl)('field assessments and counters (database
     expect(site.occupancy).toBe(57);
   });
 
+  it('AC-08A: a count made offline keeps when it happened beside when it was recorded, in the counter and the activity log; it cannot be dated ahead', async () => {
+    const id = randomUUID();
+    const happened = new Date(Date.now() - 3 * 3_600_000);
+    const late = await command('a1', [
+      {
+        id,
+        kind: 'service_log.record',
+        body: { kind: 'water_case', count: 12, siteId, occurredAt: happened.toISOString() },
+      },
+    ]);
+    expect(late[0]!.result).toBe('applied');
+    const row = await dbWorker
+      .selectFrom('cg.service_log')
+      .select(['id', 'occurred_at', 'created_at'])
+      .where('client_uuid', '=', id)
+      .executeTakeFirstOrThrow();
+    expect(new Date(row.occurred_at).getTime()).toBe(happened.getTime());
+    expect(Date.now() - new Date(row.created_at).getTime()).toBeLessThan(60_000);
+    // The activity log (ICS 214) shows it at the time it was given, and when it was recorded.
+    const entries = await call('priya', 'GET', `/api/v1/activity?eventId=${eventId}&limit=200`);
+    expect(entries.status, entries.body).toBe(200);
+    const entry = entries
+      .json<{ refId: string | null; occurredAt: string; recordedAt: string }[]>()
+      .find((e) => e.refId === row.id);
+    expect(entry, 'the activity entry for the count').toBeDefined();
+    expect(new Date(entry!.occurredAt).getTime()).toBe(happened.getTime());
+    expect(new Date(entry!.recordedAt).getTime()).toBeGreaterThan(happened.getTime() + 3_500_000);
+
+    // A device clock an hour fast cannot date an entry ahead of now.
+    const ahead = await command('a1', [
+      {
+        id: randomUUID(),
+        kind: 'service_log.record',
+        body: {
+          kind: 'water_case',
+          count: 1,
+          siteId,
+          occurredAt: new Date(Date.now() + 3_600_000).toISOString(),
+        },
+      },
+    ]);
+    expect(ahead[0]!.result).not.toBe('applied');
+    expect(ahead[0]!.status).toBe(400);
+  });
+
   it('FLD-07, PHO-06: a field photo is ticketed once, uploaded through the gateway, linked to its record and queued for metadata stripping', async () => {
     const clientUuid = randomUUID();
     const ticket = await call('a1', 'POST', '/api/v1/field/photos', {
@@ -569,6 +624,45 @@ describe.skipIf(!appUrl || !workerUrl)('field assessments and counters (database
       drafts: [],
       injectionSuspected: true,
     });
+    // GATE-08, AI-10: the provider failing is said plainly, the volunteer fills the fields,
+    // and the failed call is recorded against the request.
+    voiceProvider = {
+      ...fakeProvider,
+      llm: {
+        extract: async () => {
+          throw new Error('provider unavailable');
+        },
+      },
+    };
+    const failedUuid = randomUUID();
+    try {
+      const failed = await call('a1', 'POST', '/api/v1/field-assessments/draft', {
+        clientUuid: failedUuid,
+        text: 'tree on house',
+        language: 'en',
+      });
+      expect(failed.status).toBe(409);
+      expect(failed.json<{ code: string; message: string }>()).toMatchObject({
+        code: 'ai_unavailable',
+        message: expect.stringContaining('Fill in the fields yourself'),
+      });
+    } finally {
+      voiceProvider = fakeProvider;
+    }
+    expect(
+      await dbWorker
+        .selectFrom('cg.ai_output')
+        .select(['feature', 'outcome', 'language'])
+        .where('execution_id', '=', failedUuid)
+        .execute(),
+    ).toEqual([{ feature: 'field.voice_draft', outcome: 'error', language: 'en' }]);
+    expect(
+      await dbWorker
+        .selectFrom('cg.extraction')
+        .select('id')
+        .where('execution_id', '=', failedUuid)
+        .execute(),
+    ).toEqual([]);
     // Only roles that record assessments may ask.
     expect(
       (

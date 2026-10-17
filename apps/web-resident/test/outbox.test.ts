@@ -79,6 +79,9 @@ describe('outbox', () => {
     expect(off.state).toBe('failed');
     expect(off.final).toBeFalsy();
     expect(off.lastError).toBe('offline');
+    // AC-00D: no receipt (no reference code) for a save that failed; the answers stay on the device.
+    expect(off.receipt).toBeUndefined();
+    expect(off.body).toEqual(body('off'));
     expect(off.nextTryAt).toBeGreaterThan(Date.now());
     const bad = outbox.find('bad')!;
     expect(bad.final).toBe(true);
@@ -103,5 +106,32 @@ describe('outbox', () => {
     expect(outbox.find('x')?.state).toBe('received');
     await outbox.forget('x');
     expect(outbox.all()).toHaveLength(0);
+  });
+
+  it('ACC-41, AC-A07, SCL-06: clearing a shared device drops delivered reports and keeps one still waiting; nothing is left stored when none waits', async () => {
+    const store = memoryStore();
+    let online = true;
+    const outbox = new Outbox(store, async () => {
+      if (!online) throw new Offline();
+      return { referenceCode: 'KXMR-4827', status: 'received', verificationSuggested: false };
+    });
+    await outbox.load();
+    await outbox.add('county', 'westwind', body('sent'));
+    await outbox.flush();
+    online = false;
+    await outbox.add('county', 'westwind', body('waiting'));
+    await outbox.flush();
+    expect(await outbox.clearDelivered()).toBe(true);
+    expect(outbox.find('sent')).toBeUndefined();
+    expect(outbox.find('waiting')?.state).toBe('failed');
+    expect(
+      (await store.get<{ body: SubmissionBody }[]>('outbox'))?.map((i) => i.body.executionId),
+    ).toEqual(['waiting']);
+    online = true;
+    outbox.find('waiting')!.nextTryAt = 0; // its retry is due
+    await outbox.flush();
+    expect(await outbox.clearDelivered()).toBe(false);
+    expect(outbox.all()).toEqual([]);
+    expect(await store.get('outbox')).toBeNull();
   });
 });

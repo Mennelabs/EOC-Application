@@ -9,6 +9,7 @@ import {
   jumpTo,
   markStep,
   newFlow,
+  nextPlace,
   remaining,
   spellCode,
   toSubmission,
@@ -104,5 +105,76 @@ describe('flow state', () => {
     expect(parseRoute('/county/my-report')).toEqual({ name: 'my-report', tenant: 'county' });
     expect(parseRoute('/county/help')).toEqual({ name: 'help', tenant: 'county' });
     expect(parseRoute('/a/b/c/d')).toEqual({ name: 'unknown' });
+  });
+
+  it('ORG-01: the next place is a report of its own; who is reporting carries over, the place and its safety question start again', () => {
+    let s = newFlow({
+      tenant: 'county',
+      event: 'westwind',
+      language: 'es',
+      channel: 'web',
+      graph: westwindGraph,
+      hazards: ['tornado'],
+      relationship: 'organization',
+    });
+    s = answer(s, 'danger_now', { kind: 'value', value: 'no' });
+    s = answer(s, 'org_name', { kind: 'value', value: 'Oak Street Apartments' });
+    s = answer(s, 'address', { kind: 'value', value: { line1: '1 Oak St' } });
+    s = answer(s, 'units', { kind: 'value', value: 12 });
+    s = answer(s, 'contact_name', { kind: 'value', value: 'Ana Ruiz' });
+    s = answer(s, 'contact', { kind: 'value', value: { email: 'ana@example.org' } });
+    s = markStep(s, 'review', 'done');
+    s = { ...s, needs: ['cleanup_tarp'], consent: { cleanup_tarp: true }, smsOptIn: true };
+    const next = nextPlace(s, westwindGraph, 'KXMR-4827', true);
+    expect(next.executionId).not.toBe(s.executionId);
+    expect(Object.keys(next.answers).sort()).toEqual([
+      'contact',
+      'contact_name',
+      'org_name',
+      'relationship',
+    ]);
+    expect(next).toMatchObject({
+      language: 'es',
+      relationship: 'organization',
+      needs: [],
+      consent: {},
+      photos: [],
+      steps: {},
+      smsOptIn: true,
+      earlierPlaces: ['KXMR-4827'],
+    });
+    expect(currentNode(westwindGraph, next)?.id).toBe('danger_now');
+    // A cleared device keeps only who is reporting; the contact is asked again.
+    const cleared = nextPlace(next, westwindGraph, 'PQRS-1234', false);
+    expect(Object.keys(cleared.answers).sort()).toEqual(['org_name', 'relationship']);
+    expect(cleared.smsOptIn).toBe(false);
+    expect(cleared.earlierPlaces).toEqual(['KXMR-4827', 'PQRS-1234']);
+  });
+
+  it('CHN-06, AC-A09: a kiosk entry records the person\'s agreement: their own report agrees by itself; for someone else, only "yes, they agreed"', () => {
+    const kiosk = (relationship: 'own_home' | 'helper' | 'witness' | 'organization') =>
+      newFlow({
+        tenant: 'county',
+        event: 'westwind',
+        language: 'en',
+        channel: 'assisted',
+        graph: westwindGraph,
+        hazards: ['tornado'],
+        relationship,
+      });
+    const consent = (s: ReturnType<typeof kiosk>) => toSubmission(s, westwindGraph).assisted;
+    expect(consent(kiosk('own_home'))).toEqual({ consentRecorded: true });
+    expect(consent(kiosk('organization'))).toEqual({ consentRecorded: true });
+    expect(consent(kiosk('witness'))).toEqual({ consentRecorded: false });
+    expect(consent(kiosk('helper'))).toEqual({ consentRecorded: false });
+    const agreed = answer(kiosk('helper'), 'helper_consent', { kind: 'value', value: 'yes' });
+    expect(consent(agreed)).toEqual({ consentRecorded: true });
+    const notAsked = answer(kiosk('helper'), 'helper_consent', {
+      kind: 'value',
+      value: 'cannot_ask',
+    });
+    expect(consent(notAsked)).toEqual({ consentRecorded: false });
+    // A resident's own web report carries no assisted record at all.
+    expect(toSubmission(start(), westwindGraph).assisted).toBeUndefined();
   });
 });

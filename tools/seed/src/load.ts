@@ -16,7 +16,7 @@ import { createDb, withTenant, type Database, type MissionTable } from '@cg/db';
 
 type MissionKind = MissionTable['kind'];
 import { openAIDescriptor } from '@cg/ai';
-import { westwindGraph } from '@cg/intake';
+import { EVENT_TEMPLATE_DEFAULTS, westwindGraph } from '@cg/intake';
 import {
   ensureAiRegister,
   ensureIntakeGraph,
@@ -243,6 +243,32 @@ async function ensureAccount(
     })
     .execute();
   return { id: account.id, created: true };
+}
+
+/** CON-02: the shipped event templates by hazard, for each hazard the county has none for yet. */
+async function ensureEventTemplates(trx: Transaction<Database>, tenantId: string): Promise<void> {
+  const have = new Set(
+    (
+      await trx
+        .selectFrom('cg.event_template')
+        .select('hazard_type')
+        .where('tenant_id', '=', tenantId)
+        .execute()
+    ).map((r) => r.hazard_type),
+  );
+  for (const d of EVENT_TEMPLATE_DEFAULTS)
+    if (!have.has(d.hazardType))
+      await trx
+        .insertInto('cg.event_template')
+        .values({
+          tenant_id: tenantId,
+          hazard_type: d.hazardType,
+          name: d.name,
+          config: JSON.stringify(d.config),
+          created_by: SEED_ACTOR_A,
+          updated_by: SEED_ACTOR_A,
+        })
+        .execute();
 }
 
 /** The WESTWIND tornado exercise event with its public intake link and keywords (docs/02, CHN-08). */
@@ -1222,6 +1248,60 @@ async function ensureJobAids(trx: Transaction<Database>, tenantId: string): Prom
   }
 }
 
+/**
+ * SCL-10: the exercise subscriptions (invented terms and tiers). The state's coalition contract
+ * covers its member jurisdictions; Westwind's own earlier contract has expired, so the
+ * Subscription screen shows both, and resident reports go on regardless. Added once.
+ */
+async function ensureLicenses(db: Kysely<Database>, tenantIds: Record<string, string>) {
+  const contracts = [
+    {
+      holder: 'state',
+      tier: 'State coalition (exercise)',
+      population_served: 6_100_000,
+      term_start: '2026-07-01',
+      term_end: '2027-06-30',
+      covers: ['region', 'county', 'city'],
+      status: 'active' as const,
+    },
+    {
+      holder: 'county',
+      tier: 'County, 25,000 to 100,000 people (exercise)',
+      population_served: 48_000,
+      term_start: '2025-07-01',
+      term_end: '2026-06-30',
+      covers: ['city'],
+      status: 'expired' as const,
+    },
+  ];
+  for (const c of contracts) {
+    const holder = tenantIds[c.holder];
+    if (!holder) continue;
+    await withTenant(db, { tenantId: holder }, async (trx) => {
+      const existing = await trx
+        .selectFrom('cg.license')
+        .select('id')
+        .where('tenant_id', '=', holder)
+        .where(sql<boolean>`term_start = ${c.term_start}::date`)
+        .executeTakeFirst();
+      if (existing) return;
+      await trx
+        .insertInto('cg.license')
+        .values({
+          tenant_id: holder,
+          tier: c.tier,
+          population_served: c.population_served,
+          term_start: c.term_start,
+          term_end: c.term_end,
+          covers_tenant_ids: c.covers.map((k) => tenantIds[k]).filter((x): x is string => !!x),
+          status: c.status,
+          created_by: SEED_ACTOR_A,
+        })
+        .execute();
+    });
+  }
+}
+
 export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
   const tenantIds: Record<string, string> = {};
   const accountIds: Record<string, string> = {};
@@ -1253,6 +1333,7 @@ export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
       // ADR-0043: OpenAI for every AI function, off until the tenant's languages pass the evaluation.
       await ensureAiRegister(trx, id, openAIDescriptor(), null);
       if (spec.key === 'county') {
+        await ensureEventTemplates(trx, id);
         await ensureExerciseEvent(trx, id);
         await ensureChannelNumber(trx, id);
         await ensureZipCentroids(trx, id);
@@ -1284,6 +1365,8 @@ export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
       }
     });
   }
+
+  await ensureLicenses(db, tenantIds);
 
   for (const member of cast) {
     const tenantId = tenantIds[member.tenant];
@@ -1320,6 +1403,20 @@ export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
           .updateTable('cg.personnel')
           .set({ account_id: accountId, updated_by: SEED_ACTOR_A })
           .where('id', '=', person.id)
+          .execute(); // Field roles read missions only in the events they are assigned to (events: 'assigned');
+      // the exercise lead works the WESTWIND exercise, so a held job opens by id (CMD-06).
+      const exercise = await trx
+        .selectFrom('cg.event')
+        .select('id')
+        .where('tenant_id', '=', tenantId)
+        .where('intake_slug', '=', 'westwind')
+        .executeTakeFirst();
+      if (exercise)
+        await trx
+          .updateTable('cg.role_assignment')
+          .set({ scope: JSON.stringify({ eventIds: [exercise.id] }), updated_by: SEED_ACTOR_B })
+          .where('account_id', '=', accountId)
+          .where(sql<boolean>`scope = '{}'::jsonb`)
           .execute();
     });
   }

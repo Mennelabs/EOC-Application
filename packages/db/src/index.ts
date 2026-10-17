@@ -5,9 +5,11 @@ import type { Database } from './schema.ts';
 export type { Database } from './schema.ts';
 export * from './schema.ts';
 export { dictionary, redactedColumnNames, restrictedColumns } from './dictionary.ts';
+export type { Classification } from './dictionary.ts';
 export { migrations } from './migrations/index.ts';
 export * from './reference-codes.ts';
 export * from './after-answers.ts';
+export * from './health-notices.ts';
 
 export function createDb(connectionString: string, max = 10): Kysely<Database> {
   return new Kysely<Database>({

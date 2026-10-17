@@ -12,6 +12,8 @@ import QRCode from 'qrcode';
 import { api, describeFailure } from '../api/client.ts';
 import { DataTable, Field, Status, Toolbar, fmt } from '../ui/primitives.tsx';
 import { useList } from './admin.tsx';
+import { QrImage } from '../ui/qr.tsx';
+import { loadRuntimeConfig } from '../runtime-config.ts';
 
 interface EventRow {
   id: string;
@@ -57,6 +59,101 @@ function Qr({ url }: { url: string }) {
   return src ? <img src={src} alt={`Code that opens ${url}`} width={160} height={160} /> : null;
 }
 
+/** The report link opened in one language (CHN-08: a code opens the flow pre-set to it). */
+function inLanguage(url: string, lang: 'en' | 'es'): string {
+  const u = new URL(url);
+  u.searchParams.set('lang', lang);
+  return u.toString();
+}
+
+/**
+ * FL:FR-28, CHN-08, docs/06: a door hanger a canvasser leaves when no one is
+ * home. One side in English, one in Spanish, each with a code that opens the
+ * report in that language, the text keyword and number (a code that starts the
+ * text when the county has a number), and the 911 line. The county's name, never
+ * the product's (ADM-03); no alert wording (docs/06).
+ */
+function DoorHanger({ facts }: { facts: IntakeFacts }) {
+  const [open, setOpen] = useState(false);
+  const [county, setCounty] = useState('');
+  useEffect(() => {
+    void loadRuntimeConfig().then((c) => setCounty(c.countyName));
+  }, []);
+  if (!facts.url) return null;
+  const english = facts.keywords.find((k) => !/[ÁÉÍÓÚÑ]/.test(k)) ?? facts.keywords[0] ?? null;
+  const spanish = facts.keywords.find((k) => /[ÁÉÍÓÚÑ]/.test(k)) ?? english;
+  const side = (lang: 'en' | 'es') => {
+    const keyword = lang === 'en' ? english : spanish;
+    const en = lang === 'en';
+    return (
+      <div className="door-hanger-side" lang={lang}>
+        <p className="door-hanger-county">
+          {county
+            ? en
+              ? `${county} Emergency Management`
+              : `Manejo de Emergencias de ${county}`
+            : ''}
+        </p>
+        <p className="door-hanger-title">
+          {en ? 'We stopped by to check on you.' : 'Pasamos para ver cómo está.'}
+        </p>
+        <p>{en ? 'Report damage or ask for help:' : 'Reporte daños o pida ayuda:'}</p>
+        <QrImage
+          text={inLanguage(facts.url!, lang)}
+          alt={
+            en
+              ? 'Code that opens the report form in English'
+              : 'Código que abre el formulario en español'
+          }
+          size={140}
+        />
+        <p className="door-hanger-url">{inLanguage(facts.url!, lang)}</p>
+        {keyword && facts.smsNumber ? (
+          <>
+            <p>
+              {en
+                ? `Or text ${keyword} to ${facts.smsNumber}.`
+                : `O envíe ${keyword} al ${facts.smsNumber}.`}
+            </p>
+            <QrImage
+              text={`SMSTO:${facts.smsNumber}:${keyword}`}
+              alt={
+                en
+                  ? `Code that starts a text with ${keyword}`
+                  : `Código que empieza un mensaje con ${keyword}`
+              }
+              size={100}
+            />
+          </>
+        ) : null}
+        <p className="door-hanger-911">
+          {en ? 'If this is an emergency, call 911.' : 'Si es una emergencia, llame al 911.'}
+        </p>
+      </div>
+    );
+  };
+  return (
+    <div>
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {open ? 'Hide the door hanger' : 'Door hanger'}
+      </button>
+      {open ? (
+        <section className="panel door-hanger-print" aria-label="Door hanger">
+          <div className="door-hanger">
+            {side('en')}
+            {side('es')}
+          </div>
+          <div className="actions" style={{ justifyContent: 'flex-start' }}>
+            <button type="button" onClick={() => window.print()}>
+              Print door hangers
+            </button>
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
 export function IntakeSetupScreen() {
   const events = useList<EventRow>('/events');
   const facts = useFacts(events.rows);
@@ -78,40 +175,43 @@ export function IntakeSetupScreen() {
           <section key={ev.id} className="panel" aria-labelledby={`ev-${ev.id}`}>
             <h2 id={`ev-${ev.id}`}>{ev.name}</h2>
             {f ? (
-              <div className="layout" style={{ gap: '1rem', alignItems: 'flex-start' }}>
-                <dl className="meta">
-                  <dt>Resident link</dt>
-                  <dd>
-                    {f.url ? (
-                      <a href={f.url} target="_blank" rel="noopener noreferrer">
-                        {f.url}
-                      </a>
-                    ) : (
-                      '—'
-                    )}
-                  </dd>
-                  <dt>Kiosk / assisted link</dt>
-                  <dd>
-                    {f.kioskUrl ? (
-                      <a href={f.kioskUrl} target="_blank" rel="noopener noreferrer">
-                        {f.kioskUrl}
-                      </a>
-                    ) : (
-                      '—'
-                    )}
-                  </dd>
-                  <dt>Text keywords</dt>
-                  <dd>
-                    {f.keywords.join(' / ') || '—'}
-                    {f.smsNumber ? ` to ${f.smsNumber}` : ' (no number on file yet)'}
-                  </dd>
-                  <dt>Questions</dt>
-                  <dd>
-                    {f.graph ? `${f.graph.key} version ${f.graph.version}` : 'shipped default'}
-                  </dd>
-                </dl>
-                {f.url ? <Qr url={f.url} /> : null}
-              </div>
+              <>
+                <div className="layout" style={{ gap: '1rem', alignItems: 'flex-start' }}>
+                  <dl className="meta">
+                    <dt>Resident link</dt>
+                    <dd>
+                      {f.url ? (
+                        <a href={f.url} target="_blank" rel="noopener noreferrer">
+                          {f.url}
+                        </a>
+                      ) : (
+                        '—'
+                      )}
+                    </dd>
+                    <dt>Kiosk / assisted link</dt>
+                    <dd>
+                      {f.kioskUrl ? (
+                        <a href={f.kioskUrl} target="_blank" rel="noopener noreferrer">
+                          {f.kioskUrl}
+                        </a>
+                      ) : (
+                        '—'
+                      )}
+                    </dd>
+                    <dt>Text keywords</dt>
+                    <dd>
+                      {f.keywords.join(' / ') || '—'}
+                      {f.smsNumber ? ` to ${f.smsNumber}` : ' (no number on file yet)'}
+                    </dd>
+                    <dt>Questions</dt>
+                    <dd>
+                      {f.graph ? `${f.graph.key} version ${f.graph.version}` : 'shipped default'}
+                    </dd>
+                  </dl>
+                  {f.url ? <Qr url={f.url} /> : null}
+                </div>
+                <DoorHanger facts={f} />
+              </>
             ) : (
               <p role="status">Loading…</p>
             )}
@@ -327,6 +427,286 @@ interface RegisterEntry {
   updatedAt: string;
 }
 
+interface HealthAlert {
+  id: string;
+  feature: string;
+  scope: string;
+  kind: 'corrections' | 'failures' | 'fairness' | 'complaints';
+  counted: number;
+  flagged: number;
+  rate: number;
+  threshold: number;
+  raisedAt: string;
+  acknowledgedAt: string | null;
+}
+
+interface Agreement {
+  minimum: number;
+  margin: number;
+  models: {
+    model: string;
+    decisions: number;
+    agreed: number;
+    rate: number;
+    slices: {
+      dimension: 'hazard' | 'home_type' | 'income_band';
+      group: string;
+      decisions: number;
+      agreed: number;
+      rate: number;
+      behind: boolean;
+    }[];
+  }[];
+}
+
+const pct = (n: number) => `${Math.round(n * 100)}%`;
+const DIMENSION: Record<string, string> = {
+  hazard: 'Hazard',
+  home_type: 'Home type',
+  income_band: 'Income band',
+};
+
+const alertWhat = (a: HealthAlert) => {
+  if (a.kind === 'fairness') {
+    const [dimension, group] = a.scope.split(':');
+    return `Reviewers agreed with it on ${pct(1 - a.rate)} of ${a.counted} decisions for ${(DIMENSION[dimension ?? ''] ?? dimension ?? '').toLowerCase()} ${group ?? ''}, more than the margin under the model's overall agreement`;
+  }
+  if (a.kind === 'complaints')
+    return `Residents said ${a.flagged} of the last ${a.counted} outputs${a.scope ? ` in ${a.scope}` : ''} went wrong (${pct(a.rate)}; the line is ${pct(a.threshold)})`;
+  const what = a.kind === 'corrections' ? 'corrected or rejected' : 'failed';
+  return `${a.flagged} of the last ${a.counted} outputs${a.scope ? ` in ${a.scope}` : ''} were ${what} (${pct(a.rate)}; the line is ${pct(a.threshold)})`;
+};
+
+/**
+ * Open AI health alerts (AIG-09 as decided 2026-10-15: alert, never switch off) and reviewer
+ * agreement with the severity suggestion per model, by hazard, home type and income band
+ * (PHO-13). Income band 1 is the county's highest-poverty fifth of tracts.
+ */
+interface Measured {
+  count: number;
+  p95Ms: number | null;
+  targetMs: number;
+  met: boolean | null;
+}
+interface CommandPerformance {
+  days: number;
+  deadlineMs: number;
+  shorthand: Measured;
+  interpretation: Measured & { timedOut: number };
+  execution: Measured & { stillRunning: number };
+  quality: {
+    answers: number;
+    outcomes: Record<string, number>;
+    clarificationRate: number | null;
+    finished: number;
+    completionRate: number | null;
+    duplicates: number;
+    duplicateRate: number | null;
+  };
+}
+
+const percent = (r: number | null) => (r === null ? 'No data yet' : `${Math.round(r * 100)}%`);
+
+const seconds = (ms: number | null) => (ms === null ? '—' : `${(ms / 1000).toFixed(2)} s`);
+
+/** CMD-38: the command window's response times against the Section 30.2 targets. */
+function CommandTimes() {
+  const [perf, setPerf] = useState<CommandPerformance | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    api<CommandPerformance>('/commands/performance?days=7')
+      .then((p) => live && setPerf(p))
+      .catch((e: unknown) => live && setError(describeFailure(e)));
+    return () => {
+      live = false;
+    };
+  }, []);
+  const rows = perf
+    ? [
+        { key: 'shorthand', what: 'Shorthand prepared', m: perf.shorthand, extra: '' },
+        {
+          key: 'interpretation',
+          what: 'Plain words read by the AI',
+          m: perf.interpretation,
+          extra: perf.interpretation.timedOut ? `${perf.interpretation.timedOut} timed out` : '',
+        },
+        {
+          key: 'execution',
+          what: 'Confirmed command run',
+          m: perf.execution,
+          extra: perf.execution.stillRunning
+            ? `${perf.execution.stillRunning} still running past the deadline`
+            : '',
+        },
+      ]
+    : [];
+  return (
+    <>
+      <h2 id="command-times-h">Command window response times</h2>
+      <p>
+        The slowest of every twenty, over the last {perf?.days ?? 7} days, against the targets.
+        Nothing waits longer than {perf ? perf.deadlineMs / 1000 : 15} seconds without saying so:
+        the AI reading is given up, and a command still running says it is still running.
+      </p>
+      {error ? <Status kind="error">{error}</Status> : null}
+      {perf ? (
+        <DataTable
+          caption="Command window response times (95th percentile)"
+          rows={rows}
+          rowKey={(r) => r.key}
+          columns={[
+            { key: 'what', header: 'Step', render: (r) => r.what },
+            { key: 'n', header: 'Count', render: (r) => String(r.m.count) },
+            { key: 'p95', header: '95th percentile', render: (r) => seconds(r.m.p95Ms) },
+            { key: 'target', header: 'Target', render: (r) => seconds(r.m.targetMs) },
+            {
+              key: 'met',
+              header: 'Within target',
+              render: (r) => (r.m.met === null ? 'No data yet' : r.m.met ? 'Yes' : 'No'),
+            },
+            { key: 'note', header: 'Notes', render: (r) => r.extra || '—' },
+          ]}
+        />
+      ) : null}
+      {perf ? (
+        <>
+          <h3 id="command-quality-h">How often it completes, asks or repeats</h3>
+          <p>
+            Counted per day by command and outcome only: no names, words or records are kept for
+            these figures.
+          </p>
+          <DataTable
+            caption="Command window quality"
+            rows={[
+              {
+                key: 'completion',
+                what: 'Confirmed or run commands that succeeded',
+                value: percent(perf.quality.completionRate),
+                of: `${perf.quality.finished} finished`,
+              },
+              {
+                key: 'clarification',
+                what: 'Answers that asked which record was meant',
+                value: percent(perf.quality.clarificationRate),
+                of: `${perf.quality.answers} answers`,
+              },
+              {
+                key: 'duplicates',
+                what: 'Requests sent again and answered from the first time',
+                value: percent(perf.quality.duplicateRate),
+                of: `${perf.quality.duplicates} repeats`,
+              },
+            ]}
+            rowKey={(r) => r.key}
+            columns={[
+              { key: 'what', header: 'Measure', render: (r) => r.what },
+              { key: 'value', header: 'Rate', render: (r) => r.value },
+              { key: 'of', header: 'Out of', render: (r) => r.of },
+            ]}
+          />
+        </>
+      ) : null}
+    </>
+  );
+}
+
+function AiHealth({ onChanged }: { onChanged: (text: string, kind: 'success' | 'error') => void }) {
+  const alerts = useList<HealthAlert>('/ai-register/alerts');
+  const [agreement, setAgreement] = useState<Agreement | null>(null);
+  const [agreementError, setAgreementError] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    api<Agreement>('/ai-register/severity-agreement')
+      .then((a) => live && setAgreement(a))
+      .catch((e: unknown) => live && setAgreementError(describeFailure(e)));
+    return () => {
+      live = false;
+    };
+  }, []);
+  return (
+    <>
+      <h2 id="ai-alerts-h">Open alerts</h2>
+      <p>
+        An alert tells the people who manage this register when people correct a feature too often,
+        when its calls fail too often, or when reviewers agree with the severity suggestion less for
+        one group of homes than for the rest. Features stay on; an alert clears by itself when the
+        numbers recover.
+      </p>
+      {alerts.error ? <Status kind="error">{alerts.error}</Status> : null}
+      <DataTable
+        caption="Open AI alerts"
+        rows={alerts.rows ?? []}
+        rowKey={(a) => a.id}
+        empty="No open alerts."
+        columns={[
+          { key: 'feature', header: 'Feature', render: (a) => a.feature },
+          { key: 'what', header: 'What happened', render: alertWhat },
+          { key: 'raised', header: 'Raised', render: (a) => fmt(a.raisedAt) },
+          {
+            key: 'ack',
+            header: 'Seen',
+            render: (a) =>
+              a.acknowledgedAt ? (
+                fmt(a.acknowledgedAt)
+              ) : (
+                <button
+                  type="button"
+                  aria-label={`Mark the ${a.feature} alert as seen…`}
+                  onClick={() =>
+                    void api(`/ai-register/alerts/${a.id}/acknowledge`, { method: 'POST' })
+                      .then(() => {
+                        onChanged(
+                          'Alert marked as seen. It stays open until the numbers recover.',
+                          'success',
+                        );
+                        alerts.reload();
+                      })
+                      .catch((e: unknown) => onChanged(describeFailure(e), 'error'))
+                  }
+                >
+                  Mark as seen…
+                </button>
+              ),
+          },
+        ]}
+      />
+      <h2 id="ai-agreement-h">Severity suggestion: reviewer agreement</h2>
+      {agreementError ? <Status kind="error">{agreementError}</Status> : null}
+      {agreement ? (
+        <>
+          <p>
+            How often the degree a reviewer set matched the AI suggestion, for each model version. A
+            group is marked behind when it has at least {agreement.minimum} decisions and its
+            agreement is more than {pct(agreement.margin)} points under the model&rsquo;s overall
+            agreement. Income band 1 is the fifth of the county&rsquo;s census tracts with the
+            highest poverty share; band 5 the lowest.
+          </p>
+          {agreement.models.length === 0 ? (
+            <p className="empty">No reviewer decisions on a suggestion yet.</p>
+          ) : null}
+          {agreement.models.map((m) => (
+            <DataTable
+              key={m.model}
+              caption={`${m.model}: ${pct(m.rate)} agreement over ${m.decisions} decisions`}
+              rows={m.slices}
+              rowKey={(x) => `${x.dimension}:${x.group}`}
+              columns={[
+                { key: 'dim', header: 'Grouped by', render: (x) => DIMENSION[x.dimension] },
+                { key: 'group', header: 'Group', render: (x) => x.group.replace('_', ' ') },
+                { key: 'n', header: 'Decisions', render: (x) => String(x.decisions) },
+                { key: 'agreed', header: 'Agreed', render: (x) => `${x.agreed} (${pct(x.rate)})` },
+                { key: 'behind', header: 'Behind', render: (x) => (x.behind ? 'Behind' : 'No') },
+              ]}
+            />
+          ))}
+        </>
+      ) : null}
+      <CommandTimes />
+    </>
+  );
+}
+
 /**
  * AI use register (AIG-01, AIG-06, AIG-08; ADR-0043): every AI feature, its provider and its
  * human checkpoint; an administrator evaluates the configured provider (OpenAI) for the
@@ -435,6 +815,7 @@ export function AiRegisterScreen() {
           },
         ]}
       />
+      <AiHealth onChanged={(text, kind) => setMsg({ kind, text })} />
     </section>
   );
 }

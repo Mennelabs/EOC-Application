@@ -12,10 +12,22 @@
  * result from the operation's own response (CMD-26).
  */
 import { z } from 'zod';
+import { RECORD_TYPES, RECORD_TYPE_KEYS, type RecordType } from '@cg/reporting';
 
 export type Confirmation = 'none' | 'one_tap' | 'full_review' | 'second_person';
 export type Reversal = 'undo_15_min' | 'compensating' | 'none';
-export type TargetKind = 'mission' | 'need' | 'reminder';
+export type TargetKind =
+  | 'mission'
+  | 'need'
+  | 'reminder'
+  | 'check_in'
+  | 'official_report'
+  | 'report'
+  | 'team'
+  | 'personnel'
+  | 'resource'
+  | 'account'
+  | 'role';
 
 /** A resolved record the command acts on, with the version it had when the plan was made. */
 export interface Target {
@@ -23,6 +35,8 @@ export interface Target {
   id: string;
   version: number;
   label: string;
+  /** What the fields a command changes held when the plan was made, so undo can put them back. */
+  was?: Record<string, string> | undefined;
 }
 
 export interface OpRequest {
@@ -46,6 +60,30 @@ export interface Verified {
   state: 'found' | 'drafted' | 'saved' | 'queued';
   summary: string;
   records: { kind: string; id: string; label?: string | undefined; version?: number | undefined }[];
+  /** CMD-30: the records of a batch the operation refused, each with its reason. */
+  failures?: { id: string; label: string; code: string; message: string }[];
+}
+
+/** Section 30.2: one confirmation covers this many records; more needs the count typed. */
+export const BATCH_ONE_CONFIRMATION = 50;
+/** Section 30.2: more than this is a scheduled bulk job on its own screen, not a command. */
+export const BATCH_MAX = 500;
+
+/**
+ * CMD-30: a command over the records a filter names. The engine lists them
+ * through the console's own route as the person may see them, shows the count
+ * and some of them in the plan, and runs one operation per record, each with
+ * its own idempotency key; each record's result is reported.
+ */
+export interface BulkSpec<A> {
+  /** The list route without limit or offset; the engine pages through it. */
+  list(args: A, ctx: { tenantId: string }): string;
+  /** The operation for one record. */
+  item(args: A, record: Target): OpRequest;
+  /** The plan's words for the batch, given how many and the first few labels. */
+  describe(args: A, count: number, sample: string[]): string;
+  /** The verified result's words. */
+  done(count: number, of: number): string;
 }
 
 export interface CommandSpec<A = Record<string, unknown>> {
@@ -60,6 +98,38 @@ export interface CommandSpec<A = Record<string, unknown>> {
   target?: TargetKind;
   /** Needs the open event (drafts that are about one). */
   needsEvent?: boolean;
+  /**
+   * The `person` argument names someone on the roster. The server resolves it
+   * among the people the caller may see, asks which one when several match
+   * (CMD-08), and puts the chosen id in `personId` before the plan is shown.
+   */
+  person?: boolean;
+  /**
+   * CMD-08, CMD-15: a second record the command names by reference (`arg`), found among the
+   * records the caller may see; its id goes in `idArg` before the plan is shown. More than
+   * one match asks for the full reference rather than guess.
+   */
+  also?: { arg: string; idArg: string; kind: TargetKind };
+  /**
+   * CMD-13: a record of the target that the arguments name, read through its list route
+   * before the plan is shown; its id and version go in the arguments. None or several is
+   * answered in these words.
+   */
+  within?: {
+    path(args: A, target: Target | null): string;
+    /** The rows of a response that is not a plain list; each needs an `id`. */
+    rowsOf?(body: unknown): Record<string, unknown>[];
+    /** Narrows the listed rows to the ones the command can act on. */
+    pick?(rows: Record<string, unknown>[], args: A): Record<string, unknown>[];
+    idArg: string;
+    versionArg?: string;
+    /** What else of the row the plan shows and keeps (a name, the reasons it was chosen). */
+    keep?(row: Record<string, unknown>): Record<string, unknown>;
+    none(args: A): string;
+    many(args: A): string;
+  };
+  /** CMD-30: runs over many records (phase 4, `command.bulk`); `target` names their kind. */
+  bulk?: BulkSpec<A>;
   confirmation: Confirmation;
   reversal: Reversal;
   sideEffects: string;
@@ -70,6 +140,21 @@ export interface CommandSpec<A = Record<string, unknown>> {
    */
   freeText?: string[];
   request(args: A, target: Target | null, ctx: OpContext): OpRequest;
+  /**
+   * AC-C07: a second operation, run once the first has succeeded (a message, then its note on
+   * a mission). The person must hold its action too. When it fails the execution is partly
+   * done: the answer names what the first step did, and nothing is rolled back or said to be.
+   */
+  then?: {
+    action: string;
+    /** How the answer names the second step when it was not done. */
+    label: string;
+    when(args: A): boolean;
+    request(args: A, target: Target | null, first: Verified): OpRequest;
+    verify(response: unknown): Verified;
+  };
+  /** AC-C08: what "undo" answers when the change cannot be taken back, in this command's words. */
+  undoUnavailable?: string;
   /** Undo from what the plan targeted and what the operation verified; never from free text. */
   undo?(args: A, target: Target | null, verified: Verified): OpRequest;
   describe(args: A, target: Target | null): string;
@@ -77,12 +162,97 @@ export interface CommandSpec<A = Record<string, unknown>> {
 }
 
 const MISSION_STATES = ['open', 'en_route', 'on_scene', 'cleared'] as const;
+const MISSION_KINDS = [
+  'welfare_check',
+  'verification_route',
+  'cleanup_work_order',
+  'delivery',
+  'outreach_sweep',
+  'site_staffing',
+  'search',
+  'road_clearance',
+  'traffic_control',
+  'debris',
+  'other',
+] as const;
+
+/** CMD-14: what the window may set on a roster entry, and the field each one sets. */
+const PERSON_SETTINGS = ['available', 'unavailable', 'on_duty', 'off_duty'] as const;
+const PERSON_FIELD: Record<(typeof PERSON_SETTINGS)[number], 'availability' | 'dutyStatus'> = {
+  available: 'availability',
+  unavailable: 'availability',
+  on_duty: 'dutyStatus',
+  off_duty: 'dutyStatus',
+};
+
+/** RULE-11: a print outcome a person saw, and the badge states each one follows. */
+const BADGE_OUTCOMES = ['confirmed', 'failed', 'handed_out'] as const;
+const BADGE_FROM: Record<(typeof BADGE_OUTCOMES)[number], string[]> = {
+  confirmed: ['print_requested', 'print_failed'],
+  failed: ['print_requested'],
+  handed_out: ['print_confirmed'],
+};
+
+const RESOURCE_TYPES = ['hotline', 'program', 'deadline', 'guidance', 'link', 'document'] as const;
 
 type Row = Record<string, unknown>;
 const rows = (r: unknown): Row[] => (Array.isArray(r) ? (r as Row[]) : []);
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
 const ver = (v: unknown) => (typeof v === 'number' ? v : undefined);
+/** Lower case without accents, for matching a typed skill against names and credentials. */
+const fold = (s: string) =>
+  s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** CMD-17, CMD-26: the date the resource itself now holds. */
+const resourceSaved = (r: unknown, what: string, field: string): Verified => {
+  const d = (r ?? {}) as Row;
+  const value = str(d[field]);
+  return {
+    state: 'saved',
+    summary: `${str(d['slug'])}: ${value ? `${what} ${value}` : `no ${what}`}.`,
+    records: [
+      { kind: 'resource', id: str(d['id']), label: str(d['slug']), version: ver(d['version']) },
+    ],
+  };
+};
+
+/** CMD-15, CMD-26: the review state the operation itself returned. */
+const reviewed = (r: unknown, what: string): Verified => {
+  const d = (r ?? {}) as Row;
+  return {
+    state: 'saved',
+    summary: `Report ${str(d['referenceCode'])} ${what}. Verification: ${str(d['verificationLevel']).replace(/_/g, ' ')}.`,
+    records: [
+      {
+        kind: 'report',
+        id: str(d['id']),
+        label: str(d['referenceCode']),
+        version: ver(d['version']),
+      },
+    ],
+  };
+};
+
+/**
+ * CMD-16, CMD-26: an export is queued, never "done"; the file is listed where it was asked for
+ * (the declaration screen, the report, or the records requests) once the worker builds it.
+ */
+const queuedExport =
+  (what: string, where: string, link: (d: Row) => { kind: string; id: string }) =>
+  (r: unknown): Verified => {
+    const d = (r ?? {}) as Row;
+    return {
+      state: 'queued',
+      summary: `${what} is being prepared. It is listed on ${where} when it is ready; nothing is sent anywhere.`,
+      records: [{ ...link(d), label: what }],
+    };
+  };
 
 /** Each spec is checked against its own argument type, then kept in the catalog erased. */
 const define = <A>(spec: CommandSpec<A>): CommandSpec => spec as unknown as CommandSpec;
@@ -275,6 +445,189 @@ export const CATALOG = [
     },
   }),
 
+  define({
+    name: 'people.find',
+    version: 1,
+    phase: 1,
+    action: 'personnel.read',
+    kind: 'lookup',
+    title: 'Find people by skill, department or availability',
+    usage: '/people [available|assigned|on_duty] [skill:<skill>] [department:<name>] [<name>]',
+    args: z.object({
+      availability: z.enum(['available', 'assigned', 'unavailable']).optional(),
+      onDuty: z.boolean().optional(),
+      skill: z.string().min(1).max(60).optional(),
+      department: z.string().min(1).max(80).optional(),
+      name: z.string().min(1).max(80).optional(),
+    }),
+    confirmation: 'none',
+    reversal: 'none',
+    sideEffects: 'None: reads the roster as you may see it, without contact details.',
+    request: (a) => {
+      const q = new URLSearchParams({ limit: '20' });
+      if (a.availability) q.set('availability', a.availability);
+      if (a.onDuty) q.set('onDuty', 'true');
+      if (a.skill) q.set('skill', a.skill);
+      if (a.department) q.set('department', a.department);
+      if (a.name) q.set('q', a.name);
+      return { method: 'GET', path: `/personnel?${q.toString()}` };
+    },
+    describe: (a) =>
+      `Find ${a.availability ? `${a.availability} ` : ''}${a.onDuty ? 'on-duty ' : ''}people${a.skill ? ` with the recorded skill "${a.skill}"` : ''}${a.department ? ` in ${a.department}` : ''}${a.name ? ` named like "${a.name}"` : ''}.`,
+    // CMD-14: only what is recorded; nothing about qualifications is inferred.
+    verify: (r) => {
+      const list = rows(r);
+      return {
+        state: 'found',
+        summary: list.length
+          ? `${plural(list.length, 'person', 'people')}: ${list
+              .slice(0, 6)
+              .map((p) => {
+                const skills = Array.isArray(p['skills']) ? (p['skills'] as string[]) : [];
+                return `${str(p['name'])} (${[str(p['operationalRole']) || str(p['department']), str(p['availability']), skills.length ? `skills: ${skills.join(', ')}` : 'no skills recorded'].filter(Boolean).join('; ')})`;
+              })
+              .join(', ')}${list.length > 6 ? ', …' : ''}.`
+          : 'Nobody on the roster matches.',
+        records: list.map((p) => ({ kind: 'personnel', id: str(p['id']), label: str(p['name']) })),
+      };
+    },
+  }),
+  define({
+    name: 'reports.find',
+    version: 1,
+    phase: 1,
+    action: 'report.read',
+    kind: 'lookup',
+    title: 'Find damage reports',
+    usage: '/reports [submitted|under_review|needs_information|flagged|danger|<reference code>]',
+    args: z.object({
+      state: z
+        .enum([
+          'submitted',
+          'under_review',
+          'needs_information',
+          'approved',
+          'rejected',
+          'duplicate',
+        ])
+        .optional(),
+      flagged: z.boolean().optional(),
+      danger: z.boolean().optional(),
+      reference: z.string().min(6).max(12).optional(),
+    }),
+    confirmation: 'none',
+    reversal: 'none',
+    sideEffects: 'None: reads the review queue as you may see it.',
+    request: (a) => {
+      const q = new URLSearchParams({ limit: '20' });
+      if (a.state) q.set('state', a.state);
+      if (a.flagged) q.set('flagged', 'true');
+      if (a.danger) q.set('danger', 'true');
+      if (a.reference) q.set('reference', a.reference);
+      return { method: 'GET', path: `/reports?${q.toString()}` };
+    },
+    describe: (a) =>
+      `Find ${a.state ? `${a.state.replace('_', ' ')} ` : ''}${a.flagged ? 'flagged ' : ''}${a.danger ? 'danger-flagged ' : ''}reports${a.reference ? ` for ${a.reference}` : ''}.`,
+    // CMD-15: public observations stay apart from verified assessments, and possible
+    // duplicates are named for a person to judge.
+    verify: (r) => {
+      const list = rows(r);
+      return {
+        state: 'found',
+        summary: list.length
+          ? `${plural(list.length, 'report', 'reports')}: ${list
+              .slice(0, 5)
+              .map((x) => {
+                const flags = Array.isArray(x['flags']) ? (x['flags'] as Row[]) : [];
+                const dup = flags.some((f) => /duplicate/.test(str(f['kind'])));
+                return `${str(x['referenceCode'])} (${str(x['reviewState']).replace('_', ' ')}, ${str(x['verificationLevel']).replace(/_/g, ' ')}${x['femaDegree'] ? `, ${str(x['femaDegree'])}` : ''}${dup ? ', possible duplicate' : ''})`;
+              })
+              .join(', ')}${list.length > 5 ? ', …' : ''}.`
+          : 'No report matches.',
+        records: list.map((x) => ({
+          kind: 'report',
+          id: str(x['id']),
+          label: str(x['referenceCode']),
+        })),
+      };
+    },
+  }),
+  define({
+    name: 'resources.find',
+    version: 1,
+    phase: 1,
+    action: 'resource.read',
+    kind: 'lookup',
+    title: 'Find published resources',
+    usage: '/resources [<category>]',
+    args: z.object({ category: z.string().min(1).max(60).optional() }),
+    confirmation: 'none',
+    reversal: 'none',
+    sideEffects: 'None: reads the published resources.',
+    request: (a) => ({
+      method: 'GET',
+      path: `/resources?limit=20&status=published${a.category ? `&category=${encodeURIComponent(a.category)}` : ''}`,
+    }),
+    describe: (a) => `Find published resources${a.category ? ` in ${a.category}` : ''}.`,
+    verify: (r) => {
+      const list = rows(r);
+      const title = (x: Row) => {
+        const texts = Array.isArray(x['texts']) ? (x['texts'] as Row[]) : [];
+        const en = texts.find((t) => t['locale'] === 'en') ?? texts[0];
+        return str(en?.['title']) || str(x['slug']);
+      };
+      return {
+        state: 'found',
+        summary: list.length
+          ? `${plural(list.length, 'resource', 'resources')}: ${list
+              .slice(0, 6)
+              .map((x) => `${title(x)} (${str(x['category'])})`)
+              .join(', ')}${list.length > 6 ? ', …' : ''}.`
+          : 'No published resource matches.',
+        records: list.map((x) => ({ kind: 'resource', id: str(x['id']), label: title(x) })),
+      };
+    },
+  }),
+  define({
+    name: 'contacts.find',
+    version: 1,
+    phase: 1,
+    action: 'contact.read',
+    kind: 'lookup',
+    title: 'Find partner contacts',
+    usage: '/contacts [operations|24h|backup|media|liaison] [<agency>]',
+    args: z.object({
+      type: z.enum(['operations', 'twenty_four_hour', 'backup', 'media', 'liaison']).optional(),
+      agency: z.string().min(1).max(120).optional(),
+    }),
+    confirmation: 'none',
+    reversal: 'none',
+    sideEffects:
+      'None: reads the active contacts you may see; reading contact details is recorded (SEC-18).',
+    request: (a) => ({
+      method: 'GET',
+      path: `/contacts?limit=50&active=true${a.type ? `&type=${a.type}` : ''}${a.agency ? `&agency=${encodeURIComponent(a.agency)}` : ''}`,
+    }),
+    describe: (a) =>
+      `Find active ${a.type ? `${a.type.replace(/_/g, ' ')} ` : ''}contacts${a.agency ? ` for ${a.agency}` : ''}.`,
+    verify: (r) => {
+      const list = rows(r);
+      return {
+        state: 'found',
+        summary: list.length
+          ? `${plural(list.length, 'contact', 'contacts')}: ${list
+              .slice(0, 6)
+              .map(
+                (c) =>
+                  `${str(c['agency'])} ${str(c['type']).replace(/_/g, ' ')}${c['name'] ? `: ${str(c['name'])}` : ''}${c['due'] ? ' (re-check due)' : ''}`,
+              )
+              .join(', ')}${list.length > 6 ? ', …' : ''}.`
+          : 'No active contact matches.',
+        records: list.map((c) => ({ kind: 'contact', id: str(c['id']), label: str(c['agency']) })),
+      };
+    },
+  }),
+
   // ---------------------------------------------------------------- phase 2: reversible updates
   define({
     name: 'need.claim',
@@ -449,6 +802,88 @@ export const CATALOG = [
     },
   }),
   define({
+    name: 'service.log',
+    version: 1,
+    phase: 2,
+    action: 'service_log.write',
+    kind: 'change',
+    title: 'Log services given (meals, water, tarps …)',
+    usage: '/log <count> <meals|water|tarps|cots|rides|people|vouchers|pet_food>',
+    args: z.object({
+      count: z.number().int().min(1).max(1000),
+      kind: z.enum([
+        'meal',
+        'water_case',
+        'tarp',
+        'cot',
+        'ride',
+        'person_served',
+        'voucher',
+        'pet_food',
+      ]),
+    }),
+    confirmation: 'one_tap',
+    reversal: 'undo_15_min',
+    sideEffects:
+      'Adds to the service counts for the event; a correction is a new entry, never an edit (FL-06).',
+    request: (a, _t, ctx) => ({
+      method: 'POST',
+      path: '/service-logs',
+      body: { clientUuid: ctx.executionId, kind: a.kind, count: a.count },
+    }),
+    // A count is corrected by a counter-entry, as on the phone's counters.
+    undo: (a) => ({
+      method: 'POST',
+      path: '/service-logs',
+      body: {
+        clientUuid: globalThis.crypto.randomUUID(),
+        kind: a.kind,
+        count: -a.count,
+        note: 'Undone from the command window',
+      },
+    }),
+    describe: (a) => `Log ${a.count} ${a.kind.replace(/_/g, ' ')}${a.count === 1 ? '' : 's'}.`,
+    verify: (r) => {
+      const x = (r ?? {}) as Row;
+      const n = typeof x['count'] === 'number' ? x['count'] : 0;
+      return {
+        state: 'saved',
+        summary: `Logged ${n} ${str(x['kind']).replace(/_/g, ' ')}${n === 1 ? '' : 's'}.`,
+        records: [{ kind: 'service_log', id: str(x['id']) }],
+      };
+    },
+  }),
+  define({
+    name: 'shift.end',
+    version: 1,
+    phase: 2,
+    action: 'check_in.end',
+    kind: 'change',
+    title: 'Check out at the end of your shift',
+    usage: '/checkout',
+    args: z.object({}),
+    target: 'check_in',
+    confirmation: 'one_tap',
+    reversal: 'none',
+    sideEffects:
+      'Ends your check-in and puts you off duty. To leave a hand-over for the next shift, use the check-out screen (FL-12).',
+    request: (_a, t) => ({
+      method: 'POST',
+      path: `/check-ins/${t!.id}/end`,
+      body: { reason: 'checked_out' },
+    }),
+    describe: (_a, t) => `Check out (${t!.label}).`,
+    verify: (r) => {
+      const c = (r ?? {}) as Row;
+      const hours = typeof c['hours'] === 'number' ? Math.round(c['hours'] * 10) / 10 : null;
+      return {
+        state: 'saved',
+        summary: `Checked out${hours !== null ? ` after ${hours} hours` : ''}. You are off duty.`,
+        records: [{ kind: 'check_in', id: str(c['id']) }],
+      };
+    },
+  }),
+  define({
     name: 'mission.note',
     version: 1,
     phase: 2,
@@ -521,6 +956,1121 @@ export const CATALOG = [
         ],
       };
     },
+  }),
+  define({
+    name: 'mission.priority',
+    version: 1,
+    phase: 3,
+    action: 'mission.priority',
+    kind: 'change',
+    title: "Change a mission's priority",
+    usage: '/mission <reference> priority <low|normal|high|urgent>',
+    args: z.object({ priority: z.enum(['low', 'normal', 'high', 'urgent']) }),
+    target: 'mission',
+    confirmation: 'full_review',
+    reversal: 'compensating',
+    sideEffects:
+      'Changes the priority on the dispatch board, with your reason on the timeline and in the significant-events log.',
+    request: (a, t) => ({
+      method: 'POST',
+      path: `/missions/${t!.id}/priority`,
+      body: { priority: a.priority },
+      version: t!.version,
+    }),
+    describe: (a, t) => `Set mission ${t!.label} to ${a.priority} priority.`,
+    verify: (r) => {
+      const m = (r ?? {}) as Row;
+      return {
+        state: 'saved',
+        summary: `Mission ${str(m['reference'])} is now ${str(m['priority'])} priority.`,
+        records: [
+          {
+            kind: 'mission',
+            id: str(m['id']),
+            label: str(m['reference']),
+            version: ver(m['version']),
+          },
+        ],
+      };
+    },
+  }),
+  define({
+    name: 'mission.assign',
+    version: 1,
+    phase: 3,
+    action: 'assignment.create',
+    kind: 'change',
+    title: 'Assign a person to a mission',
+    usage: '/mission <reference> assign <person>',
+    args: z.object({ person: z.string().min(1).max(120), personId: z.uuid().optional() }),
+    target: 'mission',
+    person: true,
+    confirmation: 'one_tap',
+    reversal: 'compensating',
+    freeText: ['person'],
+    sideEffects:
+      'Assigns the person with the same checks as the dispatch board (CMD-14): a conflict stops it, and only an authorized override on the board can accept one.',
+    request: (a, t) => ({
+      method: 'POST',
+      path: `/missions/${t!.id}/assignments`,
+      body: { resources: [{ kind: 'person', id: a.personId }] },
+    }),
+    describe: (a, t) => `Assign ${a.person} to mission ${t!.label}.`,
+    verify: (r) => {
+      const list = rows(r);
+      return {
+        state: 'saved',
+        summary: list.length
+          ? `Assigned; the assignment is ${str(list[0]!['state']).replace('_', ' ')}.`
+          : 'Nothing was assigned.',
+        records: list.map((x) => ({
+          kind: 'assignment',
+          id: str(x['id']),
+          version: ver(x['version']),
+        })),
+      };
+    },
+  }),
+  // DSP-04: "send the nearest chainsaw team to M-00041" (or to a mission named by its place).
+  // The team is the dispatch board's best suggestion, among teams whose name or credentials
+  // carry the skill; the plan shows why it was suggested and any caution, and the dispatcher
+  // confirms. The assignment then goes to the team's phones and needs their acknowledgement.
+  define({
+    name: 'mission.assign_nearest',
+    version: 1,
+    phase: 3,
+    action: 'assignment.create',
+    kind: 'change',
+    title: 'Send the nearest qualified available team to a mission',
+    usage: '/mission <number or "place"> send nearest [<skill>] team',
+    args: z.object({
+      skill: z.string().min(1).max(60).optional(),
+      teamId: z.uuid().optional(),
+      team: z.string().max(200).optional(),
+      reasons: z.array(z.string().max(300)).max(12).optional(),
+      cautions: z.array(z.string().max(300)).max(12).optional(),
+    }),
+    target: 'mission',
+    within: {
+      path: (_a, t) => `/dispatch/suggest?missionId=${t!.id}&limit=20`,
+      rowsOf: (body) =>
+        rows((body as { suggestions?: unknown } | null)?.suggestions).map((s) => ({
+          ...s,
+          id: s['teamId'],
+        })),
+      // Best first, as the board ranks them; only the one at the top is offered.
+      pick: (list, a) => {
+        const want = a.skill ? fold(a.skill) : null;
+        const fit = want
+          ? list.filter((r) =>
+              [str(r['name']), ...(Array.isArray(r['credentials']) ? r['credentials'] : [])].some(
+                (v) => fold(str(v)).includes(want),
+              ),
+            )
+          : list;
+        return fit.slice(0, 1);
+      },
+      idArg: 'teamId',
+      keep: (r) => ({
+        team: str(r['name']),
+        reasons: Array.isArray(r['reasons']) ? r['reasons'].map(str) : [],
+        cautions: Array.isArray(r['cautions']) ? r['cautions'].map(str) : [],
+      }),
+      none: (a) =>
+        a.skill
+          ? `No active ${a.skill} team can be suggested for this mission. Pick one on the dispatch board.`
+          : 'No active team can be suggested for this mission. Pick one on the dispatch board.',
+      many: () => 'More than one team was suggested. Pick one on the dispatch board.',
+    },
+    confirmation: 'one_tap',
+    reversal: 'compensating',
+    freeText: ['skill'],
+    sideEffects:
+      "Assigns the suggested team with the same checks as the dispatch board. The team's phones are told and must acknowledge it; one not acknowledged in time raises an alert.",
+    request: (a, t) => ({
+      method: 'POST',
+      path: `/missions/${t!.id}/assignments`,
+      body: { resources: [{ kind: 'team', id: a.teamId }] },
+    }),
+    describe: (a, t) =>
+      `Send ${a.team ?? 'the suggested team'} to mission ${t!.label}: the best suggestion${a.skill ? ` among ${a.skill} teams` : ''}${a.reasons?.length ? ` (${a.reasons.join('; ')})` : ''}.${a.cautions?.length ? ` Caution: ${a.cautions.join('; ')}.` : ''}`,
+    verify: (r) => {
+      const list = rows(r);
+      return {
+        state: 'saved',
+        summary: list.length
+          ? `Sent; the assignment is ${str(list[0]!['state']).replace('_', ' ')} until the team acknowledges it.`
+          : 'Nothing was assigned.',
+        records: list.map((x) => ({
+          kind: 'assignment',
+          id: str(x['id']),
+          version: ver(x['version']),
+        })),
+      };
+    },
+  }),
+  // CMD-14, Section 30.2 phase 3: a person's duty status or availability, as the roster
+  // records it. "Assigned" comes from an assignment, never from here.
+  define({
+    name: 'person.status',
+    version: 1,
+    phase: 3,
+    action: 'personnel.update',
+    kind: 'change',
+    title: "Change a person's duty status or availability",
+    usage: '/person <name> <available|unavailable|on duty|off duty>',
+    args: z.object({ set: z.enum(PERSON_SETTINGS) }),
+    target: 'personnel',
+    confirmation: 'one_tap',
+    reversal: 'undo_15_min',
+    sideEffects:
+      'Changes the roster entry the dispatch board reads. Missions the person is already assigned to are not changed; the board shows any conflict.',
+    request: (a, t) => ({
+      method: 'PATCH',
+      path: `/personnel/${t!.id}`,
+      body: { [PERSON_FIELD[a.set]]: a.set },
+      version: t!.version,
+    }),
+    // Puts back what the plan saw; a change made since then is refused by the version check.
+    undo: (a, t, v) => ({
+      method: 'PATCH',
+      path: `/personnel/${t!.id}`,
+      body: { [PERSON_FIELD[a.set]]: t!.was?.[PERSON_FIELD[a.set]] },
+      version: v.records[0]?.version,
+    }),
+    describe: (a, t) => {
+      const field = PERSON_FIELD[a.set];
+      const already = t!.was?.[field] === a.set;
+      return `${already ? 'Keep' : 'Mark'} ${t!.label} ${a.set.replace('_', ' ')}${already ? '; that is already recorded' : ''}.`;
+    },
+    verify: (r) => {
+      const p = (r ?? {}) as Row;
+      return {
+        state: 'saved',
+        summary: `${str(p['name'])} is ${str(p['dutyStatus']).replace('_', ' ')} and ${str(p['availability'])}.`,
+        records: [
+          {
+            kind: 'personnel',
+            id: str(p['id']),
+            label: str(p['name']),
+            version: ver(p['version']),
+          },
+        ],
+      };
+    },
+  }),
+  // CMD-13, Section 30.2 phase 3: a person's open assignment on the mission is released. The
+  // release is consequential, so the full review's reason becomes the release reason.
+  define<{
+    person: string;
+    personId?: string | undefined;
+    assignmentId?: string | undefined;
+    assignmentVersion?: number | undefined;
+  }>({
+    name: 'mission.release',
+    version: 1,
+    phase: 3,
+    action: 'assignment.release',
+    kind: 'change',
+    title: 'Release a person from a mission',
+    usage: '/mission <reference> release <person>',
+    args: z.object({
+      person: z.string().min(1).max(120),
+      personId: z.uuid().optional(),
+      assignmentId: z.uuid().optional(),
+      assignmentVersion: z.number().int().optional(),
+    }),
+    target: 'mission',
+    person: true,
+    within: {
+      path: (a, t) =>
+        `/assignments?limit=10&open=true&missionId=${t!.id}&personnelId=${a.personId ?? ''}`,
+      idArg: 'assignmentId',
+      versionArg: 'assignmentVersion',
+      none: (a) => `${a.person} has no open assignment on this mission.`,
+      many: (a) =>
+        `${a.person} holds more than one open assignment on this mission. Release it on the dispatch board.`,
+    },
+    confirmation: 'full_review',
+    reversal: 'compensating',
+    freeText: ['person'],
+    sideEffects:
+      'Releases the assignment with your reason, exactly as the dispatch board does. Assigning them again is a new assignment.',
+    request: (a) => ({
+      method: 'POST',
+      path: `/assignments/${a.assignmentId ?? ''}/release`,
+      version: a.assignmentVersion,
+    }),
+    describe: (a, t) =>
+      `Release ${a.person} from mission ${t!.label}. Your reason is kept as the release reason.`,
+    verify: (r) => {
+      const x = (r ?? {}) as Row;
+      return {
+        state: 'saved',
+        summary: x['releasedAt'] ? 'Released.' : 'The assignment was not released.',
+        records: [{ kind: 'assignment', id: str(x['id']), version: ver(x['version']) }],
+      };
+    },
+  }),
+  define({
+    name: 'mission.close',
+    version: 1,
+    phase: 3,
+    action: 'mission.close',
+    kind: 'change',
+    title: 'Close a mission',
+    usage:
+      '/mission <reference> close [disposition:<completed|referred|no_action_needed|unable_to_locate|duplicate|transferred|other>]',
+    args: z.object({
+      disposition: z
+        .enum([
+          'completed',
+          'referred',
+          'no_action_needed',
+          'unable_to_locate',
+          'duplicate',
+          'transferred',
+          'other',
+        ])
+        .default('completed'),
+    }),
+    target: 'mission',
+    confirmation: 'full_review',
+    reversal: 'compensating',
+    sideEffects:
+      'Closes the mission with your reason and releases everyone still assigned; reopening it needs its own reason.',
+    request: (a, t) => ({
+      method: 'POST',
+      path: `/missions/${t!.id}/close`,
+      body: { disposition: a.disposition },
+      version: t!.version,
+    }),
+    describe: (a, t) => `Close mission ${t!.label} as ${a.disposition.replace(/_/g, ' ')}.`,
+    verify: (r) => {
+      const m = (r ?? {}) as Row;
+      return {
+        state: 'saved',
+        summary: `Mission ${str(m['reference'])} is ${str(m['state'])}.`,
+        records: [
+          {
+            kind: 'mission',
+            id: str(m['id']),
+            label: str(m['reference']),
+            version: ver(m['version']),
+          },
+        ],
+      };
+    },
+  }),
+  define({
+    name: 'mission.reopen',
+    version: 1,
+    phase: 3,
+    action: 'mission.reopen',
+    kind: 'change',
+    title: 'Reopen a mission',
+    usage: '/mission <reference> reopen',
+    args: z.object({}),
+    target: 'mission',
+    confirmation: 'full_review',
+    reversal: 'compensating',
+    sideEffects: 'Reopens a closed or canceled mission with your reason on its timeline.',
+    request: (_a, t) => ({
+      method: 'POST',
+      path: `/missions/${t!.id}/reopen`,
+      body: {},
+      version: t!.version,
+    }),
+    describe: (_a, t) => `Reopen mission ${t!.label}.`,
+    verify: (r) => {
+      const m = (r ?? {}) as Row;
+      return {
+        state: 'saved',
+        summary: `Mission ${str(m['reference'])} is ${str(m['state'])} again.`,
+        records: [
+          {
+            kind: 'mission',
+            id: str(m['id']),
+            label: str(m['reference']),
+            version: ver(m['version']),
+          },
+        ],
+      };
+    },
+  }),
+  // ---------------------------------------------------------------- phase 4: batches (CMD-30)
+  define({
+    name: 'needs.claim_many',
+    version: 1,
+    phase: 4,
+    action: 'need.claim',
+    kind: 'change',
+    title: 'Claim the open needs a filter names, for your organization',
+    usage: '/needs open [category:<category>] [postal:<code>] claim [note]',
+    args: z.object({
+      category: z.string().min(2).max(60).optional(),
+      postal: z.string().min(3).max(12).optional(),
+      note: z.string().max(500).optional(),
+    }),
+    target: 'need',
+    confirmation: 'full_review',
+    reversal: 'compensating',
+    freeText: ['note'],
+    sideEffects:
+      'Claims each open need the filter names for your organization, one at a time. A need someone else claims first is left as it is and named in the result. To give them back, release them the same way.',
+    bulk: {
+      list: (a) =>
+        `/needs?status=open${a.category ? `&category=${encodeURIComponent(a.category)}` : ''}${a.postal ? `&postal=${encodeURIComponent(a.postal)}` : ''}`,
+      item: (a, t) => ({
+        method: 'POST',
+        path: `/needs/${t.id}/claim`,
+        body: a.note ? { note: a.note } : {},
+      }),
+      describe: (a, n, sample) =>
+        `Claim ${plural(n, 'open need', 'open needs')}${a.category ? ` in ${a.category.replace(/_/g, ' ')}` : ''}${a.postal ? ` in ${a.postal}` : ''} for your organization: ${sample.join(', ')}${n > sample.length ? ` and ${n - sample.length} more` : ''}.`,
+      done: (n, of) => `Claimed ${n} of ${plural(of, 'need', 'needs')}.`,
+    },
+    request: () => {
+      throw new Error('a batch runs one operation per record');
+    },
+    describe: () => 'Claim needs.',
+    verify: () => ({ state: 'saved', summary: '', records: [] }),
+  }),
+  define({
+    name: 'needs.release_many',
+    version: 1,
+    phase: 4,
+    action: 'need.release',
+    kind: 'change',
+    title: 'Release the needs your organization holds that a filter names',
+    usage: '/needs claimed [category:<category>] [postal:<code>] release [note]',
+    args: z.object({
+      category: z.string().min(2).max(60).optional(),
+      postal: z.string().min(3).max(12).optional(),
+      note: z.string().max(500).optional(),
+    }),
+    target: 'need',
+    confirmation: 'full_review',
+    reversal: 'compensating',
+    freeText: ['note'],
+    sideEffects:
+      'Puts each need your organization holds that the filter names back on the board, one at a time; others can then claim them.',
+    bulk: {
+      list: (a, ctx) =>
+        `/needs?status=claimed&claimedBy=${ctx.tenantId}${a.category ? `&category=${encodeURIComponent(a.category)}` : ''}${a.postal ? `&postal=${encodeURIComponent(a.postal)}` : ''}`,
+      item: (a, t) => ({
+        method: 'POST',
+        path: `/needs/${t.id}/release`,
+        body: a.note ? { note: a.note } : {},
+      }),
+      describe: (a, n, sample) =>
+        `Release ${plural(n, 'need', 'needs')} your organization holds${a.category ? ` in ${a.category.replace(/_/g, ' ')}` : ''}${a.postal ? ` in ${a.postal}` : ''}: ${sample.join(', ')}${n > sample.length ? ` and ${n - sample.length} more` : ''}.`,
+      done: (n, of) => `Released ${n} of ${plural(of, 'need', 'needs')}.`,
+    },
+    request: () => {
+      throw new Error('a batch runs one operation per record');
+    },
+    describe: () => 'Release needs.',
+    verify: () => ({ state: 'saved', summary: '', records: [] }),
+  }),
+
+  // CMD-13, Section 30.2 phase 1: a mission draft for the open event; nothing is dispatched.
+  define<{ kind: (typeof MISSION_KINDS)[number]; summary: string }>({
+    name: 'mission.draft',
+    version: 1,
+    phase: 1,
+    action: 'mission.create',
+    kind: 'draft',
+    title: 'Draft a mission',
+    usage: '/mission new <kind> <what is needed>',
+    args: z.object({
+      kind: z.enum(MISSION_KINDS),
+      summary: z.string().trim().min(3).max(500),
+    }),
+    needsEvent: true,
+    confirmation: 'none',
+    reversal: 'none',
+    sideEffects:
+      'Creates a draft mission in the open event. Nothing is dispatched until someone opens it on the missions screen.',
+    freeText: ['summary'],
+    request: (a, _t, ctx) => ({
+      method: 'POST',
+      path: '/missions',
+      body: {
+        eventId: ctx.eventId,
+        kind: a.kind,
+        source: 'staff',
+        summary: a.summary,
+        save: 'draft',
+      },
+    }),
+    describe: (a) =>
+      `Draft a ${a.kind.replace(/_/g, ' ')} mission in the open event with what you typed. Nothing is dispatched.`,
+    verify: (r) => {
+      const d = (r ?? {}) as Row;
+      return {
+        state: 'drafted',
+        summary: `Mission ${str(d['reference'])} drafted. Nothing is dispatched until it is opened on the missions screen.`,
+        records: [
+          {
+            kind: 'mission',
+            id: str(d['id']),
+            label: str(d['reference']),
+            version: ver(d['version']),
+          },
+        ],
+      };
+    },
+  }),
+
+  // CMD-17, RULE-11, FR-13.06: what happened to a person's badge at the printer, recorded by
+  // the person who saw it. Generating or replacing a badge stays on the Badges screen: its
+  // code is shown once, to print, and the window never holds it.
+  define<{
+    person: string;
+    personId?: string | undefined;
+    outcome: (typeof BADGE_OUTCOMES)[number];
+    reason?: string | undefined;
+    badgeId?: string | undefined;
+    badgeVersion?: number | undefined;
+  }>({
+    name: 'badge.print',
+    version: 1,
+    phase: 3,
+    action: 'badge.print',
+    kind: 'change',
+    title: "Record what happened to a person's badge at the printer",
+    usage: '/badge <person> <printed|failed <why>|handed out>',
+    args: z.object({
+      person: z.string().min(1).max(120),
+      personId: z.uuid().optional(),
+      outcome: z.enum(BADGE_OUTCOMES),
+      reason: z.string().trim().max(300).optional(),
+      badgeId: z.uuid().optional(),
+      badgeVersion: z.number().int().optional(),
+    }),
+    person: true,
+    within: {
+      path: (a) => `/badges?limit=20&personnelId=${a.personId ?? ''}`,
+      pick: (list, a) => list.filter((b) => BADGE_FROM[a.outcome].includes(str(b['state']))),
+      idArg: 'badgeId',
+      versionArg: 'badgeVersion',
+      none: (a) =>
+        `${a.person} has no badge waiting for that. Generate or reprint it on the Badges screen.`,
+      many: (a) => `${a.person} has more than one badge waiting. Record it on the Badges screen.`,
+    },
+    confirmation: 'one_tap',
+    reversal: 'none',
+    undoUnavailable:
+      "A print outcome stays in the badge's history. If it was wrong, record what happened next on the Badges screen.",
+    sideEffects:
+      'Adds the outcome to the badge history. A printed badge is not handed out until someone records that too.',
+    freeText: ['person', 'reason'],
+    request: (a) => ({
+      method: 'POST',
+      path: `/badges/${a.badgeId ?? ''}/print`,
+      version: a.badgeVersion,
+      body: { outcome: a.outcome, ...(a.reason ? { reason: a.reason } : {}) },
+    }),
+    describe: (a) =>
+      a.outcome === 'confirmed'
+        ? `Record that you saw ${a.person}'s badge come out of the printer. It is not handed out yet.`
+        : a.outcome === 'failed'
+          ? `Record that ${a.person}'s badge failed to print.`
+          : `Record that ${a.person}'s printed badge was handed to them.`,
+    // The answer never carries the badge's code: the print route does not return it.
+    verify: (r) => {
+      const b = (r ?? {}) as Row;
+      return {
+        state: 'saved',
+        summary: `${str(b['displayName'])}'s badge: ${str(b['state']).replace(/_/g, ' ')}.`,
+        records: [{ kind: 'badge', id: str(b['id']), version: ver(b['version']) }],
+      };
+    },
+  }),
+
+  // CMD-17, Section 30.2 phase 1: a resource drafted in English, the fallback language. It is
+  // published on the Resources screen, after its texts are reviewed (BRD:FR-16.02).
+  define({
+    name: 'resource.draft',
+    version: 1,
+    phase: 1,
+    action: 'resource.edit',
+    kind: 'draft',
+    title: 'Draft a resource',
+    usage: '/resource new <hotline|program|deadline|guidance|link|document> <title>',
+    args: z.object({
+      type: z.enum(RESOURCE_TYPES),
+      title: z.string().trim().min(3).max(200),
+      summary: z.string().trim().max(500).optional(),
+      category: z
+        .string()
+        .regex(/^[a-z0-9_]{1,60}$/)
+        .optional(),
+    }),
+    confirmation: 'none',
+    reversal: 'none',
+    sideEffects:
+      'Creates a draft resource with an English title. Nobody sees it until its texts are reviewed and it is published on the Resources screen.',
+    freeText: ['title', 'summary'],
+    request: (a) => ({
+      method: 'POST',
+      path: '/resources',
+      body: {
+        type: a.type,
+        ...(a.category ? { category: a.category } : {}),
+        texts: {
+          en: { title: a.title, summary: a.summary ?? null, bodyHtml: '', humanReviewed: false },
+        },
+      },
+    }),
+    describe: (a) =>
+      `Draft a ${a.type} resource${a.category ? ` in ${a.category.replace(/_/g, ' ')}` : ''} with the title you typed. Nobody sees it until it is published.`,
+    verify: (r) => {
+      const d = (r ?? {}) as Row;
+      return {
+        state: 'drafted',
+        summary: `Resource "${str(d['slug'])}" drafted. Add its texts and publish it on the Resources screen.`,
+        records: [
+          {
+            kind: 'resource',
+            id: str(d['id']),
+            label: str(d['slug']),
+            version: ver(d['version']),
+          },
+        ],
+      };
+    },
+  }),
+  // CMD-17, Section 30.2 phase 2: the date someone looks at a resource again. Internal only.
+  define({
+    name: 'resource.review',
+    version: 1,
+    phase: 2,
+    action: 'resource.edit',
+    kind: 'change',
+    title: "Set a resource's review date",
+    usage: '/resource <slug or title> review <YYYY-MM-DD|none>',
+    args: z.object({ value: z.iso.date().nullable() }),
+    target: 'resource',
+    confirmation: 'one_tap',
+    reversal: 'undo_15_min',
+    sideEffects:
+      'Changes the date the resource comes up for review. The public page does not change.',
+    request: (a, t) => ({
+      method: 'PATCH',
+      path: `/resources/${t!.id}`,
+      body: { reviewAt: a.value },
+      version: t!.version,
+    }),
+    undo: (_a, t, v) => ({
+      method: 'PATCH',
+      path: `/resources/${t!.id}`,
+      body: { reviewAt: t!.was?.['reviewAt'] || null },
+      version: v.records[0]?.version,
+    }),
+    describe: (a, t) =>
+      a.value
+        ? `Set the review date of ${t!.label} to ${a.value}.`
+        : `Clear the review date of ${t!.label}.`,
+    verify: (r) => resourceSaved(r, 'review date', 'reviewAt'),
+  }),
+  // CMD-17, Section 30.2 phase 3: when a published page turns into "expired on". Only a future
+  // time is taken (the parser refuses a past one); undo puts back what the plan saw.
+  define({
+    name: 'resource.expiry',
+    version: 1,
+    phase: 3,
+    action: 'resource.edit',
+    kind: 'change',
+    title: "Set a resource's expiry",
+    usage: '/resource <slug or title> expires <YYYY-MM-DD [HH:MM]|none>',
+    args: z.object({
+      value: z.iso.datetime().nullable(),
+      local: z.string().max(80).optional(),
+    }),
+    target: 'resource',
+    confirmation: 'one_tap',
+    reversal: 'undo_15_min',
+    sideEffects:
+      'From that time the public page shows "expired on" instead of the resource. Without an expiry it stays until it is unpublished.',
+    request: (a, t) => ({
+      method: 'PATCH',
+      path: `/resources/${t!.id}`,
+      body: { expiresAt: a.value },
+      version: t!.version,
+    }),
+    undo: (_a, t, v) => ({
+      method: 'PATCH',
+      path: `/resources/${t!.id}`,
+      body: { expiresAt: t!.was?.['expiresAt'] || null },
+      version: v.records[0]?.version,
+    }),
+    describe: (a, t) =>
+      a.value
+        ? `Expire ${t!.label} at ${a.local ?? a.value}; until then the public page is unchanged.`
+        : `Remove the expiry of ${t!.label}; it stays published until someone unpublishes it.`,
+    verify: (r) => resourceSaved(r, 'expiry', 'expiresAt'),
+  }),
+
+  // AC-C08, Section 30.2 phase 4 (outbound messages): a message to a team's phones, reviewed
+  // with a reason. It is answered as sent, never as delivered: delivery is each phone's receipt.
+  define<{ text: string; mission?: string | undefined; missionId?: string | undefined }>({
+    name: 'team.message',
+    version: 1,
+    phase: 4,
+    action: 'field_message.send',
+    kind: 'change',
+    title: 'Message a team in the field',
+    usage: '/message <team> <text> [mission:<number>]',
+    args: z.object({
+      text: z.string().trim().min(1).max(1000),
+      mission: z.string().trim().min(1).max(40).optional(),
+      missionId: z.uuid().optional(),
+    }),
+    target: 'team',
+    // AC-C07: with mission:, the message is then noted on the mission's timeline.
+    also: { arg: 'mission', idArg: 'missionId', kind: 'mission' },
+    then: {
+      action: 'mission.narrative',
+      label: 'the note on the mission',
+      when: (a) => Boolean(a.missionId),
+      request: (a, t, first) => ({
+        method: 'POST',
+        path: `/missions/${a.missionId ?? ''}/narratives`,
+        body: {
+          role: 'dispatcher',
+          body: `Field message ${first.records[0]?.id ?? ''} sent to ${t?.label ?? 'the team'} from the command window.`,
+        },
+      }),
+      verify: (r) => {
+        const e = (r ?? {}) as Row;
+        return {
+          state: 'saved',
+          summary: 'It is noted on the mission timeline.',
+          records: e['id'] ? [{ kind: 'mission_event', id: str(e['id']) }] : [],
+        };
+      },
+    },
+    needsEvent: true,
+    confirmation: 'full_review',
+    reversal: 'compensating',
+    sideEffects:
+      "Sends the message to each team member's phone, in the field app or by text where they have no app. A sent message cannot be unsent; a correction is a new message.",
+    freeText: ['text'],
+    undoUnavailable:
+      "A sent message cannot be recalled from people's phones. Send a correction as a new message.",
+    request: (a, t, ctx) => ({
+      method: 'POST',
+      path: '/field-messages',
+      body: {
+        eventId: ctx.eventId,
+        kind: 'message',
+        body: a.text,
+        audience: { kind: 'team', teamId: t!.id },
+      },
+    }),
+    describe: (a, t) =>
+      `Send what you typed to ${t?.label ?? 'the team'}. It shows as delivered only when their phones confirm it.${a.mission ? ` Then note it on mission ${a.mission}.` : ''}`,
+    verify: (r) => {
+      const d = (r ?? {}) as Row;
+      const n = typeof d['recipientCount'] === 'number' ? d['recipientCount'] : 0;
+      return {
+        state: 'queued',
+        summary: `Sent to ${plural(n, 'person', 'people')}. Not yet delivered: the messages screen shows each phone's receipt as it arrives.`,
+        records: [{ kind: 'field_message', id: str(d['id']) }],
+      };
+    },
+  }),
+
+  // CMD-15: a reviewer takes a report into review (phase 3), and decides it or asks the
+  // resident (phase 4: approvals and messages, reviewed with a reason, RULE-14). The author of
+  // a report never reviews it (A7); the route's own guardrail refuses it.
+  define<Record<string, never>>({
+    name: 'report.claim',
+    version: 1,
+    phase: 3,
+    action: 'report.update',
+    kind: 'change',
+    title: 'Take a report into review',
+    usage: '/report <reference code> review',
+    args: z.object({}),
+    target: 'report',
+    confirmation: 'one_tap',
+    reversal: 'none',
+    sideEffects: 'Marks the report under review. No decision is made and the resident is not told.',
+    request: (_a, t) => ({ method: 'POST', path: `/reports/${t!.id}/claim`, version: t!.version }),
+    describe: (_a, t) => `Take ${t?.label ?? 'the report'} into review. No decision is made.`,
+    verify: (r) => reviewed(r, 'is under review'),
+  }),
+  ...(['approve', 'reject'] as const).map((decision) =>
+    define<{ reason: string; evidenceRefs: string[] }>({
+      name: `report.${decision}`,
+      version: 1,
+      phase: 4,
+      action: 'report.review',
+      kind: 'change',
+      title: decision === 'approve' ? 'Approve a report' : 'Reject a report',
+      usage: `/report <reference code> ${decision} <why> [evidence:<ref>,<ref>]`,
+      args: z.object({
+        reason: z.string().trim().min(3).max(2000),
+        evidenceRefs: z.array(z.string().trim().min(1).max(200)).max(20).default([]),
+      }),
+      target: 'report',
+      confirmation: 'full_review',
+      reversal: 'compensating',
+      sideEffects:
+        decision === 'approve'
+          ? "Records the review decision with your reason and evidence. The report's verification level does not change: a public observation is not a verified assessment until someone verifies it."
+          : 'Records the review decision with your reason and evidence. The report stays on record; reopening it is a new decision.',
+      freeText: ['reason'],
+      request: (a, t) => ({
+        method: 'POST',
+        path: `/reports/${t!.id}/decisions`,
+        version: t!.version,
+        body: { decision, reason: a.reason, evidenceRefs: a.evidenceRefs },
+      }),
+      describe: (a, t) =>
+        `${decision === 'approve' ? 'Approve' : 'Reject'} ${t?.label ?? 'the report'}${a.evidenceRefs.length ? `, citing ${a.evidenceRefs.join(', ')}` : ''}. The verification level stays as it is.`,
+      verify: (r) => reviewed(r, decision === 'approve' ? 'is approved' : 'is rejected'),
+    }),
+  ),
+  // CMD-15: the other report is found by its reference code among those the reviewer may
+  // see, and named in the plan. Reopening is a new decision on the review screen.
+  define<{ of: string; ofId?: string | undefined; reason: string; evidenceRefs: string[] }>({
+    name: 'report.duplicate',
+    version: 1,
+    phase: 4,
+    action: 'report.review',
+    kind: 'change',
+    title: 'Mark a report as a duplicate of another',
+    usage: '/report <reference code> duplicate <other reference code> <why>',
+    args: z.object({
+      of: z.string().trim().min(6).max(12),
+      ofId: z.uuid().optional(),
+      reason: z.string().trim().min(3).max(2000),
+      evidenceRefs: z.array(z.string().trim().min(1).max(200)).max(20).default([]),
+    }),
+    target: 'report',
+    also: { arg: 'of', idArg: 'ofId', kind: 'report' },
+    confirmation: 'full_review',
+    reversal: 'compensating',
+    sideEffects:
+      'Records the review decision with your reason: this report becomes a duplicate and points at the other one. Neither report is deleted, and the other is not changed.',
+    freeText: ['reason'],
+    request: (a, t) => ({
+      method: 'POST',
+      path: `/reports/${t!.id}/decisions`,
+      version: t!.version,
+      body: {
+        decision: 'duplicate',
+        duplicateOf: a.ofId,
+        reason: a.reason,
+        evidenceRefs: a.evidenceRefs,
+      },
+    }),
+    describe: (a, t) =>
+      `Mark ${t?.label ?? 'the report'} as a duplicate of ${a.of.toUpperCase()}${a.evidenceRefs.length ? `, citing ${a.evidenceRefs.join(', ')}` : ''}. ${a.of.toUpperCase()} is not changed.`,
+    verify: (r) => reviewed(r, 'is marked as a duplicate'),
+  }),
+  define<{ message: string }>({
+    name: 'report.ask',
+    version: 1,
+    phase: 4,
+    action: 'report.review',
+    kind: 'change',
+    title: 'Ask the resident for more information',
+    usage: '/report <reference code> ask <question>',
+    args: z.object({ message: z.string().trim().min(3).max(2000) }),
+    target: 'report',
+    confirmation: 'full_review',
+    reversal: 'compensating',
+    sideEffects:
+      "Marks the report as needing information and sends the resident your question in their language, through the county's number. A sent message cannot be unsent; a correction is a new message.",
+    freeText: ['message'],
+    request: (a, t) => ({
+      method: 'POST',
+      path: `/reports/${t!.id}/decisions`,
+      version: t!.version,
+      body: {
+        decision: 'needs_information',
+        reason: 'More information asked of the resident',
+        message: a.message,
+      },
+    }),
+    describe: (_a, t) =>
+      `Ask the resident who sent ${t?.label ?? 'the report'} for more information. They are sent your question.`,
+    verify: (r) => reviewed(r, 'needs information; the question is queued for the resident'),
+  }),
+
+  // CMD-18, Section 30.2 phase 4 (administration): only the workflows the Accounts and
+  // Permissions screens already run, each with the full review and a reason. Nothing is ever
+  // granted because a command asked: a role is requested, and a second administrator approves
+  // it on the Permissions screen (ADM-05).
+  ...(['suspend', 'deactivate', 'activate'] as const).map((step) =>
+    define<Record<string, never>>({
+      name: `account.${step}`,
+      version: 1,
+      phase: 4,
+      action: `account.${step}`,
+      kind: 'change',
+      title:
+        step === 'suspend'
+          ? 'Suspend an account'
+          : step === 'deactivate'
+            ? 'Deactivate an account'
+            : 'Activate an account again',
+      usage: `/account <name or email> ${step}`,
+      args: z.object({}),
+      target: 'account',
+      confirmation: 'full_review',
+      reversal: step === 'suspend' ? 'undo_15_min' : 'none',
+      sideEffects:
+        step === 'suspend'
+          ? 'They cannot sign in until an administrator activates the account again; the identity provider is told at once.'
+          : step === 'deactivate'
+            ? 'They can never sign in with this account again; its history is kept. The identity provider is told at once.'
+            : 'They can sign in again with the roles they had.',
+      ...(step === 'deactivate'
+        ? {
+            undoUnavailable:
+              'A deactivated account cannot be activated again. Invite the person again if they come back.',
+          }
+        : step === 'activate'
+          ? { undoUnavailable: 'Suspend the account again if this was wrong.' }
+          : {}),
+      request: (_a, t) => ({
+        method: 'POST',
+        path: `/accounts/${t!.id}/${step}`,
+        body: {},
+        version: t!.version,
+      }),
+      ...(step === 'suspend'
+        ? {
+            undo: (_a: Record<string, never>, t: Target | null, v: Verified): OpRequest => ({
+              method: 'POST',
+              path: `/accounts/${t!.id}/activate`,
+              body: {},
+              version: v.records[0]?.version,
+            }),
+          }
+        : {}),
+      describe: (_a, t) =>
+        step === 'suspend'
+          ? `Suspend ${t!.label}. They cannot sign in until the account is activated again.`
+          : step === 'deactivate'
+            ? `Deactivate ${t!.label} for good. Their history is kept.`
+            : `Activate ${t!.label} again.`,
+      verify: (r) => {
+        const d = (r ?? {}) as Row;
+        return {
+          state: 'saved',
+          summary: `${str(d['displayName'])} is ${str(d['status'])}.`,
+          records: [
+            {
+              kind: 'account',
+              id: str(d['id']),
+              label: str(d['displayName']),
+              version: ver(d['version']),
+            },
+          ],
+        };
+      },
+    }),
+  ),
+  define<{ role: string; roleId?: string | undefined }>({
+    name: 'role.request',
+    version: 1,
+    phase: 4,
+    action: 'permission_change.request',
+    kind: 'change',
+    title: 'Ask for a role to be given to someone',
+    usage: '/role request <role> to:<name or email>',
+    args: z.object({ role: z.string().trim().min(2).max(120), roleId: z.uuid().optional() }),
+    target: 'account',
+    also: { arg: 'role', idArg: 'roleId', kind: 'role' },
+    confirmation: 'full_review',
+    reversal: 'none',
+    undoUnavailable:
+      'The request waits for a second administrator, who approves or rejects it on the Permissions screen.',
+    sideEffects:
+      'Records a request. Nothing is granted until a second administrator approves it on the Permissions screen (ADM-05).',
+    request: (a, t) => ({
+      method: 'POST',
+      path: '/permission-changes',
+      body: { kind: 'assign_role', accountId: t!.id, roleId: a.roleId, scope: {} },
+    }),
+    describe: (a, t) =>
+      `Ask for the role "${a.role}" to be given to ${t!.label}. Nothing is granted until a second administrator approves it.`,
+    verify: (r) => {
+      const d = (r ?? {}) as Row;
+      return {
+        state: 'queued',
+        summary:
+          'Requested. A second administrator approves or rejects it on the Permissions screen.',
+        records: [{ kind: 'permission_change_request', id: str(d['id']) }],
+      };
+    },
+  }),
+  define<{
+    role: string;
+    roleId?: string | undefined;
+    assignmentId?: string | undefined;
+    assignmentVersion?: number | undefined;
+  }>({
+    name: 'role.revoke',
+    version: 1,
+    phase: 4,
+    action: 'role_assignment.revoke',
+    kind: 'change',
+    title: 'Take a role away from someone',
+    usage: '/role revoke <role> from:<name or email>',
+    args: z.object({
+      role: z.string().trim().min(2).max(120),
+      roleId: z.uuid().optional(),
+      assignmentId: z.uuid().optional(),
+      assignmentVersion: z.number().int().optional(),
+    }),
+    target: 'account',
+    also: { arg: 'role', idArg: 'roleId', kind: 'role' },
+    within: {
+      path: (_a, t) => `/role-assignments?limit=200&accountId=${t!.id}`,
+      pick: (list, a) => list.filter((x) => x['roleId'] === a.roleId && x['status'] === 'active'),
+      idArg: 'assignmentId',
+      versionArg: 'assignmentVersion',
+      none: (a) => `They do not hold the role "${a.role}".`,
+      many: (a) =>
+        `They hold the role "${a.role}" more than once (for different events). Take it away on the Permissions screen.`,
+    },
+    confirmation: 'full_review',
+    reversal: 'none',
+    undoUnavailable: 'Giving the role back is a new request, approved by a second administrator.',
+    sideEffects:
+      'Takes the role away at once, with your reason. Giving it back needs a second administrator.',
+    request: (a) => ({
+      method: 'POST',
+      path: `/role-assignments/${a.assignmentId ?? ''}/revoke`,
+      version: a.assignmentVersion,
+    }),
+    describe: (a, t) => `Take the role "${a.role}" away from ${t!.label}.`,
+    verify: (r) => {
+      const d = (r ?? {}) as Row;
+      return {
+        state: 'saved',
+        summary: `The role is ${str(d['status'])}.`,
+        records: [{ kind: 'role_assignment', id: str(d['id']), version: ver(d['version']) }],
+      };
+    },
+  }),
+
+  // CMD-16: exports with an explicit scope and period. Section 30.2 lists exports with
+  // neither lookups nor drafts, so they are confirmed and sit in phase 3 (IDA package, an
+  // issued report) and phase 4 (a public-records release, reviewed with a reason, RULE-14).
+  define<Record<string, never>>({
+    name: 'ida.export',
+    version: 1,
+    phase: 3,
+    action: 'declaration.export',
+    kind: 'change',
+    title: 'Prepare the IDA package',
+    usage: '/export ida',
+    args: z.object({}),
+    needsEvent: true,
+    confirmation: 'one_tap',
+    reversal: 'none',
+    sideEffects:
+      'Builds the IDA package of the open event (counts and generalized places, no personal details) from the records as they stand when it is built. It is not sent to FEMA or anyone else.',
+    request: (_a, _t, ctx) => ({
+      method: 'POST',
+      path: `/events/${ctx.eventId ?? ''}/exports`,
+      body: { clientUuid: ctx.executionId },
+    }),
+    describe: () =>
+      'Prepare the IDA package for the open event. Scope: every jurisdiction in the event. Period: the whole event, up to when the package is built.',
+    verify: queuedExport('The IDA package', 'Declaration data', (d) => ({
+      kind: 'ida_package',
+      id: str(d['id']),
+    })),
+  }),
+
+  define<{ format: 'pdf' | 'csv' }>({
+    name: 'report.export',
+    version: 1,
+    phase: 3,
+    action: 'official_report.export',
+    kind: 'change',
+    title: 'Export an issued report',
+    usage: '/export sitrep|briefing [number|latest] [pdf|csv]',
+    args: z.object({ format: z.enum(['pdf', 'csv']).default('pdf') }),
+    target: 'official_report',
+    confirmation: 'one_tap',
+    reversal: 'none',
+    sideEffects:
+      'Builds a file of the report as it was issued, from its frozen copy (RULE-10); drafts are never exported. It is not sent anywhere.',
+    request: (a, t, ctx) => ({
+      method: 'POST',
+      path: `/official-reports/${t!.id}/exports`,
+      body: { clientUuid: ctx.executionId, format: a.format },
+    }),
+    describe: (a, t) =>
+      `Export ${t?.label ?? 'the report'} as ${a.format.toUpperCase()}. Scope and period: the report as issued.`,
+    verify: queuedExport('The report file', 'the report', (d) => ({
+      kind: 'official_report',
+      id: str(d['reportId']),
+    })),
+  }),
+
+  define<{
+    requestReference: string;
+    recordTypes: RecordType[];
+    from?: string | undefined;
+    to?: string | undefined;
+  }>({
+    name: 'public_records.export',
+    version: 1,
+    phase: 4,
+    action: 'public_records.export',
+    kind: 'change',
+    title: 'Prepare a public-records release',
+    usage: '/export records <request> <kinds> [from:YYYY-MM-DD] [to:YYYY-MM-DD]',
+    args: z
+      .object({
+        requestReference: z.string().trim().min(1).max(80),
+        recordTypes: z.array(z.enum(RECORD_TYPE_KEYS as [RecordType, ...RecordType[]])).min(1),
+        from: z.iso.date().optional(),
+        to: z.iso.date().optional(),
+      })
+      .refine((a) => !a.from || !a.to || a.from < a.to, {
+        message: 'The period ends before it starts.',
+      }),
+    needsEvent: true,
+    confirmation: 'full_review',
+    reversal: 'none',
+    sideEffects:
+      'Builds a ZIP of the kinds of record named, for the open event and the period, with restricted, sensitive and criminal-justice details withheld column by column. A person reviews it before anything is released.',
+    // A request reference is what the records office typed; it may carry a requester's name.
+    freeText: ['requestReference'],
+    request: (a, _t, ctx) => ({
+      method: 'POST',
+      path: `/events/${ctx.eventId ?? ''}/public-records`,
+      body: {
+        clientUuid: ctx.executionId,
+        requestReference: a.requestReference,
+        recordTypes: a.recordTypes,
+        ...(a.from ? { from: a.from } : {}),
+        ...(a.to ? { to: a.to } : {}),
+      },
+    }),
+    describe: (a) =>
+      `Prepare a public-records release for request ${a.requestReference}. Scope: ${a.recordTypes
+        .map((t) => RECORD_TYPES[t].label.toLowerCase())
+        .join(
+          ', ',
+        )} in the open event. Period: ${a.from || a.to ? `${a.from ?? 'the start of the event'} to ${a.to ?? 'now'}` : 'the whole event'}. Restricted, sensitive and criminal-justice details are withheld.`,
+    verify: queuedExport('The public-records release', 'Records requests', (d) => ({
+      kind: 'public_records',
+      id: str(d['id']),
+    })),
   }),
 ] satisfies readonly CommandSpec[];
 

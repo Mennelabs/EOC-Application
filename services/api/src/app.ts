@@ -9,15 +9,17 @@ import {
 import type { Kysely } from 'kysely';
 import type { Database } from '@cg/db';
 import type { FieldCrypto } from '@cg/crypto';
+import { observeAiOutcomes } from '@cg/ai';
 import { runProbes, type Probe } from '@cg/adapters';
 import { AuthError, type SubjectLoader } from './auth/subject.ts';
-import { errorHandler } from './errors.ts';
+import { errorHandler, errors } from './errors.ts';
 import type { ReportDeps } from './routes/reports.ts';
 import { redactPaths, serializers } from './logging.ts';
 import { authorizePlugin } from './plugins/authorize.ts';
 import { contextPlugin } from './plugins/context.ts';
 import { idempotencyPlugin } from './plugins/idempotency.ts';
 import { versionsPlugin } from './plugins/versions.ts';
+import { aiCalls, metricsPlugin } from './plugins/metrics.ts';
 
 export interface AppOptions {
   productName: string;
@@ -46,6 +48,8 @@ export type App = Awaited<ReturnType<typeof buildApp>>;
 declare module 'fastify' {
   interface FastifyInstance {
     fieldCrypto: FieldCrypto;
+    /** SCL-12: synthetic (laptops, exercises) or production; some exercise content is shown only in synthetic. */
+    dataMode: 'synthetic' | 'production';
   }
 }
 
@@ -68,6 +72,7 @@ export async function buildApp(opts: AppOptions) {
   app.setErrorHandler(errorHandler);
   if (opts.fieldCrypto) app.decorate('fieldCrypto', opts.fieldCrypto);
   app.decorate('reportDeps', opts.reportDeps ?? {});
+  app.decorate('dataMode', opts.dataMode);
 
   // SCL-09: documented REST API, generated from the same schemas that validate requests.
   await app.register(swagger, {
@@ -90,6 +95,9 @@ export async function buildApp(opts: AppOptions) {
   await app.register(authorizePlugin, opts.db ? { db: opts.db } : {});
   await app.register(versionsPlugin);
   await app.register(idempotencyPlugin);
+  // NFR-10: request, error, duplicate and AI counts at /metrics (internal port only).
+  await app.register(metricsPlugin);
+  observeAiOutcomes((feature, outcome) => aiCalls.inc({ feature, outcome }));
 
   // Liveness: the process is up. Never touches dependencies.
   app.get('/health/live', async () => ({ status: 'ok' }));
@@ -111,9 +119,18 @@ export async function buildApp(opts: AppOptions) {
 
   app.get('/api/docs/json', async () => app.swagger());
 
-  for (const routes of opts.routes ?? []) {
-    await app.register(routes, { prefix: '/api/v1' });
-  }
+  // Every staff route needs a signed-in account (ADM-05 default deny). Refused at the start of
+  // the request, so a caller without a token learns nothing from validation about a route's
+  // parameters and no body is parsed for them (SEC-15; found by tests/e2e/dast.spec.ts).
+  await app.register(
+    async (v1) => {
+      v1.addHook('onRequest', async (request) => {
+        if (request.subject.kind !== 'account') throw errors.unauthorized();
+      });
+      for (const routes of opts.routes ?? []) await v1.register(routes);
+    },
+    { prefix: '/api/v1' },
+  );
   for (const routes of opts.publicRoutes ?? []) {
     await app.register(routes, { prefix: '/api/public' });
   }

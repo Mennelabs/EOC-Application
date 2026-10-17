@@ -9,13 +9,14 @@
   },
   "scripts": {
     "build": "pnpm -r --if-present run build",
-    "typecheck": "pnpm -r --if-present run typecheck && tsc -p tests/tsconfig.json",
+    "typecheck": "pnpm -r --if-present run typecheck && tsc -p tests/tsconfig.json && tsc -p tools/checks/tsconfig.json",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "test": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:e2e": "playwright test",
     "check:product-name": "node tools/checks/product-name.mjs",
+    "check:traceability": "python3 tools/reqindex/traceability.py --check",
     "reqindex": "python3 tools/reqindex/extract.py && python3 tools/reqindex/build_index.py",
     "seed": "pnpm --filter @cg/seed run generate"
   },

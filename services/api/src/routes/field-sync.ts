@@ -22,9 +22,14 @@ import { sql, type Transaction } from 'kysely';
 import { z } from 'zod';
 import type { Database } from '@cg/db';
 import { ApiError, errors } from '../errors.ts';
+import { fieldCommandResults } from '../plugins/metrics.ts';
 import { enqueueOutbox, iso, uuidParam } from './helpers.ts';
+import { statusesOnPhones } from './job-aids.ts';
 
 type Trx = Transaction<Database>;
+
+/** FL-16: hours on shift before the phone reminds a worker to rest, unless the county sets another. */
+export const DEFAULT_REST_HOURS = 12;
 
 /** The commands a phone may replay, each mapped to the console's own route (plan §3 "same validation, authorization and idempotency"). */
 export const FIELD_COMMANDS: Record<
@@ -38,6 +43,12 @@ export const FIELD_COMMANDS: Record<
     needsTarget: true,
   },
   'position.batch': { method: 'POST', path: () => '/api/v1/positions', needsTarget: false },
+  // BRD:FR-03.05: the phone says when it may not read location, so dispatch is told.
+  'check_in.location_permission': {
+    method: 'POST',
+    path: () => '/api/v1/check-ins/current/location-permission',
+    needsTarget: false,
+  },
   'team.status': { method: 'POST', path: (id) => `/api/v1/teams/${id}/status`, needsTarget: true },
   'assignment.acknowledge': {
     method: 'POST',
@@ -67,6 +78,12 @@ export const FIELD_COMMANDS: Record<
     needsTarget: false,
   },
   'service_log.record': { method: 'POST', path: () => '/api/v1/service-logs', needsTarget: false },
+  // FL-16: a private request for peer support, queued like any other while offline.
+  'peer_support.request': {
+    method: 'POST',
+    path: () => '/api/v1/peer-support',
+    needsTarget: false,
+  },
   'need.done': { method: 'POST', path: (id) => `/api/v1/needs/${id}/done`, needsTarget: true },
   'site.census': { method: 'POST', path: (id) => `/api/v1/sites/${id}/confirm`, needsTarget: true },
   // Layer 4 task J: frontline role records (routes/field-records.ts), one command per kind.
@@ -86,6 +103,9 @@ export const FIELD_COMMANDS: Record<
       'shelter_stay',
       'shelter_incident',
       'health_note',
+      'field_report',
+      'equipment_use',
+      'canteen_stop',
     ].map((k) => [
       `record.${k}`,
       { method: 'POST' as const, path: () => `/api/v1/field-records/${k}`, needsTarget: false },
@@ -94,6 +114,12 @@ export const FIELD_COMMANDS: Record<
   'record.stock_movement': {
     method: 'POST',
     path: () => '/api/v1/field-records/stock_movement',
+    needsTarget: false,
+  },
+  // FL:FR-17: the check-out names its check-in by the phone's id, not the server's.
+  'record.canteen_stop.check_out': {
+    method: 'POST',
+    path: () => '/api/v1/field-records/canteen_stop/check-out',
     needsTarget: false,
   },
   'record.road_status.clear': {
@@ -200,6 +226,7 @@ const fieldRecordTypes = [
   'road_status',
   'canvass_visit',
   'pa_site',
+  'field_report',
 ] as const;
 const imageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'] as const;
 
@@ -359,6 +386,18 @@ export const fieldSyncRoutes =
         const q = request.query;
         const device = await request.tx((trx) => deviceState(trx, s.accountId, q.deviceId));
         return run(request, me, async (trx) => {
+          // SEC-13: changes below the pruned mark are gone; the phone downloads its area again.
+          const pruned = await trx
+            .selectFrom('cg.change_feed_pruned')
+            .select('through_seq')
+            .where('tenant_id', '=', me.tenantId)
+            .executeTakeFirst();
+          if (pruned && q.cursor < Number(pruned.through_seq))
+            throw new ApiError(
+              410,
+              'cursor_expired',
+              'This phone missed changes that are no longer kept. Download your area again.',
+            );
           const missionIds = await myMissionIds(trx, me);
           const eventIds = await myEventIds(trx, me);
           const rows = await trx
@@ -503,7 +542,12 @@ export const fieldSyncRoutes =
             const payload: Record<string, unknown> = { ...c.body };
             // Records keyed by the phone's id take the command id, so the record and the command agree (FLD-13).
             if (
-              (['safety_alert.raise', 'assessment.record', 'service_log.record'].includes(c.kind) ||
+              ([
+                'safety_alert.raise',
+                'assessment.record',
+                'service_log.record',
+                'peer_support.request',
+              ].includes(c.kind) ||
                 /^record\.[a-z_]+$/.test(c.kind)) &&
               !payload['clientUuid']
             )
@@ -609,6 +653,14 @@ export const fieldSyncRoutes =
           });
           results.push(outcome);
         }
+        // NFR-10: how phones' commands fare, by kind and result (no ids, no content);
+        // a kind the table does not know is counted as "unknown", so a phone cannot mint labels.
+        b.commands.forEach((c, i) =>
+          fieldCommandResults.inc({
+            kind: Object.hasOwn(FIELD_COMMANDS, c.kind) ? c.kind : 'unknown',
+            result: results[i]?.result ?? 'rejected',
+          }),
+        );
         return { asOf: new Date().toISOString(), results, device };
       },
     );
@@ -716,10 +768,16 @@ export const fieldSyncRoutes =
                   title: z.string(),
                   bodyHtml: z.string(),
                   version: z.number().int(),
+                  /** False for an exercise draft nobody in the county has approved yet. */
+                  reviewed: z.boolean(),
                 }),
               ),
               /** Tenant choices the field screens follow: ask tribal ownership where the tenant has tribal lands (DCL:DEC-17). */
-              options: z.object({ tribalOwnership: z.boolean() }),
+              options: z.object({
+                tribalOwnership: z.boolean(),
+                /** FL-16: hours on shift after which the phone reminds the worker to rest. */
+                restAfterHours: z.number(),
+              }),
               /** SCL-13, plan §5: the map extract cut from the self-hosted tiles when one exists; pins work without it (SCL-06). */
               maps: z.array(
                 z.object({
@@ -727,6 +785,11 @@ export const fieldSyncRoutes =
                   available: z.boolean(),
                   url: z.string().nullable(),
                   expiresAt: z.iso.datetime().nullable(),
+                  /** FLD-13: what the phone checks its download against, and when it changed. */
+                  bytes: z.number().int().nullable(),
+                  sha256: z.string().nullable(),
+                  version: z.number().int().nullable(),
+                  bounds: z.array(z.number()).length(4).nullable(),
                 }),
               ),
             }),
@@ -791,9 +854,14 @@ export const fieldSyncRoutes =
             .execute();
           const eventId =
             q.eventId ?? assignments[0]?.event_id ?? (await myEventIds(trx, me))[0] ?? null;
-          // The areas: named, else those holding a parcel the assignments point at.
-          let areaKeys: string[] = q.areaKey ? [q.areaKey] : [];
+          // The areas: named, else the route areas of the assigned routes and those with a lot
+          // within about 150 m of a job (a job's point is often in the street, between lots).
+          const areaKeys: string[] = q.areaKey ? [q.areaKey] : [];
           if (!areaKeys.length) {
+            for (const a of assignments) {
+              const area = (a.route as { area?: unknown } | null)?.area;
+              if (typeof area === 'string' && area && !areaKeys.includes(area)) areaKeys.push(area);
+            }
             const points = assignments.filter((a) => a.lat !== null && a.lon !== null);
             if (points.length) {
               const found = await trx
@@ -802,15 +870,16 @@ export const fieldSyncRoutes =
                 .distinct()
                 .where('area_key', 'is not', null)
                 .where(
-                  sql<boolean>`ST_Intersects(geom, ST_Collect(ARRAY[${sql.join(
+                  sql<boolean>`ST_DWithin(geom, ST_Collect(ARRAY[${sql.join(
                     points.map(
                       (p) =>
                         sql`ST_SetSRID(ST_MakePoint(${Number(p.lon)}, ${Number(p.lat)}), 4326)`,
                     ),
-                  )}]))`,
+                  )}]), 0.0015)`,
                 )
                 .execute();
-              areaKeys = found.map((f) => f.area_key!).filter(Boolean);
+              for (const f of found)
+                if (f.area_key && !areaKeys.includes(f.area_key)) areaKeys.push(f.area_key);
             }
           }
           const parcelRows = areaKeys.length
@@ -827,7 +896,8 @@ export const fieldSyncRoutes =
                   'area_key',
                   sql<number | null>`ST_Y(centroid)`.as('lat'),
                   sql<number | null>`ST_X(centroid)`.as('lon'),
-                  ...(q.geometry ? [sql<string>`ST_AsGeoJSON(geom)`.as('geojson')] : []),
+                  // Six decimals is about 10 cm: enough for a lot, and a lighter package.
+                  ...(q.geometry ? [sql<string>`ST_AsGeoJSON(geom, 6)`.as('geojson')] : []),
                 ])
                 .where('area_key', 'in', areaKeys)
                 .orderBy('parcel_id')
@@ -897,8 +967,20 @@ export const fieldSyncRoutes =
             .execute();
           const jobAids = await trx
             .selectFrom('cg.job_aid')
-            .select(['id', 'key', 'role_key', 'lang', 'kind', 'title', 'body_html', 'version'])
-            .where('status', 'in', ['approved', 'exercise_draft'])
+            .select([
+              'id',
+              'key',
+              'role_key',
+              'lang',
+              'kind',
+              'title',
+              'body_html',
+              'version',
+              'status',
+            ])
+            // FL-15, BRD:FR-18.03: phones carry only what the county approved (exercise drafts on a
+            // synthetic stack, marked unreviewed).
+            .where('status', 'in', statusesOnPhones(app.dataMode))
             .where('lang', '=', q.lang)
             .where((eb) =>
               eb.or([
@@ -914,6 +996,20 @@ export const fieldSyncRoutes =
             .where('tenant_id', '=', me.tenantId)
             .where('key', '=', 'field.tribal_ownership')
             .executeTakeFirst();
+          // FL-16: the county's rest limit (12 hours unless set); a person's own lower limit wins.
+          const rest = await trx
+            .selectFrom('cg.tenant_config')
+            .select('value')
+            .where('tenant_id', '=', me.tenantId)
+            .where('key', '=', 'field.rest_after_hours')
+            .executeTakeFirst();
+          const own = await trx
+            .selectFrom('cg.personnel')
+            .select('hours_limit')
+            .where('id', '=', me.personnelId)
+            .executeTakeFirst();
+          const countyRest =
+            typeof rest?.value === 'number' && rest.value > 0 ? rest.value : DEFAULT_REST_HOURS;
           return {
             cursor: Number(head.seq),
             eventId,
@@ -979,7 +1075,13 @@ export const fieldSyncRoutes =
                   : null,
               services: x.services,
             })),
-            options: { tribalOwnership: tribal?.value === true },
+            options: {
+              tribalOwnership: tribal?.value === true,
+              restAfterHours:
+                own?.hours_limit && own.hours_limit > 0
+                  ? Math.min(own.hours_limit, countyRest)
+                  : countyRest,
+            },
             jobAids: jobAids.map((j) => ({
               id: j.id,
               key: j.key,
@@ -989,21 +1091,34 @@ export const fieldSyncRoutes =
               title: j.title,
               bodyHtml: j.body_html,
               version: j.version,
+              reviewed: j.status === 'approved',
             })),
           };
         });
-        // Map extracts live at maps/areas/<tenant>/<area>.pmtiles; the worker cuts them when tiles exist (§7).
+        // FLD-13: the worker cuts a package per area from the regional tiles (cg.map_package).
+        const packages = pkg.areaKeys.length
+          ? await request.tx((trx) =>
+              trx
+                .selectFrom('cg.map_package')
+                .selectAll()
+                .where('area_key', 'in', pkg.areaKeys)
+                .execute(),
+            )
+          : [];
+        const none = {
+          available: false,
+          url: null,
+          expiresAt: null,
+          bytes: null,
+          sha256: null,
+          version: null,
+          bounds: null,
+        };
         const maps = await Promise.all(
           pkg.areaKeys.map(async (areaKey) => {
-            if (!deps.objects) return { areaKey, available: false, url: null, expiresAt: null };
-            const key = `maps/areas/${me.tenantId}/${areaKey}.pmtiles`;
-            try {
-              await deps.objects.client.send(
-                new HeadObjectCommand({ Bucket: deps.objects.bucket, Key: key }),
-              );
-            } catch {
-              return { areaKey, available: false, url: null, expiresAt: null };
-            }
+            const row = packages.find((p) => p.area_key === areaKey);
+            if (!deps.objects || !row) return { areaKey, ...none };
+            const key = row.object_key;
             const ttl = 3600;
             const url = await getSignedUrl(
               (deps.objects.presignClient ?? deps.objects.client) as unknown as Parameters<
@@ -1017,6 +1132,10 @@ export const fieldSyncRoutes =
               available: true,
               url,
               expiresAt: new Date(Date.now() + ttl * 1000).toISOString(),
+              bytes: row.bytes,
+              sha256: row.sha256,
+              version: row.version,
+              bounds: [row.min_lon, row.min_lat, row.max_lon, row.max_lat],
             };
           }),
         );

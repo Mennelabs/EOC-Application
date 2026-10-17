@@ -13,10 +13,10 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SimulatorSms } from '@cg/adapters';
-import { fakeProvider } from '@cg/ai';
+import { fakeProvider, type AiProvider } from '@cg/ai';
 import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
-import { createDb, type Database } from '@cg/db';
+import { createDb, withTenant, type Database } from '@cg/db';
 import { westwindGraph } from '@cg/intake';
 import type { Kysely } from 'kysely';
 import { enableAiTestDouble } from '../../../tools/seed/src/ai-test-double.ts';
@@ -29,7 +29,7 @@ import { AuthError, type SubjectLoader } from '../src/auth/subject.ts';
 import { RiskScorer } from '../src/public/abuse.ts';
 import { ReferenceCodeLeaser } from '../src/public/reference-codes.ts';
 import { publicRoutes } from '../src/public/routes.ts';
-import { submitIntake } from '../src/public/submit.ts';
+import { sha, submitIntake } from '../src/public/submit.ts';
 import { TenantResolver } from '../src/public/tenant-resolver.ts';
 import { routes } from '../src/routes/index.ts';
 
@@ -116,7 +116,7 @@ describe.skipIf(!appUrl || !workerUrl)('staff review routes (database-backed)', 
       crypto,
       now: () => new Date(),
     };
-    const ai = { providerFor: async () => fakeProvider };
+    const ai = { providerFor: async () => provider };
     app = await buildApp({
       productName: 'Test Product',
       version: '0.0.0',
@@ -182,6 +182,8 @@ describe.skipIf(!appUrl || !workerUrl)('staff review routes (database-backed)', 
   });
 
   let assistedId: string;
+  /** The provider the routes see; a test swaps in a failing one (GATE-08). */
+  let provider: AiProvider = fakeProvider;
   let assistedCode: string;
   let residentId: string;
 
@@ -231,12 +233,23 @@ describe.skipIf(!appUrl || !workerUrl)('staff review routes (database-backed)', 
     await sweepStoredSubmissions(worker);
     const filed = await dbWorker
       .selectFrom('cg.report')
-      .select(['id', 'created_by', 'channel_of_origin'])
+      .select(['id', 'created_by', 'channel_of_origin', 'flags'])
       .where('reference_code', '=', assistedCode)
       .executeTakeFirstOrThrow();
     assistedId = filed.id;
     expect(filed.channel_of_origin).toBe('assisted');
     expect(filed.created_by).toBe(subjects['priya']!.accountId);
+    // CHN-06, AC-A09: the person's agreement to the entry is on the record for the reviewer.
+    const kinds = (filed.flags as { kind: string }[]).map((f) => f.kind);
+    expect(kinds).toContain('assisted_consent');
+    expect(kinds).not.toContain('assisted_no_consent');
+    // The resident's own web report carries neither.
+    const own = await dbWorker
+      .selectFrom('cg.report')
+      .select('flags')
+      .where('execution_id', '=', residentId)
+      .executeTakeFirstOrThrow();
+    expect(JSON.stringify(own.flags)).not.toContain('assisted_');
   });
 
   it('the queue puts need signals first, then the oldest (PHO-14, CON-05); filters work', async () => {
@@ -591,6 +604,64 @@ describe.skipIf(!appUrl || !workerUrl)('staff review routes (database-backed)', 
     expect(noFreeText.statusCode).toBe(403);
   });
 
+  it('GATE-08, AI-10, EQ-08: with machine translation off, or the provider failing, the reviewer reads the original; a failure is recorded', async () => {
+    const translate = () =>
+      app.inject({
+        method: 'POST',
+        url: `/api/v1/reports/${assistedId}/translate`,
+        headers: headers('priya'),
+        payload: { to: 'en' },
+      });
+    const setFeature = (enabled: boolean) =>
+      withTenant(dbWorker, { tenantId }, (trx) =>
+        trx
+          .updateTable('cg.ai_use_register')
+          .set({ enabled })
+          .where('tenant_id', '=', tenantId)
+          .where('feature', '=', 'review.translation')
+          .execute(),
+      );
+    await setFeature(false);
+    try {
+      const off = await translate();
+      expect(off.statusCode).toBe(409);
+      expect(off.json().code).toBe('ai_off');
+    } finally {
+      await setFeature(true);
+    }
+    provider = {
+      ...fakeProvider,
+      translation: {
+        translate: async () => {
+          throw new Error('provider unavailable');
+        },
+      },
+    };
+    try {
+      const failed = await translate();
+      expect(failed.statusCode).toBe(409);
+      expect(failed.json().code).toBe('ai_unavailable');
+      expect(failed.json().message).toContain('original words');
+    } finally {
+      provider = fakeProvider;
+    }
+    const recorded = await dbWorker
+      .selectFrom('cg.ai_output')
+      .select('outcome')
+      .where('tenant_id', '=', tenantId)
+      .where('feature', '=', 'review.translation')
+      .where('target_id', '=', assistedId)
+      .execute();
+    expect(recorded.map((r) => r.outcome)).toEqual(expect.arrayContaining(['ok', 'error']));
+    // The original words are untouched.
+    const row = await dbWorker
+      .selectFrom('cg.report')
+      .select('original_text_enc')
+      .where('id', '=', assistedId)
+      .executeTakeFirstOrThrow();
+    expect(await crypto.decrypt(tenantId, row.original_text_enc!)).toContain('árbol');
+  });
+
   it('question graphs: list, draft a new version that must pass the string rules, publish with confirmation (INT-01, INT-08, CON-02)', async () => {
     const list = await app.inject({ url: '/api/v1/intake-graphs', headers: headers('priya') });
     expect(list.statusCode).toBe(200);
@@ -646,5 +717,158 @@ describe.skipIf(!appUrl || !workerUrl)('staff review routes (database-backed)', 
       graph: { key: westwindGraph.key, version: v },
     });
     expect(facts.json().url).toMatch(/\/county\/westwind$/);
+  });
+
+  it('BRD:FR-01.06: a lost reference number goes again to the email on the report, never to the screen; the answer is the same either way; one contact gets it at most twice an hour', async () => {
+    const email = `lost-${randomUUID().slice(0, 8)}@example.org`;
+    const submit = async () => {
+      const executionId = randomUUID();
+      const r = await app.inject({
+        method: 'POST',
+        url: '/api/public/intake/county/westwind/submissions',
+        headers: { 'idempotency-key': executionId },
+        payload: {
+          executionId,
+          channel: 'web',
+          language: 'es',
+          graphKey: westwindGraph.key,
+          graphVersion: westwindGraph.version,
+          relationship: 'own_home',
+          answers: answers({
+            contact: { kind: 'value', value: { email, preferred: 'email' } },
+          }),
+          needs: [],
+          consent: {},
+        },
+      });
+      expect(r.statusCode, r.body).toBe(202);
+      return r.json().referenceCode as string;
+    };
+    const kept = [await submit(), await submit()];
+    const gone = await submit();
+    await sweepStoredSubmissions(worker);
+    // A withdrawn report is not sent again.
+    await withTenant(dbWorker, { tenantId }, (trx) =>
+      trx
+        .updateTable('cg.report')
+        .set({ withdrawn_at: new Date() })
+        .where('reference_code', '=', gone)
+        .execute(),
+    );
+    /** Confirmation messages queued for these codes after outbox id `after`. */
+    const sentFor = async (codes: string[], after: number) =>
+      (
+        await dbWorker
+          .selectFrom('cg.outbox')
+          .select(['id', 'payload'])
+          .where('topic', '=', 'message.send')
+          .where('tenant_id', '=', tenantId)
+          .where('id', '>', after)
+          .execute()
+      )
+        .map(
+          (o) =>
+            o.payload as {
+              template: string;
+              channel: string;
+              language: string;
+              variables: { referenceCode?: string };
+            },
+        )
+        .filter((p) => p.template === 'confirmation' && codes.includes(p.variables.referenceCode!));
+    const last = await dbWorker
+      .selectFrom('cg.outbox')
+      .select((eb) => eb.fn.max('id').as('id'))
+      .executeTakeFirstOrThrow();
+    const before = Number(last.id ?? 0);
+    const recover = (contact: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/public/intake/county/lookup/recover',
+        payload: { contact },
+      });
+    const found = await recover(email.toUpperCase());
+    expect(found.statusCode, found.body).toBe(202);
+    // Nothing on the screen but the same sentence as for an address with no report.
+    expect(found.body).not.toContain(kept[0]);
+    const nobody = await recover(`nobody-${randomUUID().slice(0, 8)}@example.org`);
+    expect(nobody.statusCode).toBe(202);
+    expect(nobody.json()).toEqual(found.json());
+    const sent = await sentFor([...kept, gone], before);
+    expect(sent.map((s) => s.variables.referenceCode).sort()).toEqual([...kept].sort());
+    expect(sent.every((s) => s.channel === 'email' && s.language === 'es')).toBe(true);
+    const ids = await dbWorker
+      .selectFrom('cg.report')
+      .select(['id', 'reference_code'])
+      .where('reference_code', 'in', [...kept, gone])
+      .execute();
+    const audit = await withTenant(dbWorker, { tenantId }, (trx) =>
+      trx
+        .selectFrom('cg.audit_event')
+        .select('target_id')
+        .where('action', '=', 'intake.reference_resent')
+        .where(
+          'target_id',
+          'in',
+          ids.map((r) => r.id),
+        )
+        .execute(),
+    );
+    const codeOf = new Map(ids.map((r) => [r.id, r.reference_code]));
+    expect(audit.map((a) => codeOf.get(a.target_id!)).sort()).toEqual([...kept].sort());
+    // A second ask is sent; a third within the hour is answered the same and sends nothing.
+    await recover(email);
+    const third = await recover(email);
+    expect(third.json()).toEqual(found.json());
+    expect((await sentFor([...kept, gone], before)).length).toBe(4);
+  });
+
+  it('BRD:FR-01.06, SEC-09: a one-time code allows five tries, then even the right code is refused; too many lookups from one address wait (429)', async () => {
+    // A challenge for the assisted report, with a code the test knows (as the lookup sends one).
+    const challenge = async (code: string) =>
+      withTenant(dbWorker, { tenantId }, (trx) =>
+        trx
+          .insertInto('cg.otp_challenge')
+          .values({
+            tenant_id: tenantId,
+            report_id: assistedId,
+            contact_bidx: Buffer.from(randomUUID()),
+            channel: 'sms',
+            code_hash: sha([tenantId, assistedId, code]),
+            expires_at: new Date(Date.now() + 10 * 60_000),
+          })
+          .execute(),
+      );
+    const verify = (code: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/public/intake/county/lookup/verify',
+        payload: { referenceCode: assistedCode, code },
+      });
+    await challenge('246810');
+    for (let i = 0; i < 5; i++) expect((await verify('111111')).statusCode).toBe(401);
+    // The sixth try is refused even with the right code: the challenge is spent.
+    const locked = await verify('246810');
+    expect(locked.statusCode).toBe(401);
+    expect(locked.json().code).toBe('code_invalid');
+    // A new code (the resident asks again) opens it on the first try.
+    await challenge('135790');
+    const opened = await verify('135790');
+    expect(opened.statusCode, opened.body).toBe(200);
+    expect(opened.json().token).toBeTruthy();
+    // Guessing across many lookups from one address is slowed down: 429, retryable.
+    let waited: { statusCode: number; json: () => { code: string; retryable: boolean } } | null =
+      null;
+    for (let i = 0; i < 40 && !waited; i++) {
+      const r = await app.inject({
+        method: 'POST',
+        url: '/api/public/intake/county/lookup/start',
+        payload: { referenceCode: assistedCode, contact: '314-555-0100' },
+      });
+      if (r.statusCode === 429) waited = r;
+      else expect(r.statusCode).toBe(202);
+    }
+    expect(waited, 'the address was slowed down').not.toBeNull();
+    expect(waited!.json()).toMatchObject({ code: 'too_many_attempts', retryable: true });
   });
 });

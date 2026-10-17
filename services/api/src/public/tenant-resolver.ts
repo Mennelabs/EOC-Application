@@ -19,6 +19,18 @@ export interface PublicTenant {
   status: string;
 }
 
+/** Every resolver in this process, so a change to a tenant can be forgotten at once. */
+const resolvers = new Set<TenantResolver>();
+
+/**
+ * ADM-01: a tenant's name, languages or branding changed here; this process
+ * reads it again on the next public request. Other API processes catch up
+ * within the cache's minute.
+ */
+export function forgetTenant(id: string): void {
+  for (const r of resolvers) r.forget(id);
+}
+
 export class TenantResolver {
   private readonly cache = new Map<string, { at: number; tenant: PublicTenant | null }>();
   private readonly db: Kysely<Database>;
@@ -27,6 +39,11 @@ export class TenantResolver {
   constructor(db: Kysely<Database>, ttlMs = 60_000) {
     this.db = db;
     this.ttlMs = ttlMs;
+    resolvers.add(this);
+  }
+
+  forget(id: string): void {
+    for (const [key, hit] of this.cache) if (hit.tenant?.id === id) this.cache.delete(key);
   }
 
   async bySlug(slug: string): Promise<PublicTenant> {

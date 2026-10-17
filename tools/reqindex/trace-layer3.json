@@ -7,10 +7,10 @@
     ""
   ],
   "BRD:FR-16.01": [
-    "partial",
-    "cg.resource + cg.resource_text (0024), services/api/src/routes/resources.ts, apps/web-console/src/screens/resources.tsx",
-    "services/api/test/help.db.test.ts, tests/e2e/console-l3.spec.ts",
-    "Title, summary, body, type, reference link, category, ordering, owner and state ship; thumbnails are not modelled (a resource is text first, FR-16.04)."
+    "pass",
+    "cg.resource + cg.resource_text (0024), thumbnail columns (0102), services/api/src/routes/resources.ts (PUT/DELETE/GET /resources/:id/thumbnail), services/api/src/public/help.ts (public thumbnail.jpg, thumbnailUrl), apps/web-console/src/screens/resources.tsx (Picture panel), apps/web-help/src/main.ts",
+    "services/api/test/help.db.test.ts, services/api/test/resource-thumbnail.db.test.ts, tests/e2e/console-l3.spec.ts, tests/e2e/console-screens.spec.ts (BRD:FR-16.01 thumbnail journey)",
+    "Title, summary, body, type, reference link, category, ordering, owner and state ship. A decorative thumbnail (empty alternative text; the words carry everything, FR-16.04) is re-encoded at 480x320 without camera details, reaches the public only with the publish that approves it, and leaves at once when removed (layer-7 plan reading 37)."
   ],
   "BRD:FR-16.02": [
     "pass",
@@ -299,24 +299,29 @@
     "services/api/test/updates.db.test.ts, channels.db.test.ts, tests/integration/layer3.int.test.ts",
     "Email replies are not captured (needs an inbound mail route; ask Adam)."
   ],
-  "FL-13": ["deferred", "", "", "Help received: layer 6 (case management)."],
+  "FL-13": [
+    "deferred",
+    "",
+    "",
+    "Help received with source, type and dollar value is part of case management on the shared record, after layer 8 (decision 2026-10-15). Not built."
+  ],
   "FL:FR-07": [
     "deferred",
     "",
     "",
-    "Frontline and case-management workflows on the shared record: layers 4 and 6 (layer-3 plan §11)."
+    "Case management on the shared record comes after layer 8 (decision 2026-10-15, docs/decisions.md)."
   ],
   "FL:FR-11": [
     "deferred",
     "",
     "",
-    "Frontline and case-management workflows on the shared record: layers 4 and 6 (layer-3 plan §11)."
+    "Not built. Residents can consent to sharing with volunteer cleanup, relief agencies, community groups and faith-based groups (packages/intake/src/graphs/westwind.ts); there is no consent kind for FEMA's door-to-door survivor assistance teams, and what such a partner would see is health-adjacent. Needs that consent kind with its English and Spanish wording, and a decision on the fields shown: asked of Adam in the overnight report."
   ],
   "FL:FR-12": [
     "deferred",
     "",
     "",
-    "Frontline and case-management workflows on the shared record: layers 4 and 6 (layer-3 plan §11)."
+    "The MARC is planned by the recommendations (REC-09); the SBA queue and warm hand-off between tables are case management, after layer 8 (decision 2026-10-15)."
   ],
   "FL:FR-14": [
     "deferred",
@@ -340,7 +345,7 @@
     "deferred",
     "",
     "",
-    "Frontline and case-management workflows on the shared record: layers 4 and 6 (layer-3 plan §11)."
+    "Case management on the shared record comes after layer 8 (decision 2026-10-15, docs/decisions.md). Document capture with consent is built (FL-09); appointments by SMS, the recovery plan and help received are not."
   ],
   "FL:FR-23": [
     "deferred",
@@ -352,25 +357,25 @@
     "deferred",
     "",
     "",
-    "Frontline and case-management workflows on the shared record: layers 4 and 6 (layer-3 plan §11)."
+    "Not built. Residents can consent to sharing with volunteer cleanup, relief agencies, community groups and faith-based groups (packages/intake/src/graphs/westwind.ts); there is no consent kind for disability and independent-living advocates, and the access-needs list they would see is health-adjacent. A resident can ask for a ride (a need on the needs board); medical equipment loans are not a need kind. Needs that consent kind with its English and Spanish wording, and a decision on the fields shown: asked of Adam in the overnight report."
   ],
   "FL:FR-27": [
     "deferred",
     "",
     "",
-    "Frontline and case-management workflows on the shared record: layers 4 and 6 (layer-3 plan §11)."
+    "Case management on the shared record comes after layer 8 (decision 2026-10-15, docs/decisions.md). The day-30 hand-off to the long-term recovery group is part of it."
   ],
   "FL:FR-29": [
     "deferred",
     "",
     "",
-    "Frontline and case-management workflows on the shared record: layers 4 and 6 (layer-3 plan §11)."
+    "Not built. Residents can consent to sharing with volunteer cleanup, relief agencies, community groups and faith-based groups (packages/intake/src/graphs/westwind.ts); there is no consent kind for utilities (the power-dependent households list), and what such a partner would see is health-adjacent. Needs that consent kind with its English and Spanish wording, and a decision on the fields shown: asked of Adam in the overnight report."
   ],
   "FL:FR-30": [
     "deferred",
     "",
     "",
-    "Frontline and case-management workflows on the shared record: layers 4 and 6 (layer-3 plan §11)."
+    "Not built. Residents can consent to sharing with volunteer cleanup, relief agencies, community groups and faith-based groups (packages/intake/src/graphs/westwind.ts); there is no consent kind for home health and hospice agencies (a welfare-check list of their own clients), and what such a partner would see is health-adjacent. Needs that consent kind with its English and Spanish wording, and a decision on the fields shown: asked of Adam in the overnight report."
   ],
   "FL:FR-32": ["deferred", "", "", "The resident's own export from my report: layer 6."],
   "SCL-13": [

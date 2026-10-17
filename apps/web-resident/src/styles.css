@@ -374,9 +374,12 @@ button:disabled {
 .review-section dd {
   margin: 0;
   display: grid;
-  grid-template-columns: 1fr auto;
+  /* WCAG 1.4.10: the answer column may shrink below its longest word (an email address), which
+     then breaks, so "Change" stays inside a 320 px screen whatever the font. */
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--cg-space-1) var(--cg-space-4);
   align-items: start;
+  overflow-wrap: anywhere;
 }
 .tag {
   display: inline-block;

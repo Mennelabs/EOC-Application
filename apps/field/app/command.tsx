@@ -5,9 +5,12 @@
  * words or shorthand; the server answers with a plan and nothing changes
  * until it is confirmed on this screen. It needs a connection: a command is
  * never kept on the phone or sent later by itself, and no history is kept on
- * a phone that may be shared.
+ * a phone that may be shared. Opened from a job, "this" means that job's
+ * mission (CMD-06): it is said on screen and read again by the server under
+ * the person's own permissions.
  */
-import { useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import { useRef, useState } from 'react';
 import { View } from 'react-native';
 import { ApiError, OfflineError } from '../src/api';
 import { useField } from '../src/field';
@@ -27,6 +30,8 @@ interface Execution {
 export default function Command() {
   const f = useField();
   const { t } = f;
+  const job = useLocalSearchParams<{ missionId?: string; missionRef?: string }>();
+  const context = job.missionId ? { kind: 'mission', id: job.missionId } : null;
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [current, setCurrent] = useState<Execution | null>(null);
@@ -46,15 +51,20 @@ export default function Command() {
     }
   };
 
-  const prepare = (extra: Record<string, string> = {}) =>
-    run(() =>
+  // Answers to "which one?" for this line add up: a mission, then a person.
+  const chosen = useRef<Record<string, string>>({});
+  const prepare = (extra: Record<string, string> | null = null) => {
+    chosen.current = extra ? { ...chosen.current, ...extra } : {};
+    return run(() =>
       f.send<Execution>('POST', '/commands', {
         executionId: globalThis.crypto.randomUUID(),
         input: text.trim(),
         remember: false,
-        ...extra,
+        ...chosen.current,
+        ...(context ? { context } : {}),
       }),
     );
+  };
   const act = (path: string, body: Record<string, unknown> = {}) =>
     run(() => f.send<Execution>('POST', path, body));
 
@@ -62,6 +72,7 @@ export default function Command() {
     <Page title={t('command.heading')}>
       <Card label={t('command.heading')}>
         <Body>{t('command.hint')}</Body>
+        {context ? <Body>{t('command.thisMeans', { ref: job.missionRef ?? '' })}</Body> : null}
         <Field label={t('command.label')} value={text} onChange={setText} multiline />
         <Button
           label={busy ? t('command.working') : t('command.go')}
@@ -110,7 +121,13 @@ export default function Command() {
                   label={o.label}
                   disabled={busy}
                   onPress={() =>
-                    void prepare(o.kind === 'event' ? { eventId: o.id } : { targetId: o.id })
+                    void prepare(
+                      o.kind === 'event'
+                        ? { eventId: o.id }
+                        : o.kind === 'personnel'
+                          ? { personId: o.id }
+                          : { targetId: o.id },
+                    )
                   }
                 />
               ))}

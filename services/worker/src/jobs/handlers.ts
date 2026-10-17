@@ -2,6 +2,8 @@
  * Outbox topic handlers. Each is idempotent: a redelivered message finds the
  * work already done and records nothing new (BRD:FR-00.06).
  */
+import { healthNoticeSend } from './health-notices.ts';
+import { reportSeverity } from './severity.ts';
 import { roleTemplates } from '@cg/authz';
 import { openAIDescriptor } from '@cg/ai';
 import { westwindGraph } from '@cg/intake';
@@ -27,7 +29,9 @@ import { exportRequested } from './exports.ts';
 import { aiEvaluate } from './ai-evaluate.ts';
 import { equityEvaluate } from './equity.ts';
 import { officialReportIssued } from './official-reports.ts';
+import { ssoApply, tenantUsesSso } from './sso.ts';
 import type { JobContext, OutboxMessage, TopicHandler } from './types.ts';
+import { auditChainsBroken, auditChainsChecked } from '../metrics.ts';
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : String(v ?? ''));
 
@@ -127,11 +131,14 @@ export const accountInvited: TopicHandler = async (ctx, msg) => {
   }
   const devPassword =
     typeof msg.payload['devPassword'] === 'string' ? msg.payload['devPassword'] : undefined;
+  // SEC-07: a county with single sign-on invites for the passkey only.
+  const sso = await tenantUsesSso(ctx.db, row.tenant_id);
   const userId = await ctx.idp.ensureUser(row.slug, {
     email: row.email,
     displayName: row.display_name,
     enabled: row.status !== 'deactivated' && row.status !== 'suspended',
     ...(devPassword ? { devPassword } : {}),
+    sso,
   });
   await asSystem(ctx.db, row.tenant_id, async (trx) => {
     await trx
@@ -147,7 +154,7 @@ export const accountInvited: TopicHandler = async (ctx, msg) => {
     });
   });
   if (!devPassword) {
-    await ctx.idp.sendInvitation(row.slug, userId, `${ctx.urls.gatewayPublic}/console/`);
+    await ctx.idp.sendInvitation(row.slug, userId, `${ctx.urls.gatewayPublic}/console/`, sso);
   }
 };
 
@@ -248,6 +255,7 @@ export const topicHandlers: Record<string, TopicHandler> = {
   'break_glass.started': breakGlassStarted,
   'event.opened': async () => undefined, // channels announce the keyword and link in F
   'photo.process': photoProcess,
+  'report.severity': reportSeverity, // PHO-09, PHO-12 as decided 2026-10-15
   'message.send': messageSend,
   'correction.requested': correctionRequested,
   'report.withdrawn': reportWithdrawn,
@@ -260,19 +268,24 @@ export const topicHandlers: Record<string, TopicHandler> = {
   'export.requested': exportRequested, // DEC-11, DEC-12, SEC-18
   'equity.evaluate': equityEvaluate, // EQ-12, CON-07
   'ai.evaluate': aiEvaluate, // AIG-08, ADR-0043
+  'health_notice.send': healthNoticeSend, // FL:FR-06
+  'sso.apply': ssoApply, // SEC-07
 };
 
 // ---- schedules --------------------------------------------------------------
 
 /** Every 15 min: verify each tenant's chain and anchor the head hash (ADR-0012). */
 export async function anchorAuditChains(ctx: JobContext): Promise<void> {
+  let broken = 0;
   for (const tenantId of await allTenantIds(ctx.db)) {
     await asSystem(ctx.db, tenantId, async (trx) => {
       const { rows } = await sql<{ ok: boolean; checked: string; first_bad_seq: string | null }>`
         select ok, checked, first_bad_seq from cg.audit_verify(${tenantId}::uuid)`.execute(trx);
       const v = rows[0];
       if (!v) return;
+      auditChainsChecked.inc({ result: v.ok ? 'ok' : 'broken' });
       if (!v.ok) {
+        broken++;
         ctx.log.error({ tenantId, firstBadSeq: v.first_bad_seq }, 'AUDIT CHAIN BROKEN');
         return; // never anchor a broken chain; the alert is the record
       }
@@ -315,6 +328,7 @@ export async function anchorAuditChains(ctx: JobContext): Promise<void> {
         .execute();
     });
   }
+  auditChainsBroken.set(broken);
 }
 
 /** Every minute: close break-glass sessions past their expiry (SEC-08). */

@@ -3,7 +3,12 @@ export { redact, type Redaction } from './redact.ts';
 export { filterGeneratedText, type FilterResult } from './filter.ts';
 export {
   buildCommandPrompt,
+  buildDiscoveryPrompt,
+  buildDraftPrompt,
   buildExtractionPrompt,
+  buildScribePrompt,
+  CONVERSATION_OPEN,
+  CONVERSATION_CLOSE,
   RESIDENT_TEXT_OPEN,
   RESIDENT_TEXT_CLOSE,
   STAFF_REQUEST_OPEN,
@@ -58,6 +63,7 @@ export {
 } from './evaluation/cases.ts';
 export {
   callAi,
+  observeAiOutcomes,
   recordAiOutput,
   recordHumanAction,
   type AiCall,
@@ -65,3 +71,14 @@ export {
   type AiOutputRecord,
   type HumanAction,
 } from './records.ts';
+export { checkDraft, figuresIn, type DraftCheck } from './drafting.ts';
+export {
+  PHOTO_DEFAULTS,
+  evaluatePhotos,
+  parsePhotoManifest,
+  scorePhotos,
+  type PhotoCase,
+  type PhotoEvaluation,
+  type PhotoSettings,
+  type PhotoSlice,
+} from './evaluation/photos.ts';

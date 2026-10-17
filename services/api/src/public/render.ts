@@ -140,12 +140,17 @@ export interface ResourcePageInput {
   safeBodyHtml: string;
   referenceUrl: string | null;
   updatedAt: string;
+  /** FR-16.01: decorative, so it has empty alternative text; the words say it all. */
+  thumbnailUrl?: string | null;
 }
 
 export function resourcePage(i: ResourcePageInput): string {
   const t = T[i.lang];
   const link = i.referenceUrl && /^https?:\/\//i.test(i.referenceUrl) ? i.referenceUrl : null;
   const body =
+    (i.thumbnailUrl
+      ? `<img src="${escapeHtml(i.thumbnailUrl)}" alt="" width="240" height="160" style="max-width:100%;height:auto">`
+      : '') +
     (i.summary ? p(i.summary, 'status') : '') +
     i.safeBodyHtml +
     (link ? `<p><a href="${escapeHtml(link)}" rel="noopener">${escapeHtml(link)}</a></p>` : '') +

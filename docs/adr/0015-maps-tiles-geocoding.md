@@ -29,3 +29,7 @@ Tiles are files in object storage behind the CDN; Nominatim is the same containe
 ## Consequences
 
 The first `docker compose --profile maps-build up` downloads the Missouri extract from Geofabrik and builds tiles (tens of minutes, a few GB). Data is © OpenStreetMap contributors (ODbL); attribution is shown on every map.
+
+## Implementation note (2026-10-16)
+
+Offline packages are cut by the worker, not with the `pmtiles` command-line tool: `services/worker/src/maps/pmtiles.ts` reads the regional archive and writes one PMTiles package per parcel area (tiles copied byte for byte), recorded in `cg.map_package` with its hash. The phone downloads each package once per version, checks the hash and draws it with MapLibre React Native from its own files (`pmtiles://file://…`); the field app's web build draws the same package with MapLibre GL JS from Cache Storage, with MapLibre's worker files shipped beside the build. Exercise environments without regional tiles get packages without streets (`MAP_EXERCISE`, refused in production). Layer-7 plan reading 46.

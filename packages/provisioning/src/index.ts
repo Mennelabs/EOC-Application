@@ -118,7 +118,8 @@ export async function ensureAiRegister(
       provider.compliance.usRegion &&
       provider.compliance.zeroRetention &&
       provider.compliance.noTraining;
-    const enabled = !f.lockedOff && supported && compliant && evaluation?.passed === true;
+    const enabled =
+      !f.lockedOff && !f.startsOff && supported && compliant && evaluation?.passed === true;
     await trx
       .insertInto('cg.ai_use_register')
       .values({

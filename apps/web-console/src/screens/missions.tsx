@@ -7,10 +7,22 @@
  * involved, narratives, priority, the lock, and the consequential steps
  * (cancel, close, reopen, release) through the confirmation dialog.
  */
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, describeFailure } from '../api/client.ts';
 import { DataTable, Field, Status, Toolbar, fmt } from '../ui/primitives.tsx';
 import { EventPicker, useOpenEvents } from './dispatch.tsx';
+import { useOpenDraft, useRecordChanged, useScreenRecord } from '../ui/screen-record.ts';
+
+/** BRD:FR-03.02: an address found by the geocoder; a parcel is the county's address of record. */
+interface Place {
+  label: string;
+  line1: string | null;
+  city: string | null;
+  postal: string | null;
+  position: { lat: number; lon: number } | null;
+  source: 'parcel' | 'osm';
+  parcelId: string | null;
+}
 
 interface Assignment {
   id: string;
@@ -43,8 +55,10 @@ interface Mission {
     line1: string | null;
     city: string | null;
     landmark: string | null;
+    crossStreets?: string | null;
     usng: string | null;
     position: { lat: number; lon: number } | null;
+    verifiedAt?: string | null;
   } | null;
   locationState: string;
   lock: { by: string; at: string; reason: string | null } | null;
@@ -64,7 +78,15 @@ interface Mission {
     body: string | null;
     narrativeRole: string | null;
     occurredAt: string;
+    recordedAt?: string;
   }[];
+}
+
+/** AC-08A: an entry recorded more than a minute after it happened says when it was recorded. */
+function recordedLater(e: { occurredAt: string; recordedAt?: string }): string {
+  if (!e.recordedAt) return '';
+  const late = new Date(e.recordedAt).getTime() - new Date(e.occurredAt).getTime();
+  return late > 60_000 ? ` (recorded ${fmt(e.recordedAt)})` : '';
 }
 
 export const KINDS = [
@@ -243,14 +265,63 @@ function NewMission({
     line1: '',
     city: '',
     landmark: '',
+    crossStreets: '',
+    coordinates: '',
   });
   const [error, setError] = useState<string | null>(null);
-  const set = (k: keyof typeof f, v: string | boolean) => setF((c) => ({ ...c, [k]: v }));
+  // BRD:FR-03.02: a place chosen from the county's parcels is verified; from the map data, approximate.
+  const [place, setPlace] = useState<Place | null>(null);
+  const [suggestions, setSuggestions] = useState<Place[] | null>(null);
+  const [lookup, setLookup] = useState<string | null>(null);
+  const findAddress = async () => {
+    setLookup(null);
+    try {
+      const q = [f.line1.trim(), f.city.trim()].filter(Boolean).join(' ');
+      const found = await api<Place[]>(`/geocode/suggest?q=${encodeURIComponent(q)}`);
+      setSuggestions(found);
+      if (!found.length) setLookup('No address found. Keep what you typed, or add a landmark.');
+    } catch (err) {
+      setLookup(describeFailure(err));
+    }
+  };
+  const atCoordinates = async () => {
+    setLookup(null);
+    const m = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/.exec(f.coordinates);
+    if (!m) {
+      setLookup('Type the coordinates as latitude, longitude, for example 38.79, -90.87.');
+      return;
+    }
+    try {
+      choose(await api<Place>(`/geocode/reverse?lat=${m[1]}&lon=${m[2]}`));
+    } catch {
+      setPlace(null);
+      setLookup('No address is known at those coordinates. The point is kept as approximate.');
+    }
+  };
+  const choose = (p: Place) => {
+    setPlace(p);
+    setSuggestions(null);
+    setF((c) => ({ ...c, line1: p.line1 ?? c.line1, city: p.city ?? c.city }));
+    setLookup(
+      `Using ${p.label} (${p.source === 'parcel' ? "the county's address of record, verified" : 'map data, approximate'}).`,
+    );
+  };
+  const set = (k: keyof typeof f, v: string | boolean) => {
+    setF((c) => ({ ...c, [k]: v }));
+    // A chosen address no longer holds once the address is typed over: its point is not sent.
+    if ((k === 'line1' || k === 'city') && place) {
+      setPlace(null);
+      setLookup(null);
+    }
+  };
   const save = async (mode: 'draft' | 'intake', e?: FormEvent) => {
     e?.preventDefault();
     setError(null);
     try {
-      const hasPlace = f.line1.trim() || f.landmark.trim();
+      const coords = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/.exec(f.coordinates);
+      const position =
+        place?.position ?? (coords ? { lat: Number(coords[1]), lon: Number(coords[2]) } : null);
+      const hasPlace = f.line1.trim() || f.landmark.trim() || position;
       const m = await api<Mission>('/missions', {
         body: {
           eventId,
@@ -277,7 +348,16 @@ function NewMission({
                   ...(f.line1.trim() ? { line1: f.line1.trim() } : {}),
                   ...(f.city.trim() ? { city: f.city.trim() } : {}),
                   ...(f.landmark.trim() ? { landmark: f.landmark.trim() } : {}),
-                  state: 'manual',
+                  ...(f.crossStreets.trim() ? { crossStreets: f.crossStreets.trim() } : {}),
+                  ...(place?.postal ? { postal: place.postal } : {}),
+                  ...(position ? { position } : {}),
+                  // BRD:FR-03.01: a parcel match is verified (its time is kept); a map match or typed point is approximate.
+                  state:
+                    place?.source === 'parcel' && place.line1 === f.line1.trim()
+                      ? 'verified'
+                      : position
+                        ? 'approximate'
+                        : 'manual',
                 },
               }
             : {}),
@@ -355,11 +435,47 @@ function NewMission({
         <legend>Where</legend>
         {text('line1', 'Street address')}
         {text('city', 'City')}
+        <div className="actions" style={{ justifyContent: 'flex-start' }}>
+          <button
+            type="button"
+            onClick={() => void findAddress()}
+            disabled={(f.line1.trim() + f.city.trim()).length < 3}
+          >
+            Find the address
+          </button>
+        </div>
+        {suggestions?.length ? (
+          <ul aria-label="Addresses found" className="plain">
+            {suggestions.map((p) => (
+              <li key={`${p.source}:${p.label}`}>
+                <button type="button" onClick={() => choose(p)}>
+                  Use {p.label} ({p.source === 'parcel' ? 'address of record' : 'map data'})
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {lookup ? <p role="status">{lookup}</p> : null}
+        {text('crossStreets', 'Cross streets (optional)', 'For example: Main St and 4th Ave.')}
         {text(
           'landmark',
           'Landmark when there is no address',
           'For example: blue trailer behind the church on Route 9.',
         )}
+        {text(
+          'coordinates',
+          'Coordinates the caller read out (optional)',
+          'Latitude, longitude, for example 38.79, -90.87.',
+        )}
+        <div className="actions" style={{ justifyContent: 'flex-start' }}>
+          <button
+            type="button"
+            onClick={() => void atCoordinates()}
+            disabled={!f.coordinates.trim()}
+          >
+            Find the address at these coordinates
+          </button>
+        </div>
       </fieldset>
       <fieldset>
         <legend>Caller (private)</legend>
@@ -465,6 +581,14 @@ function CjisPanel({
   );
 }
 
+interface MissionHazard {
+  id: string;
+  kind: string;
+  severity: string;
+  state: string;
+  summary: string | null;
+}
+
 export function MissionDetailScreen({ id }: { id: string }) {
   const [m, setM] = useState<Mission | null>(null);
   const [people, setPeople] = useState<
@@ -475,6 +599,18 @@ export function MissionDetailScreen({ id }: { id: string }) {
         injury: string | null;
         transport: string | null;
         status: string;
+      }[]
+    | null
+  >(null);
+  const [hazards, setHazards] = useState<MissionHazard[] | null>(null);
+  // FL:FR-19: equipment that ran on this work order (null when the role does not read it).
+  const [equipment, setEquipment] = useState<
+    | {
+        id: string;
+        equipment: string;
+        equipmentNote: string | null;
+        hours: number;
+        usedOn: string;
       }[]
     | null
   >(null);
@@ -496,11 +632,61 @@ export function MissionDetailScreen({ id }: { id: string }) {
     api<typeof people>(`/missions/${id}/people`)
       .then((r) => live && setPeople(r))
       .catch(() => live && setPeople(null));
+    api<NonNullable<typeof equipment>>(`/field-records/equipment_use?missionId=${id}&limit=200`)
+      .then((r) => live && setEquipment(r))
+      .catch(() => live && setEquipment(null));
     return () => {
       live = false;
     };
   }, [id, tick]);
+  // HAZ-01, BRD:FR-04.05: open hazards linked to this mission or within 300 m of where it is.
+  const at = m?.location?.position ?? null;
+  const missionId = m?.id ?? null;
+  const eventId = m?.eventId ?? null;
+  const lat = at?.lat ?? null;
+  const lon = at?.lon ?? null;
+  useEffect(() => {
+    if (!missionId || !eventId) return;
+    let live = true;
+    const near =
+      lat !== null && lon !== null
+        ? api<MissionHazard[]>(
+            `/hazards?open=true&eventId=${eventId}&near=${lat},${lon},300&limit=50`,
+          )
+        : Promise.resolve([]);
+    Promise.all([api<MissionHazard[]>(`/hazards?open=true&missionId=${missionId}&limit=50`), near])
+      .then(([linked, around]) => {
+        if (!live) return;
+        const seen = new Map<string, MissionHazard>();
+        for (const h of [...linked, ...around]) seen.set(h.id, h);
+        setHazards([...seen.values()]);
+      })
+      .catch(() => live && setHazards(null));
+    return () => {
+      live = false;
+    };
+  }, [missionId, eventId, lat, lon, tick]);
   const reload = () => setTick((n) => n + 1);
+  const narrativeBox = useRef<HTMLTextAreaElement>(null);
+  const closingBox = useRef<HTMLInputElement>(null);
+  const lockBox = useRef<HTMLInputElement>(null);
+  // CMD-06: this mission is what "this" means in the command window; a command that changes
+  // it makes the screen read it again. CMD-29, AC-C09: typed, unsaved text is asked about.
+  const here = m ? { kind: 'mission' as const, id: m.id } : null;
+  useScreenRecord(m ? { ...here!, label: m.reference } : null);
+  useRecordChanged('mission', id, reload);
+  useOpenDraft(here, narrative.body.trim().length > 0, 'the narrative', {
+    focus: () => narrativeBox.current?.focus(),
+    discard: () => setNarrative((n) => ({ ...n, body: '' })),
+  });
+  useOpenDraft(here, closing.note.trim().length > 0, 'the closing note', {
+    focus: () => closingBox.current?.focus(),
+    discard: () => setClosing((c) => ({ ...c, note: '' })),
+  });
+  useOpenDraft(here, lockReason.trim().length > 0, 'the lock reason', {
+    focus: () => lockBox.current?.focus(),
+    discard: () => setLockReason(''),
+  });
   const act = async (path: string, body: unknown, done: string, version = true) => {
     if (!m) return;
     setError(null);
@@ -540,7 +726,9 @@ export function MissionDetailScreen({ id }: { id: string }) {
             ? [m.location.line1, m.location.city, m.location.landmark].filter(Boolean).join(', ') ||
               '—'
             : '—'}
-          {m.location?.usng ? ` · USNG ${m.location.usng}` : ''} ({label(m.locationState)})
+          {m.location?.crossStreets ? ` · near ${m.location.crossStreets}` : ''}
+          {m.location?.usng ? ` · USNG ${m.location.usng}` : ''} ({label(m.locationState)}
+          {m.location?.verifiedAt ? `, verified ${fmt(m.location.verifiedAt)}` : ''})
         </dd>
         {m.caller ? (
           <>
@@ -623,7 +811,11 @@ export function MissionDetailScreen({ id }: { id: string }) {
               <label>
                 Lock while you work on it (reason)
                 <span style={{ display: 'flex', gap: '0.5rem' }}>
-                  <input value={lockReason} onChange={(e) => setLockReason(e.target.value)} />
+                  <input
+                    ref={lockBox}
+                    value={lockReason}
+                    onChange={(e) => setLockReason(e.target.value)}
+                  />
                   <button
                     type="button"
                     disabled={lockReason.trim().length < 3}
@@ -665,6 +857,7 @@ export function MissionDetailScreen({ id }: { id: string }) {
             <label>
               Closing note
               <input
+                ref={closingBox}
                 value={closing.note}
                 onChange={(e) => setClosing({ ...closing, note: e.target.value })}
               />
@@ -691,6 +884,55 @@ export function MissionDetailScreen({ id }: { id: string }) {
           Reopen…
         </button>
       )}
+      <h2>Hazards here</h2>
+      {hazards === null ? (
+        <p className="hint">Your role does not show hazards.</p>
+      ) : (
+        <>
+          {!at ? (
+            <p className="hint">
+              This mission has no position, so only hazards linked to it are listed.
+            </p>
+          ) : null}
+          <DataTable
+            caption="Open hazards linked to this mission or within 300 metres"
+            rows={hazards}
+            rowKey={(h) => h.id}
+            empty="None reported."
+            columns={[
+              { key: 'kind', header: 'Hazard', render: (h) => label(h.kind) },
+              { key: 'severity', header: 'Severity', render: (h) => label(h.severity) },
+              { key: 'state', header: 'State', render: (h) => label(h.state) },
+              { key: 'summary', header: 'What was seen', render: (h) => h.summary ?? '—' },
+            ]}
+          />
+        </>
+      )}
+      {equipment ? (
+        <>
+          <h2>Equipment used</h2>
+          <p className="hint">
+            Logged by the crew on the phone, hours per day: what FEMA Public Assistance asks for
+            equipment. People&rsquo;s hours come from check-in.
+          </p>
+          <DataTable
+            caption={`Equipment on this work order: ${equipment.reduce((n, e) => n + e.hours, 0)} hours in all`}
+            rows={equipment}
+            rowKey={(e) => e.id}
+            empty="None logged."
+            columns={[
+              {
+                key: 'what',
+                header: 'Equipment',
+                render: (e) =>
+                  `${label(e.equipment)}${e.equipmentNote ? ` (${e.equipmentNote})` : ''}`,
+              },
+              { key: 'day', header: 'Day', render: (e) => e.usedOn },
+              { key: 'hours', header: 'Hours', render: (e) => String(e.hours) },
+            ]}
+          />
+        </>
+      ) : null}
       <h2>Assignments</h2>
       <DataTable
         caption="Who holds this mission"
@@ -755,7 +997,8 @@ export function MissionDetailScreen({ id }: { id: string }) {
       <ol>
         {(m.timeline ?? []).map((e) => (
           <li key={e.id}>
-            {fmt(e.occurredAt)} — {label(e.kind)}
+            {fmt(e.occurredAt)}
+            {recordedLater(e)} — {label(e.kind)}
             {e.toState ? `: ${label(e.fromState)} → ${label(e.toState)}` : ''}
             {e.narrativeRole ? ` (${label(e.narrativeRole)})` : ''}
             {e.body ? ` — ${e.body}` : ''}
@@ -794,6 +1037,7 @@ export function MissionDetailScreen({ id }: { id: string }) {
         >
           {({ id: fid, describedBy }) => (
             <textarea
+              ref={narrativeBox}
               id={fid}
               aria-describedby={describedBy}
               rows={3}

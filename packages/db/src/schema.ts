@@ -169,8 +169,14 @@ export interface PersonnelTable extends Stamped {
   hours_limit: number | null;
   /** DSP-09: the agency when it runs its own tenant. */
   home_tenant_id: Uuid | null;
-  /** FR-13.01: badge photo object key. */
+  /** FR-13.01: the approved badge photo's object key. */
   photo_key: string | null;
+  /** FR-13.01: a photo waiting for a second person's approval. */
+  photo_pending_key: string | null;
+  photo_pending_by: Uuid | null;
+  photo_pending_at: TsNullable;
+  photo_approved_by: Uuid | null;
+  photo_approved_at: TsNullable;
   archived_at: TsNullable;
   archived_reason: string | null;
 }
@@ -294,10 +300,133 @@ export interface TenantKeyTable {
   retired_at: TsNullable;
 }
 
+/** A Postgres interval as the driver reads it (postgres-interval): only the non-zero parts are present. */
+export interface PgInterval {
+  years?: number;
+  months?: number;
+  days?: number;
+  hours?: number;
+  minutes?: number;
+  seconds?: number;
+  milliseconds?: number;
+}
+
+/** FL-16: a private request for peer support; only the peer-support role reads it. */
+export interface PeerSupportRequestTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  personnel_id: Uuid;
+  event_id: Uuid | null;
+  client_uuid: Uuid;
+  reach_by: 'call' | 'text' | 'in_person';
+  reach_when: 'now' | 'after_shift';
+  status: Generated<'open' | 'contacted' | 'closed'>;
+  requested_at: TsGen;
+  contacted_at: TsNullable;
+  contacted_by: Uuid | null;
+  closed_at: TsNullable;
+  closed_by: Uuid | null;
+  closed_by_requester: Generated<boolean>;
+}
+
+/** FL:FR-17: a canteen crew's stop on its route, from check-in to check-out. */
+export interface CanteenStopTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  mission_id: Uuid | null;
+  client_uuid: Uuid;
+  stop_name: string;
+  geom: ColumnType<unknown, unknown, unknown> | null;
+  arrived_at: TsGen;
+  departed_at: TsNullable;
+  meals_served: number | null;
+  supplies_left: string | null;
+  allergen_note: string | null;
+  reported_by: Uuid | null;
+  reported_personnel_id: Uuid | null;
+}
+
+/** FL:FR-19: equipment that ran on a work order, with its hours. */
+export interface EquipmentUseTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  mission_id: Uuid;
+  client_uuid: Uuid;
+  equipment:
+    | 'chainsaw'
+    | 'pump'
+    | 'generator'
+    | 'skid_steer'
+    | 'dump_truck'
+    | 'chipper'
+    | 'pressure_washer'
+    | 'dehumidifier'
+    | 'other';
+  equipment_note: string | null;
+  hours: ColumnType<string, string | number, string | number>;
+  used_on: ColumnType<string, string | undefined, string>;
+  reported_by: Uuid | null;
+  reported_personnel_id: Uuid | null;
+}
+
+/** FL:FR-21/22: one line of a supply request. */
+export interface SupplyRequestLine {
+  stockItemId: Uuid;
+  name: string;
+  unit: string;
+  quantity: number;
+  /** What the server suggested from the last day's use, when it drafted the line. */
+  suggested?: number;
+}
+
+/** FL:FR-21/22: a site's request for supplies; a draft until a person sends it. */
+export interface SupplyRequestTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  site_id: Uuid;
+  client_uuid: Uuid | null;
+  status: Generated<'draft' | 'sent' | 'filled' | 'canceled'>;
+  drafted_automatically: Generated<boolean>;
+  lines: JSONColumnType<SupplyRequestLine[], string, string>;
+  note: string | null;
+  sent_at: TsNullable;
+  sent_by: Uuid | null;
+  filled_at: TsNullable;
+  filled_by: Uuid | null;
+  mission_id: Uuid | null;
+  canceled_at: TsNullable;
+  canceled_by: Uuid | null;
+}
+
+/** FLD-11: what a worker saw at a site, or a resource they came across; an observation, not the site's status of record. */
+export interface FieldReportTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  client_uuid: Uuid;
+  category: 'site_status' | 'resource_seen';
+  site_id: Uuid | null;
+  site_status: 'open' | 'limited' | 'full' | 'closed' | 'damaged' | null;
+  resource_kind:
+    'water' | 'food' | 'fuel' | 'pharmacy' | 'store' | 'power' | 'equipment' | 'other' | null;
+  place: string | null;
+  note: string | null;
+  geom: ColumnType<unknown, unknown, unknown> | null;
+  accuracy_m: number | null;
+  reported_by: Uuid | null;
+  reported_personnel_id: Uuid | null;
+  reported_at: TsGen;
+  noted_at: TsNullable;
+  noted_by: Uuid | null;
+}
+
 export interface RetentionPolicyTable extends Stamped {
   tenant_id: Uuid;
   data_category: string;
-  keep_for: ColumnType<string | null, string | null, string | null>;
+  /** Written as interval text ('2555 days'); read back as a PgInterval object. */
+  keep_for: ColumnType<PgInterval | null, string | null, string | null>;
   rule: Generated<'duration' | 'on_confirm' | 'external'>;
   note: string | null;
 }
@@ -378,7 +507,14 @@ export type VerificationLevel =
   'self_reported' | 'desktop_verified' | 'field_verified' | 'cannot_verify';
 /** What a reviewer must see about a filed report; set by the worker, never a decision (PHO-15, SEC-17). */
 export interface ReportFlag {
-  kind: 'possible_duplicate' | 'duplicate_photo' | 'verify_suggested' | 'ai_assisted';
+  kind:
+    | 'possible_duplicate'
+    | 'duplicate_photo'
+    | 'near_duplicate_photo'
+    | 'verify_suggested'
+    | 'ai_assisted'
+    | 'assisted_consent'
+    | 'assisted_no_consent';
   reason: string;
   reportId?: string;
   photoId?: string;
@@ -394,7 +530,8 @@ export type ReviewDecisionKind =
   | 'supersede'
   | 'reopen'
   | 'verify'
-  | 'set_degree';
+  | 'set_degree'
+  | 'field_visit';
 export type MessageState = 'queued' | 'sent' | 'delivered' | 'acknowledged' | 'failed';
 
 export interface IntakeGraphTable extends Stamped {
@@ -461,6 +598,10 @@ export interface LocationTable extends Stamped {
   state: string | null;
   postal: string | null;
   landmark: string | null;
+  /** BRD:FR-03.01: the nearest cross streets, a field of their own. */
+  cross_streets: string | null;
+  verified_at: TsNullable;
+  verified_by: Uuid | null;
   note: string | null;
   no_fixed_address: Generated<boolean>;
   geom: ColumnType<unknown, unknown, unknown> | null;
@@ -509,6 +650,9 @@ export interface ReportTable extends Stamped {
   told_to_call_911_at: TsNullable;
   submitted_at: TsGen;
   withdrawn_at: TsNullable;
+  /** CON-05: a reviewer sent the report to the field; it waits for a team's visit. */
+  field_visit_requested_at: TsNullable;
+  field_visit_requested_by: Uuid | null;
 }
 
 export interface ReportVersionTable {
@@ -567,6 +711,8 @@ export interface PhotoTable extends Stamped {
   height: number | null;
   bytes: ColumnType<string | number, number | string, number | string> | null;
   sha256: Buffer | null;
+  /** PHO-15: 64-bit difference hash; near-identical photos differ in a few bits. */
+  phash: ColumnType<string | null, string | null, string | null>;
   suggested_taken_at: TsNullable;
   suggested_geom: ColumnType<unknown, unknown, unknown> | null;
   uploaded_at: TsNullable;
@@ -586,6 +732,8 @@ export interface PhotoTable extends Stamped {
     | 'road_status'
     | 'canvass_visit'
     | 'pa_site'
+    | 'shared_document'
+    | 'field_report'
     | null;
   field_record_id: Uuid | null;
 }
@@ -748,6 +896,107 @@ export interface SiteTable extends Stamped {
   /** CON-16: the partner organization that runs the site. */
   operator_tenant_id: Uuid | null;
   posted_by_tenant_id: Uuid | null;
+  /** CON-16: the shelter's id in the Red Cross records, so imported counts reach this site. */
+  external_ref: string | null;
+}
+
+/** FL:FR-03: a household's pass back into a closed zone; the code is kept only as a hash. */
+export interface ReentryPassTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  code_hash: Buffer;
+  zone: string;
+  holder_name_enc: Buffer;
+  address_enc: Buffer;
+  people: Generated<number>;
+  valid_from: TsGen;
+  valid_to: ColumnType<Date, Date | string, Date | string>;
+  state: Generated<'active' | 'revoked'>;
+  report_id: Uuid | null;
+  revoked_at: TsNullable;
+  revoked_by: Uuid | null;
+  revoke_reason: string | null;
+}
+
+/** FL:FR-03: one scan of a pass at the perimeter; it names no one. */
+export interface ReentryCheckTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  pass_id: Uuid;
+  checkpoint: string | null;
+  result: 'valid' | 'expired' | 'revoked' | 'not_yet_valid';
+  checked_by: Uuid | null;
+  checked_at: TsGen;
+}
+
+/** SEC-07: a county identity provider configuration, proposed and approved by two administrators. */
+export type TenantSsoStatus = 'proposed' | 'active' | 'declined' | 'replaced' | 'disabled';
+export interface TenantSsoTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  protocol: 'saml' | 'oidc';
+  display_name: string;
+  saml_metadata: string | null;
+  idp_entity_id: string | null;
+  oidc_issuer: string | null;
+  oidc_authorization_url: string | null;
+  oidc_token_url: string | null;
+  oidc_jwks_url: string | null;
+  oidc_client_id: string | null;
+  oidc_client_secret_enc: Buffer | null;
+  status: Generated<TenantSsoStatus>;
+  reason: string;
+  decided_by: Uuid | null;
+  decided_at: TsNullable;
+  decision_reason: string | null;
+  disabled_by: Uuid | null;
+  disabled_at: TsNullable;
+  disabled_reason: string | null;
+  applied_at: TsNullable;
+  apply_error: string | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  created_by: Uuid;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
+/** FLD-13, SCL-13: the offline map package of one parcel area, cut from the regional tiles. */
+export interface MapPackageTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  area_key: string;
+  min_lon: number;
+  min_lat: number;
+  max_lon: number;
+  max_lat: number;
+  min_zoom: number;
+  max_zoom: number;
+  tiles: number;
+  bytes: number;
+  sha256: string;
+  object_key: string;
+  region_stamp: string;
+  cut_at: TsGen;
+}
+
+/** CON-16: one shelter's count at one moment, as the Red Cross reported it; no person in it. */
+export interface ShelterCountTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  source: 'red_cross';
+  external_ref: string;
+  shelter_name: string;
+  status: 'open' | 'limited' | 'full' | 'closed' | null;
+  population: number | null;
+  capacity: number | null;
+  as_of: ColumnType<Date, Date | string, Date | string>;
+  site_id: Uuid | null;
+  imported_by: Uuid | null;
+  created_at: TsGen;
 }
 
 export interface ZipCentroidTable {
@@ -775,6 +1024,11 @@ export interface ResourceTable extends Stamped {
   published_version: number | null;
   published_at: TsNullable;
   unpublished_at: TsNullable;
+  /** BRD:FR-16.01: the decorative picture uploaded; the public sees it once published. */
+  thumbnail_key: string | null;
+  thumbnail_at: TsNullable;
+  thumbnail_by: Uuid | null;
+  published_thumbnail_key: string | null;
 }
 
 export interface ResourceTextTable extends Stamped {
@@ -948,6 +1202,9 @@ export interface CheckInTable {
   credentials_snapshot: JsonGen<unknown[]>;
   device_id: Uuid | null;
   location_sharing: Generated<boolean>;
+  /** BRD:FR-03.05: what the phone allows, as it last said. */
+  location_permission: 'granted' | 'foreground_only' | 'denied' | 'unavailable' | null;
+  location_permission_at: TsNullable;
   started_at: TsGen;
   ended_at: TsNullable;
   ended_by: Uuid | null;
@@ -1810,6 +2067,9 @@ export interface PetIntakeTable {
   >;
   intake_at: TsGen;
   released_at: TsNullable;
+  matched_with: Uuid | null;
+  matched_at: TsNullable;
+  matched_by: Uuid | null;
   client_uuid: Uuid | null;
   version: Generated<number>;
   created_at: TsGen;
@@ -2076,6 +2336,23 @@ export interface ChangeFeedTable {
   created_at: TsGen;
 }
 
+/** SEC-13: the highest change-feed sequence the retention sweep removed, per tenant. */
+/** FR-C11, migration 0086: what the command window answered, counted per day; nothing personal. */
+export interface CommandOutcomeTable {
+  tenant_id: string;
+  day: ColumnType<string, string, string>;
+  command: string;
+  input_kind: 'shorthand' | 'natural';
+  outcome: string;
+  n: Generated<number>;
+}
+
+export interface ChangeFeedPrunedTable {
+  tenant_id: Uuid;
+  through_seq: ColumnType<string, string | number, string | number>;
+  pruned_at: TsGen;
+}
+
 export interface ClientCommandTable {
   id: Generated<Uuid>;
   tenant_id: Uuid;
@@ -2294,6 +2571,82 @@ export interface RecommendationTable extends Stamped {
 }
 
 /** REC-13: a source the county names for resource discovery (its own feeds, or web search). */
+/** PHO-09–PHO-13: a severity suggestion for reviewers only (layer-7 task I). */
+export interface DamageSuggestionTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  report_id: Uuid;
+  degree: 'affected' | 'minor' | 'major' | 'destroyed' | 'cannot_tell';
+  confidence: ColumnType<string, number | string, number | string>;
+  visible_features: Generated<string[]>;
+  photo_ids: string[];
+  provider: string;
+  model: string;
+  template_version: string | null;
+  ai_output_id: Uuid | null;
+  created_at: TsGen;
+}
+
+/** FL-12: the note a worker leaves for the next shift (layer-7 task H). */
+export interface ShiftHandoverTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  check_in_id: Uuid;
+  personnel_id: Uuid;
+  team_id: Uuid | null;
+  language: 'en' | 'es';
+  text: string;
+  sources: Generated<string[]>;
+  ai_output_id: Uuid | null;
+}
+
+/** FL-04, FL-18: one conversation the scribe recorded with a survivor's consent (layer-7 task H). */
+export interface ScribeSessionTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  client_uuid: Uuid;
+  account_id: Uuid;
+  context: 'general' | 'legal_aid' | 'child';
+  language: 'en' | 'es';
+  consent_method: 'spoken' | 'tapped';
+  consent_text: string;
+  consent_at: Date;
+  related_type: string | null;
+  related_id: Uuid | null;
+  state: Generated<'consented' | 'recorded' | 'drafted' | 'confirmed' | 'discarded' | 'expired'>;
+  stopped_by: 'worker' | 'survivor' | null;
+  audio_object_key: string | null;
+  audio_mime: string | null;
+  audio_bytes: number | null;
+  transcript_enc: Buffer | null;
+  draft_enc: Buffer | null;
+  draft_output_id: Uuid | null;
+  note_enc: Buffer | null;
+  confirmed_at: TsNullable;
+  edited: boolean | null;
+}
+
+/** PUB-14: an AI-voiced audio file of an approved radio script (layer-7 task G). */
+export interface PublicAudioTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  site_id: Uuid;
+  form: 'radioLoop' | 'netReadout';
+  language: 'en' | 'es';
+  script: string;
+  object_key: string;
+  mime_type: string;
+  bytes: number;
+  sha256: string;
+  provider: string;
+  model: string;
+  ai_output_id: Uuid | null;
+  /** PUB-14, GATE-08: who heard the file to the end and cleared it for air. */
+  cleared_by: Uuid | null;
+  cleared_at: TsNullable;
+}
+
 export interface DiscoverySourceTable extends Stamped {
   id: Generated<Uuid>;
   tenant_id: Uuid;
@@ -2395,6 +2748,117 @@ export interface FacilityTable extends Stamped {
   last_confirmed_at: TsGen;
 }
 
+/** REC-01: the single-use link in an owner's yearly re-check email; only its hash is kept. */
+/** FL-09: a document a survivor chose to share, photographed with their consent. */
+export interface SharedDocumentTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  report_id: Uuid;
+  client_uuid: Uuid;
+  kind: 'lease' | 'id' | 'insurance' | 'other';
+  consent_method: 'spoken' | 'tapped';
+  consent_language: string;
+  consent_text: string;
+  consented_at: TsGen;
+  taken_by: Uuid;
+  photo_id: Uuid | null;
+}
+
+export interface FacilityUpdateLinkTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  facility_id: Uuid;
+  token_hash: Buffer;
+  expires_at: Date;
+  used_at: TsNullable;
+  created_at: TsGen;
+}
+
+/** FL:FR-06: a targeted boil-water, do-not-use-water or safety notice. */
+export interface HealthNoticeTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid | null;
+  kind: 'boil_water' | 'do_not_use_water' | 'safety';
+  title_en: string;
+  body_en: string;
+  title_es: string | null;
+  body_es: string | null;
+  area_label: string;
+  zips: Generated<string[]>;
+  center: ColumnType<unknown, unknown, unknown> | null;
+  radius_m: number | null;
+  status: ColumnType<
+    'draft' | 'active' | 'ended',
+    'draft' | 'active' | 'ended' | undefined,
+    'draft' | 'active' | 'ended'
+  >;
+  expires_at: TsNullable;
+  approved_by: Uuid | null;
+  approved_at: TsNullable;
+  ended_by: Uuid | null;
+  ended_at: TsNullable;
+  end_reason: 'lifted' | 'withdrawn' | null;
+  tell_ended: Generated<boolean>;
+  sent_sms: Generated<number>;
+  sent_email: Generated<number>;
+  sent_at: TsNullable;
+  ended_sent_sms: Generated<number>;
+  ended_sent_email: Generated<number>;
+  ended_sent_at: TsNullable;
+}
+
+/** FL:FR-06: a resident told of a notice, once per phase. */
+export interface HealthNoticeRecipientTable {
+  tenant_id: Uuid;
+  notice_id: Uuid;
+  party_id: Uuid;
+  phase: 'issued' | 'ended';
+  channel: 'sms' | 'email';
+  created_at: TsGen;
+}
+
+/** FL:FR-20: a self-registration link reception opens for an event. */
+export interface VolunteerSignupLinkTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  token_hash: Buffer;
+  waiver_version: string;
+  waiver_text: JsonGen<Record<string, string>>;
+  expires_at: Ts;
+  closed_at: TsNullable;
+  closed_by: Uuid | null;
+  created_at: TsGen;
+  created_by: Uuid | null;
+}
+
+/** FL:FR-20: a walk-up volunteer's own registration, waiting for reception. */
+export interface VolunteerSignupTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  link_id: Uuid;
+  execution_id: Uuid;
+  desk_code: string;
+  status: ColumnType<
+    'waiting' | 'registered' | 'declined',
+    'waiting' | 'registered' | 'declined' | undefined,
+    'waiting' | 'registered' | 'declined'
+  >;
+  details_enc: Buffer | null;
+  skills: Generated<string[]>;
+  waiver_version: string;
+  waiver_accepted_at: TsNullable;
+  registration_id: Uuid | null;
+  decided_at: TsNullable;
+  decided_by: Uuid | null;
+  version: Generated<number>;
+  created_at: TsGen;
+  updated_at: TsGen;
+  updated_by: Uuid | null;
+}
+
 export interface FacilityChangeTable extends Stamped {
   id: Generated<Uuid>;
   tenant_id: Uuid;
@@ -2402,7 +2866,7 @@ export interface FacilityChangeTable extends Stamped {
   change: 'create' | 'update' | 'retire';
   proposed: JsonGen<Record<string, unknown>>;
   contacts_enc: Buffer | null;
-  source: 'coad' | 'owner' | 'self_registration' | 'discovery' | 'county';
+  source: 'coad' | 'owner' | 'self_registration' | 'discovery' | 'county' | 'owner_link';
   proposed_by: Uuid | null;
   proposed_by_tenant_id: Uuid | null;
   submitter_enc: Buffer | null;
@@ -2449,7 +2913,14 @@ export interface CommandExecutionTable extends Stamped {
   plan_hash: string;
   confirmation: 'none' | 'one_tap' | 'full_review' | 'second_person';
   reversal: 'undo_15_min' | 'compensating' | 'none';
-  state: 'awaiting_confirmation' | 'executing' | 'succeeded' | 'failed' | 'canceled' | 'stale';
+  state:
+    | 'awaiting_confirmation'
+    | 'executing'
+    | 'succeeded'
+    | 'partially_succeeded'
+    | 'failed'
+    | 'canceled'
+    | 'stale';
   confirmed_by: Uuid | null;
   confirmed_at: TsNullable;
   reason: string | null;
@@ -2457,6 +2928,9 @@ export interface CommandExecutionTable extends Stamped {
   reversal_of: Uuid | null;
   undone_by: Uuid | null;
   undo_until: TsNullable;
+  /** CMD-38: how long the plan took to prepare, and the confirmed operation to run. */
+  prepare_ms: ColumnType<number | null, number | null | undefined, number | null>;
+  execute_ms: ColumnType<number | null, number | null | undefined, number | null>;
 }
 
 /** One AI call (AIG-01, layer-7 task A); never the prompt or the reply. */
@@ -2476,6 +2950,9 @@ export interface AiOutputTable {
   human_action: 'accepted' | 'edited' | 'rejected' | null;
   acted_by: Uuid | null;
   acted_at: TsNullable;
+  /** AIG-09, migration 0087: a resident's complaint about this help, by a fixed reason. */
+  complaint: 'wrong' | 'not_my_language' | 'hard_to_understand' | 'other' | null;
+  complained_at: TsNullable;
   created_at: Generated<Date>;
 }
 
@@ -2485,7 +2962,7 @@ export interface AiHealthAlertTable extends Stamped {
   tenant_id: Uuid;
   feature: string;
   language: Generated<string>;
-  kind: 'corrections' | 'failures';
+  kind: 'corrections' | 'failures' | 'fairness' | 'complaints';
   window_size: number;
   counted: number;
   flagged: number;
@@ -2668,7 +3145,7 @@ export interface ExportFileTable {
   tenant_id: Uuid;
   event_id: Uuid;
   client_uuid: Uuid;
-  kind: 'ida_package' | 'official_report';
+  kind: 'ida_package' | 'official_report' | 'public_records';
   format: 'zip' | 'pdf' | 'csv';
   report_id: Uuid | null;
   jurisdiction_tenant_id: Uuid | null;
@@ -2684,6 +3161,8 @@ export interface ExportFileTable {
   reason: string | null;
   created_at: TsGen;
   ready_at: TsNullable;
+  /** SEC-13: a public-records release's request reference, period and kinds of record. */
+  scope: ColumnType<unknown, string | null | undefined, string | null>;
 }
 
 export interface PackagePhotoTable {
@@ -3047,6 +3526,11 @@ export interface Database {
   'cg.data_dictionary': DataDictionaryTable;
   'cg.tenant_key': TenantKeyTable;
   'cg.retention_policy': RetentionPolicyTable;
+  'cg.peer_support_request': PeerSupportRequestTable;
+  'cg.field_report': FieldReportTable;
+  'cg.supply_request': SupplyRequestTable;
+  'cg.equipment_use': EquipmentUseTable;
+  'cg.canteen_stop': CanteenStopTable;
   'cg.legal_hold': LegalHoldTable;
   'cg.deletion_log': DeletionLogTable;
   'cg.idempotency_key': IdempotencyKeyTable;
@@ -3079,6 +3563,11 @@ export interface Database {
   'cg.referral': ReferralTable;
   'cg.partner_contact': PartnerContactTable;
   'cg.site': SiteTable;
+  'cg.shelter_count': ShelterCountTable;
+  'cg.reentry_pass': ReentryPassTable;
+  'cg.reentry_check': ReentryCheckTable;
+  'cg.map_package': MapPackageTable;
+  'cg.tenant_sso': TenantSsoTable;
   'cg.zip_centroid': ZipCentroidTable;
   'cg.resource': ResourceTable;
   'cg.resource_text': ResourceTextTable;
@@ -3124,6 +3613,10 @@ export interface Database {
   'cg.site_walkthrough': SiteWalkthroughTable;
   'cg.right_of_entry': RightOfEntryTable;
   'cg.volunteer_registration': VolunteerRegistrationTable;
+  'cg.volunteer_signup_link': VolunteerSignupLinkTable;
+  'cg.health_notice': HealthNoticeTable;
+  'cg.health_notice_recipient': HealthNoticeRecipientTable;
+  'cg.volunteer_signup': VolunteerSignupTable;
   'cg.stock_item': StockItemTable;
   'cg.interpreter_request': InterpreterRequestTable;
   'cg.child_check_in': ChildCheckInTable;
@@ -3132,6 +3625,8 @@ export interface Database {
   'cg.health_note': HealthNoteTable;
   'cg.field_assessment': FieldAssessmentTable;
   'cg.change_feed': ChangeFeedTable;
+  'cg.change_feed_pruned': ChangeFeedPrunedTable;
+  'cg.command_outcome': CommandOutcomeTable;
   'cg.client_command': ClientCommandTable;
   'cg.location_geo': LocationGeoTable;
   'cg.declaration': DeclarationTable;
@@ -3144,7 +3639,13 @@ export interface Database {
   'cg.command_alias': CommandAliasTable;
   'cg.facility': FacilityTable;
   'cg.facility_change': FacilityChangeTable;
+  'cg.facility_update_link': FacilityUpdateLinkTable;
+  'cg.shared_document': SharedDocumentTable;
   'cg.recommendation': RecommendationTable;
+  'cg.public_audio': PublicAudioTable;
+  'cg.scribe_session': ScribeSessionTable;
+  'cg.shift_handover': ShiftHandoverTable;
+  'cg.damage_suggestion': DamageSuggestionTable;
   'cg.discovery_source': DiscoverySourceTable;
   'cg.discovery_run': DiscoveryRunTable;
   'cg.discovery_candidate': DiscoveryCandidateTable;

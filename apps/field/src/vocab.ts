@@ -62,6 +62,10 @@ const commandKinds: Vocab = {
   'check_in.start': { en: 'Check-in', es: 'Registro de llegada' },
   'check_in.end': { en: 'Check-out', es: 'Registro de salida' },
   'position.batch': { en: 'Location for dispatch', es: 'Ubicación para despacho' },
+  'check_in.location_permission': {
+    en: 'Location setting for dispatch',
+    es: 'Ajuste de ubicación para despacho',
+  },
   'team.status': { en: 'Team status (we’re OK)', es: 'Estado del equipo (estamos bien)' },
   'assignment.acknowledge': { en: '“Got it” for an assignment', es: '“Entendido” de una tarea' },
   'assignment.status': { en: 'Assignment status', es: 'Estado de una tarea' },
@@ -73,7 +77,16 @@ const commandKinds: Vocab = {
   'reminder.complete': { en: 'Reminder done', es: 'Recordatorio terminado' },
 };
 
-const groups = { missionKinds, assignmentStates, hazardKinds, commandKinds };
+// FL:FR-08: the kinds of animal on the pet intake form.
+const species: Vocab = {
+  dog: { en: 'Dog', es: 'Perro' },
+  cat: { en: 'Cat', es: 'Gato' },
+  bird: { en: 'Bird', es: 'Ave' },
+  livestock: { en: 'Livestock', es: 'Ganado' },
+  other: { en: 'Other animal', es: 'Otro animal' },
+};
+
+const groups = { missionKinds, assignmentStates, hazardKinds, commandKinds, species };
 
 export function label(
   locale: Locale,

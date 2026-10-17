@@ -37,6 +37,9 @@ x-node-env: &node-env
   TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
   TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
   WEBHOOK_PUBLIC_BASE: ${WEBHOOK_PUBLIC_BASE:-}
+  # Address suggestions from the self-hosted geocoder when the maps profile runs (BRD:FR-03.02):
+  # set GEOCODER_URL=http://geocoder:8080; empty means the county's parcels only.
+  GEOCODER_URL: ${GEOCODER_URL:-}
   # Abuse protection per address (SEC-17); raise the deny limit only for a load generator on one host.
   PUBLIC_IP_VERIFY_PER_10MIN: ${PUBLIC_IP_VERIFY_PER_10MIN:-20}
   PUBLIC_IP_DENY_PER_10MIN: ${PUBLIC_IP_DENY_PER_10MIN:-120}
@@ -128,8 +131,12 @@ services:
       REFDATA_ALLOWED_HOSTS: ${REFDATA_ALLOWED_HOSTS:-}
       REFDATA_CONTACT: ${REFDATA_CONTACT:-}
       CENSUS_API_KEY: ${CENSUS_API_KEY:-}
+      # FLD-13: offline map packages per area are cut from the regional tiles when they exist.
+      MAP_TILES_PATH: /srv/tiles/region.pmtiles
+      MAP_EXERCISE: ${MAP_EXERCISE:-true}
     volumes:
       - keys_init:/bao-init:ro
+      - tiles:/srv/tiles:ro
     depends_on:
       migrate: { condition: service_completed_successfully }
       # The exercise county is loaded before the worker starts consuming the
@@ -350,6 +357,24 @@ services:
     restart: 'no'
     networks: [platform]
 
+  # --- Monitoring (NFR-10, ADR-0023). Opt in with `docker compose --profile
+  # monitoring up -d prometheus`: scrapes api and worker /metrics on the
+  # platform network and evaluates infra/prometheus/alerts.yml. The UI is bound
+  # to the laptop only. In the government cloud the provider's managed
+  # Prometheus or OpenTelemetry collector takes its place with the same files.
+  prometheus:
+    profiles: [monitoring]
+    image: prom/prometheus:v3.5.0@sha256:63805ebb8d2b3920190daf1cb14a60871b16fd38bed42b857a3182bc621f4996
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./infra/prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+    ports:
+      - '127.0.0.1:${PROMETHEUS_PORT:-9090}:9090'
+    networks: [platform]
+
 networks:
   platform:
     name: cg_platform
@@ -365,3 +390,4 @@ volumes:
   tiles:
   tiles_work:
   geocoder_data:
+  prometheus_data:

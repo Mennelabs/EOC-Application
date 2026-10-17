@@ -29,6 +29,7 @@ import { toUsng } from '@cg/field-core';
 import { ApiError, errors } from '../errors.ts';
 import { sha } from '../public/submit.ts';
 import { iso, listQuery, stepKey, uuidParam } from './helpers.ts';
+import { draftResupply } from './supply-requests.ts';
 
 type Trx = Transaction<Database>;
 /** The record tables are reached by name from the spec table; columns are checked by the database. */
@@ -511,6 +512,9 @@ const SPECS: Record<string, Spec> = {
         description: str(r['description']),
         status: str(r['status']),
         intakeAt: date(r['intake_at']),
+        releasedAt: date(r['released_at']),
+        /** FL:FR-08: the lost report or found animal a person confirmed as the same pet. */
+        matchedWith: str(r['matched_with']),
       };
     },
     summary: (b) => `Pet intake: ${String(b['species'])}`,
@@ -974,6 +978,193 @@ const SPECS: Record<string, Spec> = {
       };
     },
   },
+
+  // FL:FR-17: a canteen crew arrives at a stop on its route; the check-out (below) names
+  // this record by the phone's id, so both work without signal.
+  canteen_stop: {
+    table: 'cg.canteen_stop',
+    write: 'canteen_stop.write',
+    read: 'canteen_stop.read',
+    needsEvent: true,
+    orderColumn: 'arrived_at',
+    filters: { eventId: 'event_id', missionId: 'mission_id' },
+    body: z.object({
+      ...base,
+      missionId: z.uuid().optional(),
+      /** A public place: a park, a church lot, a street corner; never a household. */
+      stopName: z.string().min(1).max(120),
+      position: point.optional(),
+      arrivedAt: z.iso.datetime().optional(),
+    }),
+    async values(b, ctx) {
+      const p = b['position'] as z.infer<typeof point> | undefined;
+      return {
+        event_id: ctx.eventId,
+        mission_id: b['missionId'] ?? null,
+        stop_name: b['stopName'],
+        geom: p ? sql`ST_SetSRID(ST_MakePoint(${p.lon}, ${p.lat}), 4326)` : null,
+        ...(b['arrivedAt'] ? { arrived_at: new Date(b['arrivedAt'] as string) } : {}),
+        reported_by: ctx.accountId,
+        reported_personnel_id: ctx.personnelId,
+      };
+    },
+    async out(r) {
+      return {
+        ...common(r),
+        eventId: str(r['event_id']),
+        missionId: str(r['mission_id']),
+        stopName: str(r['stop_name']),
+        arrivedAt: date(r['arrived_at']),
+        departedAt: date(r['departed_at']),
+        mealsServed: num(r['meals_served']),
+        suppliesLeft: str(r['supplies_left']),
+        allergenNote: str(r['allergen_note']),
+      };
+    },
+    summary: (b) => `Canteen stop: ${String(b['stopName'])}`,
+    activity: 'status',
+  },
+
+  // FL:FR-19: equipment that ran on a work order and its hours that day (FEMA PA equipment
+  // hours); people's hours come from check-in.
+  equipment_use: {
+    table: 'cg.equipment_use',
+    write: 'equipment_use.write',
+    read: 'equipment_use.read',
+    // The event is the work order's.
+    needsEvent: false,
+    orderColumn: 'used_on',
+    filters: { eventId: 'event_id', missionId: 'mission_id', kind: 'equipment' },
+    body: z.object({
+      ...base,
+      missionId: z.uuid(),
+      equipment: z.enum([
+        'chainsaw',
+        'pump',
+        'generator',
+        'skid_steer',
+        'dump_truck',
+        'chipper',
+        'pressure_washer',
+        'dehumidifier',
+        'other',
+      ]),
+      equipmentNote: z.string().max(120).optional(),
+      hours: z.number().gt(0).max(24),
+      usedOn: z.iso.date().optional(),
+    }),
+    async values(b, ctx) {
+      const mission = await ctx.trx
+        .selectFrom('cg.mission')
+        .select(['id', 'event_id'])
+        .where('id', '=', b['missionId'] as string)
+        .executeTakeFirst();
+      if (!mission) throw errors.validation([{ name: 'missionId', message: 'unknown work order' }]);
+      if (b['equipment'] === 'other' && !b['equipmentNote'])
+        throw errors.validation([{ name: 'equipmentNote', message: 'say what the equipment was' }]);
+      return {
+        event_id: mission.event_id,
+        mission_id: mission.id,
+        equipment: b['equipment'],
+        equipment_note: b['equipmentNote'] ?? null,
+        hours: String(b['hours']),
+        ...(b['usedOn'] ? { used_on: b['usedOn'] } : {}),
+        reported_by: ctx.accountId,
+        reported_personnel_id: ctx.personnelId,
+      };
+    },
+    async out(r) {
+      return {
+        ...common(r),
+        eventId: str(r['event_id']),
+        missionId: str(r['mission_id']),
+        equipment: str(r['equipment']),
+        equipmentNote: str(r['equipment_note']),
+        hours: num(r['hours']),
+        usedOn: r['used_on'] instanceof Date ? iso(r['used_on'])!.slice(0, 10) : str(r['used_on']),
+      };
+    },
+    summary: (b) =>
+      `Equipment: ${String(b['equipment']).replace(/_/g, ' ')}, ${String(b['hours'])} h`,
+    activity: 'service',
+  },
+
+  // FLD-11: the quick report that is not a hazard: what a worker saw at a site, or a
+  // resource they came across. An observation for dispatch, never the site's status of
+  // record (only the site's operators confirm that, `site.confirm`).
+  field_report: {
+    table: 'cg.field_report',
+    write: 'field_report.write',
+    read: 'field_report.read',
+    needsEvent: true,
+    orderColumn: 'reported_at',
+    filters: { eventId: 'event_id', siteId: 'site_id', kind: 'category' },
+    body: z.object({
+      ...base,
+      category: z.enum(['site_status', 'resource_seen']),
+      siteId: z.uuid().optional(),
+      siteStatus: z.enum(['open', 'limited', 'full', 'closed', 'damaged']).optional(),
+      resourceKind: z
+        .enum(['water', 'food', 'fuel', 'pharmacy', 'store', 'power', 'equipment', 'other'])
+        .optional(),
+      /** A place name or landmark, never a person (SEC-10). */
+      place: z.string().max(200).optional(),
+      note,
+      position: point.optional(),
+    }),
+    async values(b, ctx) {
+      const site = b['category'] === 'site_status';
+      if (site && (!b['siteId'] || !b['siteStatus']))
+        throw errors.validation([
+          { name: 'siteStatus', message: 'a site status names the site and what was seen there' },
+        ]);
+      if (!site && !b['resourceKind'])
+        throw errors.validation([
+          { name: 'resourceKind', message: 'a resource seen says what kind of resource' },
+        ]);
+      if (site) {
+        const known = await ctx.trx
+          .selectFrom('cg.site')
+          .select('id')
+          .where('id', '=', b['siteId'] as string)
+          .executeTakeFirst();
+        if (!known) throw errors.validation([{ name: 'siteId', message: 'unknown site' }]);
+      }
+      const p = b['position'] as z.infer<typeof point> | undefined;
+      return {
+        event_id: ctx.eventId,
+        category: b['category'],
+        site_id: site ? b['siteId'] : null,
+        site_status: site ? b['siteStatus'] : null,
+        resource_kind: site ? null : b['resourceKind'],
+        place: b['place'] ?? null,
+        note: b['note'] ?? null,
+        geom: p ? sql`ST_SetSRID(ST_MakePoint(${p.lon}, ${p.lat}), 4326)` : null,
+        accuracy_m: p?.accuracyM ?? null,
+        reported_by: ctx.accountId,
+        reported_personnel_id: ctx.personnelId,
+      };
+    },
+    async out(r) {
+      return {
+        ...common(r),
+        eventId: str(r['event_id']),
+        category: str(r['category']),
+        siteId: str(r['site_id']),
+        siteStatus: str(r['site_status']),
+        resourceKind: str(r['resource_kind']),
+        place: str(r['place']),
+        note: str(r['note']),
+        reportedAt: date(r['reported_at']),
+        notedAt: date(r['noted_at']),
+      };
+    },
+    summary: (b) =>
+      b['category'] === 'site_status'
+        ? `Site seen ${String(b['siteStatus'])}`
+        : `Resource seen: ${String(b['resourceKind'])}${b['place'] ? ` at ${String(b['place'])}` : ''}`,
+    activity: 'note',
+  },
 };
 
 export const FIELD_RECORD_KINDS = Object.keys(SPECS);
@@ -1345,6 +1536,357 @@ export const fieldRecordRoutes =
         ),
     );
 
+    // FLD-11: dispatch has read a quick report from the field.
+    app.post(
+      '/field-records/field_report/:id/note',
+      { schema: { tags: ['field'], params: uuidParam, response: { 200: outAny } } },
+      (request) =>
+        transition(
+          request,
+          'field_report',
+          'field_report.note',
+          request.params.id,
+          async (r) => {
+            if (r['noted_at'])
+              throw new ApiError(409, 'already_noted', 'This report is already marked noted.');
+            return { noted_at: new Date(), noted_by: account(request).accountId };
+          },
+          () => [{ name: 'noted', to: 'yes' }],
+        ),
+    );
+
+    // ---------------------------------------------------- pets (FL:FR-08)
+    type PetStatus = Database['cg.pet_intake']['status'] extends import('kysely').Generated<infer S>
+      ? S
+      : never;
+    const LOST: PetStatus[] = ['lost_report'];
+    const FOUND: PetStatus[] = ['sheltered', 'found_report'];
+    /** Words a description carries, for suggesting matches: lower case, three letters or more. */
+    const STOP = new Set([
+      'the',
+      'and',
+      'with',
+      'has',
+      'very',
+      'was',
+      'not',
+      'one',
+      'una',
+      'uno',
+      'con',
+      'del',
+      'las',
+      'los',
+      'por',
+      'sin',
+      'que',
+      'muy',
+      'tiene',
+    ]);
+    const words = (text: unknown) =>
+      new Set(
+        String(text ?? '')
+          .toLowerCase()
+          .split(/[^\p{L}\p{N}]+/u)
+          .filter((w) => w.length >= 3 && !STOP.has(w)),
+      );
+
+    // FL:FR-08: how many animals each shelter holds now, by kind of animal.
+    app.get(
+      '/field-records/pet_intake/census',
+      {
+        schema: {
+          tags: ['field'],
+          querystring: z.object({ eventId: z.uuid().optional() }),
+          response: {
+            200: z.array(
+              z.object({
+                siteId: z.uuid().nullable(),
+                siteName: z.string().nullable(),
+                total: z.number().int(),
+                bySpecies: z.record(z.string(), z.number().int()),
+              }),
+            ),
+          },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('pet_intake.read', { type: 'pet_intake', tenantId: s.tenantId });
+        const rows = await request.tx((trx) => {
+          let x = trx
+            .selectFrom('cg.pet_intake as p')
+            .leftJoin('cg.site as s', 's.id', 'p.site_id')
+            .select([
+              'p.site_id',
+              's.name as site_name',
+              'p.species',
+              sql<string>`count(*)`.as('n'),
+            ])
+            .where('p.status', '=', 'sheltered')
+            .where('p.released_at', 'is', null)
+            .groupBy(['p.site_id', 's.name', 'p.species'])
+            .orderBy('s.name')
+            .orderBy('p.species');
+          if (request.query.eventId) x = x.where('p.event_id', '=', request.query.eventId);
+          return x.execute();
+        });
+        const bySite = new Map<
+          string,
+          {
+            siteId: string | null;
+            siteName: string | null;
+            total: number;
+            bySpecies: Record<string, number>;
+          }
+        >();
+        for (const r of rows) {
+          const key = r.site_id ?? 'none';
+          const entry = bySite.get(key) ?? {
+            siteId: r.site_id,
+            siteName: r.site_name,
+            total: 0,
+            bySpecies: {},
+          };
+          entry.total += Number(r.n);
+          entry.bySpecies[r.species] = (entry.bySpecies[r.species] ?? 0) + Number(r.n);
+          bySite.set(key, entry);
+        }
+        return [...bySite.values()];
+      },
+    );
+
+    // FL:FR-08: possible matches for a lost report (animals found or sheltered) or the other
+    // way round, in the same event and kind of animal, with the words the descriptions share.
+    // Only suggestions: a person confirms a match.
+    app.get(
+      '/field-records/pet_intake/:id/candidates',
+      {
+        schema: {
+          tags: ['field'],
+          params: uuidParam,
+          response: {
+            200: z.array(z.object({ record: outAny, shared: z.array(z.string()) })),
+          },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('pet_intake.read', { type: 'pet_intake', tenantId: s.tenantId });
+        return request.tx(async (trx) => {
+          const ctx = await context(request, trx);
+          const self = await trx
+            .selectFrom('cg.pet_intake')
+            .selectAll()
+            .where('id', '=', request.params.id)
+            .executeTakeFirst();
+          if (!self) throw errors.notFound();
+          const lost = LOST.includes(self.status);
+          if (!lost && !FOUND.includes(self.status)) return [];
+          const others = await trx
+            .selectFrom('cg.pet_intake')
+            .selectAll()
+            .where('event_id', '=', self.event_id)
+            .where('id', '<>', self.id)
+            .where('matched_with', 'is', null)
+            .where('status', 'in', lost ? FOUND : LOST)
+            .where(sql<boolean>`lower(species) = lower(${self.species})`)
+            .orderBy('intake_at', 'desc')
+            .limit(100)
+            .execute();
+          const mine = words(self.description);
+          const scored = others
+            .map((o) => ({ o, shared: [...words(o.description)].filter((w) => mine.has(w)) }))
+            .sort((a, b) => b.shared.length - a.shared.length)
+            .slice(0, 10);
+          return Promise.all(
+            scored.map(async ({ o, shared }) => ({
+              record: await SPECS['pet_intake']!.out(o as unknown as Row, ctx),
+              shared,
+            })),
+          );
+        });
+      },
+    );
+
+    // FL:FR-08: a person confirms a lost report and a found or sheltered animal are the same pet.
+    app.post(
+      '/field-records/pet_intake/:id/match',
+      {
+        schema: {
+          tags: ['field'],
+          params: uuidParam,
+          body: z.object({ otherId: z.uuid() }),
+          response: { 200: outAny },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('pet_intake.write', { type: 'pet_intake', tenantId: s.tenantId });
+        return request.tx(async (trx) => {
+          const ctx = await context(request, trx);
+          const pair = await trx
+            .selectFrom('cg.pet_intake')
+            .selectAll()
+            .where('id', 'in', [request.params.id, request.body.otherId])
+            .forUpdate()
+            .execute();
+          const self = pair.find((p) => p.id === request.params.id);
+          const other = pair.find((p) => p.id === request.body.otherId);
+          if (!self || !other || self.id === other.id) throw errors.notFound();
+          const sides = [self, other].map((p) =>
+            LOST.includes(p.status) ? 'lost' : FOUND.includes(p.status) ? 'found' : 'other',
+          );
+          if (sides[0] === sides[1] || sides.includes('other') || self.event_id !== other.event_id)
+            throw new ApiError(
+              409,
+              'not_a_pair',
+              'A match is a lost report and an animal found or sheltered in the same event.',
+            );
+          if (self.matched_with || other.matched_with)
+            throw new ApiError(409, 'already_matched', 'One of these is already matched.');
+          const now = new Date();
+          for (const [a, b] of [
+            [self, other],
+            [other, self],
+          ] as const)
+            await trx
+              .updateTable('cg.pet_intake')
+              .set({
+                matched_with: b.id,
+                matched_at: now,
+                matched_by: s.accountId,
+                updated_by: s.accountId,
+              })
+              .where('id', '=', a.id)
+              .execute();
+          await request.audit(trx, {
+            action: 'pet_intake.write',
+            targetType: 'pet_intake',
+            targetId: self.id,
+            changes: { fields: [{ name: 'matched_with', to: other.id }] },
+          });
+          const updated = await trx
+            .selectFrom('cg.pet_intake')
+            .selectAll()
+            .where('id', '=', self.id)
+            .executeTakeFirstOrThrow();
+          return SPECS['pet_intake']!.out(updated as unknown as Row, ctx);
+        });
+      },
+    );
+
+    // FL:FR-17: the crew leaves a stop. It names the check-in by the phone's id, so it works
+    // offline before the server has seen either; a resend changes nothing.
+    app.post(
+      '/field-records/canteen_stop/check-out',
+      {
+        schema: {
+          tags: ['field'],
+          body: z.object({
+            stopClientUuid: z.uuid(),
+            departedAt: z.iso.datetime().optional(),
+            mealsServed: z.number().int().min(0).max(100_000).optional(),
+            suppliesLeft: z.string().max(300).optional(),
+            /** About the food, never who has an allergy (plan reading 27). */
+            allergenNote: z.string().max(300).optional(),
+          }),
+          response: { 200: outAny },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        const decision = await request.authorize('canteen_stop.write', {
+          type: 'canteen_stop',
+          tenantId: s.tenantId,
+        });
+        const b = request.body;
+        return request.tx(async (trx) => {
+          const ctx = await context(request, trx);
+          let x = trx
+            .selectFrom('cg.canteen_stop')
+            .selectAll()
+            .where('client_uuid', '=', b.stopClientUuid)
+            .forUpdate();
+          if (decision.recordScope === 'own') x = x.where('created_by', '=', s.accountId);
+          const stop = await x.executeTakeFirst();
+          if (!stop) throw errors.notFound();
+          if (stop.departed_at) return SPECS['canteen_stop']!.out(stop as unknown as Row, ctx);
+          const departed = b.departedAt ? new Date(b.departedAt) : new Date();
+          if (departed < stop.arrived_at)
+            throw errors.validation([
+              { name: 'departedAt', message: 'the crew left before it arrived' },
+            ]);
+          const updated = await trx
+            .updateTable('cg.canteen_stop')
+            .set({
+              departed_at: departed,
+              meals_served: b.mealsServed ?? null,
+              supplies_left: b.suppliesLeft ?? null,
+              allergen_note: b.allergenNote ?? null,
+              updated_by: s.accountId,
+            })
+            .where('id', '=', stop.id)
+            .returningAll()
+            .executeTakeFirstOrThrow();
+          await request.audit(trx, {
+            action: 'canteen_stop.write',
+            targetType: 'canteen_stop',
+            targetId: stop.id,
+            changes: {
+              fields: [
+                { name: 'departed', to: 'yes' },
+                { name: 'meals_served', to: b.mealsServed ?? null },
+              ],
+            },
+          });
+          return SPECS['canteen_stop']!.out(updated as unknown as Row, ctx);
+        });
+      },
+    );
+
+    // FL:FR-08: the pet went home: both matched records say so.
+    app.post(
+      '/field-records/pet_intake/:id/reunite',
+      { schema: { tags: ['field'], params: uuidParam, response: { 200: outAny } } },
+      async (request) => {
+        const s = account(request);
+        await request.authorize('pet_intake.write', { type: 'pet_intake', tenantId: s.tenantId });
+        return request.tx(async (trx) => {
+          const ctx = await context(request, trx);
+          const self = await trx
+            .selectFrom('cg.pet_intake')
+            .selectAll()
+            .where('id', '=', request.params.id)
+            .forUpdate()
+            .executeTakeFirst();
+          if (!self) throw errors.notFound();
+          if (!self.matched_with)
+            throw new ApiError(409, 'not_matched', 'Confirm the match before the pet goes home.');
+          if (self.status === 'reunited')
+            throw new ApiError(409, 'already_reunited', 'This pet is already home.');
+          const now = new Date();
+          await trx
+            .updateTable('cg.pet_intake')
+            .set({ status: 'reunited', released_at: now, updated_by: s.accountId })
+            .where('id', 'in', [self.id, self.matched_with])
+            .execute();
+          await request.audit(trx, {
+            action: 'pet_intake.write',
+            targetType: 'pet_intake',
+            targetId: self.id,
+            changes: { fields: [{ name: 'status', from: self.status, to: 'reunited' }] },
+          });
+          const updated = await trx
+            .selectFrom('cg.pet_intake')
+            .selectAll()
+            .where('id', '=', self.id)
+            .executeTakeFirstOrThrow();
+          return SPECS['pet_intake']!.out(updated as unknown as Row, ctx);
+        });
+      },
+    );
+
     // FL:FR-14: a guest leaves the shelter.
     app.post(
       '/field-records/shelter_stay/:id/check-out',
@@ -1648,6 +2190,8 @@ export const fieldRecordRoutes =
               stockItemId: z.uuid(),
               quantity: z.number(),
               runningLow: z.boolean(),
+              /** FL:FR-22: the site's resupply draft gained this item; a person sends it. */
+              resupplyDrafted: z.boolean(),
             }),
           },
         },
@@ -1678,6 +2222,7 @@ export const fieldRecordRoutes =
               stockItemId: seen.stock_item_id,
               quantity: Number(seen.quantity),
               runningLow: low(seen.quantity, seen.reorder_at),
+              resupplyDrafted: false,
             };
           let itemId = b.stockItemId;
           if (!itemId && b.item) {
@@ -1709,7 +2254,7 @@ export const fieldRecordRoutes =
           }
           const item = await trx
             .selectFrom('cg.stock_item')
-            .select(['id', 'quantity', 'reorder_at'])
+            .select(['id', 'site_id', 'name', 'unit', 'quantity', 'reorder_at'])
             .where('id', '=', itemId!)
             .executeTakeFirst();
           if (!item) throw errors.notFound();
@@ -1754,11 +2299,23 @@ export const fieldRecordRoutes =
               ],
             },
           });
+          // FL:FR-22: at the reorder point, the site's resupply draft gains the item.
+          const runningLow = low(Math.max(0, nextQ), item.reorder_at);
+          const drafted =
+            runningLow && b.kind !== 'received' && b.kind !== 'requested'
+              ? await draftResupply(trx, {
+                  tenantId: s.tenantId,
+                  accountId: s.accountId,
+                  item,
+                  quantity: Math.max(0, nextQ),
+                })
+              : null;
           return {
             movementId: movement.id,
             stockItemId: item.id,
             quantity: Math.max(0, nextQ),
-            runningLow: low(Math.max(0, nextQ), item.reorder_at),
+            runningLow,
+            resupplyDrafted: drafted !== null,
           };
         });
       },
@@ -1785,6 +2342,9 @@ export const fieldRecordRoutes =
                 barcode: z.string().nullable(),
                 reorderAt: z.number().nullable(),
                 runningLow: z.boolean(),
+                /** FL:FR-22: handed out or sent on in the last 24 hours, and how long what is left lasts at that rate. */
+                usedLastDay: z.number(),
+                hoursLeft: z.number().nullable(),
               }),
             ),
           },
@@ -1796,13 +2356,18 @@ export const fieldRecordRoutes =
         const q = request.query;
         const rows = await request.tx((trx) => {
           let x = trx
-            .selectFrom('cg.stock_item')
-            .selectAll()
+            .selectFrom('cg.stock_item as i')
+            .selectAll('i')
+            .select(
+              sql<string>`(select coalesce(sum(m.quantity), 0) from cg.stock_movement m
+                where m.stock_item_id = i.id and m.kind in ('issued', 'transferred')
+                and m.occurred_at > now() - interval '24 hours')`.as('used_last_day'),
+            )
             .orderBy('name')
             .limit(q.limit)
             .offset(q.offset);
-          if (q.siteId) x = x.where('site_id', '=', q.siteId);
-          if (q.barcode) x = x.where('barcode', '=', q.barcode);
+          if (q.siteId) x = x.where('i.site_id', '=', q.siteId);
+          if (q.barcode) x = x.where('i.barcode', '=', q.barcode);
           return x.execute();
         });
         return rows.map((r) => ({
@@ -1815,6 +2380,11 @@ export const fieldRecordRoutes =
           barcode: r.barcode,
           reorderAt: r.reorder_at === null ? null : Number(r.reorder_at),
           runningLow: r.reorder_at !== null && Number(r.quantity) <= Number(r.reorder_at),
+          usedLastDay: Number(r.used_last_day),
+          hoursLeft:
+            Number(r.used_last_day) > 0
+              ? Math.floor((Number(r.quantity) / Number(r.used_last_day)) * 24)
+              : null,
         }));
       },
     );

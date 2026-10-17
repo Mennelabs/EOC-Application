@@ -16,6 +16,8 @@ export default tseslint.config(
       'apps/field/.expo/**',
       'apps/field/android/**',
       'apps/field/ios/**',
+      // MapLibre's worker files, copied in for the web build (apps/field/scripts/maplibre-worker.mjs).
+      'apps/field/public/maplibre/**',
       'playwright-report/**',
     ],
   },
@@ -56,6 +58,7 @@ export default tseslint.config(
       'services/cjis-api/src/provision.ts',
       'packages/intake/src/lint-cli.ts',
       'packages/ai/src/evaluation/cli.ts',
+      'packages/ai/src/evaluation/photos-cli.ts',
       'tools/**/*.mjs',
     ],
     rules: { 'no-console': 'off' },

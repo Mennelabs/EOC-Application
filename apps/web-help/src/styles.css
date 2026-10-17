@@ -296,6 +296,18 @@ dd {
   margin: 0.1rem 0 0;
   color: var(--cg-ink-2);
 }
+.resources li.with-thumb {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+.resources li.with-thumb img {
+  flex: none;
+  width: 96px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 4px;
+}
 .tools {
   display: flex;
   flex-wrap: wrap;
@@ -331,6 +343,7 @@ footer {
   .skip,
   .search,
   .tools,
+  .resources img,
   .map-tools,
   .map,
   nav,
@@ -415,4 +428,31 @@ footer {
   inline-size: 1.5rem;
   block-size: 1.5rem;
   accent-color: var(--cg-accent);
+}
+
+/* FL:FR-20: the code a volunteer shows at the desk, large enough to read across it. */
+.desk-code {
+  font-size: 3rem;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  margin: 0.5rem 0;
+}
+.waiver-text {
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 0 1rem;
+  margin-block: 0.5rem;
+}
+
+/* FL:FR-06: health notices before the list; a border, not colour alone, sets them apart. */
+.health-notice {
+  border: 2px solid currentColor;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  margin-block: 0.75rem;
+}
+.notice-kind {
+  font-weight: 700;
+  margin: 0;
 }

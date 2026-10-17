@@ -21,7 +21,7 @@ import { roleTemplates, type AccountSubject } from '@cg/authz';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
 import { createDb, type Database } from '@cg/db';
 import { westwindGraph } from '@cg/intake';
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import { loadSeed } from '../../../tools/seed/src/load.ts';
 import { relayChangesOnce, type ChangeRelayState } from '../../worker/src/jobs/changes.ts';
 import { buildApp, type App } from '../src/app.ts';
@@ -53,7 +53,20 @@ interface Board {
   hazards: unknown[];
   sites: unknown[];
   alerts: { id: string }[];
-  counts: { queue: number; active: number };
+  needs: {
+    id: string;
+    category: string;
+    referenceCode: string | null;
+    position: { lat: number; lon: number } | null;
+  }[];
+  closures: { id: string; name: string; status: string }[];
+  routeAreas: {
+    areaKey: string;
+    parcels: number;
+    outline: { type: string; coordinates: unknown } | null;
+    missions: { id: string; reference: string; assigned: boolean }[];
+  }[];
+  counts: { queue: number; active: number; needs: number; closures: number; routeAreas: number };
 }
 interface Suggestion {
   suggestions: {
@@ -96,7 +109,7 @@ interface Area {
   sites: unknown[];
   jobAids: { key: string }[];
   maps: { areaKey: string; available: boolean; url: string | null }[];
-  options: { tribalOwnership: boolean };
+  options: { tribalOwnership: boolean; restAfterHours: number };
 }
 interface Assignment {
   id: string;
@@ -352,6 +365,15 @@ describe.skipIf(!appUrl || !workerUrl)(
         );
       expect(board.counts.queue).toBe(board.queue.length);
       expect(board.counts.active).toBe(board.active.length);
+      // DSP-01: each open field route's parcel area is outlined, with its parcels and missions.
+      const willow = board.routeAreas.find((a) => a.areaKey === 'willow-bend');
+      expect(willow, JSON.stringify(board.routeAreas.map((a) => a.areaKey))).toBeDefined();
+      expect(willow!.parcels).toBeGreaterThan(10);
+      expect(willow!.outline?.type).toBe('Polygon');
+      const route = board.active.find((m) => m.id === willow!.missions[0]!.id) as
+        { routeArea?: string | null } | undefined;
+      expect(route?.routeArea).toBe('willow-bend');
+      expect(board.counts.routeAreas).toBe(board.routeAreas.length);
       // The partner's dispatcher: its teams only, and only the work it owns or holds (DSP-09).
       const partner = await call('saw', 'GET', `/api/v1/dispatch/board?eventId=${eventId}`);
       expect(partner.status, partner.body).toBe(200);
@@ -366,9 +388,142 @@ describe.skipIf(!appUrl || !workerUrl)(
             partnerTeamIds.size > 0,
         ).toBe(true);
       expect(pb.sites).toEqual([]);
+      // Route outlines only for the work the partner's board shows.
+      const partnerWork = new Set([...pb.queue, ...pb.active].map((m) => m.id));
+      for (const a of pb.routeAreas)
+        expect(a.missions.every((m) => partnerWork.has(m.id))).toBe(true);
       expect((await call('pio', 'GET', `/api/v1/dispatch/board?eventId=${eventId}`)).status).toBe(
         403,
       );
+    });
+
+    it('DSP-01, DSP-03, MIS-01: an open need with no mission waits on the board at about a block, becomes a mission in one step and leaves the needs; a second mission is refused, a replay is not; closed roads show until cleared', async () => {
+      const county = tenants['county']!;
+      const tag = randomUUID().slice(0, 8);
+      const place = await dbWorker
+        .insertInto('cg.location')
+        .values({
+          tenant_id: county,
+          line1: '212 Exercise Ave',
+          city: 'Harmon City',
+          postal: '63002',
+          precision: 'exact',
+          source: 'resident',
+          geom: sql`ST_SetSRID(ST_MakePoint(-90.87654, 38.79123), 4326)`,
+        } as never)
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      const need = await dbWorker
+        .insertInto('cg.need')
+        .values({
+          tenant_id: county,
+          event_id: eventId,
+          category: 'food_water',
+          status: 'open',
+          source: 'staff',
+          location_id: place.id,
+          reference_code: `NEED-${tag}`,
+        } as never)
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      const roads = [
+        ['Exercise Bridge Rd ' + tag, 'closed', 'Exercise: washed out'],
+        ['Exercise Mill St ' + tag, 'closed', 'Exercise: tree down'],
+        ['Exercise Mill St ' + tag, 'open', null],
+      ] as const;
+      let minutes = 30;
+      for (const [name, status, reason] of roads) {
+        await dbWorker
+          .insertInto('cg.road_status')
+          .values({
+            tenant_id: county,
+            event_id: eventId,
+            name,
+            status,
+            reason,
+            reported_at: new Date(Date.now() - (minutes -= 10) * 60_000),
+            geom: sql`ST_SetSRID(ST_MakeLine(ST_MakePoint(-90.88, 38.79), ST_MakePoint(-90.87, 38.79)), 4326)`,
+          } as never)
+          .execute();
+      }
+
+      const before = (
+        await call('priya', 'GET', `/api/v1/dispatch/board?eventId=${eventId}`)
+      ).json<Board>();
+      const waiting = before.needs.find((n) => n.id === need.id);
+      expect(waiting).toMatchObject({ category: 'food_water', referenceCode: `NEED-${tag}` });
+      // About a block: three decimals, never the exact place.
+      expect(waiting!.position).toEqual({ lat: 38.791, lon: -90.877 });
+      expect(before.counts.needs).toBe(before.needs.length);
+      // The latest report per road: the bridge is closed, Mill St reopened.
+      const closed = before.closures.map((c) => c.name);
+      expect(closed).toContain(`Exercise Bridge Rd ${tag}`);
+      expect(closed).not.toContain(`Exercise Mill St ${tag}`);
+      // A partner works its own queue: no county needs; the PIO has no board at all.
+      const partner = (
+        await call('saw', 'GET', `/api/v1/dispatch/board?eventId=${eventId}`)
+      ).json<Board>();
+      expect(partner.needs).toEqual([]);
+
+      const key = randomUUID();
+      const made = await call(
+        'priya',
+        'POST',
+        `/api/v1/needs/${need.id}/mission`,
+        { urgency: 'now' },
+        { 'idempotency-key': key },
+      );
+      expect(made.status, made.body).toBe(201);
+      const mission = made.json<{
+        id: string;
+        reference: string;
+        kind: string;
+        source: string;
+        needId: string;
+        state: string;
+        urgency: string;
+        summary: string;
+      }>();
+      expect(mission).toMatchObject({
+        kind: 'delivery',
+        source: 'need',
+        needId: need.id,
+        state: 'open',
+        urgency: 'now',
+      });
+      expect(mission.summary).toContain(`NEED-${tag}`);
+      const after = (
+        await call('priya', 'GET', `/api/v1/dispatch/board?eventId=${eventId}`)
+      ).json<Board>();
+      expect(after.needs.some((n) => n.id === need.id)).toBe(false);
+      expect(after.queue.some((m) => m.id === mission.id)).toBe(true);
+      // The same request again returns the same mission; a new one is refused with its reference.
+      const replay = await call(
+        'priya',
+        'POST',
+        `/api/v1/needs/${need.id}/mission`,
+        { urgency: 'now' },
+        { 'idempotency-key': key },
+      );
+      expect(replay.json<{ id: string }>().id).toBe(mission.id);
+      const again = await call(
+        'priya',
+        'POST',
+        `/api/v1/needs/${need.id}/mission`,
+        {},
+        { 'idempotency-key': randomUUID() },
+      );
+      expect(again.status).toBe(409);
+      expect(again.body).toContain(mission.reference);
+      // A role that cannot read needs cannot make one into a mission either.
+      const pio = await call(
+        'pio',
+        'POST',
+        `/api/v1/needs/${need.id}/mission`,
+        {},
+        { 'idempotency-key': randomUUID() },
+      );
+      expect([403, 404]).toContain(pio.status);
     });
 
     it('DSP-03: the suggestion names the nearest qualified team with its reasons and changes no record', async () => {
@@ -570,6 +725,29 @@ describe.skipIf(!appUrl || !workerUrl)(
       expect(page.changes.length).toBe(2);
       expect(page.more).toBe(true);
       expect(page.cursor).toBe(page.changes[1]!.seq);
+
+      // SEC-13: below the pruned mark the phone is told to download its area again; at the mark
+      // the sync goes on. The mark is put back to 0 so the shared county is left as it was.
+      const mark = page.cursor;
+      await dbWorker
+        .insertInto('cg.change_feed_pruned')
+        .values({ tenant_id: tenants['county']!, through_seq: mark })
+        .onConflict((oc) => oc.column('tenant_id').doUpdateSet({ through_seq: mark }))
+        .execute();
+      try {
+        const behind = await call('assessor', 'GET', `/api/v1/field/sync?cursor=${mark - 1}`);
+        expect(behind.status, behind.body).toBe(410);
+        expect(behind.json<{ code: string }>().code).toBe('cursor_expired');
+        expect((await call('assessor', 'GET', `/api/v1/field/sync?cursor=${mark}`)).status).toBe(
+          200,
+        );
+      } finally {
+        await dbWorker
+          .updateTable('cg.change_feed_pruned')
+          .set({ through_seq: 0 })
+          .where('tenant_id', '=', tenants['county']!)
+          .execute();
+      }
 
       // A batch from the phone: acknowledge the dispatch, report positions, raise a help alert.
       const ack = randomUUID();
@@ -834,8 +1012,8 @@ describe.skipIf(!appUrl || !workerUrl)(
       expect(outlines.parcels[0]!.geometry).toBeDefined();
       expect((await call('pio', 'GET', `/api/v1/field/area`)).status).toBe(403);
       // DCL:DEC-17: the tribal ownership question is asked only where the county turns it on.
-      const tribal = async (value: boolean) => {
-        const url = `/api/v1/tenants/${tenants['county']!}/config/field.tribal_ownership`;
+      const setConfig = async (key: string, value: unknown) => {
+        const url = `/api/v1/tenants/${tenants['county']!}/config/${key}`;
         const held = await call('admin', 'GET', url);
         const res = await call(
           'admin',
@@ -844,7 +1022,7 @@ describe.skipIf(!appUrl || !workerUrl)(
           { value },
           {
             'x-confirm': 'true',
-            'x-reason': 'Exercise: county includes tribal trust land',
+            'x-reason': 'Exercise: county field settings',
             ...(held.status === 200
               ? { 'if-match': `"${held.json<{ version: number }>().version}"` }
               : {}),
@@ -855,9 +1033,19 @@ describe.skipIf(!appUrl || !workerUrl)(
           .options;
       };
       try {
-        expect(await tribal(true)).toEqual({ tribalOwnership: true });
+        expect(await setConfig('field.tribal_ownership', true)).toMatchObject({
+          tribalOwnership: true,
+        });
       } finally {
-        expect(await tribal(false)).toEqual({ tribalOwnership: false });
+        expect(await setConfig('field.tribal_ownership', false)).toMatchObject({
+          tribalOwnership: false,
+        });
+      }
+      // FL-16: the county's rest limit reaches the phone; 12 hours unless the county sets one.
+      try {
+        expect((await setConfig('field.rest_after_hours', 10)).restAfterHours).toBe(10);
+      } finally {
+        expect((await setConfig('field.rest_after_hours', 12)).restAfterHours).toBe(12);
       }
       // The administrator wipes the device (consequential): the phone learns it on its next sync.
       // The administrator reads the device's current version (every contact touches it) and wipes it.

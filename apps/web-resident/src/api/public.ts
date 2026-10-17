@@ -61,7 +61,12 @@ async function call<T>(
 }
 
 export interface IntakeInfo {
-  tenant: { slug: string; name: string; branding: Record<string, unknown> };
+  tenant: {
+    slug: string;
+    name: string;
+    /** ADM-01: the county's branding, its known fields only. */
+    branding: { publicName?: { en?: string; es?: string }; website?: string; headerColor?: string };
+  };
   event: {
     id: string;
     name: string;
@@ -74,6 +79,8 @@ export interface IntakeInfo {
   sms: { termsUrl: string | null; privacyUrl: string | null };
   graph: QuestionGraph & { emergencyInstructions?: Record<string, string> };
   uploads: { enabled: boolean; maxBytes?: number };
+  /** INT-12: speaking instead of typing, through the county's AI service; absent means off. */
+  dictation?: boolean;
 }
 
 export const getIntake = (tenant: string, event: string, lang: string) =>
@@ -146,6 +153,46 @@ export const extract = (
     graphVersion: number;
   },
 ) => call<ExtractionResult>(`/intake/${tenant}/extract`, { body });
+
+/** AIG-09: the resident says the computer help went wrong, by a fixed reason with no words. */
+export type ComplaintReason = 'wrong' | 'not_my_language' | 'hard_to_understand' | 'other';
+export const aiComplaint = (
+  tenant: string,
+  body: {
+    executionId: string;
+    feature: 'intake.extraction' | 'intake.transcription';
+    reason: ComplaintReason;
+  },
+) => call<{ received: true }>(`/intake/${tenant}/ai-complaint`, { body });
+
+/** INT-12: the county's AI service writes a recorded clip down; nothing is kept. */
+export async function dictate(
+  tenant: string,
+  executionId: string,
+  language: string,
+  clip: { blob: Blob; type: string },
+): Promise<{ text: string; language: string }> {
+  let res: Response;
+  try {
+    res = await fetch(
+      `/api/public/intake/${tenant}/dictation?executionId=${encodeURIComponent(executionId)}&language=${encodeURIComponent(language)}`,
+      { method: 'POST', headers: { 'content-type': clip.type }, body: clip.blob },
+    );
+  } catch {
+    throw new Offline();
+  }
+  const text = await res.text();
+  const json = text ? (JSON.parse(text) as unknown) : null;
+  if (res.ok) return json as { text: string; language: string };
+  const env = (json ?? {}) as Partial<Envelope>;
+  throw new ApiFailure(res.status, {
+    code: env.code ?? 'error',
+    message: env.message ?? 'Something went wrong.',
+    fields: env.fields ?? [],
+    retryable: env.retryable ?? res.status >= 500,
+    details: env.details,
+  });
+}
 
 export const saveDraft = (tenant: string, executionId: string, payload: unknown) =>
   call<{ resumeCode: string; expiresAt: string }>(`/intake/${tenant}/drafts`, {
@@ -223,6 +270,23 @@ export async function putObjectViaApi(
     });
 }
 
+/** CHN-09: a ticket to add a photo to one's own report from My report. */
+export const requestMyUpload = (
+  tenant: string,
+  token: string,
+  body: {
+    shot: string;
+    contentType: string;
+    bytes: number;
+    takenAt?: string;
+    location?: { lat: number; lon: number };
+  },
+) =>
+  call<UploadTicket & { executionId: string }>(`/intake/${tenant}/me/photos`, {
+    body,
+    headers: { 'x-resident-token': token },
+  });
+
 export const completeUpload = (tenant: string, photoId: string, executionId: string) =>
   call<{ photoId: string; status: string }>(`/intake/${tenant}/photos/${photoId}/complete`, {
     body: { executionId },
@@ -231,6 +295,12 @@ export const completeUpload = (tenant: string, photoId: string, executionId: str
 export const lookupStart = (tenant: string, referenceCode: string, contact: string) =>
   call<{ status: string; message: string }>(`/intake/${tenant}/lookup/start`, {
     body: { referenceCode, contact },
+  });
+
+/** BRD:FR-01.06: the reference number goes to the phone or email on the report, never back here. */
+export const lookupRecover = (tenant: string, contact: string) =>
+  call<{ status: string; message: string }>(`/intake/${tenant}/lookup/recover`, {
+    body: { contact },
   });
 
 export const lookupVerify = (tenant: string, referenceCode: string, code: string) =>
@@ -245,6 +315,8 @@ export interface MyReport {
   verification: string;
   withdrawnAt: string | null;
   version: number;
+  /** CHN-09: photos on the report, whichever channel brought them. */
+  photos: number;
   needs: { id: string; category: string; status: string }[];
   consent: Record<string, boolean>;
   openQuestions: { id: string; questions: unknown; message: string | null; askedAt: string }[];

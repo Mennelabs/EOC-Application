@@ -9,10 +9,13 @@
  * carry a short public cache so a change reaches every channel inside the
  * two minutes PUB-01 allows. Pages are rendered by render.ts from plain data.
  */
+import { publicHealthNotices } from './health-notices.ts';
+import { GetObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { renderPdf } from '@cg/pdf';
+import { publicBranding, publicNameIn } from '../branding.ts';
 import { errors } from '../errors.ts';
 import { mediaSheetPdf } from './pdf.ts';
 import { sanitizeHtml } from './html.ts';
@@ -27,7 +30,7 @@ import {
   type Lang,
 } from './render.ts';
 import { askIntent, matchHelp } from './ask.ts';
-import { publicResources, publicSites, resolveNear } from './sites-view.ts';
+import { publicResources, publicSites, resolveNear, thumbnailTag } from './sites-view.ts';
 import { configValue } from './submit.ts';
 
 export { T, addressText, hoursText, langOf, type Lang } from './render.ts';
@@ -38,12 +41,20 @@ const langQuery = z.object({ lang: z.string().min(2).max(10).default('en') });
 
 const CACHE = 'public, max-age=60, stale-while-revalidate=60';
 const CSP =
-  "default-src 'none'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'";
+  "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; form-action 'none'; base-uri 'none'";
 
 export interface HelpDeps {
   /** The public site's base URL for links in feeds, texts and the widget (the gateway's public host). */
   publicBase?: string | undefined;
+  /** Where resource thumbnails are kept (FR-16.01); absent, none is shown. */
+  objects?: { client: S3Client; bucket: string } | undefined;
 }
+
+/** FR-16.01: the address of a published resource's thumbnail; the tag changes with the picture. */
+export const thumbnailUrl = (tenantSlug: string, resourceSlug: string, tag: string | null) =>
+  tag
+    ? `/api/public/help/${encodeURIComponent(tenantSlug)}/resources/${encodeURIComponent(resourceSlug)}/thumbnail.jpg?v=${encodeURIComponent(tag)}`
+    : null;
 
 export const helpRoutes =
   (deps: HelpDeps = {}): FastifyPluginAsync =>
@@ -53,7 +64,13 @@ export const helpRoutes =
     const tenantOf = (request: FastifyRequest) => {
       const t = (
         request as FastifyRequest & {
-          publicTenant?: { id: string; name: string; locales: string[]; slug: string };
+          publicTenant?: {
+            id: string;
+            name: string;
+            locales: string[];
+            slug: string;
+            branding?: unknown;
+          };
         }
       ).publicTenant;
       if (!t) throw errors.notFound();
@@ -79,7 +96,9 @@ export const helpRoutes =
         const helpPhone = (await configValue<string>(trx, 'intake.help_phone')) ?? null;
         const statement =
           (await configValue<string>(trx, 'help.accessibility_statement')) ?? T[lang].accessibility;
-        return { tenant, place, sites, resources, helpPhone, statement };
+        // FL:FR-06: boil-water and safety notices in force, the visitor's area first.
+        const healthNotices = await publicHealthNotices(trx, tenant.id, lang, place);
+        return { tenant, place, sites, resources, helpPhone, statement, healthNotices };
       });
     }
 
@@ -104,7 +123,13 @@ export const helpRoutes =
         const d = await gather(request, lang, request.query.near, request.query.kind);
         reply.header('cache-control', CACHE);
         return {
-          tenant: { name: d.tenant.name, slug: d.tenant.slug, locales: d.tenant.locales },
+          tenant: {
+            name: d.tenant.name,
+            slug: d.tenant.slug,
+            locales: d.tenant.locales,
+            // ADM-01: the county's branding, its known fields only.
+            branding: publicBranding(d.tenant.branding),
+          },
           lang,
           generatedAt: new Date().toISOString(),
           near: d.place,
@@ -112,9 +137,11 @@ export const helpRoutes =
           resources: d.resources.map((r) => ({
             ...r,
             url: `/api/public/help/${encodeURIComponent(d.tenant.slug)}/resources/${encodeURIComponent(r.slug)}?lang=${lang}`,
+            thumbnailUrl: thumbnailUrl(d.tenant.slug, r.slug, r.thumbnail),
           })),
           accessibility: { statement: d.statement, supportPhone: d.helpPhone },
           notices: [T[lang].danger],
+          healthNotices: d.healthNotices,
           helpUrl: pageUrl(d.tenant.slug, lang),
         };
       },
@@ -253,7 +280,7 @@ export const helpRoutes =
           r.status === 'removed' || r.unpublished_at ? (r.unpublished_at ?? r.updated_at) : null;
         const common = {
           lang,
-          tenantName: tenant.name,
+          tenantName: publicNameIn(tenant.branding, lang) ?? tenant.name,
           tenantSlug: tenant.slug,
           title: text.title,
         };
@@ -275,8 +302,63 @@ export const helpRoutes =
             safeBodyHtml: sanitizeHtml(text.body_html),
             referenceUrl: r.reference_url,
             updatedAt: new Date(r.updated_at).toISOString(),
+            thumbnailUrl: thumbnailUrl(
+              tenant.slug,
+              r.slug,
+              thumbnailTag(r.published_thumbnail_key),
+            ),
           }),
         );
+      },
+    );
+
+    // FR-16.01, FR-16.02: a resource's thumbnail, only while the resource is published and current.
+    app.get(
+      '/help/:tenant/resources/:slug/thumbnail.jpg',
+      {
+        schema: {
+          tags: ['public help'],
+          params: tenantParam.extend({ slug: z.string().min(1).max(80) }),
+        },
+      },
+      async (request, reply) => {
+        const tenant = tenantOf(request);
+        await request.authorize('help.read', {
+          type: 'help',
+          tenantId: tenant.id,
+          published: true,
+        });
+        const r = await request.tx((trx) =>
+          trx
+            .selectFrom('cg.resource')
+            .select([
+              'published_thumbnail_key',
+              'status',
+              'published_at',
+              'unpublished_at',
+              'expires_at',
+            ])
+            .where('slug', '=', request.params.slug)
+            .executeTakeFirst(),
+        );
+        const current =
+          r &&
+          r.status === 'published' &&
+          r.published_at !== null &&
+          r.unpublished_at === null &&
+          (!r.expires_at || new Date(r.expires_at) > new Date());
+        if (!current || !r.published_thumbnail_key || !deps.objects) throw errors.notFound();
+        const obj = await deps.objects.client
+          .send(
+            new GetObjectCommand({ Bucket: deps.objects.bucket, Key: r.published_thumbnail_key }),
+          )
+          .catch(() => null);
+        if (!obj?.Body) throw errors.notFound();
+        return reply
+          .header('content-type', 'image/jpeg')
+          .header('cache-control', 'public, max-age=300')
+          .header('x-content-type-options', 'nosniff')
+          .send(Buffer.from(await obj.Body.transformToByteArray()));
       },
     );
 
@@ -439,7 +521,7 @@ export const helpRoutes =
           reply,
           mediaPage({
             lang,
-            tenantName: d.tenant.name,
+            tenantName: publicNameIn(d.tenant.branding, lang) ?? d.tenant.name,
             tenantSlug: d.tenant.slug,
             sites: d.sites,
             resources: d.resources,
@@ -468,7 +550,7 @@ export const helpRoutes =
         const pdf = await renderPdf(
           mediaSheetPdf({
             lang,
-            tenantName: d.tenant.name,
+            tenantName: publicNameIn(d.tenant.branding, lang) ?? d.tenant.name,
             tenantSlug: d.tenant.slug,
             sites: d.sites,
             resources: d.resources,

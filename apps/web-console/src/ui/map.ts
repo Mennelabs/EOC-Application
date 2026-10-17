@@ -118,8 +118,17 @@ export interface MapShadeArea {
 export const SHADE_COLORS = ['#f1e7f8', '#d3b8ea', '#b08ad8', '#8a5cc2', '#5e2f9e'] as const;
 export const SHADE_UNKNOWN = '#c8c8c8';
 
+/** An area drawn as an outline (DSP-01: a field route's parcels); its label is read aloud when picked. */
+export interface MapOutline {
+  id: string;
+  geometry: unknown;
+  label: string;
+}
+
 export interface ConsoleMap {
   setPoints(points: MapPoint[], visibleLayers: ReadonlySet<string>): void;
+  /** Outlined areas, picked by clicking inside; null removes them. */
+  setOutlines(outlines: MapOutline[] | null, onPick: (label: string) => void): void;
   /** The event's area (GeoJSON), outlined; null removes it. */
   setArea(geojson: unknown): void;
   /** Tracts shaded by class; null removes the shading. */
@@ -152,6 +161,11 @@ export function openMap(
   let markers: Marker[] = [];
   let fitted = false;
   let shadePick: ((label: string) => void) | null = null;
+  let outlinePick: ((label: string) => void) | null = null;
+  map.on('click', 'outline-fill', (e) => {
+    const label = e.features?.[0]?.properties?.['label'];
+    if (typeof label === 'string') outlinePick?.(label);
+  });
   // One listener for the shaded tracts, whichever shading is drawn.
   map.on('click', 'shade-fill', (e) => {
     const label = e.features?.[0]?.properties?.['label'];
@@ -178,6 +192,43 @@ export function openMap(
         map.fitBounds(bounds, { padding: 48, maxZoom: 14, duration: 0 });
         fitted = true;
       }
+    },
+    setOutlines(outlines, pick) {
+      outlinePick = pick;
+      const apply = () => {
+        for (const id of ['outline-line', 'outline-fill'])
+          if (map.getLayer(id)) map.removeLayer(id);
+        if (map.getSource('outlines')) map.removeSource('outlines');
+        if (!outlines) return;
+        map.addSource('outlines', {
+          type: 'geojson',
+          data: {
+            type: 'FeatureCollection',
+            features: outlines
+              .filter((o) => o.geometry)
+              .map((o) => ({
+                type: 'Feature',
+                geometry: o.geometry as never,
+                properties: { id: o.id, label: o.label },
+              })),
+          },
+        });
+        // A faint fill so a click inside picks the area; a solid outline, unlike the event's dashes.
+        map.addLayer({
+          id: 'outline-fill',
+          type: 'fill',
+          source: 'outlines',
+          paint: { 'fill-color': '#00695c', 'fill-opacity': 0.08 },
+        });
+        map.addLayer({
+          id: 'outline-line',
+          type: 'line',
+          source: 'outlines',
+          paint: { 'line-color': '#00695c', 'line-width': 2.5 },
+        });
+      };
+      if (map.isStyleLoaded()) apply();
+      else map.once('load', apply);
     },
     setArea(geojson) {
       const apply = () => {

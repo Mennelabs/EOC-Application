@@ -40,15 +40,23 @@ import {
   ApiError,
   OfflineError,
   type AreaOptions,
+  type AreaPackage,
   type CheckIn,
   type Me,
   type VoiceDraft,
 } from './api';
 import { takePhoto } from './camera';
+import { downloadMap, hasMap, keepOnlyMaps, type StoredMap } from './maps';
 import * as auth from './auth';
 import { loadConfig, type FieldConfig } from './config';
 import { deviceLocale, LocaleContext, translate, type Locale, type MessageKey } from './i18n';
-import { currentFix, startLocation, stopLocation, type Fix } from './location';
+import {
+  currentFix,
+  startLocation,
+  stopLocation,
+  type Fix,
+  type LocationPermission,
+} from './location';
 import { deviceLanguage, loadPrefs, savePrefs } from './prefs';
 import { defaultSettings, themeFor, type Settings, type Theme } from './theme';
 import * as vault from './vault';
@@ -115,6 +123,9 @@ interface FieldState {
   hazards: HazardArea[];
   areaSummary: { assignments: number; parcels: number; hazards: number; asOf: string } | null;
   areaState: 'idle' | 'downloading' | 'ready' | 'failed';
+  /** FLD-13: the offline map packages on this phone, and how the last download went. */
+  maps: StoredMap[];
+  mapState: 'none' | 'downloading' | 'ready' | 'failed';
   /** County choices from the area package; defaults until one is downloaded. */
   options: AreaOptions;
   sync: SyncStatus;
@@ -123,6 +134,8 @@ interface FieldState {
   photos: PhotoDoc[];
   timer: TimerState | null;
   fix: Fix | null;
+  /** BRD:FR-03.05: what the phone allows with location on this shift; null until known. */
+  locationPermission: LocationPermission | null;
   policy: LocationPolicy;
   notice: string | null;
   can: (action: string) => boolean;
@@ -136,7 +149,7 @@ interface FieldActions {
   unlock(pin: string): Promise<{ ok: boolean; triesLeft?: number }>;
   unlockWithBiometrics(): Promise<boolean>;
   biometrics(): Promise<boolean>;
-  checkInWithCode(code: string, share: boolean): Promise<string | null>;
+  checkInWithCode(code: string, share: boolean, scanned?: boolean): Promise<string | null>;
   downloadArea(): Promise<void>;
   weAreOk(): Promise<void>;
   acknowledgeAssignment(id: string): Promise<void>;
@@ -174,6 +187,11 @@ interface FieldActions {
     photoIds?: string[];
   }): Promise<void>;
   logService(kind: string, count: number, siteId?: string): Promise<void>;
+  /** FL-16: ask privately for peer support; queued like any other record while offline. */
+  askPeerSupport(
+    reachBy: 'call' | 'text' | 'in_person',
+    reachWhen: 'now' | 'after_shift',
+  ): Promise<void>;
   census(siteId: string, occupancy: number, status?: string): Promise<void>;
   needDone(needId: string, note: string, photoIds?: string[]): Promise<void>;
   /** Online lists the phone does not keep (needs held by the crew's organization). */
@@ -185,6 +203,8 @@ interface FieldActions {
     body?: unknown,
     headers?: Record<string, string>,
   ): Promise<T>;
+  /** Raw bytes for a screen that needs signal (the scribe's recording, FL-04). */
+  sendBytes(path: string, contentType: string, data: Uint8Array): Promise<void>;
   /** A frontline role record (task J), kept on the phone and sent as `record.<kind>`. */
   saveRecord(
     kind: string,
@@ -194,6 +214,11 @@ interface FieldActions {
   ): Promise<string>;
   /** A next step on a record the server already has (a road reopens, an interpreter accepts). */
   recordStep(kind: string, targetId: string, body?: Record<string, unknown>): Promise<void>;
+  /** FL:FR-17: leave a canteen stop, named by the phone's id for its check-in (works offline). */
+  canteenCheckOut(
+    stopId: string,
+    body: { mealsServed: number; suppliesLeft?: string; allergenNote?: string },
+  ): Promise<void>;
 }
 
 export interface AssessmentInput {
@@ -221,7 +246,7 @@ export function useField(): FieldState & FieldActions {
   return v;
 }
 
-const defaultOptions: AreaOptions = { tribalOwnership: false };
+const defaultOptions: AreaOptions = { tribalOwnership: false, restAfterHours: 12 };
 
 const emptySync: SyncStatus = {
   phase: 'idle',
@@ -245,18 +270,25 @@ export function FieldProvider({ children }: { children: ReactNode }) {
   const [hazards, setHazards] = useState<HazardArea[]>([]);
   const [areaSummary, setAreaSummary] = useState<FieldState['areaSummary']>(null);
   const [areaState, setAreaState] = useState<FieldState['areaState']>('idle');
+  const [maps, setMaps] = useState<StoredMap[]>([]);
+  const [mapState, setMapState] = useState<FieldState['mapState']>('none');
   const [options, setOptions] = useState<AreaOptions>(defaultOptions);
   const [sync, setSync] = useState<SyncStatus>(emptySync);
   const [outbox, setOutbox] = useState<OutboxCommand[]>([]);
   const [photos, setPhotos] = useState<PhotoDoc[]>([]);
   const [timer, setTimer] = useState<TimerState | null>(null);
   const [fix, setFix] = useState<Fix | null>(null);
+  const [locationPermission, setLocationPermission] = useState<LocationPermission | null>(null);
+  /** The last permission dispatch was told, so the same answer is not queued again. */
+  const toldPermission = useRef<LocationPermission | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [urgent, setUrgent] = useState(false);
 
   const store = useRef<FieldStore | null>(null);
   const loop = useRef<SyncLoop | null>(null);
   const photoQueue = useRef<PhotoQueue | null>(null);
+  /** SEC-13: downloads the area again when the server pruned changes this phone missed. */
+  const areaLoader = useRef<(() => Promise<number | null>) | null>(null);
   const api = useRef<Api>(new Api(''));
   const fixes = useRef<Fix[]>([]);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -310,6 +342,8 @@ export function FieldProvider({ children }: { children: ReactNode }) {
     setTimer(timerRaw ? (JSON.parse(timerRaw) as TimerState) : null);
     const area = await s.getMeta('area');
     setAreaSummary(area ? (JSON.parse(area) as FieldState['areaSummary']) : null);
+    const kept = await s.getMeta('maps');
+    setMaps(kept ? (JSON.parse(kept) as StoredMap[]) : []);
     const opts = await s.getMeta('options');
     setOptions(
       opts ? { ...defaultOptions, ...(JSON.parse(opts) as Partial<AreaOptions>) } : defaultOptions,
@@ -362,6 +396,8 @@ export function FieldProvider({ children }: { children: ReactNode }) {
       loop.current = new SyncLoop(s, api.current, {
         events: {
           onStatus: (st) => setSync({ ...st }),
+          // SEC-13: changes this phone missed were pruned; its area is downloaded again.
+          onResync: () => areaLoader.current?.() ?? Promise.resolve(null),
           onWipe: () => {
             void vault.wipeVault().then(() => auth.saveSession(null));
             store.current = null;
@@ -434,10 +470,25 @@ export function FieldProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (phase !== 'ready') return;
     let flush: ReturnType<typeof setInterval> | null = null;
-    void startLocation(policy, (f) => {
-      setFix(f);
-      fixes.current.push(f);
-    });
+    void startLocation(
+      policy,
+      (f) => {
+        setFix(f);
+        fixes.current.push(f);
+      },
+      // BRD:FR-03.05: a blocked phone is said to dispatch through the outbox, once per change.
+      (p) => {
+        setLocationPermission(p);
+        if (toldPermission.current === p || !loop.current) return;
+        toldPermission.current = p;
+        void loop.current.outbox
+          .enqueue({
+            kind: 'check_in.location_permission',
+            body: { permission: p, observedAt: new Date().toISOString() },
+          })
+          .then(kick);
+      },
+    );
     if (policy.enabled)
       flush = setInterval(() => {
         const batch = thinFixes(fixes.current, policy, new Date(), distanceM);
@@ -464,6 +515,103 @@ export function FieldProvider({ children }: { children: ReactNode }) {
     },
     [refresh, kick],
   );
+
+  /**
+   * FLD-13: the map packages of the areas this phone was given, downloaded once per version and
+   * checked against their hash; a package that fails keeps the one already here, if any.
+   */
+  const loadMaps = async (offers: AreaPackage['maps']) => {
+    const s = store.current;
+    if (!s) return;
+    const raw = await s.getMeta('maps');
+    const had = raw ? (JSON.parse(raw) as StoredMap[]) : [];
+    const ready = offers.filter(
+      (o) => o.available && o.url && o.sha256 && o.version !== null && o.bounds && o.bytes,
+    );
+    const kept: StoredMap[] = [];
+    let failed = false;
+    if (ready.length) setMapState('downloading');
+    for (const o of ready) {
+      const same = had.find(
+        (h) => h.areaKey === o.areaKey && h.version === o.version && h.sha256 === o.sha256,
+      );
+      if (same && (await hasMap(same))) {
+        kept.push(same);
+        continue;
+      }
+      try {
+        kept.push(
+          await downloadMap({
+            areaKey: o.areaKey,
+            url: o.url!,
+            sha256: o.sha256!,
+            version: o.version!,
+            bytes: o.bytes!,
+            bounds: o.bounds!,
+          }),
+        );
+      } catch {
+        failed = true;
+        const older = had.find((h) => h.areaKey === o.areaKey);
+        if (older && (await hasMap(older))) kept.push(older);
+      }
+    }
+    await keepOnlyMaps(kept);
+    await s.setMeta('maps', JSON.stringify(kept));
+    setMaps(kept);
+    setMapState(failed ? 'failed' : kept.length ? 'ready' : 'none');
+  };
+
+  /** The area package written to the phone; its cursor, or null when it could not be read. */
+  const loadArea = async (): Promise<number | null> => {
+    const s = store.current;
+    if (!s) return null;
+    setAreaState('downloading');
+    let cursor: number | null = null;
+    try {
+      const pkg = await api.current.area(checkIn?.eventId ?? null, locale);
+      for (const a of pkg.assignments) {
+        await s.put('assignments', {
+          id: a.id,
+          version: a.version,
+          state: a.state,
+          missionId: a.mission.id,
+          reference: a.mission.reference,
+          teamId: a.teamId,
+          personnelId: a.personnelId,
+          syncState: 'received',
+        });
+        await s.put('missions', { ...a.mission, syncState: 'received' });
+      }
+      await s.clear('parcels');
+      for (const p of pkg.parcels) await s.put('parcels', { ...p });
+      for (const h of pkg.hazards) await s.put('hazards', { ...h, syncState: 'received' });
+      for (const x of pkg.sites) await s.put('sites', { ...x });
+      await s.clear('job_aids');
+      for (const j of pkg.jobAids) await s.put('job_aids', { ...j });
+      await s.setMeta('options', JSON.stringify({ ...defaultOptions, ...pkg.options }));
+      await s.setMeta(
+        'area',
+        JSON.stringify({
+          assignments: pkg.assignments.length,
+          parcels: pkg.parcels.length,
+          hazards: pkg.hazards.length,
+          asOf: pkg.asOf,
+        }),
+      );
+      setAreaState('ready');
+      cursor = pkg.cursor;
+      // The maps come after the records: the lists work while they download.
+      void loadMaps(pkg.maps);
+    } catch {
+      setAreaState('failed');
+    }
+    await refresh();
+    return cursor;
+  };
+  useEffect(() => {
+    areaLoader.current = loadArea;
+  });
 
   const actions: FieldActions = {
     t,
@@ -498,7 +646,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
       return true;
     },
     biometrics: () => vault.biometricsAvailable(),
-    async checkInWithCode(code, share) {
+    async checkInWithCode(code, share, scanned = false) {
       const s = store.current;
       if (!s) return 'locked';
       try {
@@ -506,6 +654,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
         const ci = await api.current.checkIn({
           eventCode: code.trim(),
           locationSharing: share,
+          method: scanned ? 'qr' : 'event_code',
           ...(deviceId ? { deviceId } : {}),
         });
         await s.setMeta('checkin', JSON.stringify(ci));
@@ -532,45 +681,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
       }
     },
     async downloadArea() {
-      const s = store.current;
-      if (!s) return;
-      setAreaState('downloading');
-      try {
-        const pkg = await api.current.area(checkIn?.eventId ?? null, locale);
-        for (const a of pkg.assignments) {
-          await s.put('assignments', {
-            id: a.id,
-            version: a.version,
-            state: a.state,
-            missionId: a.mission.id,
-            reference: a.mission.reference,
-            teamId: a.teamId,
-            personnelId: a.personnelId,
-            syncState: 'received',
-          });
-          await s.put('missions', { ...a.mission, syncState: 'received' });
-        }
-        await s.clear('parcels');
-        for (const p of pkg.parcels) await s.put('parcels', { ...p });
-        for (const h of pkg.hazards) await s.put('hazards', { ...h, syncState: 'received' });
-        for (const x of pkg.sites) await s.put('sites', { ...x });
-        await s.clear('job_aids');
-        for (const j of pkg.jobAids) await s.put('job_aids', { ...j });
-        await s.setMeta('options', JSON.stringify({ ...defaultOptions, ...pkg.options }));
-        await s.setMeta(
-          'area',
-          JSON.stringify({
-            assignments: pkg.assignments.length,
-            parcels: pkg.parcels.length,
-            hazards: pkg.hazards.length,
-            asOf: pkg.asOf,
-          }),
-        );
-        setAreaState('ready');
-      } catch {
-        setAreaState('failed');
-      }
-      await refresh();
+      await loadArea();
     },
     async weAreOk() {
       const s = store.current;
@@ -804,6 +915,9 @@ export function FieldProvider({ children }: { children: ReactNode }) {
         },
       });
     },
+    async askPeerSupport(reachBy, reachWhen) {
+      await enqueue({ kind: 'peer_support.request', body: { reachBy, reachWhen } });
+    },
     async logService(kind, count, siteId) {
       await enqueue({
         kind: 'service_log.record',
@@ -829,6 +943,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
       body?: unknown,
       headers?: Record<string, string>,
     ) => api.current.call<T>(method, path, body ?? {}, headers),
+    sendBytes: (path, contentType, data) => api.current.put(path, contentType, data),
     async saveRecord(kind, body, summary, opts) {
       const s = store.current;
       if (!s) throw new Error('locked');
@@ -866,6 +981,12 @@ export function FieldProvider({ children }: { children: ReactNode }) {
     async recordStep(kind, targetId, body) {
       await enqueue({ kind: `record.${kind}`, targetId, body: body ?? {} });
     },
+    async canteenCheckOut(stopId, body) {
+      await enqueue({
+        kind: 'record.canteen_stop.check_out',
+        body: { stopClientUuid: stopId, departedAt: new Date().toISOString(), ...body },
+      });
+    },
   };
 
   const value: FieldState & FieldActions = {
@@ -882,12 +1003,15 @@ export function FieldProvider({ children }: { children: ReactNode }) {
     hazards,
     areaSummary,
     areaState,
+    maps,
+    mapState,
     options,
     sync,
     outbox,
     photos,
     timer,
     fix,
+    locationPermission,
     policy,
     notice,
     can,

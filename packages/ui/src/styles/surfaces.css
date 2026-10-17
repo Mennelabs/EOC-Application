@@ -174,7 +174,8 @@ th.cg-num {
 .meta,
 .cg-meta {
   display: grid;
-  grid-template-columns: max-content 1fr;
+  /* WCAG 1.4.10: a long term wraps instead of widening the page. */
+  grid-template-columns: fit-content(45%) minmax(0, 1fr);
   gap: var(--cg-space-1) var(--cg-space-4);
   margin: 0;
 }
@@ -187,6 +188,7 @@ th.cg-num {
 .cg-meta dd {
   margin: 0;
   min-inline-size: 0;
+  overflow-wrap: anywhere;
 }
 @media (max-width: 30rem) {
   .meta,

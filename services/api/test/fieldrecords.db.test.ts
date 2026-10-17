@@ -8,7 +8,8 @@
  * at the door, census from the open stays, check-out), FR-15 health notes
  * (health roles only, each read audited), FR-28 canvass ("no one home"
  * schedules a revisit), FR-21/22 stock (append-only by phone id), FR-24
- * interpreter requests, and the field commands that carry them (FLD-13).
+ * interpreter requests, FLD-11 quick reports of a site's status or a
+ * resource seen, and the field commands that carry them (FLD-13).
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -106,6 +107,12 @@ describe.skipIf(!appUrl || !workerUrl)('frontline role records (database-backed)
       ['pio', 'public_information_officer'],
       ['reception', 'volunteer_reception'],
       ['inspector', 'building_inspector'],
+      ['roads', 'road_crew'],
+      ['health', 'public_health_inspector'],
+      ['host', 'facility_host'],
+      ['volunteer', 'field_volunteer'],
+      ['coordinator', 'field_coordinator'],
+      ['canteen', 'canteen_crew'],
     ] as const) {
       const email = `${who}.fieldrecords@example.org`;
       const existing = await dbWorker
@@ -494,6 +501,126 @@ describe.skipIf(!appUrl || !workerUrl)('frontline role records (database-backed)
     ).toBe(403);
   });
 
+  it('FL:FR-21, FL:FR-22: at the reorder point a resupply draft is started with a suggested quantity; a person sends it; the warehouse fills it; a site asks by hand', async () => {
+    type Req = {
+      id: string;
+      version: number;
+      status: string;
+      draftedAutomatically: boolean;
+      lines: { stockItemId: string; quantity: number; suggested: number | null }[];
+    };
+    const stepCall = async (id: string, to: string, version: number, payload: Json = {}) => {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/supply-requests/${id}/${to}`,
+        headers: { authorization: 'Bearer stock', 'if-match': `"${version}"` },
+        payload,
+      });
+      return { status: res.statusCode, body: res.body, json: () => res.json() as Req };
+    };
+    const drafts = async () =>
+      (await call('stock', 'GET', `/api/v1/supply-requests?siteId=${siteId}&status=draft`)).json<
+        Req[]
+      >();
+    // Start from no draft at this site (other tests and earlier runs leave one).
+    for (const d of await drafts())
+      expect((await stepCall(d.id, 'cancel', d.version)).status).toBe(200);
+
+    const move = (body: Json) =>
+      call('stock', 'POST', '/api/v1/field-records/stock_movement', body);
+    const sku = `WATER-${randomUUID().slice(0, 6)}`;
+    const received = await move({
+      clientUuid: randomUUID(),
+      item: { siteId, sku, name: 'Exercise water, cases', unit: 'case', reorderAt: 10 },
+      kind: 'received',
+      quantity: 30,
+    });
+    const itemId = received.json()['stockItemId'] as string;
+    const issue = async (quantity: number) =>
+      (
+        await move({ clientUuid: randomUUID(), stockItemId: itemId, kind: 'issued', quantity })
+      ).json();
+    expect(await issue(15)).toMatchObject({
+      quantity: 15,
+      runningLow: false,
+      resupplyDrafted: false,
+    });
+    expect(await issue(8)).toMatchObject({ quantity: 7, runningLow: true, resupplyDrafted: true });
+    // Asked for once: a second low movement does not add the item again.
+    expect(await issue(1)).toMatchObject({ quantity: 6, resupplyDrafted: false });
+
+    // A day's use (23 so far when drafted) plus back to the reorder point (10), less the 7 left.
+    const [draft] = await drafts();
+    expect(draft).toMatchObject({ status: 'draft', draftedAutomatically: true });
+    expect(draft!.lines).toEqual([
+      {
+        stockItemId: itemId,
+        name: 'Exercise water, cases',
+        unit: 'case',
+        quantity: 26,
+        suggested: 26,
+      },
+    ]);
+
+    // How fast it runs down: 24 handed out in the last day, 6 left, about 6 hours.
+    const listed = (
+      await call('stock', 'GET', `/api/v1/field-records/stock_item?siteId=${siteId}`)
+    ).json<{ id: string; usedLastDay: number; hoursLeft: number | null }[]>();
+    expect(listed.find((i) => i.id === itemId)).toMatchObject({ usedLastDay: 24, hoursLeft: 6 });
+
+    // Nothing is sent on its own: a person changes the quantity and sends it.
+    const sent = await stepCall(draft!.id, 'send', draft!.version, {
+      lines: [{ stockItemId: itemId, quantity: 30 }],
+    });
+    expect(sent.status, sent.body).toBe(200);
+    expect(sent.json()).toMatchObject({ status: 'sent', lines: [{ quantity: 30, suggested: 26 }] });
+    expect((await stepCall(draft!.id, 'send', sent.json().version)).status).toBe(409);
+    // On a sent request that is not filled: not drafted again.
+    expect(await issue(1)).toMatchObject({ resupplyDrafted: false });
+    const filled = await stepCall(draft!.id, 'fill', sent.json().version);
+    expect(filled.status, filled.body).toBe(200);
+    expect(filled.json().status).toBe('filled');
+    expect((await stepCall(draft!.id, 'fill', filled.json().version)).status).toBe(409);
+    // Once filled, a new shortage starts a new draft.
+    expect(await issue(1)).toMatchObject({ resupplyDrafted: true });
+    const [next] = await drafts();
+    expect(next!.id).not.toBe(draft!.id);
+    expect((await stepCall(next!.id, 'cancel', next!.version)).json().status).toBe('canceled');
+
+    // FL:FR-21: a site asks by hand, sent at once, once per phone id; only its own items.
+    const clientUuid = randomUUID();
+    const ask = (lines: Json[]) =>
+      call('stock', 'POST', '/api/v1/supply-requests', {
+        clientUuid,
+        siteId,
+        lines,
+        note: 'Exercise: for tomorrow',
+      });
+    const otherSite = await dbWorker
+      .selectFrom('cg.stock_item')
+      .select('id')
+      .where('tenant_id', '=', county)
+      .where('site_id', '<>', siteId)
+      .executeTakeFirst();
+    if (otherSite)
+      expect(
+        (
+          await call('stock', 'POST', '/api/v1/supply-requests', {
+            clientUuid: randomUUID(),
+            siteId,
+            lines: [{ stockItemId: otherSite.id, quantity: 3 }],
+          })
+        ).status,
+      ).toBe(400);
+    const asked = await ask([{ stockItemId: itemId, quantity: 12 }]);
+    expect(asked.status, asked.body).toBe(201);
+    expect(asked.json()).toMatchObject({ status: 'sent', draftedAutomatically: false });
+    const again = await ask([{ stockItemId: itemId, quantity: 12 }]);
+    expect(again.status).toBe(200);
+    expect(again.json()['id']).toBe(asked.json()['id']);
+    expect((await call('pio', 'GET', '/api/v1/supply-requests')).status).toBe(403);
+  });
+
   it('FL:FR-24: an interpreter accepts and finishes a request; the order of steps is enforced', async () => {
     const req = await create('shelter', 'interpreter_request', {
       clientUuid: randomUUID(),
@@ -536,6 +663,84 @@ describe.skipIf(!appUrl || !workerUrl)('frontline role records (database-backed)
       recordId: pet['id'],
     });
     expect(ticket.status, ticket.body).toBe(201);
+  });
+
+  it('FL:FR-08: a lost report is matched to a sheltered animal by a person, from suggestions with shared words; the pet goes home; the shelter census counts what is there', async () => {
+    type Census = { siteId: string | null; total: number; bySpecies: Record<string, number> }[];
+    const census = async () =>
+      (await call('pets', 'GET', `/api/v1/field-records/pet_intake/census?eventId=${eventId}`))
+        .json<Census>()
+        .find((c) => c.siteId === siteId) ?? { siteId, total: 0, bySpecies: {} };
+    const before = await census();
+    // A word only this run's descriptions carry, so animals from earlier runs rank below.
+    const tag = `spot${randomUUID().slice(0, 6)}`;
+    const pet = (body: Json) =>
+      create('pets', 'pet_intake', { clientUuid: randomUUID(), eventId, ...body });
+    const lost = await pet({
+      species: 'dog',
+      status: 'lost_report',
+      ownerReferenceCode: 'ww-7m2p',
+      description: `Brown terrier, red collar, ${tag}, answers to Biscuit`,
+    });
+    const terrier = await pet({
+      siteId,
+      species: 'dog',
+      description: `Small brown terrier with a red collar, ${tag}, very friendly`,
+    });
+    const lab = await pet({ siteId, species: 'dog', description: 'Large black lab' });
+    const cat = await pet({ siteId, species: 'cat', description: 'Brown tabby, red collar' });
+    const after = await census();
+    expect(after.bySpecies['dog'] ?? 0).toBe((before.bySpecies['dog'] ?? 0) + 2);
+    expect(after.bySpecies['cat'] ?? 0).toBe((before.bySpecies['cat'] ?? 0) + 1);
+    expect(after.total).toBe(before.total + 3);
+
+    // Suggestions only: the same kind of animal, most shared words first.
+    const candidates = (
+      await call('pets', 'GET', `/api/v1/field-records/pet_intake/${lost['id']}/candidates`)
+    ).json<{ record: Json; shared: string[] }[]>();
+    expect(candidates[0]!.record['id']).toBe(terrier['id']);
+    expect(candidates[0]!.shared).toEqual(
+      expect.arrayContaining(['brown', 'terrier', 'red', 'collar', tag]),
+    );
+    expect(candidates.map((c) => c.record['id'])).not.toContain(cat['id']);
+
+    const step = (id: unknown, to: string, payload?: Json) =>
+      call('pets', 'POST', `/api/v1/field-records/pet_intake/${String(id)}/${to}`, payload ?? {});
+    expect((await step(lost['id'], 'reunite')).status).toBe(409);
+    const lost2 = await pet({ species: 'dog', status: 'lost_report', description: 'Grey husky' });
+    expect((await step(lost['id'], 'match', { otherId: lost2['id'] })).status).toBe(409);
+    expect(
+      (
+        await call('pio', 'POST', `/api/v1/field-records/pet_intake/${String(lost['id'])}/match`, {
+          otherId: terrier['id'],
+        })
+      ).status,
+    ).toBe(403);
+    const matched = await step(lost['id'], 'match', { otherId: terrier['id'] });
+    expect(matched.status, matched.body).toBe(200);
+    expect(matched.json()['matchedWith']).toBe(terrier['id']);
+    expect((await step(lab['id'], 'match', { otherId: lost['id'] })).status).toBe(409);
+    // A matched animal is no longer suggested for another lost report.
+    const forLost2 = (
+      await call(
+        'pets',
+        'GET',
+        `/api/v1/field-records/pet_intake/${String(lost2['id'])}/candidates`,
+      )
+    ).json<{ record: Json }[]>();
+    expect(forLost2.map((c) => c.record['id'])).not.toContain(terrier['id']);
+
+    const home = await step(terrier['id'], 'reunite');
+    expect(home.status, home.body).toBe(200);
+    expect(home.json()).toMatchObject({ status: 'reunited' });
+    const both = await dbWorker
+      .selectFrom('cg.pet_intake')
+      .select(['id', 'status', 'released_at'])
+      .where('id', 'in', [lost['id'] as string, terrier['id'] as string])
+      .execute();
+    expect(both.every((p) => p.status === 'reunited' && p.released_at)).toBe(true);
+    expect((await step(terrier['id'], 'reunite')).status).toBe(409);
+    expect((await census()).bySpecies['dog'] ?? 0).toBe((before.bySpecies['dog'] ?? 0) + 1);
   });
 
   it('FL:FR-20, PER-01, BDG-01: a walk-up volunteer is registered in one step, once; skills stay unverified; the badge code is shown once', async () => {
@@ -622,5 +827,407 @@ describe.skipIf(!appUrl || !workerUrl)('frontline role records (database-backed)
     // Queued when the resident opted in; otherwise the reason why not. Never refused for the role.
     expect(r['residentMessage']).toBeDefined();
     expect(r['residentMessage']).not.toBe('not_allowed');
+  });
+
+  it('FLD-11: a site status and a resource seen reach dispatch as observations with a pin and a photo; dispatch marks them noted; the site keeps its status of record', async () => {
+    const siteBefore = await dbWorker
+      .selectFrom('cg.site')
+      .select(['status', 'version'])
+      .where('id', '=', siteId)
+      .executeTakeFirstOrThrow();
+    const clientUuid = randomUUID();
+    const seen = {
+      clientUuid,
+      eventId,
+      category: 'site_status',
+      siteId,
+      siteStatus: 'full',
+      note: 'Exercise: line out the door, cots along the hallway',
+      position: { lat: 37.69, lon: -97.33, accuracyM: 12 },
+    };
+    const site = await create('volunteer', 'field_report', seen);
+    expect(site).toMatchObject({ category: 'site_status', siteId, siteStatus: 'full' });
+    // A resend from the phone is the same report (FLD-13).
+    const resent = await create('volunteer', 'field_report', seen, 200);
+    expect(resent['id']).toBe(site['id']);
+    // A site status names the site; a resource says what kind.
+    const noSite = await call('volunteer', 'POST', '/api/v1/field-records/field_report', {
+      clientUuid: randomUUID(),
+      eventId,
+      category: 'site_status',
+      siteStatus: 'closed',
+    });
+    expect(noSite.status).toBe(400);
+    const noKind = await call('volunteer', 'POST', '/api/v1/field-records/field_report', {
+      clientUuid: randomUUID(),
+      eventId,
+      category: 'resource_seen',
+    });
+    expect(noKind.status).toBe(400);
+    // Through the field command, as the phone sends it.
+    const cmdId = randomUUID();
+    const cmd = await call('volunteer', 'POST', '/api/v1/field/commands', {
+      commands: [
+        {
+          id: cmdId,
+          kind: 'record.field_report',
+          body: {
+            eventId,
+            category: 'resource_seen',
+            resourceKind: 'water',
+            place: 'Exercise Fire Station 3, side door',
+            position: { lat: 37.7, lon: -97.31 },
+          },
+        },
+      ],
+    });
+    expect(cmd.status, cmd.body).toBe(200);
+    const applied = cmd.json<{
+      results: { result: string; record: { type: string; id: string } | null }[];
+    }>().results[0]!;
+    expect(applied).toMatchObject({ result: 'applied', record: { type: 'field_report' } });
+    const resourceId = applied.record!.id;
+    // A photo documents the report (FLD-07).
+    const ticket = await call('volunteer', 'POST', '/api/v1/field/photos', {
+      clientUuid: randomUUID(),
+      contentType: 'image/jpeg',
+      bytes: 4,
+      recordType: 'field_report',
+      recordId: resourceId,
+    });
+    expect(ticket.status, ticket.body).toBe(201);
+
+    // An observation, not the site's status of record: only its operators confirm that.
+    const siteAfter = await dbWorker
+      .selectFrom('cg.site')
+      .select(['status', 'version'])
+      .where('id', '=', siteId)
+      .executeTakeFirstOrThrow();
+    expect(siteAfter).toEqual(siteBefore);
+
+    // The worker sends; dispatch reads and notes.
+    expect((await call('volunteer', 'GET', '/api/v1/field-records/field_report')).status).toBe(403);
+    expect(
+      (await call('volunteer', 'POST', `/api/v1/field-records/field_report/${site['id']}/note`))
+        .status,
+    ).toBe(403);
+    const board = await call('coordinator', 'GET', `/api/v1/dispatch/board?eventId=${eventId}`);
+    expect(board.status, board.body).toBe(200);
+    const reports = board.json<{
+      fieldReports: { id: string; siteName: string | null; position: unknown }[];
+      counts: { fieldReports: number };
+    }>();
+    const onBoard = reports.fieldReports.find((r) => r.id === site['id']);
+    expect(onBoard?.siteName).toBeTruthy();
+    expect(onBoard?.position).toEqual({ lat: 37.69, lon: -97.33 });
+    expect(reports.fieldReports.map((r) => r.id)).toContain(resourceId);
+    expect(reports.counts.fieldReports).toBe(reports.fieldReports.length);
+    const noted = await call(
+      'coordinator',
+      'POST',
+      `/api/v1/field-records/field_report/${site['id']}/note`,
+    );
+    expect(noted.status, noted.body).toBe(200);
+    expect(noted.json()['notedAt']).toBeTruthy();
+    expect(
+      (await call('coordinator', 'POST', `/api/v1/field-records/field_report/${site['id']}/note`))
+        .status,
+    ).toBe(409);
+    const later = await call('coordinator', 'GET', `/api/v1/dispatch/board?eventId=${eventId}`);
+    expect(
+      later.json<{ fieldReports: { id: string }[] }>().fieldReports.map((r) => r.id),
+    ).not.toContain(site['id']);
+    // Everyone who reads hazards in the field may send one; a PIO may not.
+    expect(
+      (
+        await call('pio', 'POST', '/api/v1/field-records/field_report', {
+          clientUuid: randomUUID(),
+          eventId,
+          category: 'resource_seen',
+          resourceKind: 'fuel',
+        })
+      ).status,
+    ).toBe(403);
+  });
+
+  it('FL:FR-01, CON-03: the situation map shows where search marks were left and roads a crew reported closed, to roles that read them', async () => {
+    const mark = await create('sar', 'search_mark', {
+      clientUuid: randomUUID(),
+      eventId,
+      position: { lat: 38.7961, lon: -90.8722 },
+      entryType: 'exterior_only',
+      occupantsFound: 0,
+      occupantsRemoved: 0,
+      victims: 0,
+    });
+    const road = await create('roads', 'road_status', {
+      clientUuid: randomUUID(),
+      eventId,
+      name: `Exercise Quarry Rd ${randomUUID().slice(0, 4)}`,
+      status: 'impassable',
+      position: { lat: 38.79, lon: -90.88 },
+    });
+    type Layer = {
+      available: boolean;
+      items: { id: string; label: string; detail: string | null }[];
+    };
+    const situation = async (who: string) =>
+      (await call(who, 'GET', `/api/v1/situation?eventId=${eventId}`)).json<{
+        layers: Record<string, Layer>;
+      }>();
+    const sar = await situation('sar');
+    expect(sar.layers['searched']!.available).toBe(true);
+    const shown = sar.layers['searched']!.items.find((i) => i.id === mark['id']);
+    expect(shown).toMatchObject({ label: 'Searched, outside only' });
+    expect(shown!.detail).toContain('EXT');
+    const roads = await situation('roads');
+    expect(roads.layers['roadClosures']!.items.map((i) => i.id)).toContain(road['id']);
+    // A role that reads neither sees the layer as not available, with nothing in it.
+    const health = await situation('health');
+    expect(health.layers['searched']).toEqual({ available: false, items: [] });
+  });
+
+  it('FL:FR-17: a canteen crew checks in at a stop and out with meals, supplies left and an allergen note, both sent in one batch from a phone that had no signal', async () => {
+    const stopId = randomUUID();
+    const batch = await call('canteen', 'POST', '/api/v1/field/commands', {
+      commands: [
+        {
+          id: stopId,
+          kind: 'record.canteen_stop',
+          body: {
+            eventId,
+            stopName: 'Exercise Pine Park lot',
+            position: { lat: 38.792, lon: -90.866 },
+            arrivedAt: new Date(Date.now() - 45 * 60_000).toISOString(),
+          },
+        },
+        {
+          id: randomUUID(),
+          kind: 'record.canteen_stop.check_out',
+          body: {
+            stopClientUuid: stopId,
+            mealsServed: 140,
+            suppliesLeft: '40 meals, 3 cases of water',
+            allergenNote: 'Chili contains peanuts; 6 asked for gluten-free',
+          },
+        },
+      ],
+    });
+    expect(batch.status, batch.body).toBe(200);
+    expect(batch.json<{ results: { result: string }[] }>().results.map((r) => r.result)).toEqual([
+      'applied',
+      'applied',
+    ]);
+    const listed = (
+      await call('coordinator', 'GET', `/api/v1/field-records/canteen_stop?eventId=${eventId}`)
+    ).json<Json[]>();
+    const stop = listed.find(
+      (r) => r['stopName'] === 'Exercise Pine Park lot' && r['mealsServed'] === 140,
+    );
+    expect(stop).toMatchObject({ suppliesLeft: '40 meals, 3 cases of water' });
+    expect(stop!['departedAt']).toBeTruthy();
+    expect(Date.parse(String(stop!['departedAt']))).toBeGreaterThan(
+      Date.parse(String(stop!['arrivedAt'])),
+    );
+    // A resend changes nothing; an unknown stop is not found; only the crew checks out.
+    const again = await call('canteen', 'POST', '/api/v1/field-records/canteen_stop/check-out', {
+      stopClientUuid: stopId,
+      mealsServed: 999,
+    });
+    expect(again.status, again.body).toBe(200);
+    expect(again.json()['mealsServed']).toBe(140);
+    expect(
+      (
+        await call('canteen', 'POST', '/api/v1/field-records/canteen_stop/check-out', {
+          stopClientUuid: randomUUID(),
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await call('coordinator', 'POST', '/api/v1/field-records/canteen_stop/check-out', {
+          stopClientUuid: stopId,
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (await call('pio', 'GET', `/api/v1/field-records/canteen_stop?eventId=${eventId}`)).status,
+    ).toBe(403);
+  });
+
+  it('FL:FR-19: equipment that ran on a work order is logged with its hours, once per phone id; the coordinator reads it; other roles cannot log it', async () => {
+    const mission = await dbWorker
+      .selectFrom('cg.mission')
+      .select(['id', 'event_id'])
+      .where('tenant_id', '=', county)
+      .where('event_id', '=', eventId)
+      .executeTakeFirstOrThrow();
+    const clientUuid = randomUUID();
+    const body = {
+      clientUuid,
+      missionId: mission.id,
+      equipment: 'chainsaw',
+      equipmentNote: 'Exercise saw 2',
+      hours: 3,
+    };
+    const logged = await create('crew', 'equipment_use', body);
+    expect(logged).toMatchObject({
+      missionId: mission.id,
+      eventId: mission.event_id,
+      equipment: 'chainsaw',
+      hours: 3,
+    });
+    expect(String(logged['usedOn'])).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect((await create('crew', 'equipment_use', body, 200))['id']).toBe(logged['id']);
+    const bad = async (extra: Json) =>
+      (
+        await call('crew', 'POST', '/api/v1/field-records/equipment_use', {
+          clientUuid: randomUUID(),
+          missionId: mission.id,
+          equipment: 'pump',
+          hours: 2,
+          ...extra,
+        })
+      ).status;
+    expect(await bad({ equipment: 'other' })).toBe(400);
+    expect(await bad({ hours: 25 })).toBe(400);
+    expect(await bad({ missionId: randomUUID() })).toBe(400);
+    expect(await bad({ equipment: 'other', equipmentNote: 'Exercise light tower' })).toBe(201);
+    expect(
+      (
+        await create('roads', 'equipment_use', {
+          clientUuid: randomUUID(),
+          missionId: mission.id,
+          equipment: 'dump_truck',
+          hours: 6,
+        })
+      )['hours'],
+    ).toBe(6);
+
+    const listed = await call(
+      'coordinator',
+      'GET',
+      `/api/v1/field-records/equipment_use?missionId=${mission.id}`,
+    );
+    expect(listed.status, listed.body).toBe(200);
+    expect(listed.json<Json[]>().map((r) => r['id'])).toContain(logged['id']);
+    expect(
+      (
+        await call('coordinator', 'POST', '/api/v1/field-records/equipment_use', {
+          ...body,
+          clientUuid: randomUUID(),
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await call('pio', 'POST', '/api/v1/field-records/equipment_use', {
+          ...body,
+          clientUuid: randomUUID(),
+        })
+      ).status,
+    ).toBe(403);
+  });
+
+  it('FL:FR-05, FL:FR-06, FL:FR-09: a road is reported and cleared once; a debris load works out its cubic yards; an inspection keeps illness as a count; a walk-through is kept before and after; other roles cannot', async () => {
+    const road = await create('roads', 'road_status', {
+      clientUuid: randomUUID(),
+      eventId,
+      name: 'Exercise Old Mill Rd at the creek',
+      status: 'impassable',
+      reason: 'Exercise: tree across both lanes',
+    });
+    expect(road).toMatchObject({ status: 'impassable', name: 'Exercise Old Mill Rd at the creek' });
+    const cleared = await call(
+      'roads',
+      'POST',
+      `/api/v1/field-records/road_status/${road['id']}/clear`,
+    );
+    expect(cleared.status, cleared.body).toBe(200);
+    expect(cleared.json()['status']).toBe('cleared');
+    const again = await call(
+      'roads',
+      'POST',
+      `/api/v1/field-records/road_status/${road['id']}/clear`,
+    );
+    expect(again.status).toBe(409);
+    expect(
+      (
+        await call('pio', 'POST', '/api/v1/field-records/road_status', {
+          clientUuid: randomUUID(),
+          eventId,
+          name: 'Exercise Pine St',
+          status: 'closed',
+        })
+      ).status,
+    ).toBe(403);
+
+    // A 40 cubic-yard truck at 75% carries 30 cubic yards (FEMA PA load ticket).
+    const load = await create('roads', 'debris_ticket', {
+      clientUuid: randomUUID(),
+      eventId,
+      ticketNumber: `EX-${randomUUID().slice(0, 6)}`,
+      debrisType: 'vegetative',
+      truckId: 'EX-TRUCK-7',
+      truckCapacityCy: 40,
+      loadPercent: 75,
+      disposalSite: 'Exercise burn site',
+    });
+    expect(load['cubicYards']).toBe(30);
+
+    // Illness is a number, never a person (EQ-13).
+    const inspection = await create('health', 'inspection', {
+      clientUuid: randomUUID(),
+      eventId,
+      siteId,
+      kind: 'shelter',
+      checklist: { handwashing: 'yes', food_temps: 'no' },
+      result: 'corrective',
+      illnessCount: 3,
+    });
+    expect(inspection).toMatchObject({ result: 'corrective', illnessCount: 3 });
+    const columns = await dbWorker
+      .selectFrom('information_schema.columns' as never)
+      .select('column_name' as never)
+      .where('table_schema' as never, '=', 'cg' as never)
+      .where('table_name' as never, '=', 'inspection' as never)
+      .execute();
+    expect(columns.map((c) => (c as { column_name: string }).column_name)).not.toContain(
+      'person_id',
+    );
+
+    const before = await create('host', 'site_walkthrough', {
+      clientUuid: randomUUID(),
+      siteId,
+      phase: 'before',
+      keyHolders: 'Exercise: custodian and the principal',
+      issues: 'Exercise: gym door sticks',
+    });
+    const after = await create('host', 'site_walkthrough', {
+      clientUuid: randomUUID(),
+      siteId,
+      phase: 'after',
+      issues: 'Exercise: scuffed floor in the gym',
+    });
+    expect([before['phase'], after['phase']]).toEqual(['before', 'after']);
+    const walks = await call(
+      'host',
+      'GET',
+      `/api/v1/field-records/site_walkthrough?siteId=${siteId}`,
+    );
+    expect(walks.status).toBe(200);
+    expect(walks.json<{ id: string }[]>().map((w) => w.id)).toEqual(
+      expect.arrayContaining([before['id'], after['id']]),
+    );
+    expect(
+      (
+        await call('pio', 'POST', '/api/v1/field-records/inspection', {
+          clientUuid: randomUUID(),
+          eventId,
+          kind: 'shelter',
+          result: 'pass',
+        })
+      ).status,
+    ).toBe(403);
   });
 });

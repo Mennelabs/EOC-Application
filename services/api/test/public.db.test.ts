@@ -9,7 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FieldCrypto, InMemoryKeyService, MemoryKeyStore } from '@cg/crypto';
-import { createDb, type Database } from '@cg/db';
+import { createDb, withTenant, type Database } from '@cg/db';
 import { AiProviderError, fakeProvider, type AiProvider } from '@cg/ai';
 import { westwindGraph } from '@cg/intake';
 import type { Kysely } from 'kysely';
@@ -355,9 +355,206 @@ describe.skipIf(!appUrl || !workerUrl)('public intake API (database-backed)', ()
     }
   });
 
+  it('INT-16, AI-10, GATE-08: with extraction switched off the resident is told to answer directly; nothing is sent or recorded', async () => {
+    const setFeature = (enabled: boolean) =>
+      withTenant(dbWorker, { tenantId }, (trx) =>
+        trx
+          .updateTable('cg.ai_use_register')
+          .set({ enabled })
+          .where('tenant_id', '=', tenantId)
+          .where('feature', '=', 'intake.extraction')
+          .execute(),
+      );
+    let asked = 0;
+    provider = {
+      ...fakeProvider,
+      llm: {
+        extract: async (r) => {
+          asked += 1;
+          return fakeProvider.llm!.extract(r);
+        },
+      },
+    };
+    await setFeature(false);
+    try {
+      const executionId = randomUUID();
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/public/intake/county/extract',
+        payload: {
+          executionId,
+          text: 'The roof blew off and we need water.',
+          graphKey: westwindGraph.key,
+          graphVersion: westwindGraph.version,
+        },
+      });
+      expect(res.statusCode).toBe(409);
+      expect(res.json()).toMatchObject({ code: 'ai_off' });
+      expect(res.json().message).toMatch(/answer the questions directly/);
+      expect(asked).toBe(0);
+      const records = await dbWorker
+        .selectFrom('cg.ai_output')
+        .select('id')
+        .where('execution_id', '=', executionId)
+        .execute();
+      expect(records).toEqual([]);
+    } finally {
+      await setFeature(true);
+      provider = fakeProvider;
+    }
+  });
+
+  it('INT-12, AIG-06, AI-10: dictation goes to the tenant provider only when the register allows it; the words come back, nothing is kept, the call is recorded', async () => {
+    const setFeature = (enabled: boolean) =>
+      withTenant(dbWorker, { tenantId }, (trx) =>
+        trx
+          .updateTable('cg.ai_use_register')
+          .set({ enabled })
+          .where('tenant_id', '=', tenantId)
+          .where('feature', '=', 'intake.transcription')
+          .execute(),
+      );
+    const heard: { bytes: number; mime: string; language: string | undefined }[] = [];
+    let failing = false;
+    provider = {
+      ...fakeProvider,
+      stt: {
+        transcribe: async (audio, mime, language) => {
+          if (failing) throw new AiProviderError('timeout');
+          heard.push({ bytes: audio.length, mime, language });
+          return {
+            output: { text: ' The roof is gone and water came in. ', language: language ?? 'en' },
+            provider: fakeProvider.info,
+            latencyMs: 3,
+          };
+        },
+      },
+    };
+    const audio = Buffer.from('exercise recording, not a voice');
+    const dictate = (executionId: string, type = 'audio/webm;codecs=opus') =>
+      app.inject({
+        method: 'POST',
+        url: `/api/public/intake/county/dictation?executionId=${executionId}&language=en`,
+        headers: { 'content-type': type },
+        payload: audio,
+      });
+    const recorded = (executionId: string) =>
+      dbWorker
+        .selectFrom('cg.ai_output')
+        .select(['feature', 'outcome', 'language'])
+        .where('execution_id', '=', executionId)
+        .execute();
+    try {
+      await setFeature(false);
+      const boot = await app.inject({ url: '/api/public/intake/county/westwind' });
+      expect(boot.json().dictation).toBe(false);
+      const offId = randomUUID();
+      const off = await dictate(offId);
+      expect(off.statusCode).toBe(409);
+      expect(off.json()).toMatchObject({ code: 'ai_off' });
+      expect(off.json().message).toMatch(/type your words/);
+      expect(heard).toEqual([]);
+      expect(await recorded(offId)).toEqual([]);
+
+      await setFeature(true);
+      expect(
+        (await app.inject({ url: '/api/public/intake/county/westwind' })).json().dictation,
+      ).toBe(true);
+      const onId = randomUUID();
+      const on = await dictate(onId);
+      expect(on.statusCode, on.body).toBe(200);
+      expect(on.json()).toEqual({ text: 'The roof is gone and water came in.', language: 'en' });
+      expect(heard).toEqual([{ bytes: audio.length, mime: 'audio/webm', language: 'en' }]);
+      expect(await recorded(onId)).toEqual([
+        { feature: 'intake.transcription', outcome: 'ok', language: 'en' },
+      ]);
+      // Nothing of the words or the recording is kept anywhere but the resident's text box.
+      expect(JSON.stringify(await recorded(onId))).not.toContain('roof');
+
+      failing = true;
+      const downId = randomUUID();
+      const down = await dictate(downId);
+      expect(down.statusCode).toBe(409);
+      expect(down.json()).toMatchObject({ code: 'ai_unavailable' });
+      expect(await recorded(downId)).toEqual([
+        { feature: 'intake.transcription', outcome: 'timeout', language: 'en' },
+      ]);
+      failing = false;
+
+      expect((await dictate(randomUUID(), 'image/png')).statusCode).toBe(415);
+      const empty = await app.inject({
+        method: 'POST',
+        url: `/api/public/intake/county/dictation?executionId=${randomUUID()}`,
+        headers: { 'content-type': 'audio/webm' },
+        payload: Buffer.alloc(0),
+      });
+      expect(empty.statusCode).toBe(400);
+    } finally {
+      await setFeature(true);
+      provider = fakeProvider;
+    }
+  });
+
   it('ADR-0043, AIG-01, AIG-08: the seed lists OpenAI for every feature, switched off until evaluated; never the fake provider', async () => {
     expect(seededRegister.length).toBeGreaterThan(0);
     for (const r of seededRegister) expect(r.provider).toBe('openai');
     expect(seededRegister.find((r) => r.feature === 'intake.extraction')?.enabled).toBe(false);
+  });
+
+  it('AIG-09: a resident says the computer help went wrong, by a fixed reason with no words; it is kept on that help once, and the answer never says whether there was any', async () => {
+    const executionId = randomUUID();
+    const extracted = await app.inject({
+      method: 'POST',
+      url: '/api/public/intake/county/extract',
+      payload: {
+        executionId,
+        text: 'The wind took part of the roof and water came in.',
+        graphKey: westwindGraph.key,
+        graphVersion: westwindGraph.version,
+      },
+    });
+    expect(extracted.statusCode, extracted.body).toBe(200);
+    const complain = (body: Record<string, unknown>) =>
+      app.inject({ method: 'POST', url: '/api/public/intake/county/ai-complaint', payload: body });
+    const output = () =>
+      dbWorker
+        .selectFrom('cg.ai_output')
+        .select(['complaint', 'complained_at'])
+        .where('execution_id', '=', executionId)
+        .where('feature', '=', 'intake.extraction')
+        .executeTakeFirstOrThrow();
+
+    const first = await complain({
+      executionId,
+      feature: 'intake.extraction',
+      reason: 'not_my_language',
+      text: 'words are never kept',
+    });
+    expect(first.statusCode, first.body).toBe(202);
+    expect(first.json()).toEqual({ received: true });
+    const kept = await output();
+    expect(kept.complaint).toBe('not_my_language');
+    expect(kept.complained_at).not.toBeNull();
+    // Once: a second complaint changes nothing.
+    expect(
+      (await complain({ executionId, feature: 'intake.extraction', reason: 'wrong' })).statusCode,
+    ).toBe(202);
+    expect((await output()).complaint).toBe('not_my_language');
+    // No such help: the same answer, and nothing anywhere changes.
+    const none = await complain({
+      executionId: randomUUID(),
+      feature: 'intake.transcription',
+      reason: 'other',
+    });
+    expect(none.statusCode).toBe(202);
+    expect(none.json()).toEqual({ received: true });
+    // Only the fixed reasons and the resident-facing features.
+    expect(
+      (await complain({ executionId, feature: 'intake.extraction', reason: 'it was rude' }))
+        .statusCode,
+    ).toBe(400);
+    expect(
+      (await complain({ executionId, feature: 'command.interpret', reason: 'wrong' })).statusCode,
+    ).toBe(400);
   });
 });

@@ -28,7 +28,15 @@ export const platformSchema = baseSchema.extend({
   DATABASE_URL: url,
   AMQP_URL: url,
   S3_ENDPOINT: url,
-  S3_REGION: z.string().default('us-east-1'),
+  /**
+   * SEC-14: data stays in US regions. Object storage in any other region is refused at start
+   * (us-east-1, us-gov-west-1, usgovvirginia…); the database and backups live in the same
+   * deployment, which the government cloud authorization pins (SCL-05).
+   */
+  S3_REGION: z
+    .string()
+    .regex(/^us/i, 'SEC-14: object storage must be in a US region')
+    .default('us-east-1'),
   S3_ACCESS_KEY_ID: z.string().min(1),
   S3_SECRET_ACCESS_KEY: z.string().min(8),
   S3_BUCKET: z.string().min(3),
@@ -56,6 +64,8 @@ export const platformSchema = baseSchema.extend({
   /** Twilio account for real numbers (docs/06); empty or absent means the simulator (SCL-11 stand-in). */
   TWILIO_ACCOUNT_SID: optionalString,
   TWILIO_AUTH_TOKEN: optionalString,
+  /** BRD:FR-03.02, ADR-0015: the self-hosted Nominatim (maps profile); absent means parcels only. */
+  GEOCODER_URL: z.preprocess((v) => (v === '' ? undefined : v), url.optional()),
   /** The URL Twilio was given for webhooks, when it differs from what the gateway reports (signature check). */
   WEBHOOK_PUBLIC_BASE: z.preprocess((v) => (v === '' ? undefined : v), url.optional()),
   /** Largest photo a resident may upload after client-side compression (PHO-05). */
@@ -91,6 +101,8 @@ export const platformSchema = baseSchema.extend({
   AI_MODEL_CLASSIFIER: optionalString,
   AI_MODEL_TRANSCRIPTION: optionalString,
   AI_MODEL_SPEECH: optionalString,
+  /** PUB-14: the text-to-speech voice for radio scripts. */
+  AI_SPEECH_VOICE: optionalString,
   /** Per call (BRD:INT-04); a timeout falls back to the manual path (AI-10). */
   AI_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
 });
@@ -135,6 +147,13 @@ export const workerSchema = platformSchema
     REFDATA_CONTACT: optionalString,
     /** Free Census Data API key (a secret; ACS works without one at low volume). */
     CENSUS_API_KEY: optionalString,
+    /** FLD-13, ADR-0015: the regional tiles (`tiles-build`); area packages are cut from them. */
+    MAP_TILES_PATH: z.string().min(1).default('/srv/tiles/region.pmtiles'),
+    /** Exercise environments only: areas get street-less packages until real tiles exist. */
+    MAP_EXERCISE: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
   })
   .superRefine((v, ctx) => {
     // SCL-12: recorded responses are synthetic; a production tenant must never get them.
@@ -143,6 +162,13 @@ export const workerSchema = platformSchema
         code: 'custom',
         path: ['REFDATA_MODE'],
         message: 'recorded reference data is synthetic; use live or off in production (SCL-12)',
+      });
+    // FLD-13: exercise map packages carry no streets; production phones get real tiles or none.
+    if (v.DATA_CLASSIFICATION_MODE === 'production' && v.MAP_EXERCISE)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['MAP_EXERCISE'],
+        message: 'exercise map packages are for exercise environments only',
       });
   });
 
@@ -275,6 +301,7 @@ export function aiEnv(c: z.infer<typeof platformSchema>): Record<string, string 
     AI_MODEL_CLASSIFIER: c.AI_MODEL_CLASSIFIER,
     AI_MODEL_TRANSCRIPTION: c.AI_MODEL_TRANSCRIPTION,
     AI_MODEL_SPEECH: c.AI_MODEL_SPEECH,
+    AI_SPEECH_VOICE: c.AI_SPEECH_VOICE,
     AI_TIMEOUT_MS: String(c.AI_TIMEOUT_MS),
   };
 }

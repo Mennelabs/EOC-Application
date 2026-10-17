@@ -42,3 +42,42 @@ The executor lives in the API process and adds no service. The language model si
 - Each new console operation becomes a command by adding a catalog entry, not code in the executor.
 - The executor depends on operations returning precise results, so routes that answer vaguely are fixed as they are catalogued.
 - In-process calls must carry the person's identity exactly, including emergency access and the enclave link, and are tested for it.
+
+## Addendum 2026-10-15: batches (CMD-30)
+
+- A batch is a catalog entry with a filter, not a new kind of operation. The executor lists the records through the console's own list route as the person may see them, puts their ids, versions and labels in the plan (so the confirmation is bound to exactly those records), and then calls the single-record operation once per record, each with its own idempotency key derived from the execution and the record.
+- Batches are phase 4, so they are off until a county turns that phase on, and they need the explicit action `command.bulk` as well as each record's own action. The shipped templates grant it to the county EM director, mass care coordinator, NGO incident commander and COAD chair.
+- Limits follow Section 30.2. Up to 50 records take one confirmation. From 51 to 500, the person must also type the count. Over 500 is refused, so the person narrows the filter or uses the screen. The limit of 30 confirmed commands a minute counts a batch as one command.
+- The result names every record that was not changed and why. The execution ends as succeeded, partially succeeded (migration 0075) or failed. It is never "rolled back", because each change that succeeded stands, and the reverse batch (release) is the compensating action.
+
+## Addendum 2026-10-16: exports (CMD-16)
+
+- Section 30.2 places exports with neither lookups nor drafts. The window treats them as confirmed changes: the IDA package and an issued report's file are phase 3 with one tap, and a public-records release is phase 4 with the full review and a reason (RULE-14), which its route also demands. All are off until a county turns their phase on.
+- The plan states the scope and the period: the IDA package covers every jurisdiction and the whole event; a report is named by its kind and number (or the latest issued one) and shows its own period; a release names its request, the kinds of record and the dates.
+- Reports are a target kind of their own, listed through the console's route and narrowed to issued or superseded ones, so a draft is never found (RULE-10).
+- An export is answered as queued, never done. The answer names the screen that lists the file once the worker builds it, and nothing is sent anywhere.
+- The request reference of a release is free text (it may carry a requester's name), so the execution keeps only its digest once the command has run (CMD-37).
+
+## Addendum 2026-10-16: report review (CMD-15)
+
+- A reviewer can take a report into review (phase 3, one tap), approve or reject it, or ask the resident for more information (phase 4, the full review with a reason). Approvals and outbound messages are phase 4 in Section 30.2.
+- The decision's own reason and evidence references go to the review decision row, as on the review screen. The reason and the question are free text, so the execution keeps only their digests once run (CMD-37).
+- A decision never changes the verification level, and the plan says so. A public observation stays an observation until someone verifies it.
+- The author of a report never reviews it (A7). The route's guardrail refuses it, from the window as from the screen.
+
+## Addendum 2026-10-16: mission drafts and team messages (CMD-13, AC-C08)
+
+- `/mission new <kind> <what is needed>` drafts a mission in the open event. It is phase 1 (a draft), runs at once and dispatches nothing. The words are kept in the mission, never in the execution record.
+- `/message <team> <text>` sends a field message to a team's phones. It is phase 4 (outbound messages) with the full review and a reason. It is answered as sent with the number of people, never as delivered; delivery is each phone's receipt on the messages screen.
+- A command can name its own answer when it cannot be undone (`undoUnavailable`). For a sent message, "undo" says it cannot be recalled from people's phones and that a correction is a new message (AC-C08).
+
+## Addendum 2026-10-16: second steps, second records and the people they name (AC-C07, CMD-13 to CMD-17)
+
+- **Second steps (`then`).** A command may run a second operation once the first has succeeded: `/message <team> <text> mission:<number>` sends the message, then notes it on the mission.
+  - The person must hold the second step's action too; otherwise the plan is refused before anything is sent.
+  - The second step has its own idempotency key, derived from the execution id, so a retry never repeats it.
+  - When it fails, the execution is `partially_succeeded`. The answer says what the first step did, names the step not done with the operation's own reason, and says nothing was rolled back, because nothing was.
+  - There is no undo on a partly done execution.
+- **Second records (`also`).** A record the command names besides its target (the other report of a duplicate, the mission a message is noted on) is found by its reference among the records the person may see. More than one match asks for the full reference rather than guess.
+- **Records within the target (`within`).** A record inside the target that the arguments name is read through its list route before the plan is shown: the person's open assignment on a mission, or the person's badge waiting for a print outcome. None, or more than one, is answered rather than guessed.
+- **What is kept for undo (`was`).** A target may keep what its changeable fields held when the plan was made (a person's duty status and availability, a resource's review date and expiry). Undo puts those back, and the version check refuses it if the record changed since.

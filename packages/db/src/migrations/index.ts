@@ -64,6 +64,47 @@ import * as m0062 from './0062_recommendation.ts';
 import * as m0063 from './0063_team_meals.ts';
 import * as m0064 from './0064_discovery.ts';
 import * as m0065 from './0065_ai_register_discovery.ts';
+import * as m0066 from './0066_ai_register_drafting.ts';
+import * as m0067 from './0067_public_audio.ts';
+import * as m0068 from './0068_scribe.ts';
+import * as m0069 from './0069_shift_handover.ts';
+import * as m0070 from './0070_ai_register_field_translation.ts';
+import * as m0071 from './0071_damage_suggestion.ts';
+import * as m0072 from './0072_photo_phash.ts';
+import * as m0073 from './0073_ai_fairness_alert.ts';
+import * as m0074 from './0074_retire_photo_quality.ts';
+import * as m0075 from './0075_command_partial.ts';
+import * as m0076 from './0076_command_timing.ts';
+import * as m0077 from './0077_retention_delete.ts';
+import * as m0078 from './0078_public_records_export.ts';
+import * as m0079 from './0079_facility_owner_link.ts';
+import * as m0080 from './0080_retention_delete_records.ts';
+import * as m0081 from './0081_retention_delete_field.ts';
+import * as m0082 from './0082_shared_document.ts';
+import * as m0083 from './0083_change_feed_pruning.ts';
+import * as m0084 from './0084_retention_delete_scribe.ts';
+import * as m0085 from './0085_retention_delete_roster.ts';
+import * as m0086 from './0086_command_outcome.ts';
+import * as m0087 from './0087_ai_complaint.ts';
+import * as m0088 from './0088_peer_support.ts';
+import * as m0089 from './0089_field_report.ts';
+import * as m0090 from './0090_supply_request.ts';
+import * as m0091 from './0091_pet_match.ts';
+import * as m0092 from './0092_equipment_use.ts';
+import * as m0093 from './0093_canteen_stop.ts';
+import * as m0094 from './0094_badge_photo.ts';
+import * as m0095 from './0095_volunteer_signup.ts';
+import * as m0096 from './0096_location_permission.ts';
+import * as m0097 from './0097_health_notice.ts';
+import * as m0098 from './0098_location_verification.ts';
+import * as m0099 from './0099_field_visit.ts';
+import * as m0100 from './0100_shelter_count.ts';
+import * as m0101 from './0101_reentry_pass.ts';
+import * as m0102 from './0102_resource_thumbnail.ts';
+import * as m0103 from './0103_public_audio_cleared.ts';
+import * as m0104 from './0104_map_package.ts';
+import * as m0105 from './0105_tenant_sso.ts';
+import * as m0106 from './0106_license_coverage.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -132,4 +173,45 @@ export const migrations: Record<string, Migration> = {
   '0063_team_meals': m0063,
   '0064_discovery': m0064,
   '0065_ai_register_discovery': m0065,
+  '0066_ai_register_drafting': m0066,
+  '0067_public_audio': m0067,
+  '0068_scribe': m0068,
+  '0069_shift_handover': m0069,
+  '0070_ai_register_field_translation': m0070,
+  '0071_damage_suggestion': m0071,
+  '0072_photo_phash': m0072,
+  '0073_ai_fairness_alert': m0073,
+  '0074_retire_photo_quality': m0074,
+  '0075_command_partial': m0075,
+  '0076_command_timing': m0076,
+  '0077_retention_delete': m0077,
+  '0078_public_records_export': m0078,
+  '0079_facility_owner_link': m0079,
+  '0080_retention_delete_records': m0080,
+  '0081_retention_delete_field': m0081,
+  '0082_shared_document': m0082,
+  '0083_change_feed_pruning': m0083,
+  '0084_retention_delete_scribe': m0084,
+  '0085_retention_delete_roster': m0085,
+  '0086_command_outcome': m0086,
+  '0087_ai_complaint': m0087,
+  '0088_peer_support': m0088,
+  '0089_field_report': m0089,
+  '0090_supply_request': m0090,
+  '0091_pet_match': m0091,
+  '0092_equipment_use': m0092,
+  '0093_canteen_stop': m0093,
+  '0094_badge_photo': m0094,
+  '0095_volunteer_signup': m0095,
+  '0096_location_permission': m0096,
+  '0097_health_notice': m0097,
+  '0098_location_verification': m0098,
+  '0099_field_visit': m0099,
+  '0100_shelter_count': m0100,
+  '0101_reentry_pass': m0101,
+  '0102_resource_thumbnail': m0102,
+  '0103_public_audio_cleared': m0103,
+  '0104_map_package': m0104,
+  '0105_tenant_sso': m0105,
+  '0106_license_coverage': m0106,
 };

@@ -5,7 +5,10 @@
  * names it); the receiving organization accepts, declines or finishes it
  * with an outcome; every step is audited in the county's log and the record
  * never leaves the grant it rides on. The worker tells the receiving
- * organization (referral.created).
+ * organization (referral.created). A legal aid organization's notes stay
+ * outside the shared record (FL:FR-23): its response shares the status only
+ * (accepted, declined, service given), and the note is neither stored, shown
+ * to the referring organization nor written into the county's audit.
  */
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
@@ -248,6 +251,22 @@ export const referralRoutes: FastifyPluginAsync = async (instance) => {
     },
   );
 
+  /**
+   * FL:FR-23: the responder's notes stay with their organization when they answer as legal aid
+   * (the legal aid attorney role) or their organization keeps referral outcomes confidential
+   * (tenant setting `referrals.confidential_outcomes`).
+   */
+  async function keepsNotes(trx: Trx, s: ReturnType<typeof account>): Promise<boolean> {
+    if (s.roles.some((r) => r.templateKey === 'legal_aid_attorney')) return true;
+    const cfg = await trx
+      .selectFrom('cg.tenant_config')
+      .select('value')
+      .where('tenant_id', '=', s.tenantId)
+      .where('key', '=', 'referrals.confidential_outcomes')
+      .executeTakeFirst();
+    return cfg?.value === true;
+  }
+
   // --------------------------------------------------------------- respond
   async function respond(
     request: FastifyRequest,
@@ -256,10 +275,17 @@ export const referralRoutes: FastifyPluginAsync = async (instance) => {
     note: string | null,
   ) {
     const s = account(request);
-    const current = await request.tx((trx) =>
-      trx.selectFrom('cg.referral').selectAll().where('id', '=', id).executeTakeFirst(),
-    );
+    const { current, confidential } = await request.tx(async (trx) => ({
+      current: await trx
+        .selectFrom('cg.referral')
+        .selectAll()
+        .where('id', '=', id)
+        .executeTakeFirst(),
+      confidential: await keepsNotes(trx, s),
+    }));
     if (!current || current.to_tenant_id !== s.tenantId) throw errors.notFound();
+    // FL:FR-23: only the status leaves a legal aid organization; the note goes nowhere.
+    const shared = confidential ? null : note;
     await request.authorize('referral.respond', {
       type: 'referral',
       id: current.id,
@@ -272,7 +298,7 @@ export const referralRoutes: FastifyPluginAsync = async (instance) => {
     const row = await inCounty(request, current.tenant_id, async (trx) => {
       const attempts = [
         ...((current.attempts ?? []) as unknown[]),
-        { at: new Date().toISOString(), by: s.accountId, kind: status, note },
+        { at: new Date().toISOString(), by: s.accountId, kind: status, note: shared },
       ];
       await trx
         .updateTable('cg.referral')
@@ -280,7 +306,7 @@ export const referralRoutes: FastifyPluginAsync = async (instance) => {
           status,
           ...(status === 'accepted' ? { accepted_by: s.accountId } : {}),
           ...(status === 'declined' || status === 'done'
-            ? { closed_at: new Date(), outcome: note }
+            ? { closed_at: new Date(), outcome: shared }
             : {}),
           attempts: JSON.stringify(attempts),
           updated_by: s.accountId,
@@ -293,7 +319,9 @@ export const referralRoutes: FastifyPluginAsync = async (instance) => {
         targetType: 'referral',
         targetId: current.id,
         targetVersion: current.version,
-        reason: note,
+        reason: confidential
+          ? 'Legal aid: the organization keeps its notes; only the status is shared (FL:FR-23).'
+          : note,
         changes: { fields: [{ name: 'status', from: current.status, to: status }] },
       });
       return (await query(trx).where('x.id', '=', current.id).executeTakeFirstOrThrow()) as Joined;

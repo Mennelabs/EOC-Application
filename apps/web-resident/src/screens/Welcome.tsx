@@ -17,7 +17,7 @@ export function Welcome({ shell, tenant, event }: { shell: Shell; tenant: string
     document.title = t('page.title', { county: info.data?.tenant.name ?? county });
   }, [t, county, info.data]);
   const base = `/${tenant}/${event}`;
-  const start = (rel: 'own_home' | 'helper' | 'witness') => () => {
+  const start = (rel: 'own_home' | 'helper' | 'witness' | 'organization') => () => {
     try {
       sessionStorage.setItem('cg.start', JSON.stringify({ rel, at: Date.now() }));
     } catch {
@@ -48,6 +48,10 @@ export function Welcome({ shell, tenant, event }: { shell: Shell; tenant: string
         </button>
         <button type="button" onClick={start('witness')}>
           {t('start.witness')}
+        </button>
+        {/* ORG-01: a business, landlord or group reports each of its places in one visit. */}
+        <button type="button" onClick={start('organization')}>
+          {t('start.organization')}
         </button>
       </div>
       <p>

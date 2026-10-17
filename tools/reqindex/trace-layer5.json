@@ -39,8 +39,8 @@
   "BRD:FR-07.04": [
     "partial",
     "cg.mission_media references with source, uploader, time, access class, retention (0030); routes/missions.ts media (object key never returned); body-camera references only in the enclave (cjis.record_bodycam, evidence reference encrypted); the platform refuses body-camera media (422 cji_in_enclave)",
-    "services/api/test/cjislink.db.test.ts (bodycam media refused), services/cjis-api/test/api.db.test.ts (bodycam references), tests/e2e/cjis.spec.ts",
-    "Live feeds need separate approval (layer-4 plan §11); the platform's general media routes have no route-level test yet."
+    "services/api/test/cjislink.db.test.ts (bodycam media refused), services/cjis-api/test/api.db.test.ts (bodycam references), tests/e2e/cjis.spec.ts, services/api/test/missions.db.test.ts (AC-07B: add, list, download and remove through the media routes)",
+    "Live feeds need separate approval (layer-4 plan §11)."
   ],
   "BRD:FR-07.05": [
     "pass",
@@ -75,8 +75,8 @@
   "BRD:FR-08.04": [
     "pass",
     "0006_audit.ts (revokes + triggers); enclave hash chain, immutable for every role, verify and weekly review (packages/cjis-db 0004)",
-    "stack.int.test.ts, tests/drills/audit-tamper.sh, tests/drills/restore-drill.sh; packages/cjis-db/test/enclave.db.test.ts (tamper detected), tests/integration/layer5.int.test.ts (chain verifies)",
-    "Superuser refused by trigger; tamper with trigger disabled detected with first_bad_seq."
+    "services/api/test/audit-immutable.db.test.ts (update, delete and truncate refused for the application and worker roles; the chain still verifies), services/api/test/auditchain.db.test.ts (concurrent writers), tests/drills/audit-tamper.sh (by hand), tests/drills/restore-drill.sh; packages/cjis-db/test/enclave.db.test.ts (tamper detected), tests/integration/layer5.int.test.ts (chain verifies)",
+    "Superuser refused by trigger; tamper with trigger disabled detected with first_bad_seq. stack.int.test.ts was cited here before but has no audit test."
   ],
   "SEC-06": [
     "pass",
@@ -109,10 +109,10 @@
     "The county-side ledger of partner reads carried from layer 3 is not built."
   ],
   "SEC-07": [
-    "partial",
-    "Keycloak realm: password + passkey browser flow, no shared accounts; enclave: password then passkey with user verification, the second factor required in amr by the API (ADR-0036)",
-    "console.spec.ts (passkey on a virtual authenticator); services/cjis-api/test/token.test.ts, tests/integration/stack.int.test.ts (password alone refused), tests/e2e/cjis.spec.ts (passkey on a virtual authenticator)",
-    "SAML/OIDC brokering to a tenant's own IdP is configured per realm but not yet exercised by a test."
+    "pass",
+    "Keycloak realm: password + passkey browser flow, no shared accounts; enclave: password then passkey with user verification, the second factor required in amr by the API (ADR-0036); single sign-on through the county's identity provider: cg.tenant_sso (0105), routes/sso.ts (propose, second-administrator approve or decline, switch off; SAML metadata screened, OIDC https only, client secret encrypted), worker sso.apply and KeycloakAdmin.ensureSsoProvider (provider county-sso, cg-first-broker links to invited accounts only, cg-post-broker requires the passkey), passkey-only invitations under SSO, console Single sign-on screen (ADR-0008)",
+    "console.spec.ts (passkey on a virtual authenticator); services/cjis-api/test/token.test.ts, tests/integration/stack.int.test.ts (password alone refused), tests/e2e/cjis.spec.ts (passkey on a virtual authenticator); tests/e2e/sso.spec.ts (stand-in SAML provider: proposed, approved by a second administrator, applied, invited person signs in with the county account then registers a passkey, uninvited county user refused); services/api/test/sso.db.test.ts; services/api/test/sso-config.test.ts; services/worker/test/sso-keycloak.test.ts",
+    "OpenID Connect brokering is covered by unit and database tests; the browser journey uses SAML (a local OIDC provider would need back-channel addresses the gateway does not route). The enclave keeps its own accounts (no county SSO into the enclave)."
   ],
   "BRD:FR-00.05": [
     "pass",
@@ -128,9 +128,9 @@
   ],
   "SEC-15": [
     "partial",
-    ".github/workflows/ci.yml (lint, typecheck, unit, integration, e2e with axe, Semgrep, Trivy filesystem and images including cjis-api and cjis-web, SPDX SBOMs for api and cjis-api, the platform and enclave migration drills); actions pinned to commit SHAs (ADR-0019)",
-    "CI on every push",
-    "Threat models per feature, DAST and signed release builds are not in CI yet."
+    ".github/workflows/ci.yml (lint, typecheck, unit, integration, e2e with axe, Semgrep, Trivy filesystem and images including cjis-api and cjis-web, SPDX SBOMs for api and cjis-api, the platform and enclave migration drills); actions pinned to commit SHAs (ADR-0019); threat models per feature (docs/security/threat-models.md, STRIDE with controls and residual risks); dynamic checks of the running stack on every push (tests/e2e/dast.spec.ts: headers, HTTPS redirect, missing and forged tokens, error leakage, CORS, TRACE, traversal, sign-in redirect), and /api/v1 refuses a request without an account before parsing or validation (services/api/src/app.ts)",
+    "CI on every push; tests/e2e/dast.spec.ts",
+    "Signed release builds and an SBOM kept per release are not built (there is no release workflow); a ZAP baseline scan is not run because this build environment cannot fetch its image (layer-7 plan reading 42)."
   ],
   "GATE-01": [
     "pass",

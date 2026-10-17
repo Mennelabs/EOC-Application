@@ -2,8 +2,10 @@
  * Situation map layers (layer-4 plan console 12; CON-03, AC-03C, DSP-08,
  * PUB-05, RULE-16, SEC-05, SEC-18): one answer with every layer the caller's
  * role may see for an event: reports, danger flags, verified damage, needs,
- * sites, teams, hazards, road closures (blocked-road hazards not cleared)
- * and the event footprint. Each layer is checked on
+ * sites, teams, hazards, road closures (blocked-road hazards not cleared,
+ * and roads a crew reported closed, impassable or down to one lane), the
+ * structures searched (FL:FR-01, from search marks, so no block is searched
+ * twice) and the event footprint. Each layer is checked on
  * its own read action and says plainly when the role does not include it.
  * Exact report and need locations need the exact-location category;
  * otherwise points are rounded to about a kilometre. Confidential sites
@@ -41,8 +43,10 @@ const situationOut = z.object({
     sites: layer,
     teams: layer,
     hazards: layer,
-    /** Blocked roads reported as hazards and not cleared (CON-03). */
+    /** Blocked roads reported as hazards and not cleared, and road reports still closed (CON-03, FL:FR-05). */
     roadClosures: layer,
+    /** FL:FR-01: structures with a search mark, so no block is searched twice. */
+    searched: layer,
   }),
   /** GeoJSON MultiPolygon of the event's area, when drawn. */
   footprint: z.unknown().nullable(),
@@ -79,15 +83,18 @@ export const situationRoutes: FastifyPluginAsync = async (instance) => {
       if (s.kind !== 'account') throw errors.unauthorized();
       const eventId = request.query.eventId;
       const base = { tenantId: s.tenantId, eventId };
-      const [reports, needs, sites, hazards, teams, positions, events] = await Promise.all([
-        may(request, 'report.read', { type: 'report', ...base, fields: LOCATION }),
-        may(request, 'need.read', { type: 'need', ...base, fields: LOCATION }),
-        may(request, 'site.read', { type: 'site', ...base }),
-        may(request, 'hazard.read', { type: 'hazard', ...base }),
-        may(request, 'team.read', { type: 'team', ...base }),
-        may(request, 'position.read', { type: 'position', ...base }),
-        may(request, 'event.read', { type: 'event', ...base }),
-      ]);
+      const [reports, needs, sites, hazards, teams, positions, events, marks, roads] =
+        await Promise.all([
+          may(request, 'report.read', { type: 'report', ...base, fields: LOCATION }),
+          may(request, 'need.read', { type: 'need', ...base, fields: LOCATION }),
+          may(request, 'site.read', { type: 'site', ...base }),
+          may(request, 'hazard.read', { type: 'hazard', ...base }),
+          may(request, 'team.read', { type: 'team', ...base }),
+          may(request, 'position.read', { type: 'position', ...base }),
+          may(request, 'event.read', { type: 'event', ...base }),
+          may(request, 'search_mark.read', { type: 'search_mark', ...base }),
+          may(request, 'road_status.read', { type: 'road_status', ...base }),
+        ]);
       if (!events && !reports && !sites && !teams) throw errors.forbidden();
       const exactReports = !!reports?.fields.includes('location');
       const exactNeeds = !!needs?.fields.includes('location');
@@ -181,6 +188,52 @@ export const situationRoutes: FastifyPluginAsync = async (instance) => {
               .where('state', '<>', 'cleared')
               .where(sql<boolean>`geom is not null`)
               .execute()
+          : [];
+        // FL:FR-01: where a search mark was left; the mark code is the one painted on the building.
+        const markRows = marks
+          ? await trx
+              .selectFrom('cg.search_mark as m')
+              .innerJoin('cg.location as l', 'l.id', 'm.location_id')
+              .select([
+                'm.id',
+                'm.entry_type',
+                'm.mark_code',
+                'm.searched_at',
+                sql<number>`ST_Y(l.geom)`.as('lat'),
+                sql<number>`ST_X(l.geom)`.as('lon'),
+              ])
+              .where('m.event_id', '=', eventId)
+              .where(sql<boolean>`l.geom is not null`)
+              .orderBy('m.searched_at', 'desc')
+              .limit(2000)
+              .execute()
+          : [];
+        // CON-03, FL:FR-05: the latest report for each road, when it is still closed.
+        const roadRows = roads
+          ? (
+              await trx
+                .selectFrom('cg.road_status')
+                .select([
+                  'id',
+                  'name',
+                  'status',
+                  'reason',
+                  'cleared_at',
+                  sql<number | null>`ST_Y(ST_PointOnSurface(geom))`.as('lat'),
+                  sql<number | null>`ST_X(ST_PointOnSurface(geom))`.as('lon'),
+                ])
+                .distinctOn('name')
+                .where('event_id', '=', eventId)
+                .orderBy('name')
+                .orderBy('reported_at', 'desc')
+                .execute()
+            ).filter(
+              (r) =>
+                ['closed', 'impassable', 'one_lane'].includes(r.status) &&
+                !r.cleared_at &&
+                r.lat !== null &&
+                r.lon !== null,
+            )
           : [];
         // DSP-08: team positions only for roles that read positions, at the tenant's precision.
         const precision =
@@ -286,17 +339,38 @@ export const situationRoutes: FastifyPluginAsync = async (instance) => {
               })),
             },
             roadClosures: {
-              available: !!hazards,
-              items: hazardRows
-                .filter((h) => h.kind === 'blocked_road')
-                .map((h) => ({
-                  id: h.id,
-                  position: { lat: Number(h.lat), lon: Number(h.lon) },
+              available: !!hazards || !!roads,
+              items: [
+                ...hazardRows
+                  .filter((h) => h.kind === 'blocked_road')
+                  .map((h) => ({
+                    id: h.id,
+                    position: { lat: Number(h.lat), lon: Number(h.lon) },
+                    approximate: false,
+                    label: h.summary ?? 'Blocked road',
+                    state: h.state,
+                    detail: h.severity,
+                  })),
+                ...roadRows.map((r) => ({
+                  id: r.id,
+                  position: { lat: Number(r.lat), lon: Number(r.lon) },
                   approximate: false,
-                  label: h.summary ?? 'Blocked road',
-                  state: h.state,
-                  detail: h.severity,
+                  label: r.name,
+                  state: r.status,
+                  detail: r.reason,
                 })),
+              ],
+            },
+            searched: {
+              available: !!marks,
+              items: markRows.map((m) => ({
+                id: m.id,
+                position: { lat: Number(m.lat), lon: Number(m.lon) },
+                approximate: false,
+                label: m.entry_type === 'exterior_only' ? 'Searched, outside only' : 'Searched',
+                state: m.entry_type,
+                detail: m.mark_code,
+              })),
             },
             hazards: {
               available: !!hazards,

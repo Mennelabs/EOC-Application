@@ -22,6 +22,8 @@ import type { RefdataDeps } from './refdata.ts';
 export interface ObjectStore {
   get(key: string): Promise<{ body: Buffer; contentType: string | null }>;
   put(key: string, body: Buffer | string, contentType: string): Promise<void>;
+  /** Removes an object (scribe audio past its life, FL-04, SEC-13). */
+  delete?(key: string): Promise<void>;
   putAnchor(key: string, body: string): Promise<void>;
   /** Writes to the records bucket under object lock until `retainUntil` (ADR-0010, RULE-10). */
   putLocked(
@@ -56,6 +58,8 @@ export interface JobContext {
   linkCheck?: (url: string) => Promise<boolean>;
   /** Reference data sources (ADR-0039); absent means no pulls (imports still work). */
   refdata?: RefdataDeps;
+  /** FLD-13, ADR-0015: where the regional tiles are; area packages are cut from them. */
+  maps?: { regionPath: string; exercise?: boolean };
   /** Outbound webhook sender (SCL-09); HTTPS to public addresses only by default. */
   webhookSender?: WebhookSender;
 }

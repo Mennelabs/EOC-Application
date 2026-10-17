@@ -4,7 +4,7 @@ A disaster community-response platform for county and city emergency management,
 
 The product name is configuration (`PRODUCT_NAME`, ADM-03). "Common Ground" is the current working name.
 
-**Status:** layers 1 (platform foundations), 2 (resident intake, review, verification) and 3 (needs board, partner sharing with consent, public "Find help") built, tested and approved (2026-10-12 and 2026-10-13); layer 4 (missions, dispatch board, field app) merged; layer 5 (the CJIS enclave) merged; layer 6 (FEMA package and official reports) merged; partner work and layer 7 tasks A–F (AI foundation, command window, facility registry, recommendations, discovery) merged; the **design foundation** (shared `packages/ui`, the console frame with workspaces by permission, the situation home and briefing mode; decided 2026-10-15, ADR-0045) in review. See `docs/plans/layer-7-status.md`, `docs/plans/design-foundation-status.md`, `docs/traceability.md`. Build order follows SCL-14, one layer at a time; `CLAUDE.md` has the rules for resuming work.
+**Status:** layers 1 (platform foundations), 2 (resident intake, review, verification) and 3 (needs board, partner sharing with consent, public "Find help") built, tested and approved (2026-10-12 and 2026-10-13); layer 4 (missions, dispatch board, field app) merged; layer 5 (the CJIS enclave) merged; layer 6 (FEMA package and official reports) merged; the partner work before layer 7 merged; the design foundation (shared `packages/ui`, the console frame with workspaces by permission, the situation home and briefing mode; decided 2026-10-15, ADR-0045) merged; layer 7 (AI assistance, the command window, facilities and recommendations) built, report in `docs/plans/layer-7-report.md`. See `docs/plans/layer-7-report.md`, `docs/traceability.md` and the newest `docs/plans/layer-N-status.md`. Build order follows SCL-14, one layer at a time; `CLAUDE.md` has the rules for resuming work.
 
 ## Where things live
 
@@ -19,6 +19,11 @@ The product name is configuration (`PRODUCT_NAME`, ADM-03). "Common Ground" is t
 | `docs/a11y/`                                           | Manual accessibility checklist and per-screen records                                                                                                                                                                                                                           |
 | `docs/recommendations.md`                              | How shelters, feeding stops, PODs with walk-up points and MARCs are recommended: rules, planning factors and their sources, weights (REC-02–REC-12)                                                                                                                             |
 | `docs/discovery.md`                                    | Resource discovery: partner posts, county feeds and web search; what a candidate holds; how places reach the registry (REC-13, REC-14)                                                                                                                                          |
+| `docs/ai-rmf.md`                                       | The AI governance mapped to the NIST AI RMF and its Generative AI Profile, with known gaps (AIG-11)                                                                                                                                                                             |
+| `docs/operations/alerts.md`                            | What the services measure, the alert rules' owners and a runbook per alert (NFR-10); the rules are in `infra/prometheus/`                                                                                                                                                       |
+| `docs/operations/single-sign-on.md`                    | Setting up sign-in through a county's own identity provider (SAML or OpenID Connect) on the console's Single sign-on screen (SEC-07)                                                                                                                                            |
+| `docs/operations/subscriptions.md`                     | Subscription contracts: what a county sees on the Subscription screen, how operators record contracts, and why resident reports are never metered or capped (SCL-10)                                                                                                            |
+| `docs/operations/known-limitations.md`                 | What the platform does not do yet, what needs a person before a county relies on it, and what it assumes (BRD:FR-18.03); draft for review                                                                                                                                       |
 | `apps/web-resident`, `apps/web-console`                | Resident PWA and staff console (React + Vite)                                                                                                                                                                                                                                   |
 | `apps/web-help`                                        | Public "Find help" page (plain TypeScript, under 50 KB first load, optional MapLibre map)                                                                                                                                                                                       |
 | `packages/ui`                                          | The design foundation (ADR-0045): tokens, self-hosted fonts, React Aria components, the staff shell, the showcase (`pnpm --filter @cg/ui showcase`)                                                                                                                             |
@@ -103,9 +108,15 @@ The sign-in screen asks for the **organization** first: that is the tenant key, 
 
 Interactive sign-in is password **and** passkey (SEC-07). The first sign-in of each account asks to register a passkey: Windows Hello, Touch ID, a security key or a phone all work; later sign-ins ask for it after the password. Permission changes need a second administrator, so use `admin@example.org` to request and `security.admin@example.org` to approve.
 
+A county can sign its staff in with its own identity provider instead of a password (SAML or OpenID Connect, still followed by the passkey): set it up under **Single sign-on**, approved by a second administrator (`docs/operations/single-sign-on.md`). Keycloak's own administration and its master realm are never routed by the gateway; on a laptop they are at http://127.0.0.1:8081/auth/admin/ (`IDP_PORT`) with `cg-admin` and `KEYCLOAK_ADMIN_PASSWORD` from `.env`.
+
+The **Subscription** screen shows a county its contracts and the state contract that covers it (SCL-10). Operators record contracts with `pnpm --filter @cg/worker license` (`docs/operations/subscriptions.md`); resident reports never depend on them.
+
+**Job aids** (`/console/job-aids`) holds the checklists, damage matrices, standards and briefings field phones carry for each role and language (FL-15). A job aid is written as plain text and approved, with a reason, by someone other than the last person to change it (the county EM director or the safety officer); only approved aids reach phones. The synthetic county's exercise drafts reach phones only on a synthetic stack, marked as not yet reviewed.
+
 ### Review reports as staff
 
-Sign in as `priya.assessment@example.org` (`county`). **Review queue** lists reports with need signals first (unsafe, no shelter tonight, medical, displaced), then the oldest; filters cover event, state, verification, channel, flags and a reference number. A report opens to its answers grouped as the resident saw them, photos (links only for roles with the evidence category, blurred faces and plates when a detector is configured), needs, consent and the version history. Decisions (approve, reject, needs information, duplicate, supersede, reopen), the verification level and the FEMA degree of damage each ask for confirmation and a reason; the FEMA matrix next to the form is the official wording (DEC-03). A helper cannot approve a report they entered (guardrail G4). **Intake setup** shows each open event's resident link, kiosk link, text keywords and a QR code to print, and the question-graph versions: a new draft must pass the reading-level and tone rules before it can be published. **Assisted report** opens the kiosk flow for an event in a new tab. **AI use register** is the read-only list of every AI feature, its provider and its human checkpoint. Every AI feature runs on OpenAI (ADR-0043) and stays off until `OPENAI_API_KEY` is set and the tenant's languages pass the evaluation; without the key the manual paths run and nothing calls a fake.
+Sign in as `priya.assessment@example.org` (`county`). **Review queue** lists reports with need signals first (unsafe, no shelter tonight, medical, displaced), then the oldest; filters cover event, state, verification, channel, flags and a reference number. A report opens to its answers grouped as the resident saw them, photos (links only for roles with the evidence category, blurred faces and plates when a detector is configured), needs, consent and the version history. Decisions (approve, reject, needs information, duplicate, supersede, reopen), the verification level and the FEMA degree of damage each ask for confirmation and a reason; the FEMA matrix next to the form is the official wording (DEC-03). A helper cannot approve a report they entered (guardrail G4). **Intake setup** shows each open event's resident link, kiosk link, text keywords and a QR code to print, and the question-graph versions: a new draft must pass the reading-level and tone rules before it can be published. **Assisted report** opens the kiosk flow for an event in a new tab. **AI use register** lists every AI feature, its provider and its human checkpoint; administrators evaluate the provider and switch features on or off there (layer 7). Every AI feature runs on OpenAI (ADR-0043) and stays off until `OPENAI_API_KEY` is set and the tenant's languages pass the evaluation; without the key the manual paths run and nothing calls a fake.
 
 ### Needs, partners and public information (layer 3)
 
@@ -132,7 +143,45 @@ Every official figure comes from one counting rule (`packages/reporting`): only 
 
 **API keys and webhooks** (Administration, `admin@example.org` asks, `security.admin@example.org` approves; never the same person): a key is shown once and reads the PDA feature service at `https://localhost/api/gis/<county>/pda/FeatureServer` (add it in ArcGIS or QGIS with the key as `token`); a webhook (HTTPS, a public host name) is told when a report is issued or an export is ready, signed per Standard Webhooks (ADR-0042). Residents download their own copy of their report from **my report**; the public media sheet is also a PDF (`/api/public/help/<county>/media.pdf`).
 
-Maps (SCL-13) are opt-in because the first build downloads the Missouri OpenStreetMap extract: set `COMPOSE_PROFILES=maps` in `.env` for the geocoder and run `docker compose --profile maps-build run --rm tiles-build` once for vector tiles.
+### AI assistance, the command window and recommendations (layer 7)
+
+People decide; AI suggests, drafts and interprets, and every task still works with AI off (AI-01, AI-10). Every AI feature runs on OpenAI (ADR-0043) and needs the secret `OPENAI_API_KEY` in the environment. It also needs an administrator to evaluate the provider and switch the feature on with a reason (**AI use register**, `admin@example.org`). Without the key the AI features are off and the manual paths run. The register also shows:
+
+- open AI health alerts, which are raised when people correct a feature too often or its calls fail;
+- fairness alerts for the damage severity suggestion, with the reviewers' agreement by hazard, home type and income band.
+
+Alerts never switch a feature off. `docs/ai-rmf.md` maps all of this to the NIST AI RMF for procurement reviews.
+
+**Command window.** Press Ctrl+K (Command+K on a Mac) or the "Ask or command" button in any workspace.
+
+- Shorthand works without AI. Try `/needs open`, `/missions unassigned`, `/remind in 30m call the shelter` or `/help` (`/ayuda` in Spanish).
+- Plain words are read into shorthand when the feature is on.
+- A change is shown as a plan to confirm, and it can be undone within its window.
+- Recent commands are kept for 30 days unless the device is marked shared.
+- The field app has the same screen, and Find help has a plain "Ask a question" box that uses no model.
+
+**Facility registry and recommendations.**
+
+- _Facility registry:_
+  - `jen.coad@example.org` (`coad`) proposes a place, and `dana.director@example.org` approves it in **Facility approvals**;
+  - the public can offer a place from Find help.
+- _Recommendations:_ `luis.masscare@example.org` asks for a shelter, feeding stops, a POD with walk-up points or a MARC. Each answer comes with its reasons, unknowns, the places set aside, the age of its inputs and an equity check. A named person accepts, edits or rejects it with a reason. The rules and planning factors are in `docs/recommendations.md`.
+- _Resource discovery:_ gathers partner posts, county feeds and, when switched on, web search, for a person to decide (`docs/discovery.md`).
+
+**Drafting.**
+
+- Official reports and the declaration's Form 010-0-13 Boxes 8–9 can be drafted from their facts. Every figure is checked against the facts it cites, and a draft that fails is never shown.
+- The PIO (`tomas.pio@example.org`) can draft the social post, the radio loop and the amateur-radio readout for a site, render the radio script as audio labelled as computer-generated, and download a social card.
+
+**Field.** In the field app (`rowan.field@example.org`):
+
+- the conversation note-taker records only after the survivor consents in their language and keeps only the confirmed note, with the audio deleted;
+- "Hand-over for the next shift" drafts a hand-over from the shift's own records at check-out;
+- "Live translation" translates general conversation between English and Spanish, with an interpreter one tap away. Consent, legal and medical conversations always go to an interpreter.
+
+**Photos.** Where the county switches it on, reviewers see an "AI suggestion — not verified" degree of damage after the FEMA matrix. They set the degree themselves, and their agreement is recorded. The review queue puts people's needs first and the suggestion second. A photo that looks the same as one on another report is flagged for a person.
+
+Maps (SCL-13) are opt-in because the first build downloads the Missouri OpenStreetMap extract: set `COMPOSE_PROFILES=maps` in `.env` for the geocoder and run `docker compose --profile maps-build run --rm tiles-build` once for vector tiles. With the geocoder running, set `GEOCODER_URL=http://geocoder:8080` in `.env` so the mission intake's address suggestions add OpenStreetMap matches to the county's parcels (BRD:FR-03.02); without it, suggestions come from the parcels alone. Once the tiles exist, the worker cuts an offline map package for each parcel area of a county within 15 minutes (`maps/areas/<tenant>/<area>.pmtiles`, recorded in `cg.map_package`; FLD-13), and cuts it again when the tiles are rebuilt or the area's lots change.
 
 Behind a corporate proxy that inspects TLS, pass its CA to the builds: `docker compose build --build-arg HTTPS_PROXY=... ` and `--secret id=extra_ca,src=/path/ca.pem` (see `infra/node/Dockerfile`).
 
@@ -206,6 +255,7 @@ pnpm install
 pnpm lint              # eslint + prettier
 pnpm typecheck
 pnpm check:product-name   # ADM-03: product name never hardcoded
+pnpm check:traceability   # docs/traceability.md is what tools/reqindex/trace-*.json generate
 pnpm test              # unit tests (vitest)
 pnpm test:integration  # against the running stack (STACK_URL, COMPOSE_FILES to override): layer 1 to 6 acceptance cases
 pnpm test:e2e          # Playwright + axe: resident flow, kiosk, console onboarding, review, needs board, sites, dispatch and missions journeys, the field app's web build, the public help page, the CJIS enclave and the console's enclave link (npx playwright install chromium first)
@@ -220,9 +270,13 @@ API_DB_TEST_APP_URL=... API_DB_TEST_WORKER_URL=... pnpm --filter @cg/worker load
 scripts/backup.sh && scripts/restore.sh backups/<stamp>   # NFR-05; drills in tests/drills/
 DATABASE_MIGRATOR_URL=... pnpm --filter @cg/db check:migrations 3   # newest migrations up, down, up; dictionary and RLS checks (SEC-05/11)
 pnpm --filter @cg/intake lint:strings   # INT-08: reading-grade table and tone findings for the question graph
-pnpm --filter @cg/ai evaluate           # AIG-08: evaluation report for the AI provider (default: fake)
+pnpm --filter @cg/ai evaluate           # AIG-08: evaluation report against the test double (no network)
+pnpm --filter @cg/ai evaluate:live      # AIG-08: the same set against OpenAI (needs OPENAI_API_KEY; paid calls)
+pnpm --filter @cg/ai evaluate:photos <manifest.csv> [--baseline report.json] [--out report.json]   # AIG-08, PHO-13: the damage classifier on an operator-supplied labelled photo set (kept outside the repo), with accuracy by hazard, home type and income band; fails on a group behind or a regression
 pnpm --filter @cg/db check:migrations 1 # drill the newest migration up, down and up against the compose database (needs DATABASE_MIGRATOR_URL)
 pnpm reqindex          # regenerate docs/requirements-index.md after editing docs/0*
+scripts/check-alerts.sh   # NFR-10: Prometheus config and alert rules checked, rule unit tests run by promtool (Docker)
+docker compose --profile monitoring up -d prometheus   # NFR-10: scrape the api and worker /metrics and evaluate the alert rules at http://127.0.0.1:9090
 eval "$(scripts/cjis-test-db.sh)" && pnpm vitest run --project unit packages/cjis-db/test services/cjis-api/test   # the enclave's database-backed suites on a throwaway enclave database (127.0.0.1:5433); scripts/cjis-test-db.sh --stop removes it
 CJIS_DATABASE_MIGRATOR_URL=$CJIS_DB_TEST_MIGRATOR_URL pnpm --filter @cg/cjis-db check:migrations 5   # the enclave migration drill
 ```

@@ -1,6 +1,7 @@
 #!/bin/sh
-# Restore drill (NFR-05, GATE-09 recovery half): back up, destroy the schema,
-# restore, and prove the audit chains verify with the same heads as before.
+# Restore drill (NFR-05, GATE-09 recovery half, MET-08): back up, destroy the
+# schema, restore (timed), and prove the audit chains verify with the same heads
+# as before.
 # Run against a seeded local stack. Destructive by design; synthetic data only.
 set -eu
 cd "$(dirname "$0")/../.."
@@ -18,7 +19,10 @@ echo "== destroying schema cg"
 psql "drop schema cg cascade" >/dev/null
 psql "select count(*) from information_schema.tables where table_schema='cg'" | grep -qx 0 && echo "schema gone"
 
+STARTED=$(date +%s)
 scripts/restore.sh "$OUT"
+# MET-08: the recovery time, from an empty schema to a restored database.
+echo "== restore took $(($(date +%s) - STARTED)) s"
 
 echo "== verifying"
 AFTER=$(psql "select tenant_id || ' ' || max(seq) || ' ' || encode((select hash from cg.audit_event e2 where e2.tenant_id = e.tenant_id order by seq desc limit 1), 'hex') from cg.audit_event e group by tenant_id order by 1")

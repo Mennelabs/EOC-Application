@@ -2,14 +2,14 @@
   "_about": "Design foundation (docs/plans/design-foundation.md, decided 2026-10-15, ADR-0045): the shared packages/ui, the console frame, the situation home and briefing mode, the resident app and Find help on the tokens. Later entries override earlier files.",
   "CON-01": [
     "pass",
-    "apps/web-console/src/ui/nav.ts (workspaces grouped and listed only when the person's actions answer for them, from /me); apps/web-console/src/App.tsx (the frame from @cg/ui); apps/web-console/src/screens/home.tsx (the situation home for dashboard roles, the work home for everyone else)",
+    "apps/web-console (role workspaces; review, intake setup, assisted, AI register added); design foundation: apps/web-console/src/ui/nav.ts (workspaces grouped and listed only when the person's actions answer for them, from /me); apps/web-console/src/App.tsx (the frame from @cg/ui); apps/web-console/src/screens/home.tsx (the situation home for dashboard roles, the work home for everyone else)",
     "apps/web-console/test/nav.test.ts, tests/e2e/console.spec.ts (a denied workspace is not listed and its address shows the denial), tests/e2e/console-l3.spec.ts (key counts on home)",
     ""
   ],
   "CON-04": [
     "pass",
-    "apps/web-console/src/screens/home.tsx (key counts as tiles with their as-of time and source; /dashboard/counts)",
-    "tests/e2e/console-l3.spec.ts (heading and as-of time on home), tools/preview/console-preview.mjs (axe)",
+    "GET /dashboard/counts with as-of; apps/web-console/src/screens/home.tsx (key counts as tiles with their as-of time and source, ADR-0045)",
+    "services/api/test/needs.db.test.ts, tests/e2e/console-l3.spec.ts, tests/integration/layer3.int.test.ts, tools/preview/console-preview.mjs (axe)",
     ""
   ],
   "CON-11": [
@@ -56,14 +56,14 @@
   ],
   "SCL-08": [
     "partial",
-    "packages/ui/src/styles/tokens.css: the accent and every status colour are tokens a tenant can override; text on the accent is always --cg-accent-ink and the contrast test is the gate (ADR-0045)",
-    "packages/ui/test/tokens.test.ts",
-    "The per-tenant setting in Administration and custom domains arrive with white-labelling at the cloud move."
+    "tenant branding (name, colours, sender name) in the public graph response and templates; packages/ui/src/styles/tokens.css: the accent and every status colour are tokens a tenant can override; text on the accent is always --cg-accent-ink and the contrast test is the gate (ADR-0045)",
+    "services/api/test/public.db.test.ts (branding), packages/ui/test/tokens.test.ts",
+    "Custom domains at the cloud move. A county sets the resident header colour (white text checked at 4.5:1, ADM-01); a per-county accent for the console is not offered yet (the token and its contrast test exist, ADR-0045)."
   ],
   "SCL-11": [
     "pass",
-    "packages/ui: fonts self-hosted through Fontsource (IBM Plex Sans, IBM Plex Mono, Atkinson Hyperlegible Next), no request leaves the stack for a font or an icon",
-    "apps/web-help check:size (63 KB first load), packages/ui/src/styles/fonts-*.css",
+    "compose.yaml, compose.cjis.yaml, packages/adapters; design foundation: packages/ui: fonts self-hosted through Fontsource (IBM Plex Sans, IBM Plex Mono, Atkinson Hyperlegible Next), no request leaves the stack for a font or an icon",
+    "stack.int.test.ts, CI stack job, apps/web-help check:size (63 KB first load), packages/ui/src/styles/fonts-*.css",
     ""
   ],
   "GATE-03": [

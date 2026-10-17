@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { asSystem, systemAudit } from '../system.ts';
 import { isTemplateName, renderTemplate, type TemplateVars } from './templates.ts';
 import type { JobContext, TopicHandler } from './types.ts';
+import { integrationCalls } from '../metrics.ts';
 
 export const messagePayloadSchema = z.object({
   template: z.string().min(1),
@@ -27,6 +28,11 @@ export const messagePayloadSchema = z.object({
   /** A field message's text fallback names its receipt, which records the message row (DSP-06). */
   fieldReceiptId: z.uuid().optional(),
   variables: z.record(z.string(), z.string()).default({}),
+  /**
+   * Variables that must not sit in the outbox in clear, such as a single-use link (REC-01):
+   * a JSON object encrypted by the sender, merged over `variables` when the message is made.
+   */
+  secretVariablesEnc: z.string().min(1).optional(),
 });
 
 /** Where a resident opens their own report (the resident app serves this path). */
@@ -54,9 +60,11 @@ export const messageSend: TopicHandler = async (ctx, msg) => {
       .select(['name', 'slug'])
       .where('id', '=', tenantId)
       .executeTakeFirstOrThrow();
+    // This county's help line, never another's (the worker sees every tenant).
     const help = await trx
       .selectFrom('cg.tenant_config')
       .select('value')
+      .where('tenant_id', '=', tenantId)
       .where('key', '=', 'intake.help_phone')
       .executeTakeFirst();
     const number =
@@ -76,11 +84,17 @@ export const messageSend: TopicHandler = async (ctx, msg) => {
           .where('id', '=', p.partyId)
           .executeTakeFirst()
       : null;
+    const secret = p.secretVariablesEnc
+      ? (JSON.parse(
+          await ctx.crypto.decrypt(tenantId, Buffer.from(p.secretVariablesEnc, 'base64')),
+        ) as Record<string, string>)
+      : {};
     const vars: TemplateVars = {
       county: tenant.name,
       helpPhone: typeof help?.value === 'string' ? help.value : null,
       url: myReportUrl(ctx, tenant.slug),
       ...p.variables,
+      ...secret,
     };
     const rendered = renderTemplate(template, p.language, p.channel, vars);
     const id =
@@ -151,12 +165,14 @@ export const messageSend: TopicHandler = async (ctx, msg) => {
         text: prepared.rendered.body,
       });
       provider = 'smtp';
+      integrationCalls.inc({ integration: 'email', outcome: 'ok' });
     } else {
       const receipt = await ctx.sms.send({
         to,
         body: prepared.rendered.body,
         ...(prepared.from ? { from: prepared.from } : {}),
       });
+      integrationCalls.inc({ integration: 'sms', outcome: 'ok' });
       provider = receipt.provider;
       providerMessageId = receipt.providerMessageId;
       evidence = { ...evidence, segments: receipt.segments, status: receipt.status };
@@ -188,6 +204,10 @@ export const messageSend: TopicHandler = async (ctx, msg) => {
       });
     });
   } catch (err) {
+    integrationCalls.inc({
+      integration: p.channel === 'email' ? 'email' : 'sms',
+      outcome: 'failed',
+    });
     await asSystem(ctx.db, tenantId, (trx) =>
       trx
         .updateTable('cg.message')

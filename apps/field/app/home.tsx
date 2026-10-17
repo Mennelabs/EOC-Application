@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { timerLabel, timerPhase } from '@cg/field-core';
 import { useField, useHazardWarnings } from '../src/field';
+import { useOnline } from '../src/online';
 import { clock, duration } from '../src/format';
 import { MODULES } from '../src/records';
 import { label } from '../src/vocab';
@@ -44,8 +45,27 @@ export default function Home() {
   const unread = messages.filter((m) => !m.receipt?.acknowledgedAt);
   const latest = unread[0] ?? null;
   const phase = timer ? timerPhase(timer, now) : 'ok';
+  // FL-12: the last hand-over left for this worker's team (needs signal; quiet without it).
+  const handovers = useOnline(checkIn && !checkIn.endedAt ? `handovers:${checkIn.id}` : null, () =>
+    f.online<
+      { checkInId: string; personnelName: string | null; createdAt: string; text: string }[]
+    >('/handovers?mine=true&limit=1'),
+  );
+  const last = handovers.data?.find((h) => h.checkInId !== checkIn?.id) ?? null;
   return (
     <Page title={t('home.heading')}>
+      {last ? (
+        <Card label={t('handover.last')}>
+          <Heading level={2}>{t('handover.last')}</Heading>
+          <Body muted>
+            {t('handover.lastBy', {
+              name: last.personnelName ?? '—',
+              time: clock(last.createdAt, locale),
+            })}
+          </Body>
+          <Body>{last.text}</Body>
+        </Card>
+      ) : null}
       <Card label={t('home.heading')}>
         <Heading level={2}>
           {team
@@ -57,7 +77,24 @@ export default function Home() {
         {checkIn ? (
           <Body>{t('home.onShift', { time: duration(checkIn.startedAt, now) })}</Body>
         ) : null}
+        {/* FL-16: after the county's rest limit, a reminder in words, announced once. */}
+        {checkIn &&
+        !checkIn.endedAt &&
+        now.getTime() - new Date(checkIn.startedAt).getTime() >=
+          f.options.restAfterHours * 3_600_000 ? (
+          <Alert tone="warn">
+            {t('rest.heading')}. {t('rest.body', { time: duration(checkIn.startedAt, now) })}
+          </Alert>
+        ) : null}
         <Body>{policy.enabled ? `● ${t('home.sharing')}` : `○ ${t('home.notSharing')}`}</Body>
+        {/* BRD:FR-03.05: a phone that blocks location says so here, and dispatch is told. */}
+        {policy.enabled && f.locationPermission === 'denied' ? (
+          <Alert tone="warn">{t('home.locationDenied')}</Alert>
+        ) : policy.enabled && f.locationPermission === 'unavailable' ? (
+          <Alert tone="warn">{t('home.locationUnavailable')}</Alert>
+        ) : policy.enabled && f.locationPermission === 'foreground_only' ? (
+          <Body muted>{t('home.locationForeground')}</Body>
+        ) : null}
         {timer ? (
           <View style={{ gap: 8 }}>
             <Body live>
@@ -110,6 +147,7 @@ export default function Home() {
       <Card label={t('home.tools')}>
         <Heading level={2}>{t('home.tools')}</Heading>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <Button kind="secondary" label={t('map.open')} onPress={() => router.push('/map')} />
           {f.can('command.use') ? (
             <Button
               kind="secondary"
@@ -177,6 +215,41 @@ export default function Home() {
               onPress={() => router.push('/stock')}
             />
           ) : null}
+          {f.can('canteen_stop.write') ? (
+            <Button
+              kind="secondary"
+              label={t('canteen.heading')}
+              onPress={() => router.push('/canteen')}
+            />
+          ) : null}
+          {f.can('pet_intake.read') ? (
+            <Button
+              kind="secondary"
+              label={t('pets.heading')}
+              onPress={() => router.push('/pets')}
+            />
+          ) : null}
+          {f.can('scribe.use') ? (
+            <Button
+              kind="secondary"
+              label={t('scribe.heading')}
+              onPress={() => router.push('/scribe')}
+            />
+          ) : null}
+          {f.can('survivor.find') ? (
+            <Button
+              kind="secondary"
+              label={t('find.heading')}
+              onPress={() => router.push('/find')}
+            />
+          ) : null}
+          {f.can('translation.use') ? (
+            <Button
+              kind="secondary"
+              label={t('translate.heading')}
+              onPress={() => router.push('/translate')}
+            />
+          ) : null}
           {f.can('interpreter.respond') ? (
             <Button
               kind="secondary"
@@ -196,6 +269,13 @@ export default function Home() {
               kind="secondary"
               label={t('aids.heading')}
               onPress={() => router.push('/job-aids')}
+            />
+          ) : null}
+          {f.can('peer_support.request') ? (
+            <Button
+              kind="secondary"
+              label={t('peer.heading')}
+              onPress={() => router.push('/peer-support')}
             />
           ) : null}
         </View>

@@ -16,6 +16,7 @@ import { DataTable, Field, Status, fmt } from '../ui/primitives.tsx';
 import { EventPicker, useOpenEvents } from './dispatch.tsx';
 import { PackageExports, PackagePhotos } from './fema-package.tsx';
 import { PartnerRollupChooser } from './partner-rollup.tsx';
+import { fromZoneInput } from '../ui/time.ts';
 
 const DEGREES = ['affected', 'minor', 'major', 'destroyed'] as const;
 type Degree = (typeof DEGREES)[number];
@@ -278,7 +279,7 @@ const usd = (v: number | null) =>
     ? 'Unknown'
     : v.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 /** A datetime-local value as an ISO instant; empty stays empty. */
-const instant = (v: string) => (v ? new Date(v).toISOString() : null);
+const instant = (v: string) => (v ? fromZoneInput(v).toISOString() : null);
 
 export function DeclarationScreen() {
   const { events, error: eventsError } = useOpenEvents();
@@ -425,6 +426,29 @@ function IncidentForm({
     box8: declaration?.box8Draft ?? '',
     box9: declaration?.box9Draft ?? '',
   });
+  // Layer-7 task G (DCL:DEC-14): an AI draft fills a box; the person reads, changes and saves it.
+  type AiBox = { outputId: string; text: string; provider: string; model: string };
+  const [ai, setAi] = useState<{ 8?: AiBox; 9?: AiBox }>({});
+  const [aiMsg, setAiMsg] = useState<{ box: 8 | 9; kind: 'info' | 'error'; text: string } | null>(
+    null,
+  );
+  const draftBox = async (box: 8 | 9) => {
+    setAiMsg(null);
+    try {
+      const r = await api<AiBox & { box: number }>(`/events/${eventId}/declaration/ai-draft`, {
+        body: { box, language: 'en' },
+      });
+      setForm((f) => ({ ...f, [`box${box}`]: r.text }));
+      setAi((a) => ({ ...a, [box]: r }));
+      setAiMsg({
+        box,
+        kind: 'info',
+        text: `Box ${box} drafted by the AI assistant (${r.provider}, ${r.model}) from the declaration figures; every figure was checked against them. Read it and change what needs changing, then save.`,
+      });
+    } catch (err) {
+      setAiMsg({ box, kind: 'error', text: describeFailure(err) });
+    }
+  };
   const endError =
     form.incidentStart && form.incidentEnd && form.incidentEnd < form.incidentStart
       ? 'The incident cannot end before it starts.'
@@ -443,8 +467,21 @@ function IncidentForm({
             requestedAreas: form.areas.filter((a) => a.name.trim()),
             box8Draft: form.box8.trim() || null,
             box9Draft: form.box9.trim() || null,
+            ...(ai[8] || ai[9]
+              ? {
+                  ai: ([8, 9] as const)
+                    .filter((b) => ai[b])
+                    .map((b) => ({
+                      outputId: ai[b]!.outputId,
+                      changed: form[`box${b}`].trim() !== ai[b]!.text.trim(),
+                    })),
+                }
+              : {}),
           },
           ...(declaration ? { version: declaration.version } : {}),
+        }).then((r) => {
+          setAi({});
+          return r;
         }),
       'Incident period and drafts saved.',
     );
@@ -578,6 +615,12 @@ function IncidentForm({
             />
           )}
         </Field>
+        <div className="toolbar">
+          <button type="button" onClick={() => void draftBox(8)}>
+            Draft Box 8 with the AI assistant
+          </button>
+        </div>
+        {aiMsg?.box === 8 ? <Status kind={aiMsg.kind}>{aiMsg.text}</Status> : null}
         <Field
           label="Box 9 draft: actions taken and resources committed"
           hint={`${form.box9.length.toLocaleString('en-US')} of ${DRAFT_LIMIT.toLocaleString('en-US')} characters.`}
@@ -593,6 +636,12 @@ function IncidentForm({
             />
           )}
         </Field>
+        <div className="toolbar">
+          <button type="button" onClick={() => void draftBox(9)}>
+            Draft Box 9 with the AI assistant
+          </button>
+        </div>
+        {aiMsg?.box === 9 ? <Status kind={aiMsg.kind}>{aiMsg.text}</Status> : null}
         <div className="toolbar">
           <button type="submit" className="primary">
             Save incident period and drafts

@@ -8,6 +8,7 @@
  */
 import { langOf, strings, type Lang, type Strings } from './i18n.ts';
 import { offerForm } from './offer.ts';
+import { volunteerForm } from './volunteer.ts';
 import './styles.css';
 
 interface Address {
@@ -46,9 +47,21 @@ interface Resource {
   url: string;
   referenceUrl: string | null;
   expiresAt: string | null;
+  /** FR-16.01: a decorative picture, so it carries no words of its own. */
+  thumbnailUrl?: string | null;
 }
 interface Help {
-  tenant: { name: string; slug: string; locales: string[] };
+  tenant: {
+    name: string;
+    slug: string;
+    locales: string[];
+    /** ADM-01: the county's branding, its known fields only. */
+    branding?: {
+      publicName?: { en?: string; es?: string };
+      website?: string;
+      headerColor?: string;
+    };
+  };
   lang: string;
   generatedAt: string;
   near: { query: string; resolved: boolean; label: string | null; how: string } | null;
@@ -56,6 +69,55 @@ interface Help {
   resources: Resource[];
   accessibility: { statement: string; supportPhone: string | null };
   notices: string[];
+  /** FL:FR-06: notices from public health in force, the visitor's area first. */
+  healthNotices?: HealthNotice[];
+}
+interface HealthNotice {
+  id: string;
+  kind: string;
+  title: string;
+  body: string;
+  lang: string;
+  areaLabel: string;
+  since: string;
+  expiresAt: string | null;
+  here: boolean;
+}
+
+/** FL:FR-06: each notice as an article with its kind, area and dates in words. */
+function healthNoticesSection(t: Strings, notices: HealthNotice[]): HTMLElement | null {
+  if (!notices.length) return null;
+  const fill = (text: string, values: Record<string, string>) =>
+    text.replace(/\{(\w+)\}/g, (_, k: string) => values[k] ?? '');
+  return el(
+    'section',
+    { class: 'health-notices', 'aria-labelledby': 'health-notices-h' },
+    el('h2', { id: 'health-notices-h' }, t.healthNotices),
+    ...notices.map((n) =>
+      el(
+        'article',
+        { class: 'health-notice', 'aria-labelledby': `hn-${n.id}` },
+        el(
+          'p',
+          { class: 'notice-kind' },
+          `${t.noticeKinds[n.kind] ?? n.kind}${n.here ? ` · ${t.forYourArea}` : ''}`,
+        ),
+        el('h3', { id: `hn-${n.id}`, ...(n.lang !== lang ? { lang: n.lang } : {}) }, n.title),
+        el('p', { class: 'hint' }, fill(t.noticeArea, { area: n.areaLabel })),
+        ...n.body
+          .split(/\n\s*\n/)
+          .map((p) => p.trim())
+          .filter(Boolean)
+          .map((p) => el('p', n.lang !== lang ? { lang: n.lang } : {}, p)),
+        el(
+          'p',
+          { class: 'hint' },
+          fill(t.noticeSince, { date: shortTime(n.since) }) +
+            (n.expiresAt ? ` · ${fill(t.noticeUntil, { date: shortTime(n.expiresAt) })}` : ''),
+        ),
+      ),
+    ),
+  );
 }
 interface Config {
   productName?: string;
@@ -264,7 +326,9 @@ function render(): void {
   const skip = document.querySelector('.skip');
   if (skip) skip.textContent = t.skip;
   app.replaceChildren();
-  const county = data?.tenant.name ?? config.countyName ?? '';
+  const brand = data?.tenant.branding ?? {};
+  // ADM-01: the agency's own name in this language when the county gave one.
+  const county = brand.publicName?.[lang] ?? data?.tenant.name ?? config.countyName ?? '';
   const phone = data?.accessibility.supportPhone ?? config.helpPhone ?? null;
 
   // Header with the language switch (EQ-06): a link so it works without scripting once loaded.
@@ -284,12 +348,18 @@ function render(): void {
       ),
     ),
   );
+  // The county's colour as a band over the header (set through the style object, which the CSP allows).
+  if (brand.headerColor && /^#[0-9a-f]{6}$/i.test(brand.headerColor))
+    header.style.borderTop = `0.5rem solid ${brand.headerColor}`;
   app.append(header);
   app.append(el('p', { class: 'danger', role: 'note' }, t.danger));
   app.append(el('p', { class: 'intro' }, t.intro));
 
   const main = el('main', { id: 'main', tabindex: '-1' });
   app.append(main);
+  // FL:FR-06: health notices before the list, the visitor's area first.
+  const notices = data ? healthNoticesSection(t, data.healthNotices ?? []) : null;
+  if (notices) main.append(notices);
 
   // Search (PUB-07): ZIP, address or landmark; nothing typed is kept.
   const form = el('form', {
@@ -418,8 +488,22 @@ function render(): void {
     main.append(el('h2', { id: 'resources' }, t.resources));
     const ul = el('ul', { class: 'resources' });
     for (const r of data.resources) {
-      const li = el('li', {}, el('a', { href: r.url }, r.title));
-      if (r.summary) li.append(el('p', {}, r.summary));
+      const text = el('div', {}, el('a', { href: r.url }, r.title));
+      if (r.summary) text.append(el('p', {}, r.summary));
+      const li = el('li', {}, text);
+      if (r.thumbnailUrl) {
+        li.classList.add('with-thumb');
+        li.prepend(
+          el('img', {
+            src: r.thumbnailUrl,
+            alt: '',
+            width: '96',
+            height: '64',
+            loading: 'lazy',
+            decoding: 'async',
+          }),
+        );
+      }
       ul.append(li);
     }
     main.append(ul);
@@ -454,7 +538,12 @@ function render(): void {
           el('a', { href: `tel:${phone.replace(/[^\d+]/g, '')}` }, phone),
         )
       : null,
+    // AC-A04: the help line without a voice.
+    phone ? el('p', {}, t.relay) : null,
     el('p', {}, t.textKeyword),
+    brand.website && /^https:\/\//.test(brand.website)
+      ? el('p', {}, el('strong', {}, `${t.website}: `), el('a', { href: brand.website }, county))
+      : null,
     el('p', { class: 'muted' }, t.notEligibility),
     el('p', { class: 'muted' }, `${t.updated}: ${shortTime(data.generatedAt)}`),
   );
@@ -531,20 +620,54 @@ window.addEventListener('afterprint', () => {
 function renderOffer(tenant: string): void {
   const t = strings(lang);
   document.documentElement.lang = lang;
-  document.title = `${t.offer.title} · ${config.countyName ?? ''}`.trim();
+  // REC-01: an owner's re-check link opens the same form, filled in.
+  const update = url.searchParams.get('update');
+  const title = update ? t.offer.updateTitle : t.offer.title;
+  document.title = `${title} · ${config.countyName ?? ''}`.trim();
   const otherLang: Lang = lang === 'en' ? 'es' : 'en';
   const main = el('main', { id: 'main', tabindex: '-1' });
   main.append(
     el('p', { class: 'danger', role: 'note' }, t.danger),
-    el('p', { class: 'intro' }, t.offer.intro),
-    offerForm(el, tenant, lang, t, pageUrl({ view: null })),
+    el('p', { class: 'intro' }, update ? t.offer.updateIntro : t.offer.intro),
+    offerForm(el, tenant, lang, t, pageUrl({ view: null, update: null }), update),
   );
   app.replaceChildren(
     el(
       'header',
       {},
       el('p', { class: 'county' }, config.countyName ?? ''),
-      el('h1', {}, t.offer.title),
+      el('h1', {}, title),
+      el(
+        'nav',
+        { 'aria-label': t.language },
+        el(
+          'a',
+          { href: pageUrl({ lang: otherLang }), lang: otherLang, hreflang: otherLang },
+          otherLang === 'es' ? 'Español' : 'English',
+        ),
+      ),
+    ),
+    main,
+  );
+}
+
+/** FL:FR-20: a walk-up volunteer's sign-up, opened from the code at the volunteer desk. */
+function renderVolunteer(tenant: string, token: string): void {
+  const t = strings(lang);
+  document.documentElement.lang = lang;
+  document.title = `${t.volunteer.title} · ${config.countyName ?? ''}`.trim();
+  const otherLang: Lang = lang === 'en' ? 'es' : 'en';
+  const main = el('main', { id: 'main', tabindex: '-1' });
+  main.append(
+    el('p', { class: 'intro' }, t.volunteer.intro),
+    volunteerForm(el, tenant, token, lang, t),
+  );
+  app.replaceChildren(
+    el(
+      'header',
+      {},
+      el('p', { class: 'county' }, config.countyName ?? ''),
+      el('h1', {}, t.volunteer.title),
       el(
         'nav',
         { 'aria-label': t.language },
@@ -560,8 +683,15 @@ function renderOffer(tenant: string): void {
 }
 
 config = await loadConfig();
+const joinToken = url.searchParams.get('join');
 if (url.searchParams.get('view') === 'offer' && (pathTenant ?? config.tenant)) {
   renderOffer(pathTenant ?? config.tenant!);
+} else if (
+  url.searchParams.get('view') === 'volunteer' &&
+  joinToken &&
+  (pathTenant ?? config.tenant)
+) {
+  renderVolunteer(pathTenant ?? config.tenant!, joinToken);
 } else {
   render();
   await refresh();

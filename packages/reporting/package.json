@@ -11,6 +11,7 @@
     "samples": "node src/samples.ts"
   },
   "dependencies": {
+    "@cg/authz": "workspace:*",
     "@cg/db": "workspace:*",
     "@cg/field-core": "workspace:*",
     "@cg/pdf": "workspace:*",

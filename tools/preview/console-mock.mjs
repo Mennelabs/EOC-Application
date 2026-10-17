@@ -65,6 +65,13 @@ const ACTIONS = {
     'publication.read',
     'contact.read',
     'dsa.read',
+    'reentry_pass.read',
+    'job_aid.edit',
+    'job_aid.approve',
+    'event.template_edit',
+    'tenant.config.read',
+    'license.read',
+    'public_records.export',
   ],
   nurse: ['shelter_stay.read', 'health_note.read', 'me.read', 'event.read'],
   partner: [

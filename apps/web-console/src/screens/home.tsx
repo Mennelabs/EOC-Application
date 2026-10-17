@@ -28,7 +28,6 @@ import {
   Tiles,
   Timeline,
   applyMode,
-  clockTime,
   count,
   humanize,
   icons,
@@ -36,6 +35,13 @@ import {
 } from '@cg/ui';
 import { api, describeFailure } from '../api/client.ts';
 import { visibleGroups } from '../ui/nav.ts';
+import { formatInstant, formatTime } from '../ui/time.ts';
+
+/** BRD:FR-00.08: a time of day on the county's clock, with the zone named. */
+function clockTime(iso: string | null | undefined): string {
+  const t = iso ? Date.parse(iso) : NaN;
+  return Number.isNaN(t) ? '' : formatTime(new Date(t));
+}
 
 export interface HomeMe {
   accountId: string;
@@ -414,7 +420,7 @@ export function HomeScreen({
             </LinkButton>
           }
         >
-          Due {relativeTime(r.dueAt)}.
+          Due {formatInstant(new Date(r.dueAt))}.
         </DecisionCard>
       ),
     });

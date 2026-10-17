@@ -8,10 +8,11 @@
  * consented records (only the sections granted), the organization's claims,
  * referrals in and out, and "send an update" to the resident.
  */
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, describeFailure, download } from '../api/client.ts';
 import { DataTable, Field, Status, fmt } from '../ui/primitives.tsx';
 import { useList } from './admin.tsx';
+import { useOpenDraft, useRecordChanged, useScreenRecord } from '../ui/screen-record.ts';
 
 export interface Need {
   id: string;
@@ -76,6 +77,12 @@ function NeedActions({
   const [note, setNote] = useState('');
   const [assignTo, setAssignTo] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const noteBox = useRef<HTMLInputElement>(null);
+  // CMD-29, AC-C09: a typed note is unsaved work the command window asks about.
+  useOpenDraft({ kind: 'need', id: need.id }, note.trim().length > 0, 'the note', {
+    focus: () => noteBox.current?.focus(),
+    discard: () => setNote(''),
+  });
   const act = async (verb: string, body: Record<string, unknown>) => {
     setError(null);
     try {
@@ -91,6 +98,7 @@ function NeedActions({
       <Field label="Note" hint="Goes into the need's history.">
         {({ id, describedBy }) => (
           <input
+            ref={noteBox}
             id={id}
             aria-describedby={describedBy}
             value={note}
@@ -170,6 +178,14 @@ export function NeedsBoardScreen({ me }: { me: { tenantId: string; tenantKind?: 
   const [open, setOpen] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const county = me?.tenantKind !== 'partner_org';
+  const shown = open ? rows?.find((n) => n.id === open) : undefined;
+  // CMD-06: the need whose panel is open is what "this" means in the command window.
+  useScreenRecord(
+    shown
+      ? { kind: 'need', id: shown.id, label: shown.referenceCode ?? label(shown.category) }
+      : null,
+  );
+  useRecordChanged('need', open, reload);
   const onResult = (r: ActionResult, verb: string) => {
     const warn = r.warnings.length
       ? ` Warning: ${r.warnings.map((w) => `${label(w.kind)} (${label(w.category)}${w.claimedByTenantName ? `, ${w.claimedByTenantName}` : ''})`).join('; ')}.`
@@ -419,8 +435,12 @@ export function PartnerScreen({ me }: { me: { tenantId: string } | null }) {
   const [referNote, setReferNote] = useState('');
   const respond = async (id: string, verb: 'accept' | 'decline' | 'done', note: string) => {
     try {
-      await api(`/referrals/${id}/${verb}`, { body: { note } });
-      setNotice(`Referral ${verb === 'done' ? 'finished' : verb + 'ed'}.`);
+      const r = await api<Referral>(`/referrals/${id}/${verb}`, { body: { note } });
+      const kept = note.trim() !== '' && verb !== 'accept' && r.outcome === null;
+      // FL:FR-23: a legal aid organization's notes stay with it; only the status is shared.
+      setNotice(
+        `Referral ${verb === 'done' ? 'finished' : verb + 'ed'}.${kept ? ' Your note was not shared or stored: only the status reaches the referring organization.' : ''}`,
+      );
       referrals.reload();
     } catch (err) {
       setNotice(describeFailure(err));

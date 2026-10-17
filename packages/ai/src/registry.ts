@@ -31,7 +31,7 @@ export function providerByName(name: string): AiProvider | undefined {
 /** The provider a tenant is configured for (`ai.provider`, OpenAI by default), or null: AI off. */
 export const DEFAULT_PROVIDER = 'openai';
 
-export type ProviderNeed = 'llm' | 'stt' | 'translation' | 'image' | 'classifier';
+export type ProviderNeed = 'llm' | 'stt' | 'tts' | 'translation' | 'image' | 'classifier';
 
 /** What the register records about a provider, whether or not this process can call it. */
 export interface ProviderDescriptor {
@@ -42,7 +42,7 @@ export interface ProviderDescriptor {
 }
 
 export function describeProvider(p: AiProvider): ProviderDescriptor {
-  const all: ProviderNeed[] = ['llm', 'stt', 'translation', 'image', 'classifier'];
+  const all: ProviderNeed[] = ['llm', 'stt', 'tts', 'translation', 'image', 'classifier'];
   return {
     info: p.info,
     compliance: p.compliance,
@@ -59,7 +59,7 @@ export function openAIDescriptor(
     info: { provider: 'openai', model: models.text ?? OPENAI_DEFAULT_MODELS.text },
     compliance: OPENAI_COMPLIANCE,
     languages: ['en', 'es'],
-    supports: ['llm', 'stt', 'translation', 'image', 'classifier'],
+    supports: ['llm', 'stt', 'tts', 'translation', 'image', 'classifier'],
   };
 }
 
@@ -100,11 +100,16 @@ export interface RegisterEntry {
   owner: string;
   /** Interface the feature needs on the provider. */
   needs: ProviderNeed;
-  /** Shipped switched off regardless of provider (PHO-12, Q-01). */
+  /** Can never be switched on (none at present; PHO-12's lock was lifted on 2026-10-15). */
   lockedOff?: boolean;
+  /** Provisioned off even when the evaluation passed: an administrator switches it on (AIG-08). */
+  startsOff?: boolean;
 }
 
-/** The product's AI features (AIG-01). The severity suggestion stays off until a validated classifier exists (PHO-12). */
+/**
+ * The product's AI features (AIG-01). The severity suggestion comes from the provider's
+ * classifier (OpenAI's vision model, decided 2026-10-15) and starts off for every tenant.
+ */
 export const AI_FEATURES: readonly RegisterEntry[] = [
   {
     feature: 'intake.extraction',
@@ -155,6 +160,47 @@ export const AI_FEATURES: readonly RegisterEntry[] = [
     owner: 'Product owner (command window)',
   },
   {
+    feature: 'scribe.transcription',
+    needs: 'stt',
+    dataSent:
+      "A recorded conversation between a worker and a survivor, with the survivor's consent",
+    decisionInformed:
+      'A transcript that feeds the drafted note; deleted with the audio when the note is confirmed (FL-04)',
+    humanCheckpoint: 'The worker reviews and confirms the note; only the confirmed note is kept',
+    owner: 'Field operations lead',
+  },
+  {
+    feature: 'scribe.note',
+    needs: 'llm',
+    dataSent:
+      'The transcript, redacted of names, phone numbers, emails, street addresses and identifiers',
+    decisionInformed:
+      'Drafts the note (needs heard, help given, follow-ups, referrals), each line with the words it rests on (FL-04)',
+    humanCheckpoint: 'The worker confirms or changes every line; only the confirmed note is kept',
+    owner: 'Field operations lead',
+  },
+  {
+    feature: 'field.handover',
+    needs: 'llm',
+    dataSent:
+      "Counts and summaries of a worker's own records from their shift, redacted of names, phone numbers, emails and street addresses; open assignments by mission name",
+    decisionInformed:
+      'Drafts the hand-over note for the next shift, each sentence citing its facts (FL-12)',
+    humanCheckpoint: 'The worker edits and confirms the note before checking out',
+    owner: 'Field operations lead',
+  },
+  {
+    feature: 'field.translation',
+    needs: 'translation',
+    dataSent:
+      'What a worker or a survivor says in a general conversation, one turn at a time; never consent, legal or medical conversations',
+    decisionInformed:
+      'A labelled machine translation shown on the phone between worker and survivor (FL-14); nothing is kept',
+    humanCheckpoint:
+      'One tap brings in a human interpreter; consent, legal and medical conversations always use one',
+    owner: 'Equity lead',
+  },
+  {
     feature: 'discovery.web_search',
     needs: 'llm',
     dataSent:
@@ -166,12 +212,45 @@ export const AI_FEATURES: readonly RegisterEntry[] = [
     owner: 'Planning and GIS lead',
   },
   {
-    feature: 'photo.quality',
-    needs: 'image',
-    dataSent: 'A resident photo',
-    decisionInformed: 'One plain retake suggestion (PHO-03)',
-    humanCheckpoint: 'Resident decides whether to retake',
-    owner: 'Product owner (intake)',
+    feature: 'report.drafting',
+    needs: 'llm',
+    dataSent:
+      "A situation report's or briefing's computed figures with their labels, and the rules' own summary; counts only, never a person",
+    decisionInformed:
+      'Rewrites the summary from the figures, each sentence citing its facts; refused when it states a figure the facts do not hold (CMD-16, AI-04)',
+    humanCheckpoint:
+      'Labelled as drafted and unapprovable until a person reads and saves it; review and issue by others (RULE-10)',
+    owner: 'Planning and GIS lead',
+  },
+  {
+    feature: 'declaration.drafting',
+    needs: 'llm',
+    dataSent:
+      'The declaration figures (damage counts by degree, tenure and insurance, outages, tract profile aggregates); counts only (DEC-17)',
+    decisionInformed:
+      'Drafts Boxes 8 and 9 of FEMA Form 010-0-13 from the figures, each sentence citing its facts (DCL:DEC-14)',
+    humanCheckpoint: 'Staff edit and save the text; the state, not the county, files the request',
+    owner: 'County EM director',
+  },
+  {
+    feature: 'public.drafting',
+    needs: 'llm',
+    dataSent:
+      "A site's public details (name, address, hours, services) or published figures; never a resident",
+    decisionInformed:
+      'Drafts public posts, radio scripts and alert text sized for the channel (PUB-11, PUB-12, PUB-14)',
+    humanCheckpoint: 'Nothing is sent or published until its named approver approves it (PUB-06)',
+    owner: 'Public information officer',
+  },
+  {
+    feature: 'public.speech',
+    needs: 'tts',
+    dataSent: "A radio script a person approved: a site's public details; never a resident",
+    decisionInformed:
+      'Speaks the script as an audio file for a Travelers’ Information Station loop or an amateur radio net (PUB-14); the file opens by saying the voice is computer-generated',
+    humanCheckpoint:
+      'The PIO approves the script first; the file is downloaded for air only after someone who may publish played it to the end and cleared it, with a reason',
+    owner: 'Public information officer',
   },
   {
     feature: 'photo.sensitive_regions',
@@ -184,12 +263,13 @@ export const AI_FEATURES: readonly RegisterEntry[] = [
   },
   {
     feature: 'photo.severity',
-    needs: 'image',
-    dataSent: 'A resident photo and its hazard',
+    needs: 'classifier',
+    dataSent: "A report's photos (blurred review copies), its home type and hazard",
     decisionInformed:
-      'A suggested FEMA degree of damage shown only to reviewers, labelled as a suggestion (PHO-09/10)',
-    humanCheckpoint: 'A credentialed reviewer sets the degree (PHO-11)',
+      'A suggested FEMA degree of damage with its confidence and the features it rests on, shown only to reviewers, labelled "AI suggestion — not verified" (PHO-09/10)',
+    humanCheckpoint:
+      'A credentialed reviewer sets the degree (PHO-11); agreement is reported (PHO-13)',
     owner: 'Damage assessment lead',
-    lockedOff: true,
+    startsOff: true,
   },
 ];

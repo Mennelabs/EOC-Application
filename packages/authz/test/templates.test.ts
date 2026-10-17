@@ -36,23 +36,56 @@ describe('shipped role templates (ADM-04)', () => {
     // liaison, official casualty counts, issuing official reports, joint-assessment
     // validation, a partner's own posting and qualifying discovered places for roles that name
     // them: no wildcard reaches them (DSP-08, SEC-12, DCL:DEC-08, RULE-10, FL:FR-10, partner
-    // posting 2026-10-15, REC-13).
+    // posting 2026-10-15, REC-13) and the conversation scribe, which only frontline roles use
+    // with a survivor's consent (FL-04). Batches from the command window are for those who
+    // coordinate needs (CMD-30); public-records releases are for those who answer the requests
+    // (SEC-13); finding a survivor's report without their code is for frontline readers (FL-02),
+    // and documents survivors share are for those who meet them and those who verify (FL-09);
+    // a health notice is approved by public health or the county's public voices (FL:FR-06).
+    // A county's subscription is the vendor's record: no county role writes it (SCL-10).
+    // Field guidance is approved by the roles that answer for it, never the last editor (FL-15).
     expect(p.deniedActions.sort()).toEqual([
       'casualty.record',
+      'command.bulk',
       'discovery.review',
+      'document.capture',
+      'document.read',
       'facility.approve',
+      'health_notice.approve',
+      'job_aid.approve',
       'joint_assessment.validate',
+      'license.write',
       'mission.cji.link',
       'mission.cji.open',
       'official_report.issue',
       'position.read',
+      'public_records.export',
+      'scribe.read',
+      'scribe.use',
       'site.post',
       'site.post_publish',
+      'survivor.find',
+      'translation.use',
     ]);
     expect(p.visibleCategories).not.toContain('health');
     expect(p.hiddenCategories.map((h) => h.category)).toEqual(
       expect.arrayContaining(['health', 'counseling', 'legal', 'cji']),
     );
+  });
+
+  it('FL-04, FL-05, FL:FR-16: frontline roles use the scribe; counselors, chaplains and nurses never do', () => {
+    const holders = (action: string) =>
+      roleTemplates.filter((t) => t.grants.some((g) => g.action === action)).map((t) => t.key);
+    expect(holders('scribe.use')).not.toContain('crisis_counselor');
+    expect(holders('scribe.use')).not.toContain('shelter_nurse');
+    expect(holders('scribe.use')).toEqual(
+      expect.arrayContaining(['shelter_worker', 'case_manager', 'field_volunteer', 'canvasser']),
+    );
+    expect(holders('scribe.read')).toEqual(['case_manager']);
+    // FL-14: the same frontline roles may use machine translation; never the nurse (medical).
+    expect(holders('translation.use').sort()).toEqual(holders('scribe.use').sort());
+    for (const key of holders('translation.use'))
+      expect(holders('interpreter.request')).toContain(key);
   });
 
   it('REC-13: county EM and planning review discovered places; county EM and the administrator name sources', () => {

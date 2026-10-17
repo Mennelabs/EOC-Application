@@ -56,6 +56,7 @@ function frontline(
         { action: 'assignment.status', records: 'own' },
         g('hazard.read'),
         g('hazard.report'),
+        g('field_report.write'), // FLD-11
         g('field_message.read'),
         g('field_message.receipt'),
         g('safety_alert.raise'),
@@ -64,6 +65,8 @@ function frontline(
         g('activity.read'),
         g('field.sync'),
         g('field.command'),
+        // FL-16: anyone in the field may ask, privately, for peer support.
+        g('peer_support.request'),
         g('field.photo'),
         g('field.area'),
         ...own.map((x) => (typeof x === 'string' ? g(x) : x)),
@@ -93,6 +96,9 @@ const templates: readonly RoleTemplate[] = [
       // SCL-09: explicit actions, never reached by the wildcard below.
       g('api_key.manage'),
       g('webhook.manage'),
+      // SEC-07: the county's single sign-on, approved by a second administrator.
+      g('sso.read'),
+      g('sso.manage'),
       // CMD-04, BRD:FR-18.05: the organization's command aliases, confirmed and audited.
       g('command_alias.manage'),
       { action: '*', dataCategories: ['contact'] },
@@ -118,6 +124,8 @@ const templates: readonly RoleTemplate[] = [
       g('api_key.manage'),
       g('webhook.read'),
       g('webhook.manage'),
+      g('sso.read'),
+      g('sso.manage'),
     ],
   },
   {
@@ -126,6 +134,12 @@ const templates: readonly RoleTemplate[] = [
     description: 'Dana in WESTWIND: how bad is it, where, do we need state and federal help.',
     source: 'cast',
     grants: [
+      // FL-15: job aids for the field; approves those others wrote.
+      g('job_aid.read'),
+      g('job_aid.edit'),
+      g('job_aid.approve'),
+      g('reentry_pass.*'), // FL:FR-03
+      g('shelter_count.read'), // CON-16
       g('dashboard.read'),
       g('board.read'),
       g('site.read'),
@@ -192,6 +206,9 @@ const templates: readonly RoleTemplate[] = [
       g('declaration.read'),
       // The PDA GIS layer and package for mapping work (DEC-12).
       g('declaration.export'),
+      // CON-17, SCL-13: loads the county's parcels and route areas from its GIS.
+      g('parcel.read'),
+      g('parcel.import'),
       g('outage.write'),
       g('joint_assessment.read'),
       g('metric.read'),
@@ -204,6 +221,9 @@ const templates: readonly RoleTemplate[] = [
     description: 'Priya: which reports are verified and where field teams go next.',
     source: 'cast',
     grants: [
+      // FL-15: writes job aids for the field (damage matrices); another person approves them.
+      g('job_aid.read'),
+      g('job_aid.edit'),
       g('assessment.read'),
       g('assessment.approve'),
       g('dashboard.read'),
@@ -211,6 +231,9 @@ const templates: readonly RoleTemplate[] = [
       g('referral.create'),
       g('message.send', ['contact']),
       g('report.*', ['contact', 'location_exact', 'household', 'free_text', 'evidence']),
+      g('survivor.find'),
+      g('document.capture'),
+      g('document.read'),
       g('photo.read', ['evidence']),
       g('need.read'),
       g('consent.read'),
@@ -235,6 +258,9 @@ const templates: readonly RoleTemplate[] = [
       // CON-07: coverage alerts say where to verify next.
       g('metric.read'),
       g('equity.read'),
+      // CON-05: opens a verification route for the reports sent to the field.
+      g('mission.create'),
+      g('mission.read'),
     ],
   },
   {
@@ -243,6 +269,9 @@ const templates: readonly RoleTemplate[] = [
     description: 'Luis: where people sleep and eat tonight, and how many.',
     source: 'cast',
     grants: [
+      // FL-15: writes job aids for the field (shelter and feeding standards); another person approves them.
+      g('job_aid.read'),
+      g('job_aid.edit'),
       g('need.claim'),
       g('need.assign'),
       g('need.release'),
@@ -251,6 +280,8 @@ const templates: readonly RoleTemplate[] = [
       g('need.update'), // reopen a met need, set it back on the board (NED-07)
       g('board.read'),
       g('site.*'),
+      // CON-16: Red Cross shelter counts, counts only.
+      g('shelter_count.*'),
       g('shelter_stay.read'),
       g('inspection.read'),
       g('stock.read'),
@@ -269,6 +300,8 @@ const templates: readonly RoleTemplate[] = [
       g('message.send', ['contact']),
       g('message.read', ['contact', 'free_text']),
       g('report.read', ['household', 'location_exact']),
+      g('survivor.find'),
+      g('document.capture'),
       g('need.read'),
       g('me.read'),
       g('tenant.read'),
@@ -296,6 +329,8 @@ const templates: readonly RoleTemplate[] = [
       g('message.send', ['contact']),
       g('message.read', ['contact', 'free_text']),
       g('report.read', ['contact', 'location_exact', 'household']),
+      g('survivor.find'),
+      g('document.capture'),
       g('need.read'),
       g('consent.read'),
       g('me.read'),
@@ -359,6 +394,9 @@ const templates: readonly RoleTemplate[] = [
       g('account.*', ['contact']),
       g('personnel.*', ['contact']),
       g('role.read'),
+      // FL:FR-06: approves public health's notices; never one they drafted.
+      g('health_notice.read'),
+      g('health_notice.approve'),
     ],
   },
   {
@@ -379,6 +417,9 @@ const templates: readonly RoleTemplate[] = [
       g('definition.read'),
       g('official_report.read'),
       g('metric.read'),
+      // FL:FR-06: drafts or approves health notices with public health; never their own.
+      g('health_notice.*'),
+      g('health_notice.approve'),
     ],
   },
   {
@@ -422,6 +463,7 @@ const templates: readonly RoleTemplate[] = [
       g('contact.read'),
       g('report.create_assisted'),
       g('report.read', ['contact', 'location_exact']),
+      g('survivor.find'),
       g('intake_session.read', ['contact']),
       g('intake_graph.read'),
       g('me.read'),
@@ -435,10 +477,13 @@ const templates: readonly RoleTemplate[] = [
       g('mission.person.edit'),
       g('hazard.read'),
       g('hazard.report'),
+      g('field_report.write'), // FLD-11
       g('reminder.*'),
       g('interpreter.request'),
       g('assignment.read'),
       g('dispatch.read'),
+      g('field_report.read'), // FLD-11
+      g('field_report.note'),
       g('stream.read'),
     ],
   },
@@ -457,6 +502,8 @@ const templates: readonly RoleTemplate[] = [
       g('team.manage'),
       g('check_in.read'),
       g('check_in.manage'),
+      // FLD-03: the staging check-in code and its QR.
+      g('event.check_in_code'),
       g('device.read'),
       g('badge.*'),
       g('volunteer_registration.*'),
@@ -471,6 +518,9 @@ const templates: readonly RoleTemplate[] = [
       g('assessment.read'),
       g('assessment.approve'),
       g('report.read', ['contact', 'location_exact', 'household', 'free_text', 'evidence']),
+      g('survivor.find'),
+      g('document.capture'),
+      g('document.read'),
       g('report.review'),
       g('report.verify'),
       g('report.set_degree'),
@@ -543,6 +593,7 @@ const templates: readonly RoleTemplate[] = [
       { action: 'assignment.status', records: 'own' },
       g('hazard.read'),
       g('hazard.report'),
+      g('field_report.write'), // FLD-11
       g('field_message.read'),
       g('field_message.receipt'),
       g('safety_alert.raise'),
@@ -551,6 +602,8 @@ const templates: readonly RoleTemplate[] = [
       g('activity.read'),
       g('field.sync'),
       g('field.command'),
+      // FL-16: anyone in the field may ask, privately, for peer support.
+      g('peer_support.request'),
       g('field.photo'),
       g('field.area'),
       g('check_in.create'),
@@ -568,6 +621,8 @@ const templates: readonly RoleTemplate[] = [
     grants: [
       g('report.create_assisted'),
       { action: 'report.read', events: 'assigned' },
+      g('survivor.find'),
+      g('document.capture'),
       g('intake_graph.read'),
       g('me.read'),
       { action: 'event.read', events: 'assigned' },
@@ -583,6 +638,7 @@ const templates: readonly RoleTemplate[] = [
       { action: 'assignment.status', records: 'own' },
       g('hazard.read'),
       g('hazard.report'),
+      g('field_report.write'), // FLD-11
       g('field_message.read'),
       g('field_message.receipt'),
       g('safety_alert.raise'),
@@ -591,6 +647,8 @@ const templates: readonly RoleTemplate[] = [
       g('activity.read'),
       g('field.sync'),
       g('field.command'),
+      // FL-16: anyone in the field may ask, privately, for peer support.
+      g('peer_support.request'),
       g('field.photo'),
       g('field.area'),
       g('check_in.create'),
@@ -598,6 +656,8 @@ const templates: readonly RoleTemplate[] = [
       g('device.register'),
       g('position.record'),
       g('team.read'),
+      g('scribe.use'), // FL-04: with the survivor's consent
+      g('translation.use'), // FL-14: labelled; an interpreter one tap away
     ],
   },
   {
@@ -624,6 +684,7 @@ const templates: readonly RoleTemplate[] = [
       g('team.read'),
       g('team.status'),
       g('right_of_entry.*'),
+      g('equipment_use.*'), // FL:FR-19
       g('mission.narrative'),
       g('mission.media.add'),
       g('mission.media.read'),
@@ -634,6 +695,7 @@ const templates: readonly RoleTemplate[] = [
       { action: 'assignment.status', records: 'own' },
       g('hazard.read'),
       g('hazard.report'),
+      g('field_report.write'), // FLD-11
       g('field_message.read'),
       g('field_message.receipt'),
       g('safety_alert.raise'),
@@ -642,6 +704,8 @@ const templates: readonly RoleTemplate[] = [
       g('activity.read'),
       g('field.sync'),
       g('field.command'),
+      // FL-16: anyone in the field may ask, privately, for peer support.
+      g('peer_support.request'),
       g('field.photo'),
       g('field.area'),
     ],
@@ -667,6 +731,7 @@ const templates: readonly RoleTemplate[] = [
       { action: 'assignment.status', records: 'own' },
       g('hazard.read'),
       g('hazard.report'),
+      g('field_report.write'), // FLD-11
       g('field_message.read'),
       g('field_message.receipt'),
       g('safety_alert.raise'),
@@ -675,6 +740,8 @@ const templates: readonly RoleTemplate[] = [
       g('activity.read'),
       g('field.sync'),
       g('field.command'),
+      // FL-16: anyone in the field may ask, privately, for peer support.
+      g('peer_support.request'),
       g('field.photo'),
       g('field.area'),
       g('check_in.create'),
@@ -682,6 +749,8 @@ const templates: readonly RoleTemplate[] = [
       g('device.register'),
       g('position.record'),
       g('team.read'),
+      g('scribe.use'), // FL-04: with the survivor's consent
+      g('translation.use'), // FL-14: labelled; an interpreter one tap away
     ],
   },
   {
@@ -704,6 +773,7 @@ const templates: readonly RoleTemplate[] = [
       { action: 'assignment.status', records: 'own' },
       g('hazard.read'),
       g('hazard.report'),
+      g('field_report.write'), // FLD-11
       g('field_message.read'),
       g('field_message.receipt'),
       g('safety_alert.raise'),
@@ -712,6 +782,8 @@ const templates: readonly RoleTemplate[] = [
       g('activity.read'),
       g('field.sync'),
       g('field.command'),
+      // FL-16: anyone in the field may ask, privately, for peer support.
+      g('peer_support.request'),
       g('field.photo'),
       g('field.area'),
     ],
@@ -732,6 +804,9 @@ const templates: readonly RoleTemplate[] = [
       g('mission.narrative'),
       { action: 'hazard.read', events: 'assigned' },
       g('job_aid.read'),
+      // FL-16: peer-support requests are counseling data; the category comes with the template key.
+      g('peer_support.read'),
+      g('peer_support.update'),
     ],
   },
   {
@@ -744,6 +819,9 @@ const templates: readonly RoleTemplate[] = [
       g('referral.respond'),
       g('me.read'),
       { action: 'event.read', events: 'assigned' },
+      g('scribe.use'), // FL-05: only where the county turns it on for legal aid; notes stay the author's (FL:FR-23)
+      g('translation.use'), // FL-14: labelled; an interpreter one tap away
+      g('interpreter.request'), // FL-14: the interpreter is that one tap
     ],
   },
   {
@@ -757,6 +835,9 @@ const templates: readonly RoleTemplate[] = [
       g('referral.respond'),
       g('me.read'),
       { action: 'event.read', events: 'assigned', dataCategories: ['contact'] },
+      g('scribe.use'), // FL-04: with the survivor's consent
+      g('translation.use'), // FL-14: labelled; an interpreter one tap away
+      g('interpreter.request'), // FL-14: the interpreter is that one tap
     ],
   },
   {
@@ -776,6 +857,10 @@ const templates: readonly RoleTemplate[] = [
         events: 'assigned',
         dataCategories: ['contact', 'household', 'financial', 'free_text'],
       },
+      g('scribe.use'), // FL-04: with the survivor's consent
+      g('translation.use'), // FL-14: labelled; an interpreter one tap away
+      g('interpreter.request'), // FL-14: the interpreter is that one tap
+      g('scribe.read'),
     ],
   },
   // Layer 4 task A: dispatch and field roles (docs/03 §25, layer-4 plan §8, DSP-07/08/09/10).
@@ -786,11 +871,16 @@ const templates: readonly RoleTemplate[] = [
       'Runs the dispatch board for every agency: roster, teams, check-ins, positions, assignments (DSP-09).',
     source: 'field',
     grants: [
+      // FL-15: writes job aids for the field (field checklists); another person approves them.
+      g('job_aid.read'),
+      g('job_aid.edit'),
       g('assessment.read'),
       g('assessment.approve'),
       g('me.read'),
       g('tenant.read'),
       g('event.read', ['location_exact']),
+      // FLD-03: the staging check-in code and its QR.
+      g('event.check_in_code'),
       g('dashboard.read'),
       g('personnel.read', ['contact']),
       g('personnel.update'),
@@ -807,8 +897,13 @@ const templates: readonly RoleTemplate[] = [
       g('mission.*', ['contact', 'location_exact']),
       g('assignment.*'),
       g('dispatch.read'),
+      g('canteen_stop.read'), // FL:FR-17
+      g('equipment_use.read'), // FL:FR-19
+      g('field_report.read'), // FLD-11
+      g('field_report.note'),
       g('stream.read'),
       g('hazard.*'),
+      g('field_report.write'), // FLD-11
       g('field_message.*'),
       g('safety_alert.*'),
       g('comms_log.read'),
@@ -860,9 +955,12 @@ const templates: readonly RoleTemplate[] = [
       g('mission.close'),
       g('assignment.*'),
       g('dispatch.read'),
+      g('field_report.read'), // FLD-11
+      g('field_report.note'),
       g('stream.read'),
       g('hazard.read'),
       g('hazard.report'),
+      g('field_report.write'), // FLD-11
       g('hazard.confirm'),
       g('field_message.*'),
       g('safety_alert.*'),
@@ -879,6 +977,10 @@ const templates: readonly RoleTemplate[] = [
       'Overdue teams, help alerts and hazards; sees positions of every checked-in team (DSP-07, FLD-16).',
     source: 'field',
     grants: [
+      // FL-15: writes safety briefings for the field and approves others' job aids.
+      g('job_aid.read'),
+      g('job_aid.edit'),
+      g('job_aid.approve'),
       g('me.read'),
       g('event.read', ['location_exact']),
       g('personnel.read', ['contact']),
@@ -894,8 +996,11 @@ const templates: readonly RoleTemplate[] = [
       g('mission.read', ['location_exact']),
       g('assignment.read'),
       g('dispatch.read'),
+      g('field_report.read'), // FLD-11
+      g('field_report.note'),
       g('stream.read'),
       g('hazard.*'),
+      g('field_report.write'), // FLD-11
       g('field_message.send'),
       g('field_message.read'),
       g('safety_alert.*'),
@@ -964,6 +1069,7 @@ const templates: readonly RoleTemplate[] = [
       { action: 'assignment.status', records: 'own' },
       g('hazard.read'),
       g('hazard.report'),
+      g('field_report.write'), // FLD-11
       g('field_message.read'),
       g('field_message.receipt'),
       g('safety_alert.raise'),
@@ -972,8 +1078,13 @@ const templates: readonly RoleTemplate[] = [
       g('activity.read'),
       g('field.sync'),
       g('field.command'),
+      // FL-16: anyone in the field may ask, privately, for peer support.
+      g('peer_support.request'),
       g('field.photo'),
       g('field.area'),
+      g('scribe.use'), // FL-04: with the survivor's consent
+      g('translation.use'), // FL-14: labelled; an interpreter one tap away
+      g('interpreter.request'), // FL-14: the interpreter is that one tap
     ],
   },
   {
@@ -999,6 +1110,7 @@ const templates: readonly RoleTemplate[] = [
       { action: 'assignment.status', records: 'own' },
       g('hazard.read'),
       g('hazard.report'),
+      g('field_report.write'), // FLD-11
       g('field_message.read'),
       g('field_message.receipt'),
       g('safety_alert.raise'),
@@ -1007,8 +1119,13 @@ const templates: readonly RoleTemplate[] = [
       g('activity.read'),
       g('field.sync'),
       g('field.command'),
+      // FL-16: anyone in the field may ask, privately, for peer support.
+      g('peer_support.request'),
       g('field.photo'),
       g('field.area'),
+      g('scribe.use'), // FL-04: with the survivor's consent
+      g('translation.use'), // FL-14: labelled; an interpreter one tap away
+      g('interpreter.request'), // FL-14: the interpreter is that one tap
     ],
   },
   // Layer 4 task B: the other frontline roles of docs/04 in the field app (plan §8).
@@ -1028,13 +1145,13 @@ const templates: readonly RoleTemplate[] = [
     'road_crew',
     'Public works / road crew',
     'Road status and debris load tickets (FL:FR-05).',
-    ['road_status.*', 'debris_ticket.*'],
+    ['road_status.*', 'debris_ticket.*', 'equipment_use.*'],
   ),
   ...frontline(
     'public_health_inspector',
     'Public and environmental health',
-    'Shelter and feeding-site inspections; illness counts in aggregate only (FL:FR-06, EQ-13).',
-    ['inspection.*', 'site.read'],
+    'Shelter and feeding-site inspections; illness counts in aggregate only; targeted boil-water and safety notices, approved by a second person (FL:FR-06, EQ-13).',
+    ['inspection.*', 'site.read', 'health_notice.*', 'health_notice.approve'],
   ),
   ...frontline(
     'animal_services',
@@ -1051,8 +1168,8 @@ const templates: readonly RoleTemplate[] = [
   ...frontline(
     'checkpoint_officer',
     'Checkpoint (perimeter) officer',
-    'Verifies badges at a perimeter: valid, expired, revoked or unknown; never more than name, agency and label (FL:FR-03).',
-    ['badge.verify'],
+    'Verifies badges and resident re-entry passes at a perimeter: valid, expired, revoked or unknown; never more than name, agency and label, or for a pass the zone, the household and its home to match an ID (FL:FR-03).',
+    ['badge.verify', 'reentry_pass.verify'],
   ),
   ...frontline(
     'volunteer_reception',
@@ -1060,6 +1177,7 @@ const templates: readonly RoleTemplate[] = [
     'Walk-up registration by QR, waivers, skills, background-check status only, badges, team assignment (FL:FR-20).',
     [
       'volunteer_registration.*',
+      'personnel.photo', // BRD:FR-13.01: the photo is taken at the desk; someone else approves it
       'badge.generate',
       'badge.print',
       'badge.read',
@@ -1081,7 +1199,7 @@ const templates: readonly RoleTemplate[] = [
     'canteen_crew',
     'Feeding and canteen crew',
     'Meal counter, stop check-in and check-out, supplies left, allergen notes (FL:FR-17).',
-    ['service_log.read', 'site.read', 'site.confirm', 'stock.read'],
+    ['service_log.read', 'site.read', 'site.confirm', 'stock.read', 'canteen_stop.*'],
   ),
   ...frontline(
     'distribution_staff',
@@ -1168,6 +1286,17 @@ const FACILITY_GRANTS: Record<string, (string | Grant)[]> = {
   partner_coordinator: ['facility.read'],
 };
 
+/** SEC-13: those who answer public-records requests; each release holds only what they may read. */
+const PUBLIC_RECORDS = new Set(['county_em_director', 'public_information_officer']);
+
+/** CMD-30: those who coordinate work across many needs may batch; everyone else acts one by one. */
+const BULK_COMMANDS = new Set([
+  'county_em_director',
+  'mass_care_coordinator',
+  'ngo_incident_commander',
+  'coad_chair',
+]);
+
 export const roleTemplates: readonly RoleTemplate[] = templates.map((t) => ({
   ...t,
   grants: [
@@ -1176,6 +1305,8 @@ export const roleTemplates: readonly RoleTemplate[] = templates.map((t) => ({
     ...(RECOMMENDATION_GRANTS[t.key] ?? []).map((a) => g(a)),
     ...(DISCOVERY_GRANTS[t.key] ?? []).map((a) => g(a)),
     ...(NO_COMMAND_WINDOW.has(t.key) ? [] : [g('command.use')]),
+    ...(BULK_COMMANDS.has(t.key) ? [g('command.bulk')] : []),
+    ...(PUBLIC_RECORDS.has(t.key) ? [g('public_records.export')] : []),
   ],
 }));
 

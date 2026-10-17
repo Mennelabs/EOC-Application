@@ -17,6 +17,7 @@ import type { Database } from '@cg/db';
 import { sql, type Transaction } from 'kysely';
 import { allTenantIds, asSystem, enqueueOutbox, systemAudit } from '../system.ts';
 import { staffRecipients } from './recipients.ts';
+import { inQuietHours, quietHoursOf } from './quiet-hours.ts';
 import type { JobContext } from './types.ts';
 
 type Trx = Transaction<Database>;
@@ -25,9 +26,11 @@ const MINUTE = 60_000;
 const nowOf = (ctx: JobContext): Date => (ctx.now ?? (() => new Date()))();
 
 async function configNumber(trx: Trx, key: string, fallback: number): Promise<number> {
+  // The worker sees every tenant: the setting is the one of the tenant in context.
   const row = await trx
     .selectFrom('cg.tenant_config')
     .select('value')
+    .where('tenant_id', '=', sql<string>`cg.current_tenant_id()`)
     .where('key', '=', key)
     .executeTakeFirst();
   const n = Number(row?.value);
@@ -413,6 +416,24 @@ export async function watchReminders(ctx: JobContext): Promise<void> {
           })
           .execute();
       }
+      // FR-09.06: during the county's quiet period an escalation waits for it to end.
+      const county = await trx
+        .selectFrom('cg.tenant')
+        .select('timezone')
+        .where('id', '=', tenantId)
+        .executeTakeFirst();
+      const timeZone = county?.timezone ?? 'UTC';
+      const quiet = quietHoursOf(
+        (
+          await trx
+            .selectFrom('cg.tenant_config')
+            .select('value')
+            .where('tenant_id', '=', tenantId)
+            .where('key', '=', 'reminders.quiet_hours')
+            .executeTakeFirst()
+        )?.value,
+      );
+      if (inQuietHours(now, timeZone, quiet)) return;
       const toEscalate = await trx
         .selectFrom('cg.reminder')
         .selectAll()
@@ -454,7 +475,16 @@ export async function watchReminders(ctx: JobContext): Promise<void> {
             language: 'en',
             variables: {
               title: r.title,
-              dueAt: new Date(r.due_at).toISOString().slice(0, 16).replace('T', ' ') + ' UTC',
+              // BRD:FR-00.08: the county's clock, with its zone named.
+              dueAt: new Intl.DateTimeFormat('en-US', {
+                timeZone,
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                timeZoneName: 'short',
+              }).format(new Date(r.due_at)),
               what: r.note ?? '',
               url: `${ctx.urls.gatewayPublic}/console/reminders`,
             },

@@ -46,7 +46,12 @@ export const actions = {
     consequential: true,
   }),
   'license.read': a('read', 'license', 'Read subscription and covered jurisdictions'),
-  'license.write': a('admin', 'license', 'Set subscription tier and term', { consequential: true }),
+  // SCL-10: contracts are the vendor's record, set by the operator command
+  // (services/worker/scripts/license.ts); no county role reaches this through a wildcard.
+  'license.write': a('admin', 'license', 'Set subscription tier and term', {
+    consequential: true,
+    explicit: true,
+  }),
 
   'dsa.read': a('read', 'data_sharing_agreement', 'Read data-sharing agreements'),
   'dsa.create': a('write', 'data_sharing_agreement', 'Draft an agreement with another tenant'),
@@ -57,7 +62,14 @@ export const actions = {
 
   'event.read': a('read', 'event', 'Read events'),
   'event.create': a('write', 'event', 'Create an event from a template'),
+  // CON-02: the county's event templates (keywords, map layers, public messages per hazard).
+  'event.template_edit': a('write', 'event', "Add or change the county's event templates"),
   'event.update': a('write', 'event', 'Update event details and footprint'),
+  'event.check_in_code': a(
+    'write',
+    'event',
+    'Set or replace the staging check-in code people scan or type to check in',
+  ),
   'event.open': a('write', 'event', 'Open an event and publish its intake link and keyword', {
     consequential: true,
   }),
@@ -75,6 +87,17 @@ export const actions = {
   'personnel.read': a('read', 'personnel', 'Read personnel records'),
   'personnel.create': a('write', 'personnel', 'Create a personnel record'),
   'personnel.update': a('write', 'personnel', 'Update skills, agency, availability'),
+  // BRD:FR-13.01: a badge photo is taken by one person and approved by another.
+  'personnel.photo': a(
+    'write',
+    'personnel',
+    'Take or upload a badge photo (it waits for approval)',
+  ),
+  'personnel.photo.approve': a(
+    'write',
+    'personnel',
+    'Approve or reject a badge photo someone else took',
+  ),
   'personnel.archive': a('write', 'personnel', 'Archive a personnel record', {
     consequential: true,
   }),
@@ -164,6 +187,18 @@ export const actions = {
   'intake.extract': a('read', 'extraction', 'Candidate answers from free text (fixed schema)', {
     public: true,
   }),
+  'intake.transcribe': a(
+    'read',
+    'dictation',
+    'Spoken words written down by the provider, kept nowhere (INT-12)',
+    { public: true },
+  ),
+  'intake.ai_complaint': a(
+    'write',
+    'ai_output',
+    'Say that computer help went wrong, by a fixed reason with no words (AIG-09)',
+    { public: true },
+  ),
   'intake.lookup': a('read', 'report', 'Start and verify a reference-code lookup (one-time code)', {
     public: true,
   }),
@@ -186,6 +221,26 @@ export const actions = {
     "Record a report on a resident's behalf (assisted intake)",
   ),
   'report.update': a('write', 'report', "Update a report's location or answers as a reviewer"),
+  // FL-09: documents a survivor chooses to share, photographed into their record with consent.
+  'document.capture': a(
+    'write',
+    'report',
+    'Photograph a document a survivor chooses to share (lease, ID, insurance letter) into their report, with their consent',
+    { explicit: true },
+  ),
+  'document.read': a(
+    'read',
+    'report',
+    'See the documents survivors shared with their reports; every view is audited',
+    { explicit: true },
+  ),
+  // FL-02: find a resident's report without their code, once they show it is them.
+  'survivor.find': a(
+    'read',
+    'report',
+    "Find a survivor's report without their code: by phone with a code texted to them, or by address and name with their confirmation",
+    { explicit: true },
+  ),
   'report.review': a(
     'write',
     'report',
@@ -236,6 +291,31 @@ export const actions = {
     "Publish or withdraw your organization's own service on the county's public pages",
     { consequential: true, explicit: true },
   ),
+  // FL:FR-03: resident re-entry passes into a closed zone; their holder and home are restricted.
+  'reentry_pass.read': a('read', 'reentry_pass', 'Read re-entry passes and the log of checks'),
+  'reentry_pass.issue': a('write', 'reentry_pass', 'Issue a re-entry pass for a household', {
+    consequential: true,
+  }),
+  'reentry_pass.revoke': a('write', 'reentry_pass', 'Revoke a re-entry pass', {
+    consequential: true,
+  }),
+  'reentry_pass.verify': a(
+    'read',
+    'reentry_pass',
+    'Check a re-entry pass at a checkpoint (shows the holder and home to match an ID)',
+  ),
+  // CON-16: shelter counts from the Red Cross records, counts only, never people.
+  'shelter_count.read': a(
+    'read',
+    'shelter_count',
+    'Read shelter counts imported from the Red Cross',
+  ),
+  'shelter_count.import': a(
+    'write',
+    'shelter_count',
+    'Import shelter counts from the Red Cross (counts only, no people)',
+    { consequential: true },
+  ),
   'resource.read': a('read', 'resource', 'Read published resources and drafts'),
   'resource.edit': a('write', 'resource', 'Draft or change a resource'),
   'resource.publish': a('admin', 'resource', 'Publish or unpublish a resource', {
@@ -271,6 +351,14 @@ export const actions = {
     'command',
     'Use the command window: run catalogued commands you could run by hand',
   ),
+  // CMD-30, Section 30.2: a command over many records at once. The window still checks the
+  // underlying action on each record; this limits who may batch at all.
+  'command.bulk': a(
+    'write',
+    'command',
+    'Run a command over many records at once (up to 50, or 500 after typing the count)',
+    { explicit: true },
+  ),
   // Layer 7 (REC-01): the facility registry the recommendations draw on.
   'facility.read': a('read', 'facility', 'Read the facility registry and its approval queue'),
   'facility.manage': a(
@@ -284,10 +372,50 @@ export const actions = {
     'Offer a place for disaster use through the public form; it waits for county approval',
     { public: true },
   ),
+  // FL:FR-06: targeted boil-water and safety notices; a second person approves before anyone is told.
+  'health_notice.read': a('read', 'health_notice', 'Read health notices and who they would reach'),
+  'health_notice.draft': a(
+    'write',
+    'health_notice',
+    'Draft or change a boil-water or safety notice for an area',
+  ),
+  'health_notice.approve': a(
+    'admin',
+    'health_notice',
+    'Approve a health notice, which publishes it and tells residents in its area (never your own draft), or end one',
+    { explicit: true, consequential: true },
+  ),
+  // FL:FR-20: a walk-up volunteer signs up through the link reception opened; reception completes it.
+  'volunteer.self_register': a(
+    'write',
+    'volunteer_signup',
+    'Sign up as a walk-up volunteer through the code at the volunteer desk',
+    { public: true },
+  ),
   'facility.approve': a(
     'admin',
     'facility',
     'Approve or reject facilities and changes for the registry (never your own proposal)',
+    { explicit: true },
+  ),
+  // FL-04, FL-05, FL-18, FL:FR-16: the conversation scribe, never for counseling or spiritual care.
+  'scribe.use': a(
+    'write',
+    'scribe_session',
+    "Record a conversation with a survivor's consent and confirm the drafted note",
+    { explicit: true },
+  ),
+  'scribe.read': a(
+    'read',
+    'scribe_session',
+    "Read the organization's confirmed scribe notes (never a legal aid note, FL:FR-23)",
+    { explicit: true },
+  ),
+  // FL-14: machine translation between worker and survivor; consent, legal and medical never.
+  'translation.use': a(
+    'write',
+    'translation',
+    'Use labelled machine translation in a general conversation with a survivor',
     { explicit: true },
   ),
   // REC-13, REC-14: discovery finds places; a person qualifies each in or out.
@@ -411,6 +539,22 @@ export const actions = {
     'Read people involved (restricted details by category)',
   ),
   'mission.person.edit': a('write', 'mission_person', 'Add, change or remove a person involved'),
+  // FL-16: a private request for peer support. The worker asks; only the peer-support role reads.
+  'peer_support.request': a(
+    'write',
+    'peer_support_request',
+    'Ask privately for peer support, see and withdraw your own request',
+  ),
+  'peer_support.read': a(
+    'read',
+    'peer_support_request',
+    'Read peer-support requests and how to reach the people who asked',
+  ),
+  'peer_support.update': a(
+    'write',
+    'peer_support_request',
+    'Mark a peer-support request contacted or closed',
+  ),
   'mission.media.read': a(
     'read',
     'mission_media',
@@ -462,15 +606,42 @@ export const actions = {
   'service_log.read': a('read', 'service_log', 'Read service counts'),
   'job_aid.read': a('read', 'job_aid', 'Read job aids for your role'),
   'job_aid.edit': a('write', 'job_aid', 'Draft or change a job aid'),
-  'job_aid.approve': a('admin', 'job_aid', 'Approve a job aid for the county', {
-    consequential: true,
-  }),
+  // FL-15, BRD:FR-18.03: field guidance is human-reviewed: approved by someone other than the
+  // last to change it before any phone shows it; never reached by a wildcard.
+  'job_aid.approve': a(
+    'admin',
+    'job_aid',
+    'Approve a job aid so field phones show it (never one you last changed), or retire one',
+    { consequential: true, explicit: true },
+  ),
   'search_mark.read': a('read', 'search_mark', 'Read search marks and the searched layer'),
   'search_mark.write': a('write', 'search_mark', 'Record a search mark'),
   'placard.read': a('read', 'placard', 'Read posted placards'),
   'placard.write': a('write', 'placard', 'Record a posted placard'),
   'road_status.read': a('read', 'road_status', 'Read road status'),
   'road_status.write': a('write', 'road_status', 'Set road status'),
+  // FL:FR-17: a canteen crew's stops: check-in, check-out, meals, supplies left, allergen notes.
+  'canteen_stop.read': a('read', 'canteen_stop', 'Read canteen stops on routes'),
+  'canteen_stop.write': a('write', 'canteen_stop', 'Check in and out at a canteen stop'),
+  // FL:FR-19: equipment hours per work order (FEMA PA equipment hours).
+  'equipment_use.read': a('read', 'equipment_use', 'Read equipment used on work orders'),
+  'equipment_use.write': a(
+    'write',
+    'equipment_use',
+    'Log equipment used on a work order and its hours',
+  ),
+  // FLD-11: a site's status or a resource seen, from the field; an observation for dispatch.
+  'field_report.read': a(
+    'read',
+    'field_report',
+    'Read quick reports of site status and resources seen',
+  ),
+  'field_report.write': a(
+    'write',
+    'field_report',
+    'Send a quick report of a site status or a resource seen',
+  ),
+  'field_report.note': a('write', 'field_report', 'Mark a quick report from the field as noted'),
   'debris_ticket.read': a('read', 'debris_ticket', 'Read debris load tickets'),
   'debris_ticket.write': a('write', 'debris_ticket', 'Record a debris load ticket'),
   'inspection.read': a('read', 'inspection', 'Read inspections (aggregate illness counts only)'),
@@ -639,6 +810,15 @@ export const actions = {
     'official_report',
     'Export an issued official report as PDF or CSV, drawn from its frozen copy',
   ),
+  // SEC-13: a public-records release, restricted and sensitive details withheld; a records
+  // officer's work. The request route asks for a confirmation and a reason; reading the list
+  // and downloading do not.
+  'public_records.export': a(
+    'export',
+    'public_records',
+    'Prepare a public-records release for an event, with restricted and sensitive details withheld',
+    { explicit: true },
+  ),
 
   // Layer 6 FEMA form mappings (DCL:DEC-12, DEC-15): changed without a release.
   'fema_mapping.read': a('read', 'fema_form_mapping', 'See FEMA form mappings and their versions'),
@@ -670,6 +850,18 @@ export const actions = {
     'admin',
     'webhook',
     'Ask for, approve or decline (never your own), and disable a webhook',
+    { consequential: true, explicit: true },
+  ),
+  // SEC-07: sign-in through the county's own identity provider; a second administrator approves (ADM-05).
+  'sso.read': a(
+    'read',
+    'tenant_sso',
+    "See the county's single sign-on settings and what to give its identity provider; never a secret",
+  ),
+  'sso.manage': a(
+    'admin',
+    'tenant_sso',
+    'Propose, approve or decline (never your own), and switch off single sign-on',
     { consequential: true, explicit: true },
   ),
 } as const satisfies Record<string, ActionMeta>;
@@ -706,4 +898,10 @@ export const SELF_REVIEW_ACTIONS: readonly string[] = [
   'official_report.issue',
   // Joint assessment: nobody validates a home whose degree they set or assessed.
   'joint_assessment.validate',
+  // BRD:FR-13.01: whoever took a badge photo does not approve it.
+  'personnel.photo.approve',
+  // FL:FR-06: whoever drafted a health notice does not approve it.
+  'health_notice.approve',
+  // FL-15: whoever last changed a job aid does not approve it.
+  'job_aid.approve',
 ];

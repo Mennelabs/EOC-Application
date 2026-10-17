@@ -54,7 +54,12 @@ export interface FlowState {
   /** The node being shown; null means "the next unanswered one". */
   current: string | null;
   startedAt: number;
+  /** ORG-01: reference numbers of the places this organization already reported in this visit. */
+  earlierPlaces?: string[];
 }
+
+/** Where the report in progress is kept on the device, encrypted (storage.ts). */
+export const FLOW_KEY = 'flow';
 
 export function newFlow(input: {
   tenant: string;
@@ -187,11 +192,54 @@ export function toSubmission(state: FlowState, graph: QuestionGraph): Submission
       : {}),
     ...(state.channel === 'assisted'
       ? {
+          // CHN-06, AC-A09: the person reporting their own home or organization agrees by
+          // reporting; for someone else's home, only the helper's "yes, they agreed" records it.
           assisted: {
-            consentRecorded: helperConsent?.kind === 'value' && helperConsent.value === 'yes',
+            consentRecorded:
+              relationship === 'own_home' || relationship === 'organization'
+                ? true
+                : relationship === 'helper' &&
+                  helperConsent?.kind === 'value' &&
+                  helperConsent.value === 'yes',
           },
         }
       : {}),
+  };
+}
+
+/**
+ * ORG-01: the next place an organization reports in the same visit. It is a report of its own
+ * (a new execution id, so its own reference number); the answers about who is reporting carry
+ * over, and how to reach them too unless the device was cleared. Everything about the place
+ * starts again, the safety question first.
+ */
+export function nextPlace(
+  state: FlowState,
+  graph: QuestionGraph,
+  referenceCode: string,
+  keepContact: boolean,
+): FlowState {
+  const sections = keepContact ? ['who', 'contact'] : ['who'];
+  const carried = new Set(
+    graph.nodes
+      .filter((n) => n.kind === 'question' && sections.includes(n.section))
+      .map((n) => n.id),
+  );
+  const answers: Answers = {};
+  for (const [id, v] of Object.entries(state.answers)) if (carried.has(id)) answers[id] = v;
+  return {
+    ...newFlow({
+      tenant: state.tenant,
+      event: state.event,
+      language: state.language,
+      channel: state.channel,
+      graph,
+      hazards: state.hazards,
+      ...(state.relationship ? { relationship: state.relationship } : {}),
+    }),
+    answers,
+    smsOptIn: keepContact && state.smsOptIn,
+    earlierPlaces: [...(state.earlierPlaces ?? []), referenceCode],
   };
 }
 

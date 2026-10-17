@@ -98,12 +98,13 @@ const openai = openAIFromEnv(aiEnv(config));
 if (openai) registerProvider(openai);
 const ai = {
   async providerFor(
-    _tenantId: string,
+    tenantId: string,
     trx: import('kysely').Transaction<import('@cg/db').Database>,
   ) {
     const row = await trx
       .selectFrom('cg.tenant_config')
       .select('value')
+      .where('tenant_id', '=', tenantId)
       .where('key', '=', 'ai.provider')
       .executeTakeFirst();
     const name = typeof row?.value === 'string' ? row.value : DEFAULT_PROVIDER;
@@ -135,10 +136,25 @@ const app = await buildApp({
   routes: routesWith({
     dispatch: { getQueue: () => queue },
     // SEC-12, ADR-0038: the console links to the enclave; the platform never calls it.
-    missions: config.CJIS_PUBLIC_URL ? { cjisPublicUrl: config.CJIS_PUBLIC_URL } : {},
+    missions: {
+      ...(config.CJIS_PUBLIC_URL ? { cjisPublicUrl: config.CJIS_PUBLIC_URL } : {}),
+      objects: {
+        client: s3,
+        ...(presignClient ? { presignClient } : {}),
+        bucket: config.S3_BUCKET,
+      },
+    },
     fieldVoice: { ai, defaultGraph: westwindGraph },
     commands: { ai },
+    // BRD:FR-03.02: the self-hosted Nominatim when the maps profile runs; parcels answer first.
+    geocode: { nominatimUrl: config.GEOCODER_URL },
+    // SEC-07: what the county gives its identity provider names the realm's public address.
+    sso: { idpPublicBase: config.IDP_PUBLIC_BASE },
+    drafting: { ai, objects: { client: s3, bucket: config.S3_BUCKET } },
+    scribe: { ai, objects: { client: s3, bucket: config.S3_BUCKET } },
     refdata: { objects: { client: s3, bucket: config.S3_BUCKET } },
+    personnelPhotos: { objects: { client: s3, bucket: config.S3_BUCKET } },
+    resources: { objects: { client: s3, bucket: config.S3_BUCKET } },
     exports: { objects: { client: s3, bucket: config.S3_BUCKET } },
     metrics: { productName: config.PRODUCT_NAME },
     packagePhotos: {

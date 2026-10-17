@@ -4,7 +4,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import pino from 'pino';
 import { aiEnv, loadConfig, workerSchema } from '@cg/config';
 import {
@@ -13,6 +13,7 @@ import {
   createPool,
   createS3,
   ensureLockedBucket,
+  METRICS_CONTENT_TYPE,
   postgresProbe,
   putLocked,
   queueProbe,
@@ -22,7 +23,13 @@ import {
   TwilioSms,
   type QueueSupervisor,
 } from '@cg/adapters';
-import { DEFAULT_PROVIDER, openAIFromEnv, providerByName, registerProvider } from '@cg/ai';
+import {
+  DEFAULT_PROVIDER,
+  observeAiOutcomes,
+  openAIFromEnv,
+  providerByName,
+  registerProvider,
+} from '@cg/ai';
 import { FieldCrypto, OpenBaoKeyService, dbKeyStore } from '@cg/crypto';
 import { westwindGraph } from '@cg/intake';
 import { createDb } from '@cg/db';
@@ -43,17 +50,22 @@ import { pruneReferenceSnapshots, scheduleReferencePulls } from './jobs/refdata.
 import { evaluateEquityAlerts } from './jobs/equity.ts';
 import { evaluateAiHealth } from './jobs/ai-health.ts';
 import { staleAbandonedPlans, sweepCommandHistory } from './jobs/commands.ts';
+import { expireScribeSessions } from './jobs/scribe.ts';
+import { sweepRetention } from './jobs/retention.ts';
 import { notifyDiscovery, runDiscovery } from './jobs/discovery.ts';
 import { remindFacilityRechecks } from './jobs/facilities.ts';
+import { cutAreaMaps } from './jobs/maps.ts';
 import { webhookSchedule } from './jobs/webhooks.ts';
 import { consume, consumeIntake, relayOnce } from './jobs/relay.ts';
 import type { JobContext, Schedule } from './jobs/types.ts';
 import { nullMailer, smtpMailer } from './mail.ts';
+import { aiCalls, jobDuration, jobRuns, outboxRelayed, workerMetrics } from './metrics.ts';
 
 const config = loadConfig(workerSchema);
 const log = pino({ level: config.LOG_LEVEL, base: { service: 'worker' } });
 // ADR-0043: OpenAI for every AI function when the key is configured; never a fake provider.
 const openai = openAIFromEnv(aiEnv(config));
+observeAiOutcomes((feature, outcome) => aiCalls.inc({ feature, outcome }));
 if (openai) registerProvider(openai);
 const pool = createPool(config.DATABASE_URL, 5);
 const db = createDb(config.DATABASE_URL, 5);
@@ -139,6 +151,9 @@ const ctx: JobContext = {
         }),
       );
     },
+    async delete(key) {
+      await s3.send(new DeleteObjectCommand({ Bucket: config.S3_BUCKET, Key: key }));
+    },
     async putAnchor(key, body) {
       const until = new Date();
       until.setUTCFullYear(until.getUTCFullYear() + AUDIT_ANCHOR_YEARS);
@@ -149,10 +164,11 @@ const ctx: JobContext = {
   ai: {
     // ADR-0043, AIG-12: the tenant's provider (`ai.provider`, OpenAI by default) if this
     // process registered it; otherwise AI is off. Never the fake provider.
-    async providerFor(_tenantId, trx) {
+    async providerFor(tenantId, trx) {
       const row = await trx
         .selectFrom('cg.tenant_config')
         .select('value')
+        .where('tenant_id', '=', tenantId)
         .where('key', '=', 'ai.provider')
         .executeTakeFirst();
       const name = typeof row?.value === 'string' ? row.value : DEFAULT_PROVIDER;
@@ -160,6 +176,7 @@ const ctx: JobContext = {
     },
   },
   defaultGraph: westwindGraph,
+  maps: { regionPath: config.MAP_TILES_PATH, exercise: config.MAP_EXERCISE },
   devDirectGrant: config.IDP_DEV_DIRECT_GRANT,
   // ADR-0039, SCL-12: recorded synthetic responses unless configured live; only allowlisted hosts.
   refdata: {
@@ -183,6 +200,11 @@ const schedules: Schedule[] = [
   { name: 'break-glass-expiry', everyMs: 60_000, run: expireBreakGlass },
   { name: 'audit-anchor', everyMs: 15 * 60_000, run: anchorAuditChains },
   { name: 'retention-sweep', everyMs: 24 * 3600_000, run: retentionSweep },
+  {
+    name: 'retention-categories',
+    everyMs: 24 * 3600_000,
+    run: (c) => sweepRetention(c).then(() => undefined),
+  },
   // SCL-06: submissions stored while the queue was down, or whose message was lost, are filed from the row.
   {
     name: 'intake-stored-sweep',
@@ -222,6 +244,12 @@ const schedules: Schedule[] = [
     everyMs: 24 * 3600_000,
     run: (c) => sweepCommandHistory(c).then(() => undefined),
   },
+  // FL-04, SEC-13: a scribe note never confirmed expires with the conversation retention, audio included.
+  {
+    name: 'scribe-expiry',
+    everyMs: 60 * 60_000,
+    run: (c) => expireScribeSessions(c).then(() => undefined),
+  },
   {
     name: 'command-plans',
     everyMs: 5 * 60_000,
@@ -238,6 +266,14 @@ const schedules: Schedule[] = [
   { name: 'location-geography', everyMs: 60_000, run: assignLocationGeography },
   // EQ-12, CON-07: coverage and gap alerts raised and cleared against the tenant's thresholds.
   { name: 'equity-alerts', everyMs: 15 * 60_000, run: evaluateEquityAlerts },
+  // FLD-13, SCL-13: offline map packages per parcel area, cut again when tiles or lots change.
+  {
+    name: 'maps-cut',
+    everyMs: 15 * 60_000,
+    run: async (c) => {
+      await cutAreaMaps(c);
+    },
+  },
   webhookSchedule, // SCL-09
 ];
 
@@ -269,6 +305,7 @@ async function relayLoop(): Promise<void> {
       const queue = queueNow();
       if (queue) {
         const n = await relayOnce(db, queue.channel, log);
+        if (n > 0) outboxRelayed.inc({}, n);
         if (n > 0) continue; // drain quickly under load
       }
     } catch (err) {
@@ -298,10 +335,15 @@ async function changeLoop(): Promise<void> {
 function startSchedules(): void {
   for (const s of schedules) {
     const tick = async () => {
+      const started = performance.now();
       try {
         await s.run(ctx);
+        jobRuns.inc({ schedule: s.name, result: 'ok' });
       } catch (err) {
+        jobRuns.inc({ schedule: s.name, result: 'failed' });
         log.error({ err, schedule: s.name }, 'schedule failed');
+      } finally {
+        jobDuration.observe((performance.now() - started) / 1000, { schedule: s.name });
       }
     };
     setTimeout(() => void tick(), 5_000);
@@ -310,6 +352,11 @@ function startSchedules(): void {
 }
 
 const server = createServer((req, res) => {
+  // NFR-10: the worker's metrics, on its own port only (never routed by the gateway).
+  if (req.url === '/metrics') {
+    res.writeHead(200, { 'content-type': METRICS_CONTENT_TYPE }).end(workerMetrics.expose());
+    return;
+  }
   if (req.url === '/health/live') {
     res.writeHead(200, { 'content-type': 'application/json' }).end('{"status":"ok"}');
     return;

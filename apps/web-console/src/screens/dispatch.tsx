@@ -14,7 +14,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, describeFailure } from '../api/client.ts';
 import { openStream, type StreamState } from '../api/stream.ts';
 import { DataTable, Status, Toolbar, fmt } from '../ui/primitives.tsx';
-import type { ConsoleMap, MapPoint } from '../ui/map.ts';
+import type { ConsoleMap, MapOutline, MapPoint } from '../ui/map.ts';
+import { fromZoneInput, toZoneInput } from '../ui/time.ts';
+import { STATUS_MARK, STATUS_TEXT, statusMark } from './team-status.ts';
 
 interface Point {
   lat: number;
@@ -34,6 +36,8 @@ export interface BoardTeam {
   statusAt: string | null;
   suggestedStatus: string | null;
   checkedInCount: number;
+  /** BRD:FR-03.05: members whose phone blocks location. */
+  locationBlocked: number;
   memberCount: number;
   checkInDueAt: string | null;
   position: (Point & { accuracyM: number | null; recordedAt: string; stale: boolean }) | null;
@@ -79,14 +83,61 @@ interface Board {
     raisedAt: string;
     position: Point | null;
   }[];
+  /** DSP-03, MIS-01: open needs that are no mission yet (absent for roles that cannot read needs). */
+  needs?: {
+    id: string;
+    category: string;
+    referenceCode: string | null;
+    createdAt: string;
+    position: Point | null;
+  }[];
+  /** DSP-01: roads reported closed, impassable or down to one lane. */
+  closures?: {
+    id: string;
+    name: string;
+    status: string;
+    reason: string | null;
+    position: Point | null;
+    reportedAt: string;
+  }[];
+  /** FLD-11: what workers saw at sites and resources they came across, not yet noted. */
+  fieldReports?: {
+    id: string;
+    category: 'site_status' | 'resource_seen';
+    siteId: string | null;
+    siteName: string | null;
+    siteStatus: string | null;
+    resourceKind: string | null;
+    place: string | null;
+    note: string | null;
+    position: Point | null;
+    reportedAt: string;
+  }[];
+  /** DSP-01: each open field route's parcel area, outlined. */
+  routeAreas?: RouteArea[];
   counts: {
     teamsByStatus: Record<string, number>;
     queue: number;
     active: number;
     hazards: number;
     openAlerts: number;
+    needs?: number;
+    closures?: number;
+    fieldReports?: number;
+    routeAreas?: number;
   };
 }
+interface RouteArea {
+  areaKey: string;
+  parcels: number;
+  outline: unknown;
+  missions: { id: string; reference: string; assigned: boolean }[];
+}
+/** A route area in words: its name, its parcels and its missions. */
+const routeAreaText = (a: RouteArea) =>
+  `Route area ${a.areaKey.replace(/-/g, ' ')}: ${a.parcels} ${a.parcels === 1 ? 'parcel' : 'parcels'}, ${a.missions
+    .map((m) => `${m.reference} ${m.assigned ? 'assigned' : 'not assigned'}`)
+    .join(', ')}`;
 interface Suggestion {
   teamId: string;
   name: string;
@@ -103,26 +154,6 @@ interface EventRow {
   status: string;
 }
 
-export const STATUS_TEXT: Record<string, string> = {
-  available: 'Available',
-  en_route: 'En route',
-  on_task: 'On task',
-  break: 'On break',
-  out_of_service: 'Out of service',
-  overdue: 'Overdue check-in',
-};
-/** Shape and a letter for each status, so the board never relies on colour (WCAG 1.4.1). */
-const STATUS_MARK: Record<
-  string,
-  { shape: MapPoint['shape']; mark: string; tone: MapPoint['tone'] }
-> = {
-  available: { shape: 'circle', mark: 'A', tone: 'ok' },
-  en_route: { shape: 'diamond', mark: 'E', tone: 'busy' },
-  on_task: { shape: 'square', mark: 'T', tone: 'busy' },
-  break: { shape: 'circle', mark: 'B', tone: 'info' },
-  out_of_service: { shape: 'square', mark: 'X', tone: 'danger' },
-  overdue: { shape: 'triangle', mark: '!', tone: 'danger' },
-};
 const ALERT_TEXT: Record<string, string> = {
   help_button: 'Help button pressed',
   missed_check_in: 'Missed check-in',
@@ -400,17 +431,15 @@ function AlertTakeover({
 function BoardMap({ board }: { board: Board }) {
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<ConsoleMap | null>(null);
-  const [layers, setLayers] = useState<Set<string>>(new Set(['teams', 'work', 'hazards', 'sites']));
+  const [layers, setLayers] = useState<Set<string>>(
+    new Set(['teams', 'work', 'routes', 'needs', 'hazards', 'closures', 'sites', 'reports']),
+  );
   const [picked, setPicked] = useState<string | null>(null);
   const points = useMemo<MapPoint[]>(() => {
     const out: MapPoint[] = [];
     for (const t of board.teams)
       if (t.position) {
-        const m = STATUS_MARK[t.status ?? ''] ?? {
-          shape: 'circle' as const,
-          mark: '?',
-          tone: 'info' as const,
-        };
+        const m = statusMark(t.status);
         out.push({
           id: t.id,
           lat: t.position.lat,
@@ -458,14 +487,63 @@ function BoardMap({ board }: { board: Board }) {
           tone: 'info',
           layer: 'sites',
         });
+    // DSP-01: open needs (at about a block), road closures and field reports, each also a list.
+    for (const n of board.needs ?? [])
+      if (n.position)
+        out.push({
+          id: n.id,
+          lat: n.position.lat,
+          lon: n.position.lon,
+          label: `Need: ${label(n.category)}${n.referenceCode ? ` (${n.referenceCode})` : ''}, no mission yet`,
+          mark: 'N',
+          shape: 'diamond',
+          tone: 'warn',
+          layer: 'needs',
+        });
+    for (const c of board.closures ?? [])
+      if (c.position)
+        out.push({
+          id: c.id,
+          lat: c.position.lat,
+          lon: c.position.lon,
+          label: `Road ${c.name}: ${label(c.status)}`,
+          mark: 'X',
+          shape: 'square',
+          tone: 'danger',
+          layer: 'closures',
+        });
+    for (const r of board.fieldReports ?? [])
+      if (r.position)
+        out.push({
+          id: r.id,
+          lat: r.position.lat,
+          lon: r.position.lon,
+          label:
+            r.category === 'site_status'
+              ? `Field report: ${r.siteName ?? 'a site'} seen ${label(r.siteStatus ?? 'other')}`
+              : `Field report: ${label(r.resourceKind ?? 'resource')} seen${r.place ? ` at ${r.place}` : ''}`,
+          mark: 'R',
+          shape: 'diamond',
+          tone: 'info',
+          layer: 'reports',
+        });
     return out;
   }, [board]);
+  // DSP-01: field routes' parcel areas as outlines; clicking inside one names it.
+  const outlines = useMemo<MapOutline[]>(
+    () =>
+      (board.routeAreas ?? [])
+        .filter((a) => a.outline)
+        .map((a) => ({ id: a.areaKey, geometry: a.outline, label: routeAreaText(a) })),
+    [board],
+  );
   useEffect(() => {
     let alive = true;
     void import('../ui/map.ts').then(({ openMap }) => {
       if (!alive || !box.current) return;
       map.current = openMap(box.current, (p) => setPicked(p.label));
       map.current.setPoints(points, layers);
+      map.current.setOutlines(layers.has('routes') ? outlines : null, setPicked);
     });
     return () => {
       alive = false;
@@ -478,6 +556,9 @@ function BoardMap({ board }: { board: Board }) {
   useEffect(() => {
     map.current?.setPoints(points, layers);
   }, [points, layers]);
+  useEffect(() => {
+    map.current?.setOutlines(layers.has('routes') ? outlines : null, setPicked);
+  }, [outlines, layers]);
   const toggle = (l: string) =>
     setLayers((cur) => {
       const next = new Set(cur);
@@ -492,8 +573,12 @@ function BoardMap({ board }: { board: Board }) {
         {[
           ['teams', 'Teams'],
           ['work', 'Work'],
+          ['routes', 'Route areas'],
+          ['needs', 'Needs'],
           ['hazards', 'Hazards'],
+          ['closures', 'Road closures'],
           ['sites', 'Sites'],
+          ['reports', 'Field reports'],
         ].map(([k, l]) => (
           <button key={k} type="button" aria-pressed={layers.has(k!)} onClick={() => toggle(k!)}>
             {l}
@@ -505,7 +590,7 @@ function BoardMap({ board }: { board: Board }) {
         ref={box}
         className="map"
         role="region"
-        aria-label="Map of teams, work, hazards and sites. The lists below show the same."
+        aria-label="Map of teams, work, route areas, needs, hazards, road closures, sites and field reports. The lists below show the same."
       />
     </section>
   );
@@ -631,6 +716,12 @@ export function DispatchScreen() {
             <dd>{board.counts.active}</dd>
             <dt>Open alerts</dt>
             <dd>{board.counts.openAlerts}</dd>
+            <dt>Needs with no mission</dt>
+            <dd>{board.counts.needs ?? 0}</dd>
+            <dt>Road closures</dt>
+            <dd>{board.counts.closures ?? 0}</dd>
+            <dt>Reports from the field not yet noted</dt>
+            <dd>{board.counts.fieldReports ?? 0}</dd>
           </dl>
           {showMap ? <BoardMap board={board} /> : null}
           {assigning ? (
@@ -683,6 +774,116 @@ export function DispatchScreen() {
               },
             ]}
           />
+          {board.needs?.length ? (
+            <>
+              <h2>Needs with no mission yet</h2>
+              <p className="hint">
+                Making a mission links it to the need and its report, at the need&rsquo;s place;
+                then assign it like any other.
+              </p>
+              <DataTable
+                caption="Open needs nobody has made a mission for, oldest first"
+                rows={board.needs}
+                rowKey={(n) => n.id}
+                columns={[
+                  {
+                    key: 'need',
+                    header: 'Need',
+                    render: (n) =>
+                      `${label(n.category)}${n.referenceCode ? ` (${n.referenceCode})` : ''}`,
+                  },
+                  { key: 'age', header: 'Waiting since', render: (n) => fmt(n.createdAt) },
+                  {
+                    key: 'act',
+                    header: 'Action',
+                    render: (n) => (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void api<{ reference: string }>(`/needs/${n.id}/mission`, { body: {} })
+                            .then((m) => setNotice(`Mission ${m.reference} made for the need.`))
+                            .catch((e: unknown) => setNotice(describeFailure(e)))
+                            .finally(reload)
+                        }
+                      >
+                        Make a mission for {n.referenceCode ?? label(n.category)}
+                      </button>
+                    ),
+                  },
+                ]}
+              />
+            </>
+          ) : null}
+          {board.closures?.length ? (
+            <>
+              <h2>Road closures</h2>
+              <DataTable
+                caption="Roads reported closed, impassable or down to one lane"
+                rows={board.closures}
+                rowKey={(c) => c.id}
+                columns={[
+                  { key: 'road', header: 'Road', render: (c) => c.name },
+                  { key: 'st', header: 'Status', render: (c) => label(c.status) },
+                  { key: 'why', header: 'Reason', render: (c) => c.reason ?? '—' },
+                  { key: 'at', header: 'Reported', render: (c) => fmt(c.reportedAt) },
+                ]}
+              />
+            </>
+          ) : null}
+          {board.fieldReports?.length ? (
+            <>
+              <h2>Reports from the field</h2>
+              <p className="hint">
+                What workers saw at a site or a resource they came across. A site report is not the
+                site&rsquo;s status: the site&rsquo;s lead confirms that.
+              </p>
+              <DataTable
+                caption="Site status and resources seen, newest first"
+                rows={board.fieldReports}
+                rowKey={(r) => r.id}
+                columns={[
+                  {
+                    key: 'what',
+                    header: 'Report',
+                    render: (r) =>
+                      r.category === 'site_status'
+                        ? `${r.siteName ?? 'A site'}: seen ${label(r.siteStatus ?? 'other')}`
+                        : `Resource seen: ${label(r.resourceKind ?? 'other')}${r.place ? ` at ${r.place}` : ''}`,
+                  },
+                  { key: 'note', header: 'Note', render: (r) => r.note ?? '—' },
+                  {
+                    key: 'where',
+                    header: 'Where',
+                    render: (r) =>
+                      r.position
+                        ? `${r.position.lat.toFixed(4)}, ${r.position.lon.toFixed(4)}`
+                        : 'No pin',
+                  },
+                  { key: 'at', header: 'Reported', render: (r) => fmt(r.reportedAt) },
+                  {
+                    key: 'act',
+                    header: 'Action',
+                    render: (r) => (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void api(`/field-records/field_report/${r.id}/note`, { body: {} })
+                            .then(() => setNotice('Report marked noted.'))
+                            .catch((e: unknown) => setNotice(describeFailure(e)))
+                            .finally(reload)
+                        }
+                      >
+                        Mark noted:{' '}
+                        {r.category === 'site_status'
+                          ? (r.siteName ?? 'site report')
+                          : label(r.resourceKind ?? 'resource')}
+                      </button>
+                    ),
+                  },
+                ]}
+              />
+            </>
+          ) : null}
           <h2>Teams</h2>
           <div className="filters">
             <label>
@@ -788,6 +989,9 @@ export function DispatchScreen() {
                       {t.position
                         ? `${t.position.lat.toFixed(4)}, ${t.position.lon.toFixed(4)}${t.position.stale ? ' (old)' : ''}`
                         : 'Not shared'}
+                      {t.locationBlocked > 0
+                        ? ` · location blocked on ${t.locationBlocked} ${t.locationBlocked === 1 ? 'phone' : 'phones'}`
+                        : ''}
                     </td>
                     <td>
                       {t.assignments.map((a) => `${a.reference} (${label(a.state)})`).join(', ') ||
@@ -815,6 +1019,36 @@ export function DispatchScreen() {
               { key: 'sum', header: 'Summary', render: (m) => m.summary ?? '—' },
             ]}
           />
+          {board.routeAreas?.length ? (
+            <>
+              <h2>Route areas</h2>
+              <DataTable
+                caption="The parcel area each open field route covers (outlined on the map)"
+                rows={board.routeAreas}
+                rowKey={(a) => a.areaKey}
+                columns={[
+                  { key: 'area', header: 'Area', render: (a) => a.areaKey.replace(/-/g, ' ') },
+                  {
+                    key: 'parcels',
+                    header: 'Parcels',
+                    render: (a) => (a.parcels ? a.parcels : 'No parcels loaded for this area'),
+                  },
+                  {
+                    key: 'missions',
+                    header: 'Routes',
+                    render: (a) =>
+                      a.missions.map((m, i) => (
+                        <span key={m.id}>
+                          {i ? ', ' : ''}
+                          <a href={`/console/missions/${m.id}`}>{m.reference}</a> (
+                          {m.assigned ? 'assigned' : 'not assigned'})
+                        </span>
+                      )),
+                  },
+                ]}
+              />
+            </>
+          ) : null}
           <h2>Hazards</h2>
           <DataTable
             caption="Hazards on this event"
@@ -858,10 +1092,8 @@ export function ReplayScreen() {
   const { events } = useOpenEvents();
   const [eventId, setEventId] = useState<string | null>(null);
   const currentEvent = eventId ?? events?.[0]?.id ?? null;
-  const local = (d: Date) =>
-    new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-  const [from, setFrom] = useState(() => local(new Date(Date.now() - 4 * 3_600_000)));
-  const [to, setTo] = useState(() => local(new Date()));
+  const [from, setFrom] = useState(() => toZoneInput(new Date(Date.now() - 4 * 3_600_000)));
+  const [to, setTo] = useState(() => toZoneInput(new Date()));
   const [replay, setReplay] = useState<Replay | null>(null);
   const [teams, setTeams] = useState<BoardTeam[]>([]);
   const [step, setStep] = useState(0);
@@ -871,7 +1103,7 @@ export function ReplayScreen() {
     try {
       const [r, b] = await Promise.all([
         api<Replay>(
-          `/dispatch/replay?eventId=${currentEvent}&from=${new Date(from).toISOString()}&to=${new Date(to).toISOString()}`,
+          `/dispatch/replay?eventId=${currentEvent}&from=${fromZoneInput(from).toISOString()}&to=${fromZoneInput(to).toISOString()}`,
         ),
         api<Board>(`/dispatch/board?eventId=${currentEvent}`),
       ]);

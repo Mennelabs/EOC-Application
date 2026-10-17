@@ -91,6 +91,12 @@ export const GROUPS: readonly WorkspaceGroup[] = [
     title: 'Needs and partners',
     workspaces: [
       {
+        path: '/console/find-survivor',
+        label: "Find a survivor's record",
+        icon: icons.Search,
+        needs: ['survivor.find'],
+      },
+      {
         path: '/console/needs',
         label: 'Needs board',
         icon: icons.HeartHandshake,
@@ -168,6 +174,12 @@ export const GROUPS: readonly WorkspaceGroup[] = [
         icon: icons.Newspaper,
         needs: ['publication.read'],
       },
+      {
+        path: '/console/health-notices',
+        label: 'Health notices',
+        icon: icons.Bell,
+        needs: ['health_notice.read', 'health_notice.draft'],
+      },
     ],
   },
   {
@@ -216,6 +228,30 @@ export const GROUPS: readonly WorkspaceGroup[] = [
         label: 'Field devices',
         icon: icons.Smartphone,
         needs: ['device.read'],
+      },
+      {
+        path: '/console/peer-support',
+        label: 'Peer support',
+        icon: icons.HeartHandshake,
+        needs: ['peer_support.read'],
+      },
+      {
+        path: '/console/reentry',
+        label: 'Re-entry passes',
+        icon: icons.MapPin,
+        needs: ['reentry_pass.read', 'reentry_pass.issue'],
+      },
+      {
+        path: '/console/parcels',
+        label: 'Parcels and routes',
+        icon: icons.Layers,
+        needs: ['parcel.read'],
+      },
+      {
+        path: '/console/job-aids',
+        label: 'Job aids',
+        icon: icons.Info,
+        needs: ['job_aid.edit', 'job_aid.approve'],
       },
     ],
   },
@@ -272,6 +308,24 @@ export const GROUPS: readonly WorkspaceGroup[] = [
         needs: ['event.read'],
       },
       {
+        path: '/console/event-templates',
+        label: 'Event templates',
+        icon: icons.Rows3,
+        needs: ['event.template_edit'],
+      },
+      {
+        path: '/console/planning-factors',
+        label: 'Planning factors',
+        icon: icons.Settings,
+        needs: ['tenant.config.read'],
+      },
+      {
+        path: '/console/branding',
+        label: 'Branding and languages',
+        icon: icons.Flag,
+        needs: ['tenant.update'],
+      },
+      {
         path: '/console/tenants',
         label: 'Organizations',
         icon: icons.Building2,
@@ -310,10 +364,28 @@ export const GROUPS: readonly WorkspaceGroup[] = [
         needs: ['retention.read'],
       },
       {
+        path: '/console/public-records',
+        label: 'Records requests',
+        icon: icons.Download,
+        needs: ['public_records.export'],
+      },
+      {
         path: '/console/integrations',
         label: 'API keys and webhooks',
         icon: icons.KeyRound,
         needs: ['api_key.read', 'webhook.read'],
+      },
+      {
+        path: '/console/sso',
+        label: 'Single sign-on',
+        icon: icons.Lock,
+        needs: ['sso.read', 'sso.manage'],
+      },
+      {
+        path: '/console/subscription',
+        label: 'Subscription',
+        icon: icons.Package,
+        needs: ['license.read'],
       },
     ],
   },

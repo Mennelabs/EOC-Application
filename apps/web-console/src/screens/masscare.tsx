@@ -8,13 +8,21 @@
  *   (cots, needs, pets; access needs only for roles that may see them), hands
  *   over wristband codes, checks guests out, keeps the quiet incident log,
  *   and sends the census to the county as the site's confirmed occupancy.
+ *   Mass care also loads the Red Cross shelter report (CON-16): counts only,
+ *   a file listing people is refused, and a county shelter linked by its Red
+ *   Cross id takes the newest count as its occupancy.
  * - Volunteer reception: a walk-up volunteer registered in one step with the
  *   signed waiver, skills (recorded, not verified), the background-check
  *   status only, a team, a check-in and a badge whose code is shown once.
+ *   Walk-ups can also sign up on their own phones through a code reception
+ *   opens for the event (FL:FR-20); their requests wait at the desk under a
+ *   desk code, and reception completes or declines each one. Reception sees
+ *   whether a phone or email was given, never the contact itself.
  */
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, describeFailure } from '../api/client.ts';
 import { DataTable, Field, Status, Toolbar, fmt } from '../ui/primitives.tsx';
+import { QrImage } from '../ui/qr.tsx';
 import { EventPicker, useOpenEvents } from './dispatch.tsx';
 
 const label = (s: string | null | undefined) => (s ? s.replace(/_/g, ' ') : '—');
@@ -50,6 +58,7 @@ interface Site {
   occupancy: number | null;
   operatorTenantId: string | null;
   lastConfirmedAt: string | null;
+  externalRef?: string | null;
 }
 interface Tenant {
   id: string;
@@ -433,6 +442,297 @@ export function SheltersScreen({ me }: { me: { tenantId: string } | null }) {
           )}
         </>
       ) : null}
+      {currentEvent ? (
+        <RedCrossCounts eventId={currentEvent} sites={sites.data ?? []} onLinked={sites.reload} />
+      ) : null}
+    </section>
+  );
+}
+
+interface ShelterCounts {
+  shelters: {
+    externalRef: string;
+    name: string;
+    status: string | null;
+    population: number | null;
+    capacity: number | null;
+    asOf: string;
+    site: { id: string; name: string } | null;
+  }[];
+  totals: { shelters: number; population: number; capacity: number };
+}
+
+/** The column names on the first line of a CSV file, quotes removed. */
+function csvHeader(text: string): string[] {
+  const line = text.replace(/^\uFEFF/, '').split(/\r?\n/, 1)[0] ?? '';
+  const out: string[] = [];
+  let cell = '';
+  let quoted = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i]!;
+    if (ch === '"') {
+      if (quoted && line[i + 1] === '"') {
+        cell += '"';
+        i += 1;
+      } else quoted = !quoted;
+    } else if (ch === ',' && !quoted) {
+      out.push(cell.trim());
+      cell = '';
+    } else cell += ch;
+  }
+  out.push(cell.trim());
+  return out.filter(Boolean);
+}
+
+/**
+ * CON-16: the Red Cross shelter report, counts only. The file stays in the browser until it is
+ * loaded; the server reads only the mapped columns and refuses a file that lists people.
+ */
+function RedCrossCounts({
+  eventId,
+  sites,
+  onLinked,
+}: {
+  eventId: string;
+  sites: Site[];
+  onLinked: () => void;
+}) {
+  const [actions, setActions] = useState<string[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    api<{ actions: string[] }>('/me')
+      .then((m) => live && setActions(m.actions))
+      .catch(() => live && setActions([]));
+    return () => {
+      live = false;
+    };
+  }, []);
+  const mayRead = !!actions?.includes('shelter_count.read');
+  const mayImport = !!actions?.includes('shelter_count.import');
+  const counts = useApi<ShelterCounts>(mayRead ? `/shelter-counts?eventId=${eventId}` : null);
+  const [csv, setCsv] = useState<string | null>(null);
+  const [columns, setColumns] = useState<string[]>([]);
+  const [map, setMap] = useState({
+    externalRef: '',
+    name: '',
+    status: '',
+    population: '',
+    capacity: '',
+    asOf: '',
+  });
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [problems, setProblems] = useState<{ row: number; reason: string }[]>([]);
+  if (!mayRead) return null;
+  const choose = async (file: File | undefined) => {
+    setResult(null);
+    setProblems([]);
+    if (!file) return;
+    const text = await file.text();
+    const cols = csvHeader(text);
+    setCsv(text);
+    setColumns(cols);
+    const guess = (names: string[]) =>
+      cols.find((c) => names.includes(c.toLowerCase().replace(/[^a-z0-9]/g, ''))) ?? '';
+    setMap({
+      externalRef: guess(['shelterid', 'id', 'nssid', 'facilityid', 'shelterno']),
+      name: guess(['sheltername', 'name', 'facilityname']),
+      status: guess(['status', 'shelterstatus']),
+      population: guess([
+        'population',
+        'overnightpopulation',
+        'currentpopulation',
+        'census',
+        'occupancy',
+      ]),
+      capacity: guess(['capacity', 'evacuationcapacity', 'maxcapacity', 'totalcapacity']),
+      asOf: guess(['reporttime', 'reportdate', 'asof', 'date', 'updated', 'lastupdated']),
+    });
+  };
+  const load = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!csv) return;
+    setBusy(true);
+    setResult(null);
+    try {
+      const r = await api<{
+        imported: number;
+        duplicates: number;
+        sitesUpdated: number;
+        rejected: number;
+        problems: { row: number; reason: string }[];
+      }>('/shelter-counts/import', {
+        body: {
+          eventId,
+          csv,
+          mapping: Object.fromEntries(Object.entries(map).filter(([, v]) => v)),
+        },
+        confirmation: { confirmed: true, reason: reason.trim() },
+      });
+      setResult({
+        kind: 'success',
+        text: `${r.imported} counts loaded, ${r.duplicates} already loaded, ${r.rejected} rows refused; ${r.sitesUpdated} county shelters updated.`,
+      });
+      setProblems(r.problems);
+      counts.reload();
+      onLinked();
+    } catch (err) {
+      setResult({ kind: 'error', text: describeFailure(err) });
+    }
+    setBusy(false);
+  };
+  const link = async (siteId: string, externalRef: string) => {
+    const site = sites.find((s) => s.id === siteId);
+    if (!site) return;
+    try {
+      await api(`/sites/${site.id}`, {
+        method: 'PATCH',
+        body: { externalRef },
+        version: site.version,
+      });
+      setResult({
+        kind: 'success',
+        text: `${site.name} is linked to Red Cross shelter ${externalRef}; its next count updates its occupancy.`,
+      });
+      onLinked();
+      counts.reload();
+    } catch (err) {
+      setResult({ kind: 'error', text: describeFailure(err) });
+    }
+  };
+  const select = (k: keyof typeof map, lbl: string, required = false) => (
+    <Field label={lbl}>
+      {({ id }) => (
+        <select
+          id={id}
+          value={map[k]}
+          required={required}
+          onChange={(e) => setMap({ ...map, [k]: e.target.value })}
+        >
+          <option value="">{required ? 'Choose a column' : 'Not in this file'}</option>
+          {columns.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      )}
+    </Field>
+  );
+  const unlinked = sites.filter((s) => !s.externalRef);
+  return (
+    <section aria-labelledby="rc-h">
+      <h2 id="rc-h">Red Cross shelter counts</h2>
+      <p className="hint">
+        Counts from the Red Cross shelter report: how many people stay at each shelter, never who. A
+        county shelter linked by its Red Cross id takes the newest count as its occupancy; its
+        status stays with whoever confirms the site.
+      </p>
+      {result ? <Status kind={result.kind}>{result.text}</Status> : null}
+      {counts.error ? <Status kind="error">{counts.error}</Status> : null}
+      {mayImport ? (
+        <form className="panel" onSubmit={(e) => void load(e)} aria-labelledby="rc-load-h">
+          <h3 id="rc-load-h">Load the Red Cross shelter report</h3>
+          <Field
+            label="Shelter report (CSV)"
+            hint="One row per shelter. A file with columns about people is refused whole."
+          >
+            {({ id, describedBy }) => (
+              <input
+                id={id}
+                aria-describedby={describedBy}
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => void choose(e.target.files?.[0])}
+              />
+            )}
+          </Field>
+          {csv ? (
+            <>
+              <p>Which columns hold what? Every other column is left out.</p>
+              <div className="form-grid">
+                {select('externalRef', 'Shelter id', true)}
+                {select('name', 'Shelter name', true)}
+                {select('status', 'Status')}
+                {select('population', 'People staying')}
+                {select('capacity', 'Capacity')}
+                {select('asOf', 'When it was counted')}
+              </div>
+              <Field label="Reason" hint="Recorded in the audit log, for the whole file.">
+                {({ id, describedBy }) => (
+                  <input
+                    id={id}
+                    aria-describedby={describedBy}
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    required
+                  />
+                )}
+              </Field>
+              <button
+                type="submit"
+                className="primary"
+                disabled={!map.externalRef || !map.name || reason.trim().length < 3 || busy}
+              >
+                Load the counts
+              </button>
+            </>
+          ) : null}
+          {problems.length ? (
+            <DataTable
+              caption="Rows refused"
+              rows={problems}
+              rowKey={(p) => String(p.row)}
+              columns={[
+                { key: 'r', header: 'Row', render: (p) => String(p.row) },
+                { key: 'w', header: 'Why', render: (p) => p.reason },
+              ]}
+            />
+          ) : null}
+        </form>
+      ) : null}
+      {counts.data ? (
+        <p role="status">
+          {counts.data.totals.shelters} Red Cross shelters · {counts.data.totals.population} people
+          staying · capacity {counts.data.totals.capacity}
+        </p>
+      ) : null}
+      <DataTable
+        caption="Red Cross shelter counts, the newest for each shelter"
+        rows={counts.data?.shelters ?? []}
+        rowKey={(c) => c.externalRef}
+        empty="No Red Cross counts loaded for this event."
+        columns={[
+          { key: 'n', header: 'Shelter', render: (c) => `${c.name} (${c.externalRef})` },
+          { key: 's', header: 'Reported status', render: (c) => label(c.status) },
+          { key: 'p', header: 'People staying', render: (c) => c.population ?? '—' },
+          { key: 'c', header: 'Capacity', render: (c) => c.capacity ?? '—' },
+          { key: 't', header: 'Counted', render: (c) => fmt(c.asOf) },
+          {
+            key: 'site',
+            header: 'County shelter',
+            render: (c) =>
+              c.site ? (
+                c.site.name
+              ) : mayImport && unlinked.length ? (
+                <label className="inline">
+                  Link {c.name} to
+                  <select value="" onChange={(e) => void link(e.target.value, c.externalRef)}>
+                    <option value="">Not linked</option>
+                    {unlinked.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                'Not linked'
+              ),
+          },
+        ]}
+      />
     </section>
   );
 }
@@ -462,6 +762,235 @@ interface Registration {
   waiverVersion: string | null;
   badgeCode?: string;
 }
+/** FL:FR-20: a walk-up's own sign-up waiting at the desk; never the contact itself. */
+interface Signup {
+  id: string;
+  version: number;
+  deskCode: string;
+  name: string;
+  agency: string | null;
+  gavePhone: boolean;
+  gaveEmail: boolean;
+  skills: string[];
+  waiverVersion: string;
+  waiverAcceptedAt: string | null;
+  createdAt: string;
+}
+interface SignupLink {
+  id: string;
+  waiverVersion: string;
+  waiverLanguages: string[];
+  expiresAt: string;
+  waiting: number;
+  url?: string;
+}
+
+/**
+ * FL:FR-20: reception opens a sign-up code for the event (shown once: print it
+ * or keep the page open), sees the requests waiting at the desk and takes each
+ * one into the registration form, or declines it.
+ */
+function SignupDesk({
+  eventId,
+  waiverVersion,
+  signups,
+  reload,
+  onTake,
+  onMessage,
+}: {
+  eventId: string;
+  waiverVersion: string;
+  signups: Signup[];
+  reload: () => void;
+  onTake: (s: Signup) => void;
+  onMessage: (m: { kind: 'success' | 'error'; text: string }) => void;
+}) {
+  const links = useApi<SignupLink[]>(`/volunteer-signup-links?eventId=${eventId}`);
+  const [opened, setOpened] = useState<SignupLink | null>(null);
+  const [form, setForm] = useState({ en: '', es: '', hours: 12 });
+  const open = async (e: FormEvent) => {
+    e.preventDefault();
+    try {
+      const link = await api<SignupLink>('/volunteer-signup-links', {
+        body: {
+          eventId,
+          waiverVersion,
+          waiverText: {
+            ...(form.en.trim() ? { en: form.en.trim() } : {}),
+            ...(form.es.trim() ? { es: form.es.trim() } : {}),
+          },
+          hours: form.hours,
+        },
+      });
+      setOpened(link);
+      links.reload();
+      onMessage({ kind: 'success', text: 'The sign-up code is open.' });
+    } catch (err) {
+      onMessage({ kind: 'error', text: describeFailure(err) });
+    }
+  };
+  const close = async (id: string) => {
+    try {
+      await api(`/volunteer-signup-links/${id}/close`, { method: 'POST' });
+      if (opened?.id === id) setOpened(null);
+      links.reload();
+      onMessage({ kind: 'success', text: 'The sign-up code is closed.' });
+    } catch (err) {
+      onMessage({ kind: 'error', text: describeFailure(err) });
+    }
+  };
+  const decline = async (r: Signup) => {
+    try {
+      await api(`/volunteer-signups/${r.id}/decline`, { method: 'POST', version: r.version });
+      onMessage({
+        kind: 'success',
+        text: `The request with desk code ${r.deskCode} was declined.`,
+      });
+    } catch (err) {
+      onMessage({ kind: 'error', text: describeFailure(err) });
+    }
+    reload();
+  };
+  return (
+    <section className="panel" aria-labelledby="signup-h">
+      <h2 id="signup-h">Sign-up by QR at the desk</h2>
+      <p>
+        Volunteers scan the code with their own phone and get a desk code. Their details wait here
+        until you register them below or decline.
+      </p>
+      {opened?.url ? (
+        <div className="signup-code">
+          <QrImage text={opened.url} alt="Code that opens the volunteer sign-up" size={200} />
+          <p>
+            <span className="url">{opened.url}</span>
+          </p>
+          <p className="hint">
+            Shown once: print this page or keep it open. Open a new code if you lose it.
+          </p>
+          <button type="button" onClick={() => window.print()}>
+            Print the code
+          </button>
+        </div>
+      ) : null}
+      <form onSubmit={(e) => void open(e)} aria-labelledby="signup-open-h">
+        <h3 id="signup-open-h">Open a sign-up code</h3>
+        <Field
+          label="Waiver text in English (optional)"
+          hint={`Volunteers read and accept it on their phone. Leave both blank to have them sign the waiver (${waiverVersion}) at the desk.`}
+        >
+          {({ id, describedBy }) => (
+            <textarea
+              id={id}
+              aria-describedby={describedBy}
+              rows={4}
+              value={form.en}
+              onChange={(e) => setForm({ ...form, en: e.target.value })}
+            />
+          )}
+        </Field>
+        <Field label="Waiver text in Spanish (optional)">
+          {({ id }) => (
+            <textarea
+              id={id}
+              lang="es"
+              rows={4}
+              value={form.es}
+              onChange={(e) => setForm({ ...form, es: e.target.value })}
+            />
+          )}
+        </Field>
+        <Field label="Open for (hours)">
+          {({ id }) => (
+            <input
+              id={id}
+              type="number"
+              min={1}
+              max={72}
+              value={form.hours}
+              onChange={(e) => setForm({ ...form, hours: Number(e.target.value) || 12 })}
+            />
+          )}
+        </Field>
+        <button type="submit">Open a sign-up code</button>
+      </form>
+      <DataTable
+        caption="Open sign-up codes"
+        rows={links.data ?? []}
+        rowKey={(r) => r.id}
+        empty="No sign-up code is open for this event."
+        columns={[
+          { key: 'e', header: 'Open until', render: (r) => fmt(r.expiresAt) },
+          {
+            key: 'w',
+            header: 'Waiver',
+            render: (r) =>
+              r.waiverLanguages.length
+                ? `${r.waiverVersion}, read on the phone (${r.waiverLanguages.join(', ')})`
+                : `${r.waiverVersion}, signed at the desk`,
+          },
+          { key: 'n', header: 'Waiting', render: (r) => String(r.waiting) },
+          {
+            key: 'c',
+            header: 'Close',
+            render: (r) => (
+              <button type="button" onClick={() => void close(r.id)}>
+                Close the code open until {fmt(r.expiresAt)}
+              </button>
+            ),
+          },
+        ]}
+      />
+      <DataTable
+        caption="Waiting at the desk"
+        rows={signups}
+        rowKey={(r) => r.id}
+        empty="Nobody is waiting at the desk."
+        columns={[
+          { key: 'd', header: 'Desk code', render: (r) => <strong>{r.deskCode}</strong> },
+          { key: 'n', header: 'Name', render: (r) => r.name },
+          { key: 'o', header: 'Organization', render: (r) => r.agency ?? '—' },
+          {
+            key: 's',
+            header: 'Skills (unverified)',
+            render: (r) => r.skills.map(label).join(', ') || '—',
+          },
+          {
+            key: 'w',
+            header: 'Waiver',
+            render: (r) =>
+              r.waiverAcceptedAt
+                ? `Accepted on the phone (${r.waiverVersion})`
+                : 'Sign at the desk',
+          },
+          {
+            key: 'r',
+            header: 'Reach them',
+            render: (r) =>
+              [r.gavePhone ? 'phone' : null, r.gaveEmail ? 'email' : null]
+                .filter(Boolean)
+                .join(' and ') || 'none given',
+          },
+          { key: 't', header: 'Signed up', render: (r) => fmt(r.createdAt) },
+          {
+            key: 'a',
+            header: 'Action',
+            render: (r) => (
+              <>
+                <button type="button" onClick={() => onTake(r)}>
+                  Register {r.deskCode}
+                </button>{' '}
+                <button type="button" onClick={() => void decline(r)}>
+                  Decline {r.deskCode}
+                </button>
+              </>
+            ),
+          },
+        ]}
+      />
+    </section>
+  );
+}
+
 export function VolunteerReceptionScreen() {
   const { events } = useOpenEvents();
   const [eventId, setEventId] = useState<string | null>(null);
@@ -487,6 +1016,27 @@ export function VolunteerReceptionScreen() {
   });
   const [done, setDone] = useState<Registration | null>(null);
   const [msg, setMsg] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  // FL:FR-20: the desk request this registration completes, if any.
+  const [fromSignup, setFromSignup] = useState<Signup | null>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const signups = useApi<Signup[]>(
+    currentEvent ? `/volunteer-signups?eventId=${currentEvent}` : null,
+  );
+  const takeSignup = (r: Signup) => {
+    setFromSignup(r);
+    setF({
+      ...f,
+      name: r.name,
+      agency: r.agency ?? '',
+      phone: '',
+      email: '',
+      skills: r.skills,
+      waiver: r.waiverAcceptedAt !== null,
+      waiverVersion: r.waiverVersion,
+    });
+    setMsg(null);
+    nameRef.current?.focus();
+  };
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!currentEvent) return;
@@ -495,6 +1045,7 @@ export function VolunteerReceptionScreen() {
         body: {
           clientUuid: crypto.randomUUID(),
           eventId: currentEvent,
+          ...(fromSignup ? { signupId: fromSignup.id } : {}),
           person: {
             name: f.name.trim(),
             ...(f.agency.trim() ? { agency: f.agency.trim() } : {}),
@@ -525,7 +1076,9 @@ export function VolunteerReceptionScreen() {
         waiver: false,
         team: '',
       });
+      setFromSignup(null);
       list.reload();
+      signups.reload();
     } catch (err) {
       setMsg({ kind: 'error', text: describeFailure(err) });
     }
@@ -545,13 +1098,41 @@ export function VolunteerReceptionScreen() {
           Badges page.
         </p>
       ) : null}
+      {currentEvent ? (
+        <SignupDesk
+          eventId={currentEvent}
+          waiverVersion={f.waiverVersion}
+          signups={signups.data ?? []}
+          reload={signups.reload}
+          onTake={takeSignup}
+          onMessage={setMsg}
+        />
+      ) : null}
       <form className="panel" onSubmit={(e) => void submit(e)} aria-labelledby="walkup-reg-h">
         <h2 id="walkup-reg-h">Register a walk-up volunteer</h2>
+        {fromSignup ? (
+          <p>
+            Completing the sign-up with desk code <strong>{fromSignup.deskCode}</strong>.{' '}
+            {fromSignup.gavePhone || fromSignup.gaveEmail
+              ? 'The phone or email they gave goes straight to the roster; type one only to replace it.'
+              : 'They gave no phone or email.'}{' '}
+            <button
+              type="button"
+              onClick={() => {
+                setFromSignup(null);
+                setF({ ...f, name: '', agency: '', skills: [], waiver: false });
+              }}
+            >
+              Not this request
+            </button>
+          </p>
+        ) : null}
         <div className="form-grid">
           <Field label="Full name">
             {({ id }) => (
               <input
                 id={id}
+                ref={nameRef}
                 value={f.name}
                 onChange={(e) => setF({ ...f, name: e.target.value })}
                 required
@@ -645,7 +1226,9 @@ export function VolunteerReceptionScreen() {
             onChange={(e) => setF({ ...f, waiver: e.target.checked })}
             required
           />{' '}
-          The volunteer read and signed the waiver ({f.waiverVersion})
+          {fromSignup?.waiverAcceptedAt
+            ? `The volunteer accepted the waiver (${f.waiverVersion}) on their phone at ${fmt(fromSignup.waiverAcceptedAt)}`
+            : `The volunteer read and signed the waiver (${f.waiverVersion})`}
         </label>
         <label className="inline" style={{ flexDirection: 'row', alignItems: 'center' }}>
           <input

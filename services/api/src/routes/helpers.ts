@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { dictionary, type Database } from '@cg/db';
 import type { Classifier } from '@cg/audit';
 import { PARTNER_CATEGORY_KEYS } from '@cg/reporting';
+import { errors } from '../errors.ts';
 
 export const uuidParam = z.object({ id: z.uuid() });
 
@@ -53,6 +54,23 @@ export async function enqueueOutbox(
 }
 
 /** Narrow a PATCH body to the columns actually present, mapping camelCase → snake_case. */
+/** AC-08A: how far ahead of the server's clock a device may date an entry (clock skew). */
+export const AHEAD_ALLOWED_MS = 5 * 60_000;
+
+/**
+ * AC-08A: an entry made after the fact keeps when it happened (`occurredAt`)
+ * beside when the server recorded it; it can be dated back, never ahead.
+ * Returns the date to store, or undefined to let the database stamp now.
+ */
+export function occurredAtOf(value: string | undefined, now = Date.now()): Date | undefined {
+  if (!value) return undefined;
+  const at = new Date(value);
+  if (at.getTime() > now + AHEAD_ALLOWED_MS) {
+    throw errors.validation([{ name: 'occurredAt', message: 'cannot be later than now' }]);
+  }
+  return at;
+}
+
 export function pickDefined<T extends Record<string, unknown>>(
   body: T,
   map: Partial<Record<keyof T & string, string>>,

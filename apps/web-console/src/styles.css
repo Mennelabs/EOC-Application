@@ -13,6 +13,14 @@
 .counts dl.meta {
   margin-top: var(--cg-space-1);
 }
+/* PUB-12: the social post graphic scales to the column; its alt text sits under it. */
+.social-card {
+  margin: 1rem 0;
+}
+.social-card svg {
+  display: block;
+  border: 1px solid var(--cg-line);
+}
 
 /* Layer 4: dispatch board, markers and alerts (DSP-01, CON-03; never colour alone) */
 .map {
@@ -97,6 +105,63 @@
   .badge-print .hint {
     display: none;
   }
+  .staging-code,
+  .staging-code * {
+    visibility: visible;
+  }
+  .staging-code .actions {
+    display: none;
+  }
+  .door-hanger-print,
+  .door-hanger-print * {
+    visibility: visible;
+  }
+  .door-hanger-print .actions {
+    display: none;
+  }
+}
+
+/* FL:FR-28: a door hanger, English beside Spanish, each with its own code and the 911 line. */
+.door-hanger {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+.door-hanger-side {
+  border: 2px dashed #111;
+  border-radius: 8px;
+  padding: 1rem;
+  max-width: 18rem;
+  background: #fff;
+  color: #111;
+}
+.door-hanger-county {
+  font-weight: 700;
+}
+.door-hanger-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+.door-hanger-url {
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+}
+.door-hanger-911 {
+  font-weight: 700;
+}
+
+/* FLD-03: the staging check-in sign, the code in large letters beside its QR code. */
+.staging-sign {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+}
+.staging-code-text {
+  font-family: ui-monospace, monospace;
+  font-size: 2.5rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
 }
 
 /* Official reports (layer 6): staff text keeps its line breaks; a hash wraps instead of scrolling. */
@@ -199,4 +264,10 @@ dialog.command select {
 }
 .command-history .who {
   font-weight: var(--cg-weight-semibold);
+}
+/* ADM-01: the header colour sample, white text on the county's colour. */
+.brand-sample {
+  padding: 0.75rem 1rem;
+  font-weight: 700;
+  border-radius: 4px;
 }

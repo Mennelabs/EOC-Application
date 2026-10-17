@@ -3,12 +3,15 @@
  * invite partner tenants, close with a reason. Missions (layer 4) and reports
  * (layer 2) hang off these.
  */
+import { randomBytes } from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import { sql } from 'kysely';
 import { diffForAudit } from '@cg/audit';
 import { errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
+import { configOf, draftTemplateMessages } from './event-templates.ts';
 import {
   classifierFor,
   enqueueOutbox,
@@ -28,9 +31,13 @@ const eventOut = z.object({
   status: z.enum(['draft', 'active', 'closed']),
   intakeSlug: z.string().nullable(),
   intakeKeywords: z.array(z.string()),
+  /** FLD-03: the staging code people scan (as a QR code) or type to check in. */
+  checkInCode: z.string().nullable(),
   openedAt: z.iso.datetime().nullable(),
   closedAt: z.iso.datetime().nullable(),
   closeReason: z.string().nullable(),
+  /** CON-02: on opening, how many of the template's public messages were drafted into Resources. */
+  draftedMessages: z.number().int().optional(),
 });
 
 type EventRow = {
@@ -45,6 +52,7 @@ type EventRow = {
   status: 'draft' | 'active' | 'closed';
   intake_slug: string | null;
   intake_keywords: string[];
+  check_in_code: string | null;
   opened_at: Date | null;
   closed_at: Date | null;
   close_reason: string | null;
@@ -62,6 +70,7 @@ const toEvent = (r: EventRow): z.infer<typeof eventOut> => ({
   status: r.status,
   intakeSlug: r.intake_slug,
   intakeKeywords: r.intake_keywords,
+  checkInCode: r.check_in_code,
   openedAt: iso(r.opened_at),
   closedAt: iso(r.closed_at),
   closeReason: r.close_reason,
@@ -72,6 +81,14 @@ const slug = z
   .min(2)
   .max(40)
   .regex(/^[a-z0-9][a-z0-9-]*$/, 'lowercase letters, digits and hyphens');
+
+/** FLD-03: letters and digits that cannot be mistaken for one another (no 0/O, 1/I/L, 2/Z, 5/S, 8/B, 6/G). */
+const CODE_ALPHABET = 'ACDEFHJKMNPRTUVWXY3479';
+
+/** A new six-character staging code, read off a sign or a phone without confusion. */
+export function newCheckInCode(): string {
+  return Array.from(randomBytes(6), (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
+}
 
 /** SMS keywords are single words, upper-cased, letters only (docs/06). */
 const keyword = z
@@ -197,11 +214,17 @@ export const eventRoutes: FastifyPluginAsync = async (raw) => {
       config: { idempotent: true },
       schema: {
         tags: ['events'],
-        body: z.object({
-          name: z.string().min(1).max(200),
-          hazardType: z.string().min(1).max(60),
-          templateId: z.uuid().optional(),
-        }),
+        body: z
+          .object({
+            name: z.string().min(1).max(200),
+            /** Taken from the template when one is named (CON-02). */
+            hazardType: z.string().min(1).max(60).optional(),
+            templateId: z.uuid().optional(),
+          })
+          .refine((b) => b.hazardType || b.templateId, {
+            message: 'name a hazard or a template',
+            path: ['hazardType'],
+          }),
         response: { 201: eventOut },
       },
     },
@@ -210,13 +233,22 @@ export const eventRoutes: FastifyPluginAsync = async (raw) => {
       if (s.kind !== 'account') throw errors.unauthorized();
       await request.authorize('event.create', { type: 'event', tenantId: s.tenantId });
       const row = await request.tx(async (trx) => {
+        const template = request.body.templateId
+          ? await trx
+              .selectFrom('cg.event_template')
+              .select(['id', 'hazard_type'])
+              .where('id', '=', request.body.templateId)
+              .executeTakeFirst()
+          : undefined;
+        if (request.body.templateId && !template)
+          throw errors.validation([{ name: 'templateId', message: 'no such template' }]);
         const inserted = await trx
           .insertInto('cg.event')
           .values({
             tenant_id: s.tenantId,
-            template_id: request.body.templateId ?? null,
+            template_id: template?.id ?? null,
             name: request.body.name,
-            hazard_type: request.body.hazardType,
+            hazard_type: request.body.hazardType ?? template!.hazard_type,
             created_by: s.accountId,
             updated_by: s.accountId,
           })
@@ -289,6 +321,76 @@ export const eventRoutes: FastifyPluginAsync = async (raw) => {
     },
   );
 
+  /**
+   * FLD-03: set or replace the event's staging check-in code. Without a code a new
+   * one is made; a replaced code stops working at once, so a printed sign that
+   * leaked can be retired. Codes are unique within the county.
+   */
+  app.post(
+    '/events/:id/check-in-code',
+    {
+      config: { requiresVersion: true },
+      schema: {
+        tags: ['events'],
+        params: uuidParam,
+        body: z.object({
+          code: z
+            .string()
+            .trim()
+            .min(4)
+            .max(12)
+            .regex(/^[A-Za-z0-9]+$/, 'letters and digits only')
+            .optional(),
+        }),
+        response: { 200: eventOut },
+      },
+    },
+    async (request) => {
+      const s = request.subject;
+      if (s.kind !== 'account') throw errors.unauthorized();
+      const expected = request.expectedVersion();
+      const current = await load(request, request.params.id);
+      await request.authorize(
+        'event.check_in_code',
+        { type: 'event', id: current.id, tenantId: current.tenant_id, eventId: current.id },
+        { asNotFound: true },
+      );
+      if (current.status === 'closed') throw errors.conflict(toEvent(current));
+      const code = (request.body.code ?? newCheckInCode()).toUpperCase();
+      const updated = await request.tx(async (trx) => {
+        const taken = await trx
+          .selectFrom('cg.event')
+          .select('id')
+          .where(sql`upper(check_in_code)`, '=', code)
+          .where('id', '<>', current.id)
+          .executeTakeFirst();
+        if (taken)
+          throw errors.validation([{ name: 'code', message: 'another event uses this code' }]);
+        const row = assertUpdated(
+          await trx
+            .updateTable('cg.event')
+            .set({ check_in_code: code, updated_by: s.accountId })
+            .where('id', '=', current.id)
+            .where('version', '=', expected)
+            .returningAll()
+            .executeTakeFirst(),
+          toEvent(current),
+        );
+        await request.audit(trx, {
+          action: 'event.check_in_code',
+          targetType: 'event',
+          targetId: row.id,
+          targetVersion: row.version,
+          changes: {
+            fields: [{ name: 'check_in_code', to: current.check_in_code ? 'replaced' : 'set' }],
+          },
+        });
+        return row;
+      });
+      return toEvent(updated);
+    },
+  );
+
   app.post(
     '/events/:id/open',
     {
@@ -296,7 +398,11 @@ export const eventRoutes: FastifyPluginAsync = async (raw) => {
       schema: {
         tags: ['events'],
         params: uuidParam,
-        body: z.object({ intakeSlug: slug, intakeKeywords: z.array(keyword).min(1).max(6) }),
+        body: z.object({
+          intakeSlug: slug,
+          /** From the event's template when not given (CON-02). */
+          intakeKeywords: z.array(keyword).min(1).max(6).optional(),
+        }),
         response: { 200: eventOut },
       },
     },
@@ -312,7 +418,28 @@ export const eventRoutes: FastifyPluginAsync = async (raw) => {
       );
       const { reason } = request.confirmation();
       if (current.status !== 'draft') throw errors.conflict(toEvent(current));
+      let drafted = 0;
       const updated = await request.tx(async (trx) => {
+        // CON-02: the template presets the keywords and drafts its public messages.
+        const template = current.template_id
+          ? configOf(
+              (
+                await trx
+                  .selectFrom('cg.event_template')
+                  .select('config')
+                  .where('id', '=', current.template_id)
+                  .executeTakeFirst()
+              )?.config,
+            )
+          : null;
+        const keywords = request.body.intakeKeywords ?? template?.keywords;
+        if (!keywords?.length)
+          throw errors.validation([
+            {
+              name: 'intakeKeywords',
+              message: 'name at least one keyword; this event has no template',
+            },
+          ]);
         const row = assertUpdated(
           await trx
             .updateTable('cg.event')
@@ -320,7 +447,7 @@ export const eventRoutes: FastifyPluginAsync = async (raw) => {
               status: 'active',
               opened_at: new Date(),
               intake_slug: request.body.intakeSlug,
-              intake_keywords: request.body.intakeKeywords,
+              intake_keywords: keywords,
               updated_by: s.accountId,
             })
             .where('id', '=', current.id)
@@ -344,9 +471,19 @@ export const eventRoutes: FastifyPluginAsync = async (raw) => {
           { eventId: row.id },
           request.executionId,
         );
+        if (template?.messages.length)
+          drafted = (
+            await draftTemplateMessages(
+              trx,
+              s.tenantId,
+              s.accountId,
+              { id: row.id, intakeSlug: request.body.intakeSlug },
+              template,
+            )
+          ).length;
         return row;
       });
-      return toEvent(updated);
+      return { ...toEvent(updated), ...(current.template_id ? { draftedMessages: drafted } : {}) };
     },
   );
 

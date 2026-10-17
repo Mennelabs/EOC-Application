@@ -17,6 +17,8 @@
  * what their organization owns or is assigned to (DSP-09).
  */
 import { randomBytes } from 'node:crypto';
+import { GetObjectCommand, type S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { sql, type Insertable, type Selectable, type Transaction } from 'kysely';
@@ -26,7 +28,15 @@ import { decide, type FieldDescriptor } from '@cg/authz';
 import type { Database } from '@cg/db';
 import { ApiError, errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
-import { classifierFor, iso, listQuery, pickDefined, stamped, uuidParam } from './helpers.ts';
+import {
+  classifierFor,
+  iso,
+  listQuery,
+  occurredAtOf,
+  pickDefined,
+  stamped,
+  uuidParam,
+} from './helpers.ts';
 
 type MissionRow = Selectable<Database['cg.mission']>;
 type AssignmentRow = Selectable<Database['cg.assignment']>;
@@ -47,6 +57,21 @@ const kinds = [
   'other',
 ] as const;
 const states = ['draft', 'open', 'en_route', 'on_scene', 'cleared', 'closed', 'canceled'] as const;
+
+/**
+ * MIS-01, DSP-03: the kind of work a need usually becomes; the dispatcher may choose another.
+ * Categories are the intake graph's (packages/intake/src/graphs); anything else is `other`.
+ */
+export const NEED_KIND: Record<string, (typeof kinds)[number]> = {
+  shelter_tonight: 'welfare_check',
+  food_water: 'delivery',
+  cleanup_tarp: 'cleanup_work_order',
+  volunteer_cleanup: 'cleanup_work_order',
+  medical_power: 'welfare_check',
+  transportation: 'delivery',
+  pets: 'welfare_check',
+  someone_to_talk: 'welfare_check',
+};
 const priorities = ['low', 'normal', 'high', 'urgent'] as const;
 const urgencies = ['routine', 'soon', 'now'] as const;
 const sources = ['need', 'report', 'call', 'walk_in', 'field', 'staff', 'board'] as const;
@@ -197,6 +222,8 @@ const timelineOut = z.object({
   amendsEventId: z.uuid().nullable(),
   detail: z.record(z.string(), z.unknown()),
   occurredAt: z.iso.datetime(),
+  /** AC-08A: when the server recorded it; later than occurredAt for an entry made after the fact. */
+  recordedAt: z.iso.datetime(),
 });
 
 const missionOut = z.object({
@@ -224,9 +251,12 @@ const missionOut = z.object({
       stateCode: z.string().nullable(),
       postal: z.string().nullable(),
       landmark: z.string().nullable(),
+      crossStreets: z.string().nullable(),
       position: positionIn.nullable(),
       precision: z.string(),
       usng: z.string().nullable(),
+      /** BRD:FR-03.01: when the location was last verified; null unless it is. */
+      verifiedAt: z.iso.datetime().nullable(),
     })
     .nullable(),
   locationState: z.enum(locationStates),
@@ -336,7 +366,39 @@ const notAllowed = (from: string, to: string) =>
 /** Where browsers reach the CJIS enclave (ADR-0038); absent: the link carries no address. */
 export interface MissionDeps {
   cjisPublicUrl?: string;
+  /** AC-07B: stored media leave only as short-lived signed links, never by their key. */
+  objects?: { client: Pick<S3Client, 'send'>; presignClient?: S3Client; bucket: string };
 }
+
+/** AC-07B: how long a signed media link lasts. */
+export const MEDIA_LINK_SECONDS = 60;
+
+/** AC-07B: the only place a mission's own stored files may live; any other key is refused. */
+export const missionMediaPrefix = (tenantId: string, missionId: string): string =>
+  `missions/${tenantId}/${missionId}/`;
+
+/** Words that do not name a place ("lot 41 at the park"); letters and digits only, so no LIKE wildcard. */
+const PLACE_FILLER = new Set([
+  'lot',
+  'lote',
+  'the',
+  'at',
+  'on',
+  'in',
+  'near',
+  'by',
+  'de',
+  'la',
+  'el',
+  'del',
+  'en',
+]);
+export const placeWords = (text: string): string[] =>
+  text
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w && !PLACE_FILLER.has(w))
+    .slice(0, 8);
 
 /** A random 256-bit opaque reference, 43 base64url characters (migration 0041). */
 export const newCjiRef = (): string => randomBytes(32).toString('base64url');
@@ -418,6 +480,8 @@ export const missionRoutesWith =
       address_state: string | null;
       postal: string | null;
       landmark: string | null;
+      cross_streets: string | null;
+      verified_at: Date | null;
       precision: string | null;
       usng: string | null;
       lat: number | string | null;
@@ -438,6 +502,8 @@ export const missionRoutesWith =
           'l.state as address_state',
           'l.postal',
           'l.landmark',
+          'l.cross_streets',
+          'l.verified_at',
           'l.precision',
           'l.usng',
           sql<number | null>`ST_Y(l.geom)`.as('lat'),
@@ -493,12 +559,14 @@ export const missionRoutesWith =
               stateCode: exact ? r.address_state : null,
               postal: r.postal,
               landmark: r.landmark,
+              crossStreets: r.cross_streets,
               position:
                 exact && r.lat !== null && r.lon !== null
                   ? { lat: Number(r.lat), lon: Number(r.lon) }
                   : null,
               precision: r.precision ?? 'unknown',
               usng: exact ? r.usng : null,
+              verifiedAt: iso(r.verified_at),
             }
           : null,
         locationState: r.location_state,
@@ -661,10 +729,16 @@ export const missionRoutesWith =
         city: loc.city ?? null,
         state: loc.stateCode ?? null,
         postal: loc.postal ?? null,
-        landmark: [loc.landmark, loc.crossStreets].filter(Boolean).join(' / ') || null,
-        geom: loc.position
-          ? sql`ST_SetSRID(ST_MakePoint(${loc.position.lon}, ${loc.position.lat}), 4326)`
-          : null,
+        landmark: loc.landmark ?? null,
+        // BRD:FR-03.01: cross streets are a field of their own; a verified place records when and by whom.
+        cross_streets: loc.crossStreets ?? null,
+        verified_at: state === 'verified' ? new Date() : null,
+        verified_by: state === 'verified' ? accountId : null,
+        // AC-03B: a location said to be unknown is never stored as a point, even if one was sent.
+        geom:
+          loc.position && state !== 'unknown'
+            ? sql`ST_SetSRID(ST_MakePoint(${loc.position.lon}, ${loc.position.lat}), 4326)`
+            : null,
         precision: precision as 'exact' | 'approximate' | 'area' | 'unknown',
         source: 'reviewer' as const,
         no_fixed_address: !loc.line1,
@@ -797,6 +871,8 @@ export const missionRoutesWith =
             unassigned: z.coerce.boolean().optional(),
             /** The mission number, any letter case (the command window resolves it here, CMD-08). */
             reference: z.string().trim().min(3).max(40).optional(),
+            /** DSP-04: words of the mission's place (address, landmark, cross streets), every one. */
+            place: z.string().trim().min(3).max(120).optional(),
           }),
           response: { 200: z.array(missionOut) },
         },
@@ -811,12 +887,24 @@ export const missionRoutesWith =
           fields: MISSION_FIELDS,
         });
         const q = request.query;
+        // DSP-04: searching by place reads the exact location, so it needs that field.
+        if (q.place && !decision.fields.includes('location')) throw errors.forbidden();
         const rows = await run(request, scope, async (trx) => {
           let x = query(trx)
             .orderBy('m.priority', 'desc')
             .orderBy('m.created_at', 'desc')
             .limit(q.limit)
             .offset(q.offset);
+          if (q.place) {
+            const words = placeWords(q.place);
+            if (!words.length) x = x.where(sql<boolean>`false`);
+            for (const w of words)
+              x = x.where(
+                sql<string>`concat_ws(' ', l.line1, l.unit, l.city, l.postal, l.landmark, l.cross_streets)`,
+                'ilike',
+                `%${w}%`,
+              );
+          }
           if (q.eventId) x = x.where('m.event_id', '=', q.eventId);
           if (q.state) x = x.where('m.state', '=', q.state);
           if (q.kind) x = x.where('m.kind', '=', q.kind);
@@ -958,6 +1046,7 @@ export const missionRoutesWith =
             amendsEventId: e.amends_event_id,
             detail: (e.detail as Record<string, unknown>) ?? {},
             occurredAt: iso(e.occurred_at)!,
+            recordedAt: iso(e.created_at)!,
           })),
         };
       },
@@ -1192,6 +1281,128 @@ export const missionRoutesWith =
             },
           );
         return reply.code(201).send(await toOut(row.saved, { caller: true }));
+      },
+    );
+
+    /**
+     * MIS-01, DSP-03: an open need becomes a mission. The mission is made by the create
+     * route itself (same validation, reference, timeline, audit and idempotency), linked to
+     * the need and its report, at the need's place, of the kind the need usually becomes
+     * unless the dispatcher picks another. A need that already has a live mission answers
+     * with that mission's reference; the same request sent again returns the same mission.
+     */
+    app.post(
+      '/needs/:id/mission',
+      {
+        schema: {
+          tags: ['missions'],
+          params: uuidParam,
+          body: z.object({
+            kind: z.enum(kinds).optional(),
+            priority: z.enum(priorities).default('normal'),
+            urgency: z.enum(urgencies).default('soon'),
+          }),
+        },
+      },
+      async (request, reply) => {
+        account(request);
+        const need = await request.tx((trx) =>
+          trx
+            .selectFrom('cg.need as n')
+            .leftJoin('cg.location as l', 'l.id', 'n.location_id')
+            .select([
+              'n.id',
+              'n.tenant_id',
+              'n.event_id',
+              'n.report_id',
+              'n.category',
+              'n.status',
+              'n.reference_code',
+              'l.line1',
+              'l.unit',
+              'l.city',
+              'l.postal',
+              'l.precision',
+              sql<number | null>`ST_Y(l.geom)`.as('lat'),
+              sql<number | null>`ST_X(l.geom)`.as('lon'),
+            ])
+            .where('n.id', '=', request.params.id)
+            .executeTakeFirst(),
+        );
+        if (!need) throw errors.notFound();
+        await request.authorize(
+          'need.read',
+          {
+            type: 'need',
+            id: need.id,
+            tenantId: need.tenant_id,
+            ...(need.event_id ? { eventId: need.event_id } : {}),
+          },
+          { asNotFound: true },
+        );
+        if (!need.event_id)
+          throw errors.validation([{ name: 'id', message: 'this need belongs to no event' }]);
+        if (!['open', 'claimed'].includes(need.status))
+          throw new ApiError(409, 'need_not_open', 'Only an open need can become a mission.');
+        const live = await request.tx((trx) =>
+          trx
+            .selectFrom('cg.mission')
+            .select(['id', 'reference', 'execution_id'])
+            .where('need_id', '=', need.id)
+            .where('state', 'not in', ['closed', 'canceled'])
+            .executeTakeFirst(),
+        );
+        // The same request again goes through to the create route, which replays its answer.
+        if (live && live.execution_id !== request.executionId)
+          throw new ApiError(
+            409,
+            'need_has_mission',
+            `This need is already mission ${live.reference}.`,
+            { details: { missionId: live.id, reference: live.reference } },
+          );
+        const exact = need.precision === 'exact';
+        const hasPlace = need.lat !== null || need.line1;
+        const res = await app.inject({
+          method: 'POST',
+          url: '/api/v1/missions',
+          headers: {
+            ...(request.headers.authorization
+              ? { authorization: request.headers.authorization }
+              : {}),
+            ...(request.headers['idempotency-key']
+              ? { 'idempotency-key': String(request.headers['idempotency-key']) }
+              : {}),
+          },
+          payload: {
+            eventId: need.event_id,
+            kind: request.body.kind ?? NEED_KIND[need.category] ?? 'other',
+            source: 'need',
+            priority: request.body.priority,
+            urgency: request.body.urgency,
+            summary: `Need: ${need.category.replace(/_/g, ' ')}${need.reference_code ? ` (${need.reference_code})` : ''}`,
+            needId: need.id,
+            ...(need.report_id ? { reportId: need.report_id } : {}),
+            ...(hasPlace
+              ? {
+                  location: {
+                    ...(need.line1 ? { line1: need.line1 } : {}),
+                    ...(need.unit ? { unit: need.unit } : {}),
+                    ...(need.city ? { city: need.city } : {}),
+                    ...(need.postal ? { postal: need.postal } : {}),
+                    ...(need.lat !== null && need.lon !== null
+                      ? { position: { lat: need.lat, lon: need.lon } }
+                      : {}),
+                    state: exact ? 'verified' : need.lat !== null ? 'approximate' : 'manual',
+                  },
+                }
+              : {}),
+            save: 'intake',
+          },
+        });
+        return reply
+          .code(res.statusCode)
+          .header('content-type', 'application/json; charset=utf-8')
+          .send(res.body);
       },
     );
 
@@ -1702,6 +1913,7 @@ export const missionRoutesWith =
         await request.authorize('mission.narrative', resourceOf(s, current), { asNotFound: true });
         assertUnlocked(current, s.accountId);
         const b = request.body;
+        const occurredAt = occurredAtOf(b.occurredAt);
         const row = await run(request, scope, async (trx) => {
           if (b.amendsEventId) {
             const target = await trx
@@ -1725,7 +1937,7 @@ export const missionRoutesWith =
               actor_account_id: s.accountId,
               body: b.body,
               amends_event_id: b.amendsEventId ?? null,
-              ...(b.occurredAt ? { occurred_at: new Date(b.occurredAt) } : {}),
+              ...(occurredAt ? { occurred_at: occurredAt } : {}),
             })
             .returningAll()
             .executeTakeFirstOrThrow();
@@ -1752,6 +1964,7 @@ export const missionRoutesWith =
           amendsEventId: row.amends_event_id,
           detail: (row.detail as Record<string, unknown>) ?? {},
           occurredAt: iso(row.occurred_at)!,
+          recordedAt: iso(row.created_at)!,
         });
       },
     );
@@ -2114,7 +2327,25 @@ export const missionRoutesWith =
           throw errors.validation([
             { name: 'photoId', message: 'a photo or an object reference is needed' },
           ]);
+        // AC-07B: a reference is to this mission's own files, never a key the caller names.
+        if (b.objectKey && !b.objectKey.startsWith(missionMediaPrefix(scope.tenantId, current.id)))
+          throw errors.validation([
+            { name: 'objectKey', message: "not one of this mission's stored files" },
+          ]);
         const row = await run(request, scope, async (trx) => {
+          if (b.photoId) {
+            // Row security limits this to the county's own photos.
+            const photo = await trx
+              .selectFrom('cg.photo')
+              .select('id')
+              .where('id', '=', b.photoId)
+              .where('tenant_id', '=', scope.tenantId)
+              .executeTakeFirst();
+            if (!photo)
+              throw errors.validation([
+                { name: 'photoId', message: "not one of this county's photos" },
+              ]);
+          }
           const inserted = await trx
             .insertInto('cg.mission_media')
             .values({
@@ -2153,6 +2384,98 @@ export const missionRoutesWith =
           return inserted;
         });
         return reply.code(201).send(mediaToOut(row));
+      },
+    );
+
+    /**
+     * AC-07B: the one way to fetch a mission's stored file. It must belong to this
+     * mission and not be removed; restricted media, and a photo whose faces, plates
+     * and documents are not yet blurred, go only to the evidence category. Anything
+     * else answers as not found, the same as a wrong id. What comes back is a link
+     * that expires in a minute, never the stored key. Every download is audited.
+     */
+    app.get(
+      '/missions/:id/media/:mediaId/download',
+      {
+        schema: {
+          tags: ['missions'],
+          params: uuidParam.extend({ mediaId: z.uuid() }),
+          response: { 200: z.object({ url: z.string(), expiresAt: z.iso.datetime() }) },
+        },
+      },
+      async (request) => {
+        const s = account(request);
+        const scope = await scopeOf(request);
+        const current = await load(request, scope, request.params.id);
+        const decision = await request.authorize(
+          'mission.media.read',
+          {
+            type: 'mission_media',
+            id: current.id,
+            tenantId: s.tenantId,
+            eventId: current.event_id,
+            heldBySubject: current.held ?? false,
+            fields: [{ name: 'restricted', category: 'evidence', classification: 'restricted' }],
+          },
+          { asNotFound: true },
+        );
+        const evidence = decision.fields.includes('restricted');
+        const found = await run(request, scope, async (trx) => {
+          const media = await trx
+            .selectFrom('cg.mission_media')
+            .selectAll()
+            .where('id', '=', request.params.mediaId)
+            .where('mission_id', '=', current.id)
+            .where('removed_at', 'is', null)
+            .executeTakeFirst();
+          const photo = media?.photo_id
+            ? await trx
+                .selectFrom('cg.photo')
+                .select(['status', 'blur_status', 'derivative_keys'])
+                .where('id', '=', media.photo_id)
+                .executeTakeFirst()
+            : undefined;
+          return { media, photo };
+        });
+        const { media, photo } = found;
+        if (!media || (media.access_class === 'restricted' && !evidence)) throw errors.notFound();
+        let key: string | undefined;
+        let restricted = media.access_class === 'restricted';
+        if (media.photo_id) {
+          if (!photo) throw errors.notFound();
+          // Until faces, plates and documents are blurred, a photo stays with the evidence category.
+          if (photo.blur_status !== 'applied') {
+            if (!evidence) throw errors.notFound();
+            restricted = true;
+          }
+          if (photo.status !== 'processed')
+            throw new ApiError(409, 'not_ready', 'This photo is still being processed.');
+          key = (photo.derivative_keys as Record<string, string> | null)?.['review'];
+        } else if (media.object_key?.startsWith(missionMediaPrefix(scope.tenantId, current.id))) {
+          key = media.object_key;
+        }
+        const objects = deps.objects;
+        if (!key || !objects) throw errors.notFound();
+        const url = await getSignedUrl(
+          (objects.presignClient ?? objects.client) as unknown as Parameters<
+            typeof getSignedUrl
+          >[0],
+          new GetObjectCommand({ Bucket: objects.bucket, Key: key }),
+          { expiresIn: MEDIA_LINK_SECONDS },
+        );
+        await run(request, scope, (trx) =>
+          request.audit(trx, {
+            tenantId: scope.tenantId,
+            action: 'mission.media.read',
+            targetType: 'mission_media',
+            targetId: media.id,
+            ...(restricted ? { classificationRead: ['evidence'] } : {}),
+          }),
+        );
+        return {
+          url,
+          expiresAt: new Date(Date.now() + MEDIA_LINK_SECONDS * 1000).toISOString(),
+        };
       },
     );
 

@@ -65,6 +65,9 @@ import { ssoRoutes, type SsoDeps } from './sso.ts';
 import { licenseRoutes } from './license.ts';
 import { jobAidRoutes } from './job-aids.ts';
 import { resourceRequestRoutes } from './resource-requests.ts';
+import { incidentObjectiveRoutes } from './incident-objectives.ts';
+import { generalMessageRoutes } from './general-messages.ts';
+import { icsFormRoutesWith, type IcsFormDeps } from './ics-forms.ts';
 
 /** What the server gives the routes that talk to the broker, object storage or the AI provider (absent in tests: poll fallback, no map extracts). */
 export interface RouteDeps {
@@ -79,6 +82,7 @@ export interface RouteDeps {
   resources?: ResourceDeps;
   refdata?: RefdataDeps;
   metrics?: { productName?: string };
+  icsForms?: IcsFormDeps;
   commands?: CommandDeps;
   drafting?: DraftingDeps;
   scribe?: ScribeDeps;
@@ -156,6 +160,10 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   jobAidRoutes,
   // CON-13: resource requests to the state (ICS 213 RR), approved by a second person.
   resourceRequestRoutes,
+  // CON-13: ICS forms as documents: objectives (202), general messages (213), issued forms.
+  incidentObjectiveRoutes,
+  generalMessageRoutes,
+  icsFormRoutesWith(deps.icsForms),
   situationAreaRoutes,
   commandRoutesWith(deps.commands),
   commandAliasRoutes,

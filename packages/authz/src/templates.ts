@@ -1324,6 +1324,73 @@ const RESOURCE_REQUEST_GRANTS: Record<string, string[]> = {
   safety_officer: ['resource_request.read'],
 };
 
+/**
+ * CON-13: ICS forms as documents. Planning writes objectives and issues the 201; section
+ * leads write and send general messages, approved by a second person; reporting staff and
+ * the director read and export; net control issues the 309 of its net.
+ */
+const ICS_GRANTS: Record<string, string[]> = {
+  county_em_director: [
+    'incident_objective.read',
+    'incident_objective.write',
+    'general_message.read',
+    'general_message.write',
+    'general_message.approve',
+    'general_message.send',
+    'ics_form.read',
+    'ics_form.issue',
+    'ics_form.export',
+  ],
+  planning_gis_lead: [
+    'incident_objective.read',
+    'incident_objective.write',
+    'general_message.read',
+    'general_message.write',
+    'general_message.approve',
+    'general_message.send',
+    'ics_form.read',
+    'ics_form.issue',
+    'ics_form.export',
+  ],
+  reporting_planning: [
+    'incident_objective.read',
+    'general_message.read',
+    'ics_form.read',
+    'ics_form.issue',
+    'ics_form.export',
+  ],
+  field_coordinator: [
+    'incident_objective.read',
+    'general_message.read',
+    'general_message.write',
+    'general_message.send',
+    'ics_form.read',
+    'ics_form.issue',
+    'ics_form.export',
+  ],
+  mass_care_coordinator: [
+    'incident_objective.read',
+    'general_message.read',
+    'general_message.write',
+    'ics_form.read',
+    'ics_form.export',
+  ],
+  afn_coordinator: [
+    'incident_objective.read',
+    'general_message.read',
+    'general_message.write',
+    'ics_form.read',
+  ],
+  safety_officer: [
+    'incident_objective.read',
+    'general_message.read',
+    'ics_form.read',
+    'ics_form.export',
+  ],
+  net_control: ['ics_form.read', 'ics_form.issue', 'ics_form.export'],
+  public_information_officer: ['incident_objective.read'],
+};
+
 /** SEC-13: those who answer public-records requests; each release holds only what they may read. */
 const PUBLIC_RECORDS = new Set(['county_em_director', 'public_information_officer']);
 
@@ -1343,6 +1410,7 @@ export const roleTemplates: readonly RoleTemplate[] = templates.map((t) => ({
     ...(RECOMMENDATION_GRANTS[t.key] ?? []).map((a) => g(a)),
     ...(DISCOVERY_GRANTS[t.key] ?? []).map((a) => g(a)),
     ...(RESOURCE_REQUEST_GRANTS[t.key] ?? []).map((a) => g(a)),
+    ...(ICS_GRANTS[t.key] ?? []).map((a) => g(a)),
     ...(NO_COMMAND_WINDOW.has(t.key) ? [] : [g('command.use')]),
     ...(BULK_COMMANDS.has(t.key) ? [g('command.bulk')] : []),
     ...(PUBLIC_RECORDS.has(t.key) ? [g('public_records.export')] : []),

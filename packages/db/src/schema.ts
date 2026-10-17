@@ -483,6 +483,66 @@ export interface ResourceRequestStepTable extends Stamped {
 }
 
 /** FLD-11: what a worker saw at a site, or a resource they came across; an observation, not the site's status of record. */
+/** CON-13: ICS forms as documents (migration 0108). */
+export type IcsFormKey = 'ics_201' | 'ics_213' | 'ics_213rr' | 'ics_214' | 'ics_309';
+export type IncidentObjectiveStatus = 'open' | 'met' | 'dropped';
+export type GeneralMessageStatus = 'draft' | 'approved' | 'sent' | 'replied' | 'cancelled';
+
+export interface IncidentObjectiveTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  period_from: ColumnType<Date, Date | string, Date | string>;
+  period_to: ColumnType<Date, Date | string, Date | string>;
+  position: number;
+  objective: string;
+  owner_position: string | null;
+  status: Generated<IncidentObjectiveStatus>;
+  note: string | null;
+}
+
+export interface GeneralMessageTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  message_number: string;
+  to_name: string;
+  to_position: string | null;
+  from_name: string;
+  from_position: string | null;
+  subject: string;
+  body: string;
+  status: Generated<GeneralMessageStatus>;
+  approved_at: TsNullable;
+  approved_by: Uuid | null;
+  sent_at: TsNullable;
+  sent_by: Uuid | null;
+  field_message_id: Uuid | null;
+  reply: string | null;
+  reply_by_name: string | null;
+  reply_by_position: string | null;
+  replied_at: TsNullable;
+  replied_by: Uuid | null;
+  cancelled_at: TsNullable;
+  cancelled_by: Uuid | null;
+}
+
+export interface IcsFormIssueTable {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  form: IcsFormKey;
+  edition: string;
+  sequence: number;
+  title: string;
+  scope: JsonGen<Record<string, unknown>>;
+  content: JSONColumnType<Record<string, unknown>, string, string>;
+  content_hash: string;
+  issued_at: TsGen;
+  issued_by: Uuid;
+  created_at: TsGen;
+}
+
 export interface FieldReportTable extends Stamped {
   id: Generated<Uuid>;
   tenant_id: Uuid;
@@ -3614,6 +3674,9 @@ export interface Database {
   'cg.resource_request': ResourceRequestTable;
   'cg.resource_request_line': ResourceRequestLineTable;
   'cg.resource_request_step': ResourceRequestStepTable;
+  'cg.incident_objective': IncidentObjectiveTable;
+  'cg.general_message': GeneralMessageTable;
+  'cg.ics_form_issue': IcsFormIssueTable;
   'cg.equipment_use': EquipmentUseTable;
   'cg.canteen_stop': CanteenStopTable;
   'cg.legal_hold': LegalHoldTable;

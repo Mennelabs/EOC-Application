@@ -51,7 +51,9 @@ describe('shipped role templates (ADM-04)', () => {
       'document.capture',
       'document.read',
       'facility.approve',
+      'general_message.approve',
       'health_notice.approve',
+      'ics_form.issue',
       'job_aid.approve',
       'joint_assessment.validate',
       'license.write',
@@ -107,6 +109,19 @@ describe('shipped role templates (ADM-04)', () => {
     expect(holders('resource_request.submit')).toEqual(
       expect.arrayContaining(['planning_gis_lead', 'mass_care_coordinator', 'afn_coordinator']),
     );
+  });
+
+  it('CON-13: a general message is approved by planning or the director; net control issues forms', () => {
+    const holders = (action: string) =>
+      roleTemplates
+        .filter((t) => t.grants.some((g) => g.action === action))
+        .map((t) => t.key)
+        .sort();
+    expect(holders('general_message.approve')).toEqual(['county_em_director', 'planning_gis_lead']);
+    expect(holders('ics_form.issue')).toEqual(
+      expect.arrayContaining(['planning_gis_lead', 'net_control', 'reporting_planning']),
+    );
+    expect(holders('ics_form.issue')).not.toContain('tenant_admin');
   });
 
   it('partner posting (2026-10-15): only the NGO incident commander posts its own services', () => {

@@ -157,6 +157,7 @@ const app = await buildApp({
     resources: { objects: { client: s3, bucket: config.S3_BUCKET } },
     exports: { objects: { client: s3, bucket: config.S3_BUCKET } },
     metrics: { productName: config.PRODUCT_NAME },
+    icsForms: { productName: config.PRODUCT_NAME },
     packagePhotos: {
       objects: {
         client: s3,

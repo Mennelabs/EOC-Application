@@ -1447,6 +1447,102 @@ async function ensureResourceRequests(
 }
 
 /**
+ * CON-13: the WESTWIND event's objectives for the current operational period
+ * (ICS 202) and one general message (ICS 213) approved by a second person,
+ * so the ICS 201 and 213 have content to show. Synthetic (SCL-12). Added once.
+ */
+async function ensureIcsRecords(
+  trx: Transaction<Database>,
+  tenantId: string,
+  accountIds: Record<string, string>,
+): Promise<void> {
+  const event = await trx
+    .selectFrom('cg.event')
+    .select('id')
+    .where('tenant_id', '=', tenantId)
+    .where('intake_slug', '=', 'westwind')
+    .executeTakeFirst();
+  if (!event) return;
+  const existing = await trx
+    .selectFrom('cg.incident_objective')
+    .select('id')
+    .where('event_id', '=', event.id)
+    .limit(1)
+    .executeTakeFirst();
+  if (existing) return;
+  const who = (email: string) => accountIds[email] ?? SEED_ACTOR_A;
+  const marcus = who('marcus.gis@example.org');
+  const dana = who('dana.director@example.org');
+  const luis = who('luis.masscare@example.org');
+  const h = 3_600_000;
+  const periodFrom = new Date(Math.floor(Date.now() / (12 * h)) * 12 * h);
+  const periodTo = new Date(periodFrom.getTime() + 12 * h);
+  const objectives: [string, string, 'open' | 'met' | 'dropped'][] = [
+    [
+      'Shelter everyone displaced by the tornado with no one turned away',
+      'Mass Care Coordinator',
+      'open',
+    ],
+    [
+      'Clear Commercial Row for utility crews by the end of the period',
+      'Operations Section Chief',
+      'open',
+    ],
+    [
+      'Complete welfare checks on every oxygen-dependent resident reported',
+      'Operations Section Chief',
+      'met',
+    ],
+    ['Issue a situation report every operational period', 'Planning Section Chief', 'open'],
+  ];
+  await trx
+    .insertInto('cg.incident_objective')
+    .values(
+      objectives.map(([objective, owner, status], i) => ({
+        tenant_id: tenantId,
+        event_id: event.id,
+        period_from: periodFrom,
+        period_to: periodTo,
+        position: i + 1,
+        objective,
+        owner_position: owner,
+        status,
+        note: null,
+        created_by: marcus,
+        updated_by: marcus,
+      })),
+    )
+    .execute();
+  const t0 = Date.now() - 6 * h;
+  await trx
+    .insertInto('cg.general_message')
+    .values({
+      tenant_id: tenantId,
+      event_id: event.id,
+      message_number: 'WESTWIND-GM-0001',
+      to_name: 'Luis Ortega (exercise)',
+      to_position: 'Mass Care Coordinator',
+      from_name: 'Marcus Bell (exercise)',
+      from_position: 'Planning Section Chief',
+      subject: 'Second shelter opening',
+      body: 'Open the Lincoln Elementary shelter by 18:00 today.\n\nExpect 60 arrivals from the Elm St evacuation.',
+      status: 'replied',
+      approved_at: new Date(t0 + h),
+      approved_by: dana,
+      sent_at: new Date(t0 + h + 600_000),
+      sent_by: marcus,
+      reply: 'Lincoln Elementary open at 17:40 with 80 cots.',
+      reply_by_name: 'Luis Ortega (exercise)',
+      reply_by_position: 'Mass Care Coordinator',
+      replied_at: new Date(t0 + 5 * h),
+      replied_by: luis,
+      created_by: marcus,
+      updated_by: luis,
+    })
+    .execute();
+}
+
+/**
  * SCL-10: the exercise subscriptions (invented terms and tiers). The state's coalition contract
  * covers its member jurisdictions; Westwind's own earlier contract has expired, so the
  * Subscription screen shows both, and resident reports go on regardless. Added once.
@@ -1625,6 +1721,7 @@ export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
       await ensureJobAids(trx, countyId);
       await ensureMissions(trx, countyId, tenantIds, accountIds);
       await ensureResourceRequests(trx, countyId, accountIds);
+      await ensureIcsRecords(trx, countyId, accountIds);
       await ensureCjisExercise(trx, countyId, accountIds);
     });
   }

@@ -617,6 +617,50 @@ export const actions = {
   // CON-13: resource requests to the state (ICS 213 RR). Submitting, approving, placing and
   // cancelling each ask for a reason (RULE-14); approval is a section chief's and never reached
   // by a wildcard, nor by the person who submitted the request (ADM-05 G4).
+  // Layer 8 ICS forms as documents (CON-13): objectives feed the 201 and the wall; a general
+  // message is approved by a second person; an issued form is frozen with its hash.
+  'incident_objective.read': a(
+    'read',
+    'incident_objective',
+    'Read the objectives of an operational period',
+  ),
+  'incident_objective.write': a(
+    'write',
+    'incident_objective',
+    'Write and update objectives (ICS 202)',
+  ),
+  'general_message.read': a(
+    'read',
+    'general_message',
+    'Read general messages (ICS 213) and their replies',
+  ),
+  'general_message.write': a(
+    'write',
+    'general_message',
+    'Draft a general message, reply to one, cancel a draft',
+  ),
+  'general_message.approve': a(
+    'write',
+    'general_message',
+    'Approve a general message someone else wrote (ICS 213 block 7)',
+    { consequential: true, explicit: true },
+  ),
+  'general_message.send': a(
+    'write',
+    'general_message',
+    'Send an approved general message, to the field when addressed there',
+    {
+      consequential: true,
+    },
+  ),
+  'ics_form.read': a('read', 'ics_form', 'Preview ICS forms and read issued ones'),
+  'ics_form.issue': a(
+    'write',
+    'ics_form',
+    'Issue an ICS form: frozen with its hash, corrected only by a later issue',
+    { consequential: true, explicit: true },
+  ),
+  'ics_form.export': a('export', 'ics_form', 'Download an issued ICS form as PDF or CSV'),
   'resource_request.read': a('read', 'resource_request', 'Read resource requests to the state'),
   'resource_request.write': a(
     'write',
@@ -938,4 +982,5 @@ export const SELF_REVIEW_ACTIONS: readonly string[] = [
   'job_aid.approve',
   // CON-13: whoever submitted a resource request does not approve it.
   'resource_request.approve',
+  'general_message.approve',
 ];

@@ -155,11 +155,16 @@ test.describe('every console screen, one by one', () => {
             .filter({ hasText: 'Commercial Row closed between 3rd and 5th' });
           await expect(entry).toContainText('Staff entry');
           await expect(entry).toContainText('In force');
+          // The feeds table lists each feed once; the conditions table above names the feed
+          // as the source of every item it pulled, so the rows are counted in the feeds table only.
+          const feeds = page.getByRole('region', {
+            name: "The county's feeds and how their last pull went",
+          });
           await expect(
-            page.getByRole('row').filter({ hasText: 'EXERCISE State DOT work zones' }),
+            feeds.getByRole('row').filter({ hasText: 'EXERCISE State DOT work zones' }),
           ).toHaveCount(1);
           await expect(
-            page.getByRole('row').filter({ hasText: 'Waze for Cities partner feed' }),
+            feeds.getByRole('row').filter({ hasText: 'Waze for Cities partner feed' }),
           ).toHaveCount(1);
         }
 

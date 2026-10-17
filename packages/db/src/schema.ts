@@ -400,6 +400,88 @@ export interface SupplyRequestTable extends Stamped {
   canceled_by: Uuid | null;
 }
 
+/** CON-13: a request to the state or a local supplier, in the ICS 213 RR blocks (migration 0107). */
+export type ResourceRequestStatus =
+  'draft' | 'submitted' | 'approved' | 'placed' | 'en_route' | 'received' | 'cancelled';
+export type ResourceRequestPriority = 'urgent' | 'high' | 'low';
+export type ResourceRequestStep =
+  | 'drafted'
+  | 'changed'
+  | 'submitted'
+  | 'approved'
+  | 'finance_replied'
+  | 'placed'
+  | 'en_route'
+  | 'received'
+  | 'cancelled'
+  | 'state_update';
+/** numeric(12, 2): read as a string, written as a number or a string. */
+type Money = ColumnType<string, number | string, number | string>;
+
+export interface ResourceRequestTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  event_id: Uuid;
+  request_number: string;
+  status: Generated<ResourceRequestStatus>;
+  priority: Generated<ResourceRequestPriority>;
+  supply_request_id: Uuid | null;
+  delivery_location: string | null;
+  requested_by_name: string;
+  requested_by_position: string | null;
+  substitutes: string | null;
+  suggested_sources: string | null;
+  notes: string | null;
+  cost_estimate: Money | null;
+  finance_reply: string | null;
+  finance_replied_at: TsNullable;
+  finance_replied_by: Uuid | null;
+  submitted_at: TsNullable;
+  submitted_by: Uuid | null;
+  approved_at: TsNullable;
+  approved_by: Uuid | null;
+  placed_at: TsNullable;
+  placed_by: Uuid | null;
+  placed_with: 'state' | 'local' | null;
+  state_tracking_number: string | null;
+  supplier: string | null;
+  logistics_order_number: string | null;
+  eta: TsNullable;
+  arrived_at: TsNullable;
+  received_at: TsNullable;
+  received_by: Uuid | null;
+  cancelled_at: TsNullable;
+  cancelled_by: Uuid | null;
+}
+
+export interface ResourceRequestLineTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  request_id: Uuid;
+  line_no: number;
+  quantity: Money;
+  unit: string | null;
+  kind: string;
+  type: string | null;
+  description: string | null;
+  eta: TsNullable;
+  cost: Money | null;
+}
+
+export interface ResourceRequestStepTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  request_id: Uuid;
+  step: ResourceRequestStep;
+  from_status: string | null;
+  to_status: string | null;
+  reason: string | null;
+  state_tracking_number: string | null;
+  occurred_at: TsGen;
+  actor_account_id: Uuid | null;
+  actor_kind: Generated<'account' | 'api_key' | 'system'>;
+}
+
 /** FLD-11: what a worker saw at a site, or a resource they came across; an observation, not the site's status of record. */
 export interface FieldReportTable extends Stamped {
   id: Generated<Uuid>;
@@ -3529,6 +3611,9 @@ export interface Database {
   'cg.peer_support_request': PeerSupportRequestTable;
   'cg.field_report': FieldReportTable;
   'cg.supply_request': SupplyRequestTable;
+  'cg.resource_request': ResourceRequestTable;
+  'cg.resource_request_line': ResourceRequestLineTable;
+  'cg.resource_request_step': ResourceRequestStepTable;
   'cg.equipment_use': EquipmentUseTable;
   'cg.canteen_stop': CanteenStopTable;
   'cg.legal_hold': LegalHoldTable;

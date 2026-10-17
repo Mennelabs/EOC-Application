@@ -1286,6 +1286,44 @@ const FACILITY_GRANTS: Record<string, (string | Grant)[]> = {
   partner_coordinator: ['facility.read'],
 };
 
+/**
+ * CON-13: resource requests to the state (ICS 213 RR). Those who run a section ask; the EM
+ * director approves as section chief (never a request they submitted, G4); the field operations
+ * coordinator is logistics and places the order with the state or locally.
+ */
+const RESOURCE_REQUEST_GRANTS: Record<string, string[]> = {
+  county_em_director: [
+    'resource_request.read',
+    'resource_request.write',
+    'resource_request.submit',
+    'resource_request.approve',
+    'resource_request.place',
+    'resource_request.cancel',
+  ],
+  field_coordinator: [
+    'resource_request.read',
+    'resource_request.write',
+    'resource_request.submit',
+    'resource_request.place',
+    'resource_request.cancel',
+  ],
+  planning_gis_lead: [
+    'resource_request.read',
+    'resource_request.write',
+    'resource_request.submit',
+    'resource_request.cancel',
+  ],
+  mass_care_coordinator: [
+    'resource_request.read',
+    'resource_request.write',
+    'resource_request.submit',
+    'resource_request.cancel',
+  ],
+  afn_coordinator: ['resource_request.read', 'resource_request.write', 'resource_request.submit'],
+  reporting_planning: ['resource_request.read'],
+  safety_officer: ['resource_request.read'],
+};
+
 /** SEC-13: those who answer public-records requests; each release holds only what they may read. */
 const PUBLIC_RECORDS = new Set(['county_em_director', 'public_information_officer']);
 
@@ -1304,6 +1342,7 @@ export const roleTemplates: readonly RoleTemplate[] = templates.map((t) => ({
     ...(FACILITY_GRANTS[t.key] ?? []).map((a) => (typeof a === 'string' ? g(a) : a)),
     ...(RECOMMENDATION_GRANTS[t.key] ?? []).map((a) => g(a)),
     ...(DISCOVERY_GRANTS[t.key] ?? []).map((a) => g(a)),
+    ...(RESOURCE_REQUEST_GRANTS[t.key] ?? []).map((a) => g(a)),
     ...(NO_COMMAND_WINDOW.has(t.key) ? [] : [g('command.use')]),
     ...(BULK_COMMANDS.has(t.key) ? [g('command.bulk')] : []),
     ...(PUBLIC_RECORDS.has(t.key) ? [g('public_records.export')] : []),

@@ -60,6 +60,7 @@ describe('shipped role templates (ADM-04)', () => {
       'official_report.issue',
       'position.read',
       'public_records.export',
+      'resource_request.approve',
       'scribe.read',
       'scribe.use',
       'site.post',
@@ -93,6 +94,19 @@ describe('shipped role templates (ADM-04)', () => {
       roleTemplates.filter((t) => t.grants.some((g) => g.action === action)).map((t) => t.key);
     expect(holders('discovery.review').sort()).toEqual(['county_em_director', 'planning_gis_lead']);
     expect(holders('discovery.manage').sort()).toEqual(['county_em_director', 'tenant_admin']);
+  });
+
+  it('CON-13: the EM director alone approves resource requests; logistics places them', () => {
+    const holders = (action: string) =>
+      roleTemplates
+        .filter((t) => t.grants.some((g) => g.action === action))
+        .map((t) => t.key)
+        .sort();
+    expect(holders('resource_request.approve')).toEqual(['county_em_director']);
+    expect(holders('resource_request.place')).toEqual(['county_em_director', 'field_coordinator']);
+    expect(holders('resource_request.submit')).toEqual(
+      expect.arrayContaining(['planning_gis_lead', 'mass_care_coordinator', 'afn_coordinator']),
+    );
   });
 
   it('partner posting (2026-10-15): only the NGO incident commander posts its own services', () => {

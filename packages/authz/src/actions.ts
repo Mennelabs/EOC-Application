@@ -614,6 +614,38 @@ export const actions = {
     'Approve a job aid so field phones show it (never one you last changed), or retire one',
     { consequential: true, explicit: true },
   ),
+  // CON-13: resource requests to the state (ICS 213 RR). Submitting, approving, placing and
+  // cancelling each ask for a reason (RULE-14); approval is a section chief's and never reached
+  // by a wildcard, nor by the person who submitted the request (ADM-05 G4).
+  'resource_request.read': a('read', 'resource_request', 'Read resource requests to the state'),
+  'resource_request.write': a(
+    'write',
+    'resource_request',
+    "Draft or change a resource request, record finance's reply, track it and receive it",
+  ),
+  'resource_request.submit': a(
+    'write',
+    'resource_request',
+    'Submit a resource request for approval',
+    {
+      consequential: true,
+    },
+  ),
+  'resource_request.approve': a(
+    'admin',
+    'resource_request',
+    'Approve a submitted resource request as section chief (never one you submitted)',
+    { consequential: true, explicit: true },
+  ),
+  'resource_request.place': a(
+    'write',
+    'resource_request',
+    'Place an approved resource request with the state or a local supplier',
+    { consequential: true },
+  ),
+  'resource_request.cancel': a('write', 'resource_request', 'Cancel a resource request', {
+    consequential: true,
+  }),
   'search_mark.read': a('read', 'search_mark', 'Read search marks and the searched layer'),
   'search_mark.write': a('write', 'search_mark', 'Record a search mark'),
   'placard.read': a('read', 'placard', 'Read posted placards'),
@@ -904,4 +936,6 @@ export const SELF_REVIEW_ACTIONS: readonly string[] = [
   'health_notice.approve',
   // FL-15: whoever last changed a job aid does not approve it.
   'job_aid.approve',
+  // CON-13: whoever submitted a resource request does not approve it.
+  'resource_request.approve',
 ];

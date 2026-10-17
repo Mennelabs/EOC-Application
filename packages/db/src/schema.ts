@@ -3426,8 +3426,14 @@ export interface EquityAlertTable {
   updated_at: TsGen;
 }
 
-export type ApiKeyScope = 'pda.read';
-export type WebhookEvent = 'official_report.issued' | 'export.ready';
+export type ApiKeyScope = 'pda.read' | 'eoc.read' | 'resource_request.update';
+export type WebhookEvent =
+  | 'official_report.issued'
+  | 'export.ready'
+  | 'resource_request.submitted'
+  | 'resource_request.updated'
+  | 'significant_event.created'
+  | 'ics_form.issued';
 
 export interface ApiKeyTable {
   id: Generated<Uuid>;

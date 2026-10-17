@@ -24,7 +24,7 @@ import type { Database, ResourceRequestStatus, ResourceRequestStep } from '@cg/d
 import { ApiError, errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
 import { configValue } from '../public/submit.ts';
-import { iso, listQuery, stamped, uuidParam } from './helpers.ts';
+import { enqueueOutbox, iso, listQuery, stamped, uuidParam } from './helpers.ts';
 
 type Trx = Transaction<Database>;
 type Row = Selectable<Database['cg.resource_request']>;
@@ -693,6 +693,13 @@ export const resourceRequestRoutes: FastifyPluginAsync = async (base) => {
             reason,
             changes: { fields: [{ name: 'status', from: found.status, to }] },
           });
+          await enqueueOutbox(
+            trx,
+            updated.tenant_id,
+            op === 'submit' ? 'resource_request.submitted' : 'resource_request.updated',
+            { requestId: updated.id, status: to, by: 'county' },
+            request.executionId,
+          );
           return view(trx, updated, s.accountId);
         });
       },
@@ -767,6 +774,13 @@ export const resourceRequestRoutes: FastifyPluginAsync = async (base) => {
             ],
           },
         });
+        await enqueueOutbox(
+          trx,
+          updated.tenant_id,
+          'resource_request.updated',
+          { requestId: updated.id, status: 'placed', by: 'county' },
+          request.executionId,
+        );
         return view(trx, updated, s.accountId);
       });
     },
@@ -832,6 +846,13 @@ export const resourceRequestRoutes: FastifyPluginAsync = async (base) => {
           targetVersion: updated.version,
           changes: { fields: [{ name: 'status', from: found.status, to: b.status }] },
         });
+        await enqueueOutbox(
+          trx,
+          updated.tenant_id,
+          'resource_request.updated',
+          { requestId: updated.id, status: b.status, by: 'county' },
+          request.executionId,
+        );
         return view(trx, updated, s.accountId);
       });
     },

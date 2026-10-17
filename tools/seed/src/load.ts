@@ -1560,7 +1560,8 @@ async function ensureLiveSources(
     .limit(1)
     .executeTakeFirst();
   if (existing) return;
-  const casey = accountIds['casey.dispatch@example.org'] ?? SEED_ACTOR_A;
+  // created_by references cg.account: a seeded account, never the placeholder actor.
+  const casey = accountIds['casey.dispatch@example.org'] ?? null;
   await trx
     .insertInto('cg.live_source')
     .values(
@@ -1591,8 +1592,8 @@ async function ensureLiveSources(
         refresh_ms: 300_000,
         last_error: null,
         last_count: null,
-        created_by: SEED_ACTOR_A,
-        updated_by: SEED_ACTOR_A,
+        created_by: casey,
+        updated_by: casey,
       })),
     )
     .execute();

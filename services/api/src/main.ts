@@ -30,6 +30,7 @@ import { submitIntake } from './public/submit.ts';
 import { publicRoutes } from './public/routes.ts';
 import { TenantResolver } from './public/tenant-resolver.ts';
 import { gisRoutes } from './routes/gis.ts';
+import { eocApiRoutes } from './routes/eoc-api.ts';
 
 const config = loadConfig(platformSchema);
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
@@ -200,6 +201,8 @@ const app = await buildApp({
     }),
   ],
   gisRoutes: [gisRoutes({ resolver, db })],
+  // CON-13, SCL-09: a state system reads EOC records and updates resource requests by key.
+  eocRoutes: [eocApiRoutes({ resolver, db, productName: config.PRODUCT_NAME })],
   probes: [
     postgresProbe('db', pool),
     queueProbe('queue', () => queue),

@@ -18,7 +18,15 @@ import { lookup } from 'node:dns/promises';
 import { request as httpsRequest } from 'node:https';
 import { BlockList, isIP, type LookupFunction } from 'node:net';
 
-export const WEBHOOK_EVENTS = ['official_report.issued', 'export.ready'] as const;
+export const WEBHOOK_EVENTS = [
+  'official_report.issued',
+  'export.ready',
+  // CON-13, layer 8: the EOC records a state system receives.
+  'resource_request.submitted',
+  'resource_request.updated',
+  'significant_event.created',
+  'ics_form.issued',
+] as const;
 export type WebhookEventName = (typeof WEBHOOK_EVENTS)[number];
 
 const ALLOWED_PORTS = new Set(['', '443', '8443']);

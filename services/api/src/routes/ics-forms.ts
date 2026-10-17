@@ -30,7 +30,7 @@ import {
 } from '@cg/reporting';
 import { ApiError, errors } from '../errors.ts';
 import { signerOf } from './general-messages.ts';
-import { iso, listQuery, uuidParam } from './helpers.ts';
+import { enqueueOutbox, iso, listQuery, uuidParam } from './helpers.ts';
 
 type Trx = Transaction<Database>;
 type IssueRow = Selectable<Database['cg.ics_form_issue']>;
@@ -747,6 +747,13 @@ export const icsFormRoutesWith =
             reason,
             changes: { form, sequence: r.sequence, contentHash: hash, scope: request.body },
           });
+          await enqueueOutbox(
+            trx,
+            s.tenantId,
+            'ics_form.issued',
+            { issueId: r.id },
+            request.executionId,
+          );
           return issueView(r, await names(trx, [r.issued_by]));
         });
         return reply.code(201).send(out);

@@ -55,10 +55,19 @@ interface Delivery {
 
 const SCOPES: Record<string, string> = {
   'pda.read': 'Read the PDA feature layer (damage points, no personal details)',
+  'eoc.read':
+    'Read EOC records for a state system: resource requests, significant events, issued reports and ICS forms',
+  'resource_request.update':
+    "Set a resource request's state tracking number and status (a state system's callback)",
 };
 const EVENTS: Record<string, string> = {
   'official_report.issued': 'An official report is issued',
   'export.ready': 'An export (IDA package or report file) is ready',
+  'resource_request.submitted': 'A resource request is submitted to the state',
+  'resource_request.updated':
+    'A resource request changes (approved, placed, en route, received, cancelled, or the state updated it)',
+  'significant_event.created': 'A significant event is logged',
+  'ics_form.issued': 'An ICS form is issued',
 };
 const KEY_STATUS: Record<Key['status'], string> = {
   pending: 'Waiting for a second administrator',

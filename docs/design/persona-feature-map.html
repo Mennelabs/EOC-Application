@@ -1,0 +1,366 @@
+<title>Persona Feature Map</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one reading column for the brief and the flow figure; the matrix breaks out to full width and scrolls sideways inside its own frame. */
+  :root {
+    --bg: #f4f6f8;          /* packages/ui --cg-bg */
+    --surface: #ffffff;
+    --ink: #1b1f23;
+    --ink-2: #4a5560;
+    --line: #d5dbe2;
+    --accent: #1d4f91;      /* --cg-accent */
+    --accent-soft: #e3eaf3;
+    --accent-ink: #ffffff;
+    --uses: #9db7d9;
+    --warn-ink: #7a4a00;
+    --warn-bg: #fcebc7;
+    --danger-ink: #8c1d18;
+    --danger-bg: #fbe9e7;
+    --ai-ink: #5b3a8e;
+    --ai-bg: #efe9f6;
+    --band: #eef1f4;
+    --font: "IBM Plex Sans", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1620; --surface: #17202b; --ink: #e8edf2; --ink-2: #aab6c3; --line: #2b3745;
+      --accent: #8fbbf5; --accent-soft: #1e3250; --accent-ink: #0b1626; --uses: #3f5f87;
+      --warn-ink: #f2c46b; --warn-bg: #3a2a06; --danger-ink: #f4a59f; --danger-bg: #3b1512;
+      --ai-ink: #c9b3ea; --ai-bg: #2a1f3d; --band: #1c2632; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1620; --surface: #17202b; --ink: #e8edf2; --ink-2: #aab6c3; --line: #2b3745;
+    --accent: #8fbbf5; --accent-soft: #1e3250; --accent-ink: #0b1626; --uses: #3f5f87;
+    --warn-ink: #f2c46b; --warn-bg: #3a2a06; --danger-ink: #f4a59f; --danger-bg: #3b1512;
+    --ai-ink: #c9b3ea; --ai-bg: #2a1f3d; --band: #1c2632; color-scheme: dark;
+  }
+
+  body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 16px; line-height: 1.5;
+         padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 32px 64px; }
+  .wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 40px; }
+  .prose { max-width: 70ch; }
+  h1 { font-size: 2rem; line-height: 1.15; font-weight: 700; margin: 0 0 8px; text-wrap: balance; letter-spacing: -0.01em; }
+  h2 { font-size: 1.35rem; line-height: 1.25; font-weight: 600; margin: 0 0 8px; text-wrap: balance; }
+  p { margin: 0 0 12px; }
+  .eyebrow { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 8px; }
+  .meta { color: var(--ink-2); font-size: 0.9rem; }
+  code, .id { font-family: var(--mono); font-size: 0.85em; }
+  a { color: var(--accent); }
+
+  figure { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 20px; }
+  figure svg { display: block; width: 100%; max-width: 100%; height: auto; color: var(--ink); }
+  figcaption { color: var(--ink-2); font-size: 0.9rem; margin-top: 12px; max-width: 80ch; }
+  .node { fill: var(--surface); stroke: currentColor; stroke-width: 1.2; }
+  .hub { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.6; }
+  .enclave { fill: none; stroke: currentColor; stroke-width: 1.2; stroke-dasharray: 6 4; }
+  .edge { stroke: currentColor; stroke-width: 1.3; fill: none; }
+  .edge.consent { stroke: var(--accent); }
+  .lbl { font-family: var(--font); font-size: 12px; fill: currentColor; }
+  .lbl.strong { font-weight: 600; font-size: 13px; }
+  .lbl.small { font-size: 11px; fill: var(--ink-2); }
+  .lbl.idref { font-family: var(--mono); font-size: 10.5px; fill: var(--ink-2); }
+
+  /* Legend */
+  .legend { display: flex; flex-wrap: wrap; gap: 10px 22px; font-size: 0.9rem; color: var(--ink-2); align-items: center; }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; }
+  .mark { display: inline-block; width: 14px; height: 14px; border-radius: 3px; box-sizing: border-box; flex: none; }
+  .mark.P { background: var(--accent); }
+  .mark.U { background: var(--uses); }
+  .mark.R { border: 2px solid var(--accent); background: transparent; }
+  .mark.X { border: 2px solid var(--danger-ink); background: var(--danger-bg); position: relative; }
+  .mark.X::after { content: ""; position: absolute; left: 1px; right: 1px; top: 50%; height: 2px; background: var(--danger-ink); transform: rotate(-45deg); }
+
+  /* Matrix */
+  .matrix-frame { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+  table { border-collapse: separate; border-spacing: 0; min-width: 1140px; width: 100%; font-size: 0.85rem; }
+  th, td { border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th { position: sticky; top: 0; z-index: 2; background: var(--surface); }
+  thead tr.layers th { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); padding: 10px 6px 4px; text-align: left; border-bottom: 0; border-left: 1px solid var(--line); white-space: nowrap; }
+  thead tr.layers th:first-child { border-left: 0; }
+  thead tr.feat th { padding: 6px 6px 10px; text-align: left; font-weight: 600; line-height: 1.2; width: 74px; min-width: 74px; font-size: 0.78rem; }
+  thead tr.feat th .id { display: block; color: var(--ink-2); font-weight: 400; margin-top: 4px; font-size: 0.68rem; }
+  th.persona-h { text-align: left; padding: 6px 12px 10px; width: 240px; min-width: 240px; font-weight: 600; }
+  tbody th { position: sticky; left: 0; z-index: 1; background: var(--surface); text-align: left; font-weight: 500; padding: 8px 12px; width: 240px; min-width: 240px; border-right: 1px solid var(--line); line-height: 1.3; }
+  tbody th small { display: block; color: var(--ink-2); font-weight: 400; font-size: 0.75rem; margin-top: 2px; }
+  tbody tr.group th, tbody tr.group td { background: var(--band); font-weight: 600; font-size: 0.8rem; letter-spacing: 0.02em; padding: 8px 12px; color: var(--ink); }
+  tbody td { padding: 6px 6px; }
+  tbody td.c { height: 1px; }
+  .cell { display: grid; grid-template-columns: 14px 1fr; gap: 6px; align-items: start; min-height: 30px; }
+  .cell .mark { margin-top: 3px; }
+  .cell .id { font-size: 0.66rem; line-height: 1.25; color: var(--ink-2); word-break: break-word; }
+  .cell.P .id { color: var(--ink); }
+  tbody tr:not(.group):hover th, tbody tr:not(.group):hover td { background: var(--band); }
+
+  /* Layer colour bands on the header */
+  th.l1 { box-shadow: inset 0 3px 0 var(--ink-2); }
+  th.l2 { box-shadow: inset 0 3px 0 var(--accent); }
+  th.l3 { box-shadow: inset 0 3px 0 #2a9d8f; }
+  th.l4 { box-shadow: inset 0 3px 0 var(--warn-ink); }
+  th.l5 { box-shadow: inset 0 3px 0 var(--danger-ink); }
+  th.l6 { box-shadow: inset 0 3px 0 #6b7f3a; }
+  th.l7 { box-shadow: inset 0 3px 0 var(--ai-ink); }
+  th.l8 { box-shadow: inset 0 3px 0 var(--ink-2); }
+
+  .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .note { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; font-size: 0.92rem; }
+  .note h3 { margin: 0 0 6px; font-size: 0.95rem; font-weight: 600; }
+  .note p { margin: 0; color: var(--ink-2); }
+  @media (max-width: 640px) { h1 { font-size: 1.6rem; } figure { padding: 12px; } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="prose">
+    <div class="eyebrow">Common Ground · design foundation · 2026-10-17</div>
+    <h1>Who uses which feature</h1>
+    <p>Every persona in the requirement docs mapped to the thirteen feature areas of release 1, with the requirement IDs that put them there. Personas come from the console cast in <code>docs/02</code>, the frontline roles in <code>docs/04</code> (FR-01 to FR-32), and the five user groups in <code>docs/design/users-and-needs.md</code>. Feature areas follow the SCL-14 build order.</p>
+    <p class="meta">A filled cell means that area is the persona's home workspace or main tool. A lighter cell means they contribute to or use it as part of other work. An outlined cell means they only read from it, usually a consented or aggregate view. A struck cell is a guardrail: the docs say no access.</p>
+  </header>
+
+  <section>
+    <h2>How the personas meet around one survivor record</h2>
+    <p class="prose meta">The feature areas are not separate products. They all read and write one consented survivor record (FL-03, "tell it once"), which is why a resident never repeats their story across the twelve hand-offs in the WESTWIND exercise.</p>
+    <figure>
+      <svg viewBox="0 0 980 540" role="img" aria-label="One survivor record at the centre. Residents report into it and get SMS updates back. Field teams verify it. Console staff review, claim and dispatch from it. Shelter, NGO and case workers scan a code, log help and refer. Partners receive consented minimum fields only. The FEMA package and state liaison receive verified records with no personal details. The CJIS enclave sits apart with no connection. Insurance adjusters have no access.">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="currentColor"></path>
+          </marker>
+          <marker id="arrA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" style="fill: var(--accent)"></path>
+          </marker>
+        </defs>
+
+        <!-- hub -->
+        <rect class="hub" x="330" y="200" width="320" height="130" rx="6"></rect>
+        <text class="lbl strong" x="490" y="226" text-anchor="middle">One survivor record</text>
+        <text class="lbl idref" x="490" y="242" text-anchor="middle">FL-03 · NED-02 · CHN-01</text>
+        <text class="lbl" x="490" y="266" text-anchor="middle">damage report · needs · household · access needs</text>
+        <text class="lbl" x="490" y="284" text-anchor="middle">help received ($) · referrals · appointments</text>
+        <text class="lbl small" x="490" y="308" text-anchor="middle">each organisation sees only the sections the survivor consented to</text>
+
+        <!-- Resident (left) -->
+        <rect class="node" x="20" y="222" width="190" height="86" rx="6"></rect>
+        <text class="lbl strong" x="115" y="248" text-anchor="middle">Resident</text>
+        <text class="lbl small" x="115" y="266" text-anchor="middle">web · SMS · phone · assisted</text>
+        <text class="lbl idref" x="115" y="284" text-anchor="middle">INT · CHN · PHO · NED-01</text>
+        <line class="edge consent" x1="210" y1="246" x2="330" y2="246" marker-end="url(#arrA)"></line>
+        <text class="lbl small" x="270" y="238" text-anchor="middle">reports, consents</text>
+        <line class="edge" x1="330" y1="286" x2="210" y2="286" marker-end="url(#arr)"></line>
+        <text class="lbl small" x="270" y="302" text-anchor="middle">SMS updates (FL-11)</text>
+
+        <!-- Field teams (top-left) -->
+        <rect class="node" x="60" y="40" width="230" height="70" rx="6"></rect>
+        <text class="lbl strong" x="175" y="64" text-anchor="middle">Field teams</text>
+        <text class="lbl small" x="175" y="82" text-anchor="middle">assessors · canvassers · inspectors · crews</text>
+        <text class="lbl idref" x="175" y="98" text-anchor="middle">FLD-01–17 · FR-01–09 · FR-28</text>
+        <line class="edge" x1="240" y1="110" x2="380" y2="200" marker-end="url(#arr)"></line>
+        <text class="lbl small" x="258" y="162" text-anchor="end">verifies, photos, voice notes</text>
+
+        <!-- Console staff (top-right) -->
+        <rect class="node" x="690" y="40" width="230" height="70" rx="6"></rect>
+        <text class="lbl strong" x="805" y="64" text-anchor="middle">Console staff</text>
+        <text class="lbl small" x="805" y="82" text-anchor="middle">EM, planning, mass care, AFN, COAD, PIO</text>
+        <text class="lbl idref" x="805" y="98" text-anchor="middle">CON-01–17 · DSP-01–11 · PUB</text>
+        <line class="edge" x1="740" y1="110" x2="600" y2="200" marker-start="url(#arr)" marker-end="url(#arr)"></line>
+        <text class="lbl small" x="722" y="162" text-anchor="start">reviews, claims, dispatches</text>
+
+        <!-- Frontline NGO (right) -->
+        <rect class="node" x="770" y="222" width="190" height="86" rx="6"></rect>
+        <text class="lbl strong" x="865" y="248" text-anchor="middle">Shelter, NGO, case workers</text>
+        <text class="lbl small" x="865" y="266" text-anchor="middle">scan code · one-tap log · scribe</text>
+        <text class="lbl idref" x="865" y="284" text-anchor="middle">FL-01–18 · FR-14–27</text>
+        <line class="edge consent" x1="650" y1="246" x2="770" y2="246" marker-end="url(#arrA)"></line>
+        <text class="lbl small" x="710" y="238" text-anchor="middle">consented sections</text>
+        <line class="edge" x1="770" y1="286" x2="650" y2="286" marker-end="url(#arr)"></line>
+        <text class="lbl small" x="710" y="302" text-anchor="middle">logs help, refers (FL-10)</text>
+
+        <!-- FEMA / state (bottom-left) -->
+        <rect class="node" x="60" y="440" width="230" height="70" rx="6"></rect>
+        <text class="lbl strong" x="175" y="464" text-anchor="middle">FEMA package · state liaison</text>
+        <text class="lbl small" x="175" y="482" text-anchor="middle">verified records, no personal details</text>
+        <text class="lbl idref" x="175" y="498" text-anchor="middle">DEC · FR-10 · docs/05</text>
+        <line class="edge" x1="380" y1="330" x2="240" y2="440" marker-end="url(#arr)"></line>
+        <text class="lbl small" x="300" y="372" text-anchor="end">aggregates and verified damage</text>
+
+        <!-- Partners (bottom-right) -->
+        <rect class="node" x="690" y="440" width="230" height="70" rx="6"></rect>
+        <text class="lbl strong" x="805" y="464" text-anchor="middle">Partners</text>
+        <text class="lbl small" x="805" y="482" text-anchor="middle">utilities · home health · property managers</text>
+        <text class="lbl idref" x="805" y="498" text-anchor="middle">NED-04 · FR-29–31</text>
+        <line class="edge consent" x1="600" y1="330" x2="740" y2="440" marker-end="url(#arrA)"></line>
+        <text class="lbl small" x="680" y="372" text-anchor="start">minimum fields, by consent</text>
+
+        <!-- CJIS enclave (bottom centre, no edges) -->
+        <rect class="enclave" x="375" y="440" width="230" height="70" rx="6"></rect>
+        <text class="lbl strong" x="490" y="464" text-anchor="middle">CJIS enclave</text>
+        <text class="lbl small" x="490" y="482" text-anchor="middle">own network, database, keys, identity, audit</text>
+        <text class="lbl idref" x="490" y="498" text-anchor="middle">SEC-12 · no link to the record</text>
+
+        <!-- Insurance note -->
+        <text class="lbl small" x="490" y="528" text-anchor="middle">Insurance adjusters: no access (FR-32). The resident can send their own photos and summary.</text>
+      </svg>
+      <figcaption>Blue arrows carry data only with the survivor's consent (NED-03, NED-04). The CJIS enclave has no arrow because it shares nothing with the survivor record. Every arrow into the record is logged (SEC audit).</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Persona × feature matrix</h2>
+    <div class="legend" style="margin-bottom:14px">
+      <span><i class="mark P"></i> Home workspace or main tool</span>
+      <span><i class="mark U"></i> Uses or contributes</span>
+      <span><i class="mark R"></i> Read-only, consented or aggregate view</span>
+      <span><i class="mark X"></i> No access by rule</span>
+    </div>
+    <div class="matrix-frame" id="matrix"></div>
+    <p class="meta" style="margin-top:10px">Scroll sideways on a narrow screen. Column colour bands show the SCL-14 build layer each area belongs to. Persona names in brackets are the WESTWIND exercise cast.</p>
+  </section>
+
+  <section class="notes">
+    <div class="note"><h3>Read it by row</h3><p>A row with one filled cell is a persona the product serves with a single screen (legal aid, counselors, the state liaison). A row with several is a role that moves between the field app, the survivor record and the console.</p></div>
+    <div class="note"><h3>Read it by column</h3><p>The survivor record and frontline capture column (F9) is the widest: 19 personas use it and one is barred from it. The intake column has three. That is the design argument for "tell it once" (FL-03).</p></div>
+    <div class="note"><h3>Guardrails are features too</h3><p>Struck cells are requirements, not gaps: no criminal-justice data outside the enclave (SEC-12), no scribe for counselors (FL-05), no access for insurers (FR-32). They cannot be switched on per county (ADM-05).</p></div>
+  </section>
+</div>
+
+<script>
+(function () {
+  var FEATURES = [
+    { key: 'F1',  layer: 1, name: 'Identity, permissions & audit',           ids: 'FR-00 · SEC · ADM-03/04/05' },
+    { key: 'F2',  layer: 2, name: 'Resident intake (web, SMS, IVR, assisted)', ids: 'INT · CHN · PHO' },
+    { key: 'F3',  layer: 2, name: 'Review queue & verification',               ids: 'CON-05 · PHO-14/15 · REC' },
+    { key: 'F4',  layer: 3, name: 'Needs board & partner sharing',             ids: 'NED · CON-08 · CON-15' },
+    { key: 'F5',  layer: 3, name: 'Public "Find help" & messaging',            ids: 'PUB-01–18' },
+    { key: 'F6',  layer: 3, name: 'Situation map, counts & sites',             ids: 'CON-03/04/09/16' },
+    { key: 'F7',  layer: 4, name: 'Missions & dispatch board',                 ids: 'DSP-01–11' },
+    { key: 'F8',  layer: 4, name: 'Field app (offline, GPS)',                  ids: 'FLD-01–17 · CON-17' },
+    { key: 'F9',  layer: 4, name: 'Survivor record & frontline capture',       ids: 'FL-01–18 · FR-01–32' },
+    { key: 'F10', layer: 5, name: 'CJIS enclave',                              ids: 'SEC-12' },
+    { key: 'F11', layer: 6, name: 'FEMA package & declaration',                ids: 'DEC · docs/05' },
+    { key: 'F12', layer: 7, name: 'AI assistance',                             ids: 'AIG · FL-04 · PHO-12' },
+    { key: 'F13', layer: 8, name: 'ICS forms & EOC functions',                 ids: 'CON-13 · DSP-11' }
+  ];
+  var LAYERS = { 1: 'L1 Foundations', 2: 'L2 Intake', 3: 'L3 Needs & public', 4: 'L4 Field & dispatch', 5: 'L5', 6: 'L6 FEMA', 7: 'L7 AI', 8: 'L8 ICS' };
+
+  // cells: feature key -> [level, requirement ids]
+  var GROUPS = [
+    { name: 'Residents and the public', rows: [
+      { p: 'Resident reporting damage or needs', s: 'smartphone-only, data-capped, Spanish first, under stress', c: {
+        F2: ['P', 'INT-01–22, CHN-02/03, PHO-01–05'], F4: ['U', 'NED-01/03/05 consent, withdraw'], F5: ['U', 'PUB-08/09 keywords'], F9: ['U', 'FL-01 code, FL-11 updates'], F12: ['U', 'INT-12/13 free text, PHO-03'] } },
+      { p: 'Member of the public looking for help', s: 'no sign-in, 300 KB first load, EN/ES', c: {
+        F5: ['P', 'PUB-07/08/09/15'] } },
+      { p: 'Helper doing assisted or kiosk intake', s: 'family member, library, 211 agent', c: {
+        F2: ['P', 'CHN-05/06/07'], F9: ['U', 'FL-01 code'] } }
+    ] },
+    { name: 'EOC and partner coordinators (staff console)', rows: [
+      { p: 'County EM Director (Dana)', s: 'how bad, where, do we need help', c: {
+        F1: ['R', 'audit, approvals'], F6: ['P', 'CON-03/04, CON-11 briefing'], F11: ['U', 'DEC clock'], F12: ['U', 'command window'], F13: ['U', 'CON-13 sitreps'] } },
+      { p: 'Planning / GIS lead (Marcus)', s: 'impact footprint, what changed', c: {
+        F6: ['P', 'CON-03, CON-14 layers'], F11: ['U', 'footprint, docs/05'], F13: ['P', 'sitrep builder CON-13'] } },
+      { p: 'Damage assessment coordinator (Priya)', s: 'what is verified, where next', c: {
+        F3: ['P', 'CON-05, PHO-14/15, REC'], F7: ['U', 'CON-05 routing'], F8: ['U', 'routes, CON-17 sync'], F11: ['U', 'verified records'], F12: ['U', 'PHO-12 suggestion'] } },
+      { p: 'Mass care coordinator, ESF-6 (Luis)', s: 'where people sleep and eat tonight', c: {
+        F4: ['U', 'NED-01 shelter, food'], F5: ['U', 'PUB-01–04'], F6: ['P', 'CON-09 sites, CON-16'], F9: ['R', 'FR-14 census'] } },
+      { p: 'Access and functional needs coordinator (Keisha)', s: 'power, transport, language', c: {
+        F1: ['R', 'ADM-05 restricted fields'], F4: ['P', 'AFN list, NED-04'], F6: ['U', 'PUB-02 accessibility'], F9: ['U', 'FR-25'] } },
+      { p: 'COAD / VOAD chair (Jen)', s: 'which group takes which job', c: {
+        F4: ['P', 'CON-08, CON-15'], F7: ['U', 'DSP-09'] } },
+      { p: 'NGO incident commander (Captain Ruth)', s: 'where my canteens go', c: {
+        F4: ['P', 'partner workspace, NED-04'], F7: ['U', 'DSP-09 own people'], F12: ['U', 'REC stops'], F13: ['U', 'ICS 214, DSP-11'] } },
+      { p: 'Public information officer (Tomás)', s: 'what we tell people, in which languages', c: {
+        F5: ['P', 'PUB-06, PUB-11–18'], F6: ['U', 'CON-09 site changes'], F12: ['U', 'PUB-12 drafts'] } },
+      { p: 'Dispatcher and net control', s: 'county, agency, ARES/RACES', c: {
+        F7: ['P', 'DSP-01–11, DSP-10'], F8: ['U', 'FLD-16, DSP-07 safety'], F13: ['U', 'ICS 309, ICS 214'] } },
+      { p: 'County administrator', s: 'roles, permissions, templates', c: {
+        F1: ['P', 'ADM-03/04/05, SEC'], F6: ['U', 'CON-02 templates'], F12: ['U', 'AIG-12 provider'] } },
+      { p: 'State EM liaison / FEMA validators', s: 'is the damage real', c: {
+        F3: ['R', 'FR-10'], F11: ['P', 'read-only, no PII'] } }
+    ] },
+    { name: 'Field and frontline workers', rows: [
+      { p: 'County damage assessor', s: 'routes, parcel snap, FEMA matrix', c: {
+        F3: ['U', 'verification sync'], F8: ['P', 'FLD-01/04/05/08/10'], F9: ['U', 'FL-03, FL-15 aids'], F11: ['U', 'matrices, street sheet'], F12: ['U', 'FLD-09 voice'] } },
+      { p: 'Canvasser / CERT member', s: 'door to door, welfare checks', c: {
+        F2: ['U', 'CHN-06 assisted'], F8: ['P', 'FLD-01/11, FR-28'], F9: ['U', 'FL-01, FL-04'] } },
+      { p: 'Firefighter / search and rescue', s: 'searched, occupied, hazards', c: {
+        F6: ['R', 'searched layer'], F8: ['P', 'FR-01 search marks'] } },
+      { p: 'Law enforcement at perimeters', s: 're-entry passes, credentials', c: {
+        F8: ['P', 'FR-03 pass scan'], F10: ['X', 'no CJI here, SEC-12'] } },
+      { p: 'Building inspector', s: 'placards', c: {
+        F8: ['P', 'FR-04 placard'], F9: ['U', 'FL-11 SMS to resident'] } },
+      { p: 'Public works / road crews', s: 'road status, debris', c: {
+        F6: ['U', 'CON-14 closures'], F8: ['P', 'FR-05 status, tickets'], F11: ['U', 'PA load tickets'] } },
+      { p: 'Shelter worker', s: 'wristband scan, cots, census', c: {
+        F6: ['U', 'CON-16 census'], F8: ['U', 'FLD-12'], F9: ['P', 'FR-14, FL-01'] } },
+      { p: 'Shelter nurse / Medical Reserve Corps', s: 'restricted health section', c: {
+        F1: ['R', 'ADM-05 health role'], F9: ['P', 'FR-15, every view logged'] } },
+      { p: 'Crisis counselor / chaplain', s: 'contact log only', c: {
+        F9: ['P', 'FR-16 contact only'], F12: ['X', 'FL-05 no scribe'] } },
+      { p: 'Feeding / canteen crew', s: 'meal counter, stops', c: {
+        F7: ['R', 'DSP-04 stops'], F8: ['U', 'FLD-12 meals'], F9: ['P', 'FR-17, FL-06'] } },
+      { p: 'Caseworker / disaster case manager', s: 'MARC, recovery plan', c: {
+        F4: ['U', 'NED-07 claim, export'], F9: ['P', 'FR-18, FL-10/13'], F11: ['R', 'duplication of benefits'], F12: ['U', 'FL-12 hand-over'] } },
+      { p: 'Cleanup crew', s: 'chainsaw, tarp, muck-out', c: {
+        F7: ['U', 'DSP-04 work orders'], F8: ['P', 'FLD-12 done + photo'], F9: ['U', 'FR-19 right of entry, FL-17'], F11: ['R', 'FL-17 PA cost share'] } },
+      { p: 'Volunteer reception center staff', s: 'waivers, badges, teams', c: {
+        F1: ['U', 'credentials, status only'], F7: ['U', 'DSP-02 roster'], F9: ['P', 'FR-20'] } },
+      { p: 'Legal aid attorney', s: 'notes stay outside the record', c: {
+        F9: ['P', 'FR-23 referrals only'] } },
+      { p: 'Interpreter', s: 'queue by language', c: {
+        F9: ['P', 'FR-24'], F12: ['U', 'FL-14 hand-off'] } },
+      { p: 'Donations, warehouse and POD staff', s: 'inventory, car counts', c: {
+        F4: ['U', 'site requests'], F6: ['U', 'CON-09 POD status'], F9: ['P', 'FR-21/22'] } }
+    ] },
+    { name: 'Partners and outside parties', rows: [
+      { p: 'FEMA / state joint PDA team', s: 'sample route, validated marks', c: {
+        F8: ['U', 'sample route'], F11: ['P', 'FR-10 joint mode'] } },
+      { p: 'FEMA survivor assistance / SBA reps', s: 'MARC tables', c: {
+        F9: ['R', 'FR-11/12 consented basics'] } },
+      { p: 'National Guard units', s: 'traffic, debris, welfare checks', c: {
+        F7: ['P', 'FR-13 missions as units'] } },
+      { p: 'Utility, home health, property managers', s: 'consented lists only', c: {
+        F4: ['R', 'FR-29/30/31'], F9: ['R', 'FR-31 right of entry'] } },
+      { p: 'Insurance adjusters', s: 'resident sends their own photos', c: {
+        F9: ['X', 'FR-32 no access'] } },
+      { p: 'CJIS-qualified user', s: 'separate identity and audit', c: {
+        F1: ['U', 'separate identity'], F10: ['P', 'SEC-12'] } }
+    ] }
+  ];
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  var LEVEL = { P: 'home workspace', U: 'uses', R: 'read-only', X: 'no access' };
+
+  var h = '<table><thead><tr class="layers"><th></th>';
+  var i, f, prev = null, span = 0, cols = [];
+  for (i = 0; i < FEATURES.length; i++) {
+    f = FEATURES[i];
+    if (f.layer !== prev) { if (prev !== null) cols.push([prev, span]); prev = f.layer; span = 1; } else { span++; }
+  }
+  cols.push([prev, span]);
+  for (i = 0; i < cols.length; i++) h += '<th colspan="' + cols[i][1] + '" class="l' + cols[i][0] + '">' + esc(LAYERS[cols[i][0]]) + '</th>';
+  h += '</tr><tr class="feat"><th class="persona-h">Persona</th>';
+  for (i = 0; i < FEATURES.length; i++) {
+    f = FEATURES[i];
+    h += '<th scope="col">' + esc(f.name) + '<span class="id">' + esc(f.ids) + '</span></th>';
+  }
+  h += '</tr></thead><tbody>';
+  var g, r, j, k, row, cell;
+  for (g = 0; g < GROUPS.length; g++) {
+    h += '<tr class="group"><th scope="rowgroup">' + esc(GROUPS[g].name) + '</th><td colspan="' + FEATURES.length + '"></td></tr>';
+    for (r = 0; r < GROUPS[g].rows.length; r++) {
+      row = GROUPS[g].rows[r];
+      h += '<tr><th scope="row">' + esc(row.p) + (row.s ? '<small>' + esc(row.s) + '</small>' : '') + '</th>';
+      for (k = 0; k < FEATURES.length; k++) {
+        cell = row.c[FEATURES[k].key];
+        if (!cell) { h += '<td class="c"></td>'; continue; }
+        h += '<td class="c"><div class="cell ' + cell[0] + '" title="' + esc(LEVEL[cell[0]] + ': ' + cell[1]) + '"><i class="mark ' + cell[0] + '" aria-label="' + LEVEL[cell[0]] + '"></i><span class="id">' + esc(cell[1]) + '</span></div></td>';
+      }
+      h += '</tr>';
+    }
+  }
+  h += '</tbody></table>';
+  document.getElementById('matrix').innerHTML = h;
+})();
+</script>

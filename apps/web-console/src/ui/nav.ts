@@ -266,6 +266,12 @@ export const GROUPS: readonly WorkspaceGroup[] = [
         needs: ['ics_form.read', 'incident_objective.read', 'general_message.read'],
       },
       {
+        path: '/console/live-conditions',
+        label: 'Live conditions',
+        icon: icons.Activity,
+        needs: ['live_condition.read'],
+      },
+      {
         path: '/console/wall',
         label: 'Wall display',
         icon: icons.Rows3,

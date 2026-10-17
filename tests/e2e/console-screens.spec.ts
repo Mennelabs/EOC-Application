@@ -52,6 +52,7 @@ const SCREENS: [path: string, heading: string][] = [
   ['job-aids', 'Job aids'],
   ['resource-requests', 'Resource requests'],
   ['ics-forms', 'ICS forms'],
+  ['live-conditions', 'Live conditions'],
   ['wall', 'Wall display'],
 ];
 
@@ -144,6 +145,22 @@ test.describe('every console screen, one by one', () => {
             page.getByRole('table', { name: '7. Current and planned objectives' }).getByRole('row'),
           ).toHaveCount(5);
           await expectNoViolations(page);
+        }
+
+        if (path === 'live-conditions') {
+          // CON-14: the seeded staff entry is in force with its source and age; the three
+          // exercise feeds are listed with how their last pull went; nothing names a home.
+          const entry = page
+            .getByRole('row')
+            .filter({ hasText: 'Commercial Row closed between 3rd and 5th' });
+          await expect(entry).toContainText('Staff entry');
+          await expect(entry).toContainText('In force');
+          await expect(
+            page.getByRole('row').filter({ hasText: 'EXERCISE State DOT work zones' }),
+          ).toHaveCount(1);
+          await expect(
+            page.getByRole('row').filter({ hasText: 'Waze for Cities partner feed' }),
+          ).toHaveCount(1);
         }
 
         if (path === 'wall') {

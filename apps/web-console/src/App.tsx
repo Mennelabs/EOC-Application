@@ -67,6 +67,7 @@ import { JobAidsScreen } from './screens/job-aids.tsx';
 import { ResourceRequestsScreen } from './screens/resource-requests.tsx';
 import { IcsFormsScreen } from './screens/ics-forms.tsx';
 import { WallScreen } from './screens/wall.tsx';
+import { LiveConditionsScreen } from './screens/live-conditions.tsx';
 import { MetricsScreen } from './screens/metrics.tsx';
 import { JointAssessmentScreen } from './screens/joint-assessment.tsx';
 import { SharedDeclarationsScreen } from './screens/shared-declarations.tsx';
@@ -404,6 +405,8 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <IcsFormsScreen />;
       case '/console/wall':
         return <WallScreen />;
+      case '/console/live-conditions':
+        return <LiveConditionsScreen />;
       case '/console/facilities':
         return <FacilitiesScreen />;
       case '/console/facility-approvals':

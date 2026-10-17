@@ -55,7 +55,7 @@ export const briefingOut = z.object({
   significantEvents: z.array(
     z.object({ occurredAt: z.iso.datetime(), kind: z.string(), summary: z.string() }),
   ),
-  /** CON-14 (layer-8 task D): live conditions with their source and age; empty until built. */
+  /** CON-14: live conditions in force, with their source and age. */
   liveConditions: z.array(
     z.object({
       kind: z.string(),
@@ -114,6 +114,7 @@ export const briefingRoutes: FastifyPluginAsync = async (base) => {
           requests,
           objectives,
           log,
+          live,
         ] = await Promise.all([
           configValue<number | string>(trx, 'briefing.refresh_seconds'),
           trx
@@ -182,6 +183,18 @@ export const briefingRoutes: FastifyPluginAsync = async (base) => {
             .orderBy('occurred_at', 'desc')
             .limit(12)
             .execute(),
+          trx
+            .selectFrom('cg.live_condition as c')
+            .leftJoin('cg.live_source as s', 's.id', 'c.source_id')
+            .select(['c.kind', 'c.summary', 'c.as_of', 'c.severity', 's.name as source_name'])
+            .where('c.tenant_id', '=', s.tenantId)
+            .where('c.cleared_at', 'is', null)
+            .where((eb) => eb.or([eb('c.ends_at', 'is', null), eb('c.ends_at', '>', now)]))
+            .where((eb) => eb.or([eb('c.event_id', '=', eventId), eb('c.event_id', 'is', null)]))
+            .orderBy(sql`case c.severity when 'major' then 0 when 'minor' then 1 else 2 end`)
+            .orderBy('c.as_of', 'desc')
+            .limit(20)
+            .execute(),
         ]);
         const needs = tally(needStatus);
         const refreshSeconds = Math.min(Math.max(Number(refresh ?? 60) || 60, 15), 3600);
@@ -223,7 +236,12 @@ export const briefingRoutes: FastifyPluginAsync = async (base) => {
             kind: e.kind,
             summary: e.summary,
           })),
-          liveConditions: [],
+          liveConditions: live.map((c) => ({
+            kind: c.kind,
+            summary: c.summary,
+            source: c.source_name ?? 'Staff entry',
+            asOf: iso(c.as_of)!,
+          })),
         };
       });
     },

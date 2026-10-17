@@ -69,6 +69,7 @@ import { incidentObjectiveRoutes } from './incident-objectives.ts';
 import { generalMessageRoutes } from './general-messages.ts';
 import { icsFormRoutesWith, type IcsFormDeps } from './ics-forms.ts';
 import { briefingRoutes } from './briefing.ts';
+import { liveConditionRoutes } from './live-conditions.ts';
 
 /** What the server gives the routes that talk to the broker, object storage or the AI provider (absent in tests: poll fallback, no map extracts). */
 export interface RouteDeps {
@@ -167,6 +168,8 @@ export const routesWith = (deps: RouteDeps = {}): FastifyPluginAsync[] => [
   icsFormRoutesWith(deps.icsForms),
   // CON-11: the wall display's aggregate payload.
   briefingRoutes,
+  // CON-14: live conditions from feeds and staff, with source and age.
+  liveConditionRoutes,
   situationAreaRoutes,
   commandRoutesWith(deps.commands),
   commandAliasRoutes,

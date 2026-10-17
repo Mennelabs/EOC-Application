@@ -1543,6 +1543,91 @@ async function ensureIcsRecords(
 }
 
 /**
+ * CON-14: the exercise county's live feeds (a state DOT WZDx feed, the Waze
+ * partner feed and a utility's outages), pointing at the recorded synthetic
+ * responses the worker replays, plus one staff entry that overrides them for
+ * its area. Added once; the worker's first pull fills the feed items.
+ */
+async function ensureLiveSources(
+  trx: Transaction<Database>,
+  tenantId: string,
+  accountIds: Record<string, string>,
+): Promise<void> {
+  const existing = await trx
+    .selectFrom('cg.live_source')
+    .select('id')
+    .where('tenant_id', '=', tenantId)
+    .limit(1)
+    .executeTakeFirst();
+  if (existing) return;
+  const casey = accountIds['casey.dispatch@example.org'] ?? SEED_ACTOR_A;
+  await trx
+    .insertInto('cg.live_source')
+    .values(
+      (
+        [
+          [
+            'wzdx',
+            'EXERCISE State DOT work zones (WZDx)',
+            'https://wzdx.exercise-dot.example/api/wzdx/v4/feed.geojson',
+          ],
+          [
+            'waze',
+            'Waze for Cities partner feed (exercise)',
+            'https://www.waze.com/partnerhub-api/feeds/exercise-westwind',
+          ],
+          [
+            'utility',
+            'EXERCISE Electric Cooperative outages',
+            'https://outages.exercise-utility.example/api/outages.geojson',
+          ],
+        ] as const
+      ).map(([kind, name, url]) => ({
+        tenant_id: tenantId,
+        kind,
+        name,
+        url,
+        enabled: true,
+        refresh_ms: 300_000,
+        last_error: null,
+        last_count: null,
+        created_by: SEED_ACTOR_A,
+        updated_by: SEED_ACTOR_A,
+      })),
+    )
+    .execute();
+  const event = await trx
+    .selectFrom('cg.event')
+    .select('id')
+    .where('tenant_id', '=', tenantId)
+    .where('intake_slug', '=', 'westwind')
+    .executeTakeFirst();
+  await trx
+    .insertInto('cg.live_condition')
+    .values({
+      tenant_id: tenantId,
+      source_id: null,
+      event_id: event?.id ?? null,
+      kind: 'road_closure',
+      external_id: null,
+      summary:
+        'Commercial Row closed between 3rd and 5th: downed lines, crews on site (staff entry)',
+      road: 'Commercial Row',
+      geom: sql`ST_SetSRID(ST_MakePoint(-90.89, 38.795), 4326)`,
+      severity: 'major',
+      starts_at: new Date(Date.now() - 2 * 3_600_000),
+      ends_at: null,
+      as_of: new Date(Date.now() - 20 * 60_000),
+      source_ref: null,
+      override: true,
+      entered_by: casey,
+      created_by: casey,
+      updated_by: casey,
+    })
+    .execute();
+}
+
+/**
  * SCL-10: the exercise subscriptions (invented terms and tiers). The state's coalition contract
  * covers its member jurisdictions; Westwind's own earlier contract has expired, so the
  * Subscription screen shows both, and resident reports go on regardless. Added once.
@@ -1722,6 +1807,7 @@ export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
       await ensureMissions(trx, countyId, tenantIds, accountIds);
       await ensureResourceRequests(trx, countyId, accountIds);
       await ensureIcsRecords(trx, countyId, accountIds);
+      await ensureLiveSources(trx, countyId, accountIds);
       await ensureCjisExercise(trx, countyId, accountIds);
     });
   }

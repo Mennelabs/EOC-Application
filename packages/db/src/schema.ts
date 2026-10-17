@@ -543,6 +543,46 @@ export interface IcsFormIssueTable {
   created_at: TsGen;
 }
 
+/** CON-14: live conditions (migration 0109). */
+export type LiveSourceKind = 'wzdx' | 'waze' | 'utility' | 'file';
+export type LiveConditionKind = 'road_closure' | 'work_zone' | 'hazard' | 'traffic' | 'outage';
+export type LiveSeverity = 'info' | 'minor' | 'major';
+
+export interface LiveSourceTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  kind: LiveSourceKind;
+  name: string;
+  url: string | null;
+  enabled: Generated<boolean>;
+  refresh_ms: Generated<number>;
+  last_pulled_at: TsNullable;
+  last_status: Generated<'never' | 'ok' | 'failed'>;
+  last_error: string | null;
+  last_count: number | null;
+}
+
+export interface LiveConditionTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  source_id: Uuid | null;
+  event_id: Uuid | null;
+  kind: LiveConditionKind;
+  external_id: string | null;
+  summary: string;
+  road: string | null;
+  geom: ColumnType<unknown, unknown, unknown> | null;
+  severity: Generated<LiveSeverity>;
+  starts_at: TsNullable;
+  ends_at: TsNullable;
+  as_of: TsGen;
+  source_ref: string | null;
+  override: Generated<boolean>;
+  entered_by: Uuid | null;
+  cleared_at: TsNullable;
+  cleared_by: Uuid | null;
+}
+
 export interface FieldReportTable extends Stamped {
   id: Generated<Uuid>;
   tenant_id: Uuid;
@@ -3677,6 +3717,8 @@ export interface Database {
   'cg.incident_objective': IncidentObjectiveTable;
   'cg.general_message': GeneralMessageTable;
   'cg.ics_form_issue': IcsFormIssueTable;
+  'cg.live_source': LiveSourceTable;
+  'cg.live_condition': LiveConditionTable;
   'cg.equipment_use': EquipmentUseTable;
   'cg.canteen_stop': CanteenStopTable;
   'cg.legal_hold': LegalHoldTable;

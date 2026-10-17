@@ -1399,6 +1399,21 @@ const ICS_GRANTS: Record<string, string[]> = {
   public_information_officer: ['incident_objective.read'],
 };
 
+/** CON-14: who reads and enters live conditions; the director and the administrator run the feeds. */
+const LIVE_GRANTS: Record<string, string[]> = {
+  county_em_director: ['live_condition.read', 'live_condition.write', 'live_source.manage'],
+  planning_gis_lead: ['live_condition.read', 'live_condition.write', 'live_source.manage'],
+  field_coordinator: ['live_condition.read', 'live_condition.write'],
+  dispatcher_call_taker: ['live_condition.read', 'live_condition.write'],
+  agency_dispatcher: ['live_condition.read'],
+  safety_officer: ['live_condition.read', 'live_condition.write'],
+  net_control: ['live_condition.read'],
+  public_information_officer: ['live_condition.read'],
+  mass_care_coordinator: ['live_condition.read'],
+  reporting_planning: ['live_condition.read'],
+  team_lead: ['live_condition.read'],
+};
+
 /** SEC-13: those who answer public-records requests; each release holds only what they may read. */
 const PUBLIC_RECORDS = new Set(['county_em_director', 'public_information_officer']);
 
@@ -1419,6 +1434,7 @@ export const roleTemplates: readonly RoleTemplate[] = templates.map((t) => ({
     ...(DISCOVERY_GRANTS[t.key] ?? []).map((a) => g(a)),
     ...(RESOURCE_REQUEST_GRANTS[t.key] ?? []).map((a) => g(a)),
     ...(ICS_GRANTS[t.key] ?? []).map((a) => g(a)),
+    ...(LIVE_GRANTS[t.key] ?? []).map((a) => g(a)),
     ...(NO_COMMAND_WINDOW.has(t.key) ? [] : [g('command.use')]),
     ...(BULK_COMMANDS.has(t.key) ? [g('command.bulk')] : []),
     ...(PUBLIC_RECORDS.has(t.key) ? [g('public_records.export')] : []),

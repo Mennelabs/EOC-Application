@@ -19,6 +19,7 @@ import { messageSend } from './messages.ts';
 import { photoProcess } from './photos.ts';
 import { referralCreated } from './referrals.ts';
 import { refdataImport, refdataPull } from './refdata.ts';
+import { livePull } from './live.ts';
 import {
   consentChanged,
   correctionRequested,
@@ -264,6 +265,7 @@ export const topicHandlers: Record<string, TopicHandler> = {
   'referral.created': referralCreated,
   'refdata.pull': refdataPull, // ADR-0039
   'refdata.import': refdataImport,
+  'live.pull': livePull, // CON-14
   'official_report.issued': officialReportIssued, // RULE-10, ADR-0010
   'export.requested': exportRequested, // DEC-11, DEC-12, SEC-18
   'equity.evaluate': equityEvaluate, // EQ-12, CON-07

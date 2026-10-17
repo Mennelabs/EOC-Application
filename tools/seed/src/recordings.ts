@@ -634,6 +634,193 @@ function declarations() {
   };
 }
 
+// ---- CON-14 live conditions: synthetic feeds in each source's real format ----
+/** Points along an invented route across the county, west to east. */
+function liveRoad(frac: number): [number, number] {
+  const [w, s, e, n] = COUNTY_BBOX;
+  return [
+    round6(w + (e - w) * (0.1 + 0.8 * frac)),
+    round6(s + (n - s) * (0.45 + 0.1 * Math.sin(frac * 6))),
+  ];
+}
+const LIVE_T0 = '2026-10-15T12:00:00Z';
+function wzdx() {
+  const line = (a: number, b: number) => ({
+    type: 'LineString',
+    coordinates: [liveRoad(a), liveRoad((a + b) / 2), liveRoad(b)],
+  });
+  const feature = (
+    id: string,
+    road: string,
+    eventType: string,
+    impact: string,
+    description: string,
+    geom: unknown,
+    end: string | null,
+  ) => ({
+    id,
+    type: 'Feature',
+    geometry: geom,
+    properties: {
+      core_details: {
+        event_type: eventType,
+        data_source_id: 'exercise-dot-westwind',
+        road_names: [road],
+        direction: 'eastbound',
+        description,
+        creation_date: LIVE_T0,
+        update_date: '2026-10-15T15:30:00Z',
+      },
+      start_date: LIVE_T0,
+      end_date: end,
+      is_start_date_verified: true,
+      is_end_date_verified: false,
+      vehicle_impact: impact,
+      location_method: 'channel-device-method',
+    },
+  });
+  return {
+    road_event_feed_info: {
+      publisher: 'EXERCISE State DOT',
+      version: '4.2',
+      update_date: '2026-10-15T15:30:00Z',
+      update_frequency: 300,
+      license: 'https://creativecommons.org/publicdomain/zero/1.0/',
+      data_sources: [
+        { data_source_id: 'exercise-dot-westwind', organization_name: 'EXERCISE State DOT' },
+      ],
+    },
+    type: 'FeatureCollection',
+    features: [
+      feature(
+        'exercise-wz-1',
+        'State Route 94',
+        'work-zone',
+        'some-lanes-closed',
+        'EXERCISE: debris removal, one lane open',
+        line(0.1, 0.25),
+        '2026-10-18T22:00:00Z',
+      ),
+      feature(
+        'exercise-wz-2',
+        'Commercial Row',
+        'restriction',
+        'all-lanes-closed',
+        'EXERCISE: downed lines, road closed to all traffic',
+        line(0.4, 0.5),
+        null,
+      ),
+      feature(
+        'exercise-wz-3',
+        'County Road B',
+        'detour',
+        'all-lanes-open',
+        'EXERCISE: detour signed around the bridge inspection',
+        line(0.7, 0.85),
+        '2026-10-16T06:00:00Z',
+      ),
+    ],
+  };
+}
+function wazePartner() {
+  const at = (frac: number) => {
+    const [x, y] = liveRoad(frac);
+    return { x, y };
+  };
+  const t = Date.parse(LIVE_T0);
+  return {
+    startTimeMillis: t,
+    endTimeMillis: t + 600_000,
+    startTime: `${LIVE_T0.replace('T', ' ').replace('Z', ':00')}`,
+    alerts: [
+      {
+        uuid: 'exercise-alert-1',
+        type: 'ROAD_CLOSED',
+        subtype: 'ROAD_CLOSED_HAZARD',
+        street: 'Commercial Row',
+        city: 'Westwind',
+        location: at(0.45),
+        pubMillis: t + 120_000,
+        reliability: 8,
+        confidence: 3,
+        roadType: 2,
+      },
+      {
+        uuid: 'exercise-alert-2',
+        type: 'HAZARD',
+        subtype: 'HAZARD_ON_ROAD_OBJECT',
+        street: 'Elm St',
+        city: 'Westwind',
+        location: at(0.3),
+        pubMillis: t + 300_000,
+        reliability: 6,
+        confidence: 1,
+        roadType: 1,
+      },
+      {
+        uuid: 'exercise-alert-3',
+        type: 'WEATHERHAZARD',
+        subtype: 'HAZARD_WEATHER_FLOOD',
+        street: 'Riverside Dr',
+        city: 'Westwind',
+        location: at(0.9),
+        pubMillis: t + 420_000,
+        reliability: 7,
+        confidence: 2,
+        roadType: 1,
+      },
+    ],
+    jams: [
+      {
+        uuid: 'exercise-jam-1',
+        street: 'State Route 94',
+        city: 'Westwind',
+        line: [at(0.12), at(0.18), at(0.24)],
+        level: 4,
+        length: 1800,
+        delay: 540,
+        speedKMH: 8,
+        pubMillis: t + 240_000,
+      },
+    ],
+  };
+}
+function utilityOutages() {
+  const box = (frac: number, size: number): unknown => {
+    const [x, y] = liveRoad(frac);
+    return { type: 'Polygon', coordinates: [ring([x - size, y - size, x + size, y + size])] };
+  };
+  const feature = (
+    id: string,
+    frac: number,
+    customers: number,
+    area: string,
+    cause: string,
+    eta: string | null,
+  ) => ({
+    id,
+    type: 'Feature',
+    geometry: box(frac, 0.01),
+    properties: {
+      id,
+      utility: 'EXERCISE Electric Cooperative',
+      customers_out: customers,
+      area,
+      cause,
+      started_at: LIVE_T0,
+      estimated_restoration: eta,
+      as_of: '2026-10-15T15:45:00Z',
+    },
+  });
+  return {
+    type: 'FeatureCollection',
+    features: [
+      feature('exercise-outage-1', 0.45, 2400, 'Commercial Row and Elm St', 'Downed lines', null),
+      feature('exercise-outage-2', 0.8, 160, 'Riverside', 'Tree on line', '2026-10-15T22:00:00Z'),
+    ],
+  };
+}
+
 /** Everything under packages/refdata/recordings, as file name → content. */
 export function buildRecordings(): Record<string, string> {
   const files: Record<string, string> = {};
@@ -691,6 +878,19 @@ export function buildRecordings(): Record<string, string> {
     host: 'api.weather.gov',
     path: '/alerts/active',
     query: { zone: `MOC${COUNTY}` },
+  });
+  // CON-14: live feeds for the exercise county, in each source's real format.
+  put('wzdx-exercise-westwind.json', wzdx(), {
+    host: 'wzdx.exercise-dot.example',
+    path: '/api/wzdx/v4/feed.geojson',
+  });
+  put('waze-partner-exercise-westwind.json', wazePartner(), {
+    host: 'www.waze.com',
+    path: '/partnerhub-api/feeds/exercise-westwind',
+  });
+  put('utility-outages-exercise-westwind.json', utilityOutages(), {
+    host: 'outages.exercise-utility.example',
+    path: '/api/outages.geojson',
   });
   files['index.json'] = `${JSON.stringify(index, null, 2)}\n`;
   return files;

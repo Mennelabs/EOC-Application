@@ -620,6 +620,22 @@ export const actions = {
   // Layer 8 ICS forms as documents (CON-13): objectives feed the 201 and the wall; a general
   // message is approved by a second person; an issued form is frozen with its hash.
   // CON-11: the wall display's aggregate payload; the display account holds nothing else.
+  // CON-14: live conditions from feeds and staff; sources are the county's configuration.
+  'live_condition.read': a(
+    'read',
+    'live_condition',
+    'Read live conditions with their source and age',
+  ),
+  'live_condition.write': a(
+    'write',
+    'live_condition',
+    'Enter a condition that overrides a feed, or clear one',
+  ),
+  'live_source.manage': a(
+    'admin',
+    'live_source',
+    'Add, change, switch on or off and pull the county’s live feeds; import a feed file',
+  ),
   'briefing.read': a(
     'read',
     'briefing',

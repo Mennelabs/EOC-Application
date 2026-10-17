@@ -143,7 +143,7 @@ test.describe('every console screen, one by one', () => {
           await expect(
             page.getByRole('table', { name: '7. Current and planned objectives' }).getByRole('row'),
           ).toHaveCount(5);
-          await expectNoViolations(page, `${heading} preview`);
+          await expectNoViolations(page);
         }
 
         if (path === 'wall') {

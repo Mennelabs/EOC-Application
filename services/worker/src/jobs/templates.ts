@@ -29,7 +29,9 @@ export type TemplateName =
   | 'discovery_digest'
   | 'discovery_alert'
   | 'health_notice'
-  | 'health_notice_ended';
+  | 'health_notice_ended'
+  | 'appointment'
+  | 'appointment_reminder';
 
 export const TEMPLATE_NAMES: readonly TemplateName[] = [
   'confirmation',
@@ -57,6 +59,9 @@ export const TEMPLATE_NAMES: readonly TemplateName[] = [
   // FL:FR-06: a health notice for the resident's area, and its end.
   'health_notice',
   'health_notice_ended',
+  // FL:FR-18: an appointment and its reminder the day before; time and place, never the purpose.
+  'appointment',
+  'appointment_reminder',
 ];
 
 export interface TemplateVars {
@@ -92,6 +97,10 @@ export interface TemplateVars {
   channels?: string;
   /** FL:FR-06: the area a health notice covers, in words. */
   area?: string;
+  /** FL:FR-18: an appointment's time, place and who it is with (never its purpose). */
+  when?: string;
+  place?: string;
+  withOrg?: string;
 }
 
 export interface Rendered {
@@ -128,6 +137,10 @@ const EN = {
       `${v.county} Emergency Mgmt: field safety alert (${v.kind ?? 'alert'}) for ${v.site ?? 'a team'} raised ${v.dueAt ?? 'just now'}; nobody has acknowledged it. Open the dispatch board.`,
     field_message: (v: TemplateVars) =>
       `${v.county} dispatch: ${v.text ?? ''} (Reply through the app when you can; in danger now, call 911.)`,
+    appointment: (v: TemplateVars) =>
+      `${v.county}: Your appointment with ${v.withOrg ?? 'your caseworker'} is ${v.when ?? 'as arranged'} at ${v.place ?? 'the place agreed'}. Reply if you cannot make it. Reply STOP to opt out.`,
+    appointment_reminder: (v: TemplateVars) =>
+      `${v.county}: Reminder: your appointment with ${v.withOrg ?? 'your caseworker'} is ${v.when ?? 'tomorrow'} at ${v.place ?? 'the place agreed'}. Reply if you cannot make it. Reply STOP to opt out.`,
     reminder_overdue: (v: TemplateVars) =>
       `${v.county} Emergency Mgmt: the reminder "${v.title ?? ''}" was due ${v.dueAt ?? 'earlier'} and nobody has acknowledged it. Open the console.`,
     ai_quality_notice: (v: TemplateVars) =>
@@ -231,6 +244,22 @@ const EN = {
     field_message: (v: TemplateVars) => ({
       subject: `${v.county} dispatch: a message for you`,
       body: `${v.text ?? ''}\n\nSent by ${v.sender ?? v.county} dispatch. Reply through the app when you can. If you are in danger now, call 911.\n`,
+    }),
+    appointment: (v: TemplateVars) => ({
+      subject: `${v.county}: your appointment ${v.when ?? ''}`.trim(),
+      body:
+        `${v.county}: your appointment with ${v.withOrg ?? 'your caseworker'} is ${v.when ?? 'as arranged'} at ${v.place ?? 'the place agreed'}.\n\n` +
+        `Reply to this email if you cannot make it.` +
+        (v.helpPhone ? ` Questions? Call ${v.helpPhone}.` : '') +
+        '\n',
+    }),
+    appointment_reminder: (v: TemplateVars) => ({
+      subject: `${v.county}: a reminder of your appointment ${v.when ?? ''}`.trim(),
+      body:
+        `A reminder from ${v.county}: your appointment with ${v.withOrg ?? 'your caseworker'} is ${v.when ?? 'tomorrow'} at ${v.place ?? 'the place agreed'}.\n\n` +
+        `Reply to this email if you cannot make it.` +
+        (v.helpPhone ? ` Questions? Call ${v.helpPhone}.` : '') +
+        '\n',
     }),
     reminder_overdue: (v: TemplateVars) => ({
       subject: `${v.county}: an overdue reminder needs acknowledgement`,
@@ -343,6 +372,10 @@ const ES: typeof EN = {
       `Gestión de Emergencias de ${v.county}: alerta de seguridad en campo (${v.kind ?? 'alerta'}) para ${v.site ?? 'un equipo'} emitida ${v.dueAt ?? 'ahora'}; nadie la ha atendido. Abra el tablero de despacho.`,
     field_message: (v) =>
       `Despacho de ${v.county}: ${v.text ?? ''} (Responda por la aplicación cuando pueda; si está en peligro ahora, llame al 911.)`,
+    appointment: (v) =>
+      `${v.county}: Su cita con ${v.withOrg ?? 'su trabajador de caso'} es el ${v.when ?? 'día acordado'} en ${v.place ?? 'el lugar acordado'}. Responda si no puede asistir. Responda ALTO para cancelar.`,
+    appointment_reminder: (v) =>
+      `${v.county}: Recordatorio: su cita con ${v.withOrg ?? 'su trabajador de caso'} es el ${v.when ?? 'día acordado'} en ${v.place ?? 'el lugar acordado'}. Responda si no puede asistir. Responda ALTO para cancelar.`,
     reminder_overdue: (v) =>
       `Gestión de Emergencias de ${v.county}: el recordatorio "${v.title ?? ''}" venció ${v.dueAt ?? 'antes'} y nadie lo ha atendido. Abra la consola.`,
     ai_quality_notice: (v) =>
@@ -446,6 +479,22 @@ const ES: typeof EN = {
     field_message: (v) => ({
       subject: `Despacho de ${v.county}: un mensaje para usted`,
       body: `${v.text ?? ''}\n\nEnviado por el despacho de ${v.sender ?? v.county}. Responda por la aplicación cuando pueda. Si está en peligro ahora, llame al 911.\n`,
+    }),
+    appointment: (v) => ({
+      subject: `${v.county}: su cita ${v.when ?? ''}`.trim(),
+      body:
+        `${v.county}: su cita con ${v.withOrg ?? 'su trabajador de caso'} es el ${v.when ?? 'día acordado'} en ${v.place ?? 'el lugar acordado'}.\n\n` +
+        `Responda a este correo si no puede asistir.` +
+        (v.helpPhone ? ` ¿Preguntas? Llame al ${v.helpPhone}.` : '') +
+        '\n',
+    }),
+    appointment_reminder: (v) => ({
+      subject: `${v.county}: recordatorio de su cita ${v.when ?? ''}`.trim(),
+      body:
+        `Recordatorio de ${v.county}: su cita con ${v.withOrg ?? 'su trabajador de caso'} es el ${v.when ?? 'día acordado'} en ${v.place ?? 'el lugar acordado'}.\n\n` +
+        `Responda a este correo si no puede asistir.` +
+        (v.helpPhone ? ` ¿Preguntas? Llame al ${v.helpPhone}.` : '') +
+        '\n',
     }),
     reminder_overdue: (v) => ({
       subject: `${v.county}: un recordatorio vencido necesita atención`,

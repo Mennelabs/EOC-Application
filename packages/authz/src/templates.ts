@@ -1473,6 +1473,9 @@ const CASE_GRANTS: Record<string, (string | Grant)[]> = {
     'help_received.write',
     'help_received.void',
     'recovery_plan.write',
+    'appointment.write',
+    'marc.check_in',
+    'marc.queue',
   ],
   case_manager: [
     g('case.read', ['contact', 'household', 'financial', 'free_text']),
@@ -1480,19 +1483,27 @@ const CASE_GRANTS: Record<string, (string | Grant)[]> = {
     'help_received.write',
     'help_received.void',
     'recovery_plan.write',
+    'appointment.write',
+    'marc.queue',
   ],
-  sba_representative: [g('case.read', ['contact', 'financial']), 'help_received.write'],
+  sba_representative: [
+    g('case.read', ['contact', 'financial']),
+    'help_received.write',
+    'marc.queue',
+  ],
   long_term_recovery_manager: [
     g('case.read', ['contact', 'household', 'financial', 'free_text']),
     'case.close',
     'help_received.write',
     'help_received.void',
     'recovery_plan.write',
+    'appointment.write',
   ],
   // The county's coordinators see that a case exists and its plan, never the dollars (FL-13).
   county_em_director: [g('case.read', ['contact', 'household'])],
-  mass_care_coordinator: [g('case.read', ['contact', 'household'])],
-  partner_coordinator: [g('case.read', ['contact', 'household'])],
+  // Mass care runs the recovery centre's door and queues (FL:FR-12); partner coordination too.
+  mass_care_coordinator: [g('case.read', ['contact', 'household']), 'marc.check_in', 'marc.queue'],
+  partner_coordinator: [g('case.read', ['contact', 'household']), 'marc.check_in', 'marc.queue'],
 };
 
 /** SEC-13: those who answer public-records requests; each release holds only what they may read. */

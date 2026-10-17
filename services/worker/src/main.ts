@@ -48,6 +48,7 @@ import { dropPositionTrails, watchFieldSafety, watchReminders } from './jobs/fie
 import { assignLocationGeography } from './jobs/geography.ts';
 import { pruneReferenceSnapshots, scheduleReferencePulls } from './jobs/refdata.ts';
 import { scheduleLivePulls } from './jobs/live.ts';
+import { remindAppointments } from './jobs/appointments.ts';
 import { evaluateEquityAlerts } from './jobs/equity.ts';
 import { evaluateAiHealth } from './jobs/ai-health.ts';
 import { staleAbandonedPlans, sweepCommandHistory } from './jobs/commands.ts';
@@ -239,6 +240,12 @@ const schedules: Schedule[] = [
         .then(() => undefined),
   },
   { name: 'contact-reverify', everyMs: 60 * 60_000, run: remindContactVerification }, // CNT-01
+  // FL:FR-18: one reminder the day before an appointment, outside quiet hours.
+  {
+    name: 'appointment-reminders',
+    everyMs: 5 * 60_000,
+    run: (c) => remindAppointments(c).then(() => undefined),
+  },
   { name: 'publication-notices', everyMs: 30_000, run: noticePublications }, // PUB-06
   { name: 'ai-health', everyMs: 10 * 60_000, run: evaluateAiHealth }, // AIG-09 (alerts only)
   // CMD-36, CMD-37: personal command history past its retention; plans nobody confirmed.

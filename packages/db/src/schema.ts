@@ -646,6 +646,57 @@ export interface RecoveryPlanItemTable extends Stamped {
   note: string | null;
 }
 
+/** FL:FR-12, FL:FR-18: appointments and the recovery centre (migration 0112). */
+export type AppointmentStatus = 'scheduled' | 'kept' | 'missed' | 'cancelled';
+export type MarcVisitStatus = 'waiting' | 'in_progress' | 'done' | 'left';
+export type MarcStopStatus = 'waiting' | 'current' | 'done' | 'skipped';
+
+export interface AppointmentTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  case_id: Uuid;
+  with_tenant_id: Uuid | null;
+  with_label: string;
+  site_id: Uuid | null;
+  place: string;
+  starts_at: Ts;
+  ends_at: TsNullable;
+  purpose: string | null;
+  status: Generated<AppointmentStatus>;
+  notice_channel: 'sms' | 'email' | null;
+  notice_queued_at: TsNullable;
+  notice_message_id: Uuid | null;
+  reminder_queued_at: TsNullable;
+  reminder_message_id: Uuid | null;
+  cancel_reason: string | null;
+}
+
+export interface MarcVisitTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  site_id: Uuid;
+  case_id: Uuid | null;
+  report_id: Uuid | null;
+  label: string;
+  arrived_at: TsGen;
+  status: Generated<MarcVisitStatus>;
+  ended_at: TsNullable;
+}
+
+export interface MarcStopTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  visit_id: Uuid;
+  seq: number;
+  table_tenant_id: Uuid | null;
+  table_label: string;
+  status: Generated<MarcStopStatus>;
+  started_at: TsNullable;
+  done_at: TsNullable;
+  handoff_note: string | null;
+  handed_by: Uuid | null;
+}
+
 export interface FieldReportTable extends Stamped {
   id: Generated<Uuid>;
   tenant_id: Uuid;
@@ -3791,6 +3842,9 @@ export interface Database {
   'cg.case': CaseTable;
   'cg.help_received': HelpReceivedTable;
   'cg.recovery_plan_item': RecoveryPlanItemTable;
+  'cg.appointment': AppointmentTable;
+  'cg.marc_visit': MarcVisitTable;
+  'cg.marc_stop': MarcStopTable;
   'cg.equipment_use': EquipmentUseTable;
   'cg.canteen_stop': CanteenStopTable;
   'cg.legal_hold': LegalHoldTable;

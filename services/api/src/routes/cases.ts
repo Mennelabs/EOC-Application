@@ -18,16 +18,27 @@
  */
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { sql, type Selectable, type Transaction } from 'kysely';
+import type { Selectable } from 'kysely';
 import { z } from 'zod';
-import type { FieldDescriptor } from '@cg/authz';
 import type { CaseStatus, Database, HelpSourceKind, RecoveryPlanStatus } from '@cg/db';
 import { errors } from '../errors.ts';
 import { assertUpdated } from '../plugins/versions.ts';
+import {
+  accountNames as names,
+  CASE_FIELDS as FIELDS,
+  caseAccount as account,
+  grantsFor,
+  inCounty,
+  locateCase,
+  locateReport,
+  tenantNames,
+  type CaseRow,
+  type Trx,
+  type Where,
+} from './case-access.ts';
+import { appointmentOut, appointmentsOf } from './appointments.ts';
 import { iso, listQuery, stamped, uuidParam } from './helpers.ts';
 
-type Trx = Transaction<Database>;
-type CaseRow = Selectable<Database['cg.case']>;
 type HelpRow = Selectable<Database['cg.help_received']>;
 type PlanRow = Selectable<Database['cg.recovery_plan_item']>;
 
@@ -52,12 +63,6 @@ export const PLAN_STATUSES = [
   'met',
   'dropped',
 ] as const satisfies readonly RecoveryPlanStatus[];
-
-/** The parts of a case the policy engine masks by data category (RULE-16, SEC-11). */
-const FIELDS: FieldDescriptor[] = [
-  { name: 'amount', category: 'financial', classification: 'sensitive' },
-  { name: 'description', category: 'free_text', classification: 'sensitive' },
-];
 
 const helpOut = z.object({
   id: z.uuid(),
@@ -113,6 +118,7 @@ const summaryOut = z.object({
 const caseOut = summaryOut.extend({
   helpReceived: z.array(helpOut),
   recoveryPlan: z.array(planOut),
+  appointments: z.array(appointmentOut),
 });
 type CaseOut = z.infer<typeof caseOut>;
 
@@ -162,91 +168,8 @@ const day = (v: Date | string | null | undefined) =>
   v === null || v === undefined ? null : v instanceof Date ? v.toISOString().slice(0, 10) : v;
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-/** Where a case or a report is reached from: the subject's own county, or a partner's grant. */
-interface Where {
-  countyId: string;
-  viaGrant: boolean;
-}
-
 export const caseRoutes: FastifyPluginAsync = async (base) => {
   const app = base.withTypeProvider<ZodTypeProvider>();
-  const account = (request: FastifyRequest) => {
-    const s = request.subject;
-    if (s.kind !== 'account') throw errors.unauthorized();
-    return s;
-  };
-  const inCounty = <T>(request: FastifyRequest, countyId: string, fn: (trx: Trx) => Promise<T>) =>
-    account(request).tenantId === countyId ? request.tx(fn) : request.txAs(countyId, fn);
-
-  /** The active grants a partner holds for reports (its consented records), by county. */
-  async function grantsFor(request: FastifyRequest, reportId?: string) {
-    const s = account(request);
-    return request.tx((trx) => {
-      let q = trx
-        .selectFrom('cg.share_grant')
-        .select(['tenant_id', 'report_id', 'id'])
-        .where('to_tenant_id', '=', s.tenantId)
-        .where('revoked_at', 'is', null)
-        .where('report_id', 'is not', null);
-      if (reportId) q = q.where('report_id', '=', reportId);
-      return q.execute();
-    });
-  }
-
-  /** A report's county: own report, or a report shared with this organization while consent stands. */
-  async function locateReport(request: FastifyRequest, reportId: string): Promise<Where> {
-    const own = await request.tx((trx) =>
-      trx
-        .selectFrom('cg.report')
-        .select(['id', 'tenant_id'])
-        .where('id', '=', reportId)
-        .executeTakeFirst(),
-    );
-    if (own) return { countyId: own.tenant_id, viaGrant: false };
-    const [grant] = await grantsFor(request, reportId);
-    if (!grant) throw errors.notFound(); // never says whether the report exists (SEC-05)
-    return { countyId: grant.tenant_id, viaGrant: true };
-  }
-
-  /** A case: in the subject's own tenant, or in a county whose grant for the case's report it holds. */
-  async function locateCase(
-    request: FastifyRequest,
-    caseId: string,
-  ): Promise<{ where: Where; row: CaseRow }> {
-    const own = await request.tx((trx) =>
-      trx.selectFrom('cg.case').selectAll().where('id', '=', caseId).executeTakeFirst(),
-    );
-    if (own) return { where: { countyId: own.tenant_id, viaGrant: false }, row: own };
-    const grants = await grantsFor(request);
-    const reportIds = new Set(grants.map((g) => g.report_id));
-    for (const countyId of new Set(grants.map((g) => g.tenant_id))) {
-      const row = await request.txAs(countyId, (trx) =>
-        trx.selectFrom('cg.case').selectAll().where('id', '=', caseId).executeTakeFirst(),
-      );
-      if (row && reportIds.has(row.report_id)) return { where: { countyId, viaGrant: true }, row };
-    }
-    throw errors.notFound();
-  }
-
-  const names = async (trx: Trx, ids: (string | null)[]) => {
-    const wanted = [...new Set(ids.filter((x): x is string => !!x))];
-    if (!wanted.length) return new Map<string, string>();
-    const rows = await trx
-      .selectFrom('cg.account')
-      .select(['id', 'display_name'])
-      .where('id', 'in', wanted)
-      .execute();
-    return new Map(rows.map((r) => [r.id, r.display_name]));
-  };
-  const tenantNames = async (trx: Trx, ids: (string | null)[]) => {
-    const wanted = [...new Set(ids.filter((x): x is string => !!x))];
-    if (!wanted.length) return new Map<string, string>();
-    // Tenant names are public (the dictionary); the lookup bypasses no row policy a partner lacks.
-    const rows = await sql<{ id: string; name: string }>`
-      select id, name from cg.tenant where id = any(${wanted}::uuid[])`.execute(trx);
-    return new Map(rows.rows.map((r) => [r.id, r.name]));
-  };
-
   async function summary(
     trx: Trx,
     c: CaseRow,
@@ -313,7 +236,7 @@ export const caseRoutes: FastifyPluginAsync = async (base) => {
   ): Promise<CaseOut> {
     const financialVisible = visible.includes('amount');
     const textVisible = visible.includes('description');
-    const [head, help, plan] = await Promise.all([
+    const [head, help, plan, appointments] = await Promise.all([
       summary(trx, c, me, financialVisible),
       trx
         .selectFrom('cg.help_received')
@@ -330,6 +253,7 @@ export const caseRoutes: FastifyPluginAsync = async (base) => {
         .orderBy('due_on')
         .orderBy('created_at')
         .execute(),
+      appointmentsOf(trx, c, textVisible),
     ]);
     const who = await names(trx, [
       ...help.flatMap((h: HelpRow) => [h.recorded_by, h.voided_by]),
@@ -341,6 +265,7 @@ export const caseRoutes: FastifyPluginAsync = async (base) => {
     ]);
     return {
       ...head,
+      appointments,
       helpReceived: help.map((h: HelpRow) => ({
         id: h.id,
         sourceKind: h.source_kind,

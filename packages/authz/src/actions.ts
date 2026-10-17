@@ -642,6 +642,21 @@ export const actions = {
     'recovery_plan',
     'Write and update the recovery plan: unmet needs, owners, status',
   ),
+  'appointment.write': a(
+    'write',
+    'appointment',
+    'Schedule, keep, miss or cancel an appointment; the survivor is texted',
+  ),
+  'marc.check_in': a(
+    'write',
+    'marc_visit',
+    'Check a survivor in at a recovery centre and set the tables to see',
+  ),
+  'marc.queue': a(
+    'read',
+    'marc_visit',
+    "See a recovery centre's queue for your table and hand a survivor to the next one",
+  ),
   // CON-14: live conditions from feeds and staff; sources are the county's configuration.
   'live_condition.read': a(
     'read',

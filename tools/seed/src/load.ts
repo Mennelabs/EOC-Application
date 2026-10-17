@@ -138,11 +138,17 @@ export const cast = [
     tenant: 'county',
   },
   { email: 'eli.casework@example.org', name: 'Eli Brandt', role: 'case_manager', tenant: 'coad' },
+  {
+    email: 'sba.rep@example.org',
+    name: 'Grace Okonkwo',
+    role: 'sba_representative',
+    tenant: 'sba',
+  },
   // Partner organizations run their own accounts (ADM-02, decision 2026-10-13). Each gets
   // a tenant administrator and a security administrator, because granting a role needs a
   // second administrator inside the same organization (ADM-05 G6). The state's pair onboards
   // its own liaisons (layer 6).
-  ...(['coad', 'canteen', 'shelter-ngo', 'cleanup', 'legal', 'state'] as const).flatMap(
+  ...(['coad', 'canteen', 'shelter-ngo', 'cleanup', 'legal', 'state', 'sba'] as const).flatMap(
     (tenant) => [
       {
         email: `admin.${tenant}@example.org`,

@@ -130,6 +130,14 @@ export const cast = [
     role: 'agency_dispatcher',
     tenant: 'cleanup',
   },
+  // Case management on the shared record (decision 2026-10-15; FL-13, FL:FR-07, FL:FR-18).
+  {
+    email: 'noor.cases@example.org',
+    name: 'Noor Haddad',
+    role: 'county_caseworker',
+    tenant: 'county',
+  },
+  { email: 'eli.casework@example.org', name: 'Eli Brandt', role: 'case_manager', tenant: 'coad' },
   // Partner organizations run their own accounts (ADM-02, decision 2026-10-13). Each gets
   // a tenant administrator and a security administrator, because granting a role needs a
   // second administrator inside the same organization (ADM-05 G6). The state's pair onboards
@@ -1633,6 +1641,105 @@ async function ensureLiveSources(
  * covers its member jurisdictions; Westwind's own earlier contract has expired, so the
  * Subscription screen shows both, and resident reports go on regardless. Added once.
  */
+/**
+ * Case management (FL-13, FL:FR-18): one open case on the first seeded damage report with
+ * help received from three sources, so the duplication-of-benefits check has figures to
+ * total, and a recovery plan with one unmet need. Added only when the opt-in damage
+ * reports exist (SEED_DAMAGE_REPORTS); every figure is exercise data.
+ */
+async function ensureCases(
+  trx: Transaction<Database>,
+  tenantId: string,
+  accountIds: Record<string, string>,
+): Promise<void> {
+  const existing = await trx
+    .selectFrom('cg.case')
+    .select('id')
+    .where('tenant_id', '=', tenantId)
+    .limit(1)
+    .executeTakeFirst();
+  if (existing) return;
+  const report = await trx
+    .selectFrom('cg.report')
+    .select(['id', 'reporter_party_id', 'event_id'])
+    .where('tenant_id', '=', tenantId)
+    .where('reference_code', 'like', 'SYN-seed-%')
+    .where('withdrawn_at', 'is', null)
+    .orderBy('created_at')
+    .executeTakeFirst();
+  if (!report) return;
+  // Foreign keys to cg.account: seeded accounts, never the placeholder actor.
+  const noor = accountIds['noor.cases@example.org'] ?? null;
+  const d = 86_400_000;
+  const opened = new Date(Date.now() - 9 * d);
+  const c = await trx
+    .insertInto('cg.case')
+    .values({
+      tenant_id: tenantId,
+      report_id: report.id,
+      party_id: report.reporter_party_id,
+      event_id: report.event_id,
+      status: 'open',
+      lead_tenant_id: tenantId,
+      opened_by: noor,
+      opened_at: opened,
+      created_by: noor,
+      updated_by: noor,
+    })
+    .returning('id')
+    .executeTakeFirstOrThrow();
+  const dayOf = (daysAgo: number) => new Date(Date.now() - daysAgo * d).toISOString().slice(0, 10);
+  await trx
+    .insertInto('cg.help_received')
+    .values(
+      (
+        [
+          ['fema_ia', 'FEMA Individual Assistance (exercise)', 'Rental assistance', 2_950, 6],
+          ['insurance', 'Exercise Mutual Insurance', 'Structure claim advance', 10_000, 4],
+          ['ngo_grant', 'Westwind COAD', 'Appliance replacement grant', 1_200, 2],
+          ['goods', 'Hope Canteen Services', 'Clean-up kit and meals', null, 8],
+        ] as const
+      ).map(([source_kind, source_name, help_type, amount, daysAgo]) => ({
+        tenant_id: tenantId,
+        case_id: c.id,
+        source_kind,
+        source_name,
+        help_type,
+        amount,
+        given_on: dayOf(daysAgo),
+        recorded_tenant_id: tenantId,
+        recorded_by: noor,
+        created_by: noor,
+        updated_by: noor,
+      })),
+    )
+    .execute();
+  await trx
+    .insertInto('cg.recovery_plan_item')
+    .values([
+      {
+        tenant_id: tenantId,
+        case_id: c.id,
+        unmet: 'Roof repair before the first frost; two estimates still needed',
+        owner_label: 'Gateway Cleanup Volunteers (muck-out done; repair referral pending)',
+        due_on: dayOf(-21),
+        status: 'in_progress',
+        created_by: noor,
+        updated_by: noor,
+      },
+      {
+        tenant_id: tenantId,
+        case_id: c.id,
+        unmet: 'Replacement of school supplies and uniforms for two children',
+        due_on: dayOf(-7),
+        status: 'open',
+        created_by: noor,
+        updated_by: noor,
+      },
+    ])
+    .execute();
+}
+
 async function ensureLicenses(db: Kysely<Database>, tenantIds: Record<string, string>) {
   const contracts = [
     {
@@ -1809,6 +1916,7 @@ export async function loadSeed(db: Kysely<Database>): Promise<Loaded> {
       await ensureResourceRequests(trx, countyId, accountIds);
       await ensureIcsRecords(trx, countyId, accountIds);
       await ensureLiveSources(trx, countyId, accountIds);
+      await ensureCases(trx, countyId, accountIds);
       await ensureCjisExercise(trx, countyId, accountIds);
     });
   }
@@ -1853,6 +1961,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       });
       console.log(
         JSON.stringify({ msg: 'damage reports loaded', reports: filed.reportIds.length }),
+      );
+      // FL-13: the exercise case rides on the first of these reports.
+      await withTenant(db, { tenantId: countyId }, (trx) =>
+        ensureCases(trx, countyId, loaded.accounts),
       );
     }
   }

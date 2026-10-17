@@ -871,6 +871,52 @@ const templates: readonly RoleTemplate[] = [
       g('scribe.read'),
     ],
   },
+  // Case management on the shared record (decision 2026-10-15; FL-13, FL:FR-07, FL:FR-12, FL:FR-27).
+  {
+    key: 'county_caseworker',
+    name: 'County human services caseworker',
+    description:
+      'Opens and closes cases on the shared record, logs help received and checks for duplication of benefits, keeps the recovery plan (FL:FR-07, FL-13).',
+    source: 'frontline',
+    grants: [
+      g('me.read'),
+      { action: 'event.read', events: 'assigned', dataCategories: ['contact', 'household'] },
+      g('report.read', ['contact', 'household', 'location_exact', 'free_text']),
+      g('need.read'),
+      g('referral.create'),
+      g('referral.respond'),
+      g('message.send'),
+      g('message.read', ['contact', 'free_text']),
+      g('survivor.find'), // FL-02: meets survivors who have lost their code
+    ],
+  },
+  {
+    key: 'sba_representative',
+    name: 'SBA representative (partner)',
+    description:
+      'Reads consented sections of a case at the recovery centre and logs SBA loans as help received (FL:FR-12, FL-13).',
+    source: 'frontline',
+    grants: [
+      g('me.read'),
+      g('shared.read', ['contact']),
+      { action: 'event.read', events: 'assigned', dataCategories: ['contact'] },
+    ],
+  },
+  {
+    key: 'long_term_recovery_manager',
+    name: 'Long-term recovery group manager (partner)',
+    description:
+      'Takes cases handed off at day 30 with every dollar of help already given; records funds committed per household (FL:FR-27, FL-13).',
+    source: 'frontline',
+    grants: [
+      g('me.read'),
+      g('shared.read', ['contact', 'location_exact', 'household']),
+      g('referral.respond'),
+      g('message.send'),
+      g('message.read', ['contact', 'free_text']),
+      { action: 'event.read', events: 'assigned', dataCategories: ['contact', 'household'] },
+    ],
+  },
   // Layer 4 task A: dispatch and field roles (docs/03 §25, layer-4 plan §8, DSP-07/08/09/10).
   {
     key: 'field_coordinator',
@@ -1414,6 +1460,41 @@ const LIVE_GRANTS: Record<string, string[]> = {
   team_lead: ['live_condition.read'],
 };
 
+/**
+ * Case management (FL-13, FL:FR-07/12/18/27): who opens cases, logs help received and keeps the
+ * plan. Dollar values are the financial category: a role without it sees that help was given,
+ * never how much. Voiding an entry and closing a case are consequential (RULE-14).
+ */
+const CASE_GRANTS: Record<string, (string | Grant)[]> = {
+  county_caseworker: [
+    g('case.read', ['contact', 'household', 'financial', 'free_text']),
+    'case.open',
+    'case.close',
+    'help_received.write',
+    'help_received.void',
+    'recovery_plan.write',
+  ],
+  case_manager: [
+    g('case.read', ['contact', 'household', 'financial', 'free_text']),
+    'case.open',
+    'help_received.write',
+    'help_received.void',
+    'recovery_plan.write',
+  ],
+  sba_representative: [g('case.read', ['contact', 'financial']), 'help_received.write'],
+  long_term_recovery_manager: [
+    g('case.read', ['contact', 'household', 'financial', 'free_text']),
+    'case.close',
+    'help_received.write',
+    'help_received.void',
+    'recovery_plan.write',
+  ],
+  // The county's coordinators see that a case exists and its plan, never the dollars (FL-13).
+  county_em_director: [g('case.read', ['contact', 'household'])],
+  mass_care_coordinator: [g('case.read', ['contact', 'household'])],
+  partner_coordinator: [g('case.read', ['contact', 'household'])],
+};
+
 /** SEC-13: those who answer public-records requests; each release holds only what they may read. */
 const PUBLIC_RECORDS = new Set(['county_em_director', 'public_information_officer']);
 
@@ -1435,6 +1516,7 @@ export const roleTemplates: readonly RoleTemplate[] = templates.map((t) => ({
     ...(RESOURCE_REQUEST_GRANTS[t.key] ?? []).map((a) => g(a)),
     ...(ICS_GRANTS[t.key] ?? []).map((a) => g(a)),
     ...(LIVE_GRANTS[t.key] ?? []).map((a) => g(a)),
+    ...(CASE_GRANTS[t.key] ?? []).map((a) => (typeof a === 'string' ? g(a) : a)),
     ...(NO_COMMAND_WINDOW.has(t.key) ? [] : [g('command.use')]),
     ...(BULK_COMMANDS.has(t.key) ? [g('command.bulk')] : []),
     ...(PUBLIC_RECORDS.has(t.key) ? [g('public_records.export')] : []),

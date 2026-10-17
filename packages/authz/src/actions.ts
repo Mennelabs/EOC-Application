@@ -620,6 +620,28 @@ export const actions = {
   // Layer 8 ICS forms as documents (CON-13): objectives feed the 201 and the wall; a general
   // message is approved by a second person; an issued form is frozen with its hash.
   // CON-11: the wall display's aggregate payload; the display account holds nothing else.
+  // Case management on the shared record (FL-13, FL:FR-07, FL:FR-18, FL:FR-27): a case per
+  // household; help received is append-only and its dollar value is financial data.
+  'case.read': a(
+    'read',
+    'case',
+    'Read a case: its help received, recovery plan, appointments and hand-offs',
+  ),
+  'case.open': a('write', 'case', 'Open a case on a report, or take it over as lead'),
+  'case.close': a('write', 'case', 'Close a case with a reason', { consequential: true }),
+  'help_received.write': a(
+    'write',
+    'help_received',
+    'Log help received with source, type and dollar value',
+  ),
+  'help_received.void': a('write', 'help_received', 'Void a help-received entry with a reason', {
+    consequential: true,
+  }),
+  'recovery_plan.write': a(
+    'write',
+    'recovery_plan',
+    'Write and update the recovery plan: unmet needs, owners, status',
+  ),
   // CON-14: live conditions from feeds and staff; sources are the county's configuration.
   'live_condition.read': a(
     'read',

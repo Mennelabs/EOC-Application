@@ -583,6 +583,69 @@ export interface LiveConditionTable extends Stamped {
   cleared_by: Uuid | null;
 }
 
+/** FL-13, FL:FR-18: case management on the shared record (migration 0111). */
+export type CaseStatus = 'open' | 'handed_off' | 'closed';
+export type HelpSourceKind =
+  | 'fema_ia'
+  | 'sba_loan'
+  | 'insurance'
+  | 'ngo_grant'
+  | 'ltrg_commitment'
+  | 'goods'
+  | 'services'
+  | 'other';
+export type RecoveryPlanStatus = 'open' | 'in_progress' | 'met' | 'dropped';
+
+export interface CaseTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  report_id: Uuid;
+  party_id: Uuid | null;
+  event_id: Uuid | null;
+  status: Generated<CaseStatus>;
+  lead_tenant_id: Uuid;
+  opened_by: Uuid | null;
+  opened_at: TsGen;
+  handed_off_at: TsNullable;
+  handed_off_to_tenant_id: Uuid | null;
+  handoff_referral_id: Uuid | null;
+  closed_at: TsNullable;
+  closed_by: Uuid | null;
+  close_reason: string | null;
+}
+
+export interface HelpReceivedTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  case_id: Uuid;
+  source_kind: HelpSourceKind;
+  source_name: string;
+  source_tenant_id: Uuid | null;
+  help_type: string;
+  description: string | null;
+  amount: ColumnType<string | null, number | string | null, number | string | null>;
+  given_on: ColumnType<Date, Date | string, Date | string>;
+  recorded_tenant_id: Uuid;
+  recorded_by: Uuid | null;
+  voided_at: TsNullable;
+  voided_by: Uuid | null;
+  void_reason: string | null;
+}
+
+export interface RecoveryPlanItemTable extends Stamped {
+  id: Generated<Uuid>;
+  tenant_id: Uuid;
+  case_id: Uuid;
+  need_id: Uuid | null;
+  unmet: string;
+  owner_tenant_id: Uuid | null;
+  owner_label: string | null;
+  due_on: ColumnType<Date | null, Date | string | null, Date | string | null>;
+  status: Generated<RecoveryPlanStatus>;
+  referral_id: Uuid | null;
+  note: string | null;
+}
+
 export interface FieldReportTable extends Stamped {
   id: Generated<Uuid>;
   tenant_id: Uuid;
@@ -3725,6 +3788,9 @@ export interface Database {
   'cg.ics_form_issue': IcsFormIssueTable;
   'cg.live_source': LiveSourceTable;
   'cg.live_condition': LiveConditionTable;
+  'cg.case': CaseTable;
+  'cg.help_received': HelpReceivedTable;
+  'cg.recovery_plan_item': RecoveryPlanItemTable;
   'cg.equipment_use': EquipmentUseTable;
   'cg.canteen_stop': CanteenStopTable;
   'cg.legal_hold': LegalHoldTable;

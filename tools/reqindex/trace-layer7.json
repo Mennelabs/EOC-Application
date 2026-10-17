@@ -854,8 +854,8 @@
   ],
   "GATE-03": [
     "partial",
-    "",
-    "axe on every released screen, including the enclave screens and the console's CJIS panel (tests/e2e/cjis.spec.ts, tests/e2e/console-l5.spec.ts); layer 7: axe on every layer-7 screen state the journeys reach, with reflow on the phone; records docs/a11y/screens/command-window.md, facilities.md, recommendations.md, discovery.md and the layer-7 notes on earlier records; every console screen no task journey opens (layer-1 administration, layer-3 resources and partner agreements, layer-4 replay, shelters, reception, net control, messages, badges, reminders, devices) opened one by one with axe on desktop and phone (tests/e2e/console-screens.spec.ts)",
+    "design foundation: packages/ui showcase under axe in both themes on desktop and phone (CI checks job); tools/preview/console-preview.mjs and public-preview.mjs; docs/a11y/screens/console-frame-and-home.md",
+    "axe on every released screen, including the enclave screens and the console's CJIS panel (tests/e2e/cjis.spec.ts, tests/e2e/console-l5.spec.ts); layer 7: axe on every layer-7 screen state the journeys reach, with reflow on the phone; records docs/a11y/screens/command-window.md, facilities.md, recommendations.md, discovery.md and the layer-7 notes on earlier records; every console screen no task journey opens (layer-1 administration, layer-3 resources and partner agreements, layer-4 replay, shelters, reception, net control, messages, badges, reminders, devices) opened one by one with axe on desktop and phone (tests/e2e/console-screens.spec.ts); packages/ui/test/showcase.spec.ts (the design showcase under axe in both themes on desktop and phone)",
     "Manual screen-reader passes pending a person, as before; the field app also needs a device pass."
   ],
   "GATE-04": [

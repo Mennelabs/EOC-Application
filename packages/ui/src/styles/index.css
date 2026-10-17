@@ -1,0 +1,9 @@
+/* The shared stylesheet (ADR-0045): tokens, base, controls, surfaces, the staff
+   shell and the React Aria component skins. Fonts are imported separately so
+   each app loads only its own family (`@cg/ui/fonts/staff.css` or `/public.css`). */
+@import './tokens.css';
+@import './base.css';
+@import './controls.css';
+@import './surfaces.css';
+@import './shell.css';
+@import './rac.css';

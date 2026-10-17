@@ -41,6 +41,7 @@ import {
   administrators,
   expectNoViolations,
   expectReflow,
+  goTo,
   onboard,
   token,
 } from './support/console.ts';
@@ -585,7 +586,7 @@ test.describe('layer 7 console: the command window', () => {
       `l7d-${testInfo.project.name}`,
       'canteen',
     );
-    await page.getByRole('link', { name: 'Our services' }).click();
+    await goTo(page, 'Our services');
     await page.getByLabel('Kind', { exact: true }).selectOption('feeding');
     await page.getByLabel('Name', { exact: true }).fill(name);
     await page.getByLabel('Street address', { exact: true }).fill('30 Exercise Loop');

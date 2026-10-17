@@ -8,7 +8,7 @@
  * screen passes axe WCAG 2.2 AA.
  */
 import { expect, test } from '@playwright/test';
-import { BASE, MAIL, expectNoViolations, onboard } from './support/console.ts';
+import { BASE, MAIL, expectNoViolations, goTo, onboard } from './support/console.ts';
 
 const tag = Date.now().toString(36);
 
@@ -54,7 +54,7 @@ test.describe('layer 3 console', () => {
     await expectNoViolations(page);
 
     // Needs board: the filed need appears once the worker swept it; claim it, then finish it (CON-08, NED-07).
-    await page.getByRole('link', { name: 'Needs board' }).click();
+    await goTo(page, 'Needs board');
     await expect(page.getByRole('heading', { name: 'Needs board' })).toBeVisible();
     await page.getByLabel('Reference').fill(code);
     const row = page.getByRole('row').filter({ hasText: code });
@@ -72,7 +72,7 @@ test.describe('layer 3 console', () => {
     await expect(row).toContainText('met');
 
     // Sites: add, confirm, publish with a reason, see it in the log (CON-09, PUB-06).
-    await page.getByRole('link', { name: 'Sites' }).click();
+    await goTo(page, 'Sites');
     await expect(page.getByRole('heading', { name: 'Sites', exact: true })).toBeVisible();
     await expectNoViolations(page);
     const siteName = `Console warming center ${tag}`;
@@ -95,7 +95,7 @@ test.describe('layer 3 console', () => {
     await dialog.getByRole('button', { name: 'Confirm' }).click();
     await expect(page.getByRole('status')).toContainText('published on every channel');
     await expect(siteRow).toContainText('published');
-    await page.getByRole('link', { name: 'Publication log' }).click();
+    await goTo(page, 'Publication log');
     await expect(page.getByRole('heading', { name: 'Publication log' })).toBeVisible();
     const logRow = page.getByRole('row').filter({ hasText: siteName });
     await expect(logRow).toBeVisible();
@@ -108,7 +108,7 @@ test.describe('layer 3 console', () => {
     expect(help.sites.some((s) => s.name === siteName)).toBe(true);
 
     // Contacts registry (CNT-01): readable, names only for roles with the category.
-    await page.getByRole('link', { name: 'Contacts' }).click();
+    await goTo(page, 'Contacts');
     await expect(page.getByRole('heading', { name: 'Interagency contacts' })).toBeVisible();
     await expectNoViolations(page);
   });
@@ -170,7 +170,7 @@ test.describe('partner workspace (ADM-02, NED-04, FL-03, AC-17C)', () => {
       'canteen',
     );
 
-    await page.getByRole('link', { name: 'Partner workspace' }).click();
+    await goTo(page, 'Partner workspace');
     await expect(page.getByRole('heading', { name: 'Partner workspace' })).toBeVisible();
     const shared = page.getByRole('row').filter({ hasText: code });
     await expect(shared).toBeVisible({ timeout: 90_000 }); // once the worker filed it and derived the grant
@@ -180,7 +180,7 @@ test.describe('partner workspace (ADM-02, NED-04, FL-03, AC-17C)', () => {
     await expectNoViolations(page);
 
     // The partner claims the need on the board and sees it under its own claims (CON-08).
-    await page.getByRole('link', { name: 'Needs board' }).click();
+    await goTo(page, 'Needs board');
     await page.getByLabel('Reference').fill(code);
     const need = page.getByRole('row').filter({ hasText: code });
     await expect(need).toBeVisible({ timeout: 30_000 });
@@ -188,7 +188,7 @@ test.describe('partner workspace (ADM-02, NED-04, FL-03, AC-17C)', () => {
     await page.getByLabel('Note').fill('Canteen 2 covers Cedar Ridge');
     await page.getByRole('button', { name: 'Claim' }).click();
     await expect(page.getByRole('status')).toContainText('claimed');
-    await page.getByRole('link', { name: 'Partner workspace' }).click();
+    await goTo(page, 'Partner workspace');
     await expect(
       page.getByRole('table', { name: 'Needs your organization holds' }).getByRole('row').filter({
         hasText: code,
@@ -216,7 +216,7 @@ test.describe('partner posting (2026-10-15; PUB-01, PUB-05, PUB-06, CON-16)', ()
     );
 
     // The partner drafts its service under "Our services".
-    await page.getByRole('link', { name: 'Our services' }).click();
+    await goTo(page, 'Our services');
     await expect(page.getByRole('heading', { name: 'Our services', level: 1 })).toBeVisible();
     await expectNoViolations(page);
     await page.getByLabel('Kind', { exact: true }).selectOption('feeding');
@@ -278,15 +278,15 @@ test.describe('partner posting (2026-10-15; PUB-01, PUB-05, PUB-06, CON-16)', ()
       `County care ${tag}`,
       `post-county-${testInfo.project.name}`,
     );
-    await county.getByRole('link', { name: 'Sites', exact: true }).click();
+    await goTo(county, 'Sites');
     const siteRow = county.getByRole('row').filter({ hasText: name });
     await expect(siteRow).toContainText('Hope Canteen Services');
-    await county.getByRole('link', { name: 'Publication log' }).click();
+    await goTo(county, 'Publication log');
     await expect(county.getByRole('row').filter({ hasText: name })).toContainText(
       'Posted by Hope Canteen Services',
     );
     await expectNoViolations(county);
-    await county.getByRole('link', { name: 'Sites', exact: true }).click();
+    await goTo(county, 'Sites');
     await siteRow.getByRole('button', { name: 'Unpublish' }).click();
     const withdraw = county.getByRole('dialog');
     await withdraw.getByLabel(/reason/i).fill('County withdraws the exercise post');

@@ -13,6 +13,8 @@
  * asks before it runs (CMD-29, AC-C09).
  */
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { createPortal } from 'react-dom';
+import { icons } from '@cg/ui';
 import { api, ApiFailure, describeFailure } from '../api/client.ts';
 import { Field } from './primitives.tsx';
 import {
@@ -472,433 +474,444 @@ export function CommandWindow({ navigate }: { navigate: (to: string) => void }) 
     <>
       <button
         type="button"
-        className="command-open"
+        className="command-open cg-command-open"
         onClick={open}
         aria-keyshortcuts={`${navigator.platform.startsWith('Mac') ? 'Meta' : 'Control'}+${prefs.letter.toUpperCase()}`}
       >
-        Command window <span className="kbd">({shortcutLabel})</span>
+        <icons.Search width={16} height={16} aria-hidden="true" />
+        <span className="cg-command-open__text">Command window: ask or do anything</span>
+        <span className="kbd">{shortcutLabel}</span>
       </button>
-      <dialog ref={dialog} className="command" aria-labelledby={titleId} onClose={onClose}>
-        <div className="command-head">
-          <h2 id={titleId}>Command window</h2>
-          <button type="button" className="link" onClick={close}>
-            Close
-          </button>
-        </div>
-        <form onSubmit={submit}>
-          <Field
-            label="Command"
-            hint={`Shorthand starts with / (try /help), or ask in plain words.${context ? ` "This" means ${context.kind} ${context.label}.` : ''} Nothing changes until you confirm a plan.`}
-            {...(problem ? { error: problem } : {})}
-          >
-            {({ id, describedBy, invalid }) => (
-              <input
-                ref={input}
-                id={id}
-                aria-describedby={describedBy}
-                aria-invalid={invalid || undefined}
-                value={text}
-                autoComplete="off"
-                spellCheck={false}
-                onChange={(e) => {
-                  setText(e.target.value);
-                  writeDraft(e.target.value);
-                }}
-              />
-            )}
-          </Field>
-          {onScreen ? (
-            <label className="choice">
-              <input
-                type="checkbox"
-                checked={context !== null}
-                onChange={(e) => setSetAside(e.target.checked ? null : onScreen.id)}
-              />{' '}
-              Let &ldquo;this&rdquo; mean {onScreen.kind} {onScreen.label}, open on your screen
-            </label>
-          ) : null}
-          <div className="actions">
-            <button type="submit" className="primary" disabled={busy}>
-              {busy ? 'Working…' : 'Go'}
+      {/* The dialog renders at the end of the body, not inside the top bar that holds the
+          trigger: nothing of the bar's dark styling (white text, its focus colour) reaches
+          the window's buttons and fields (ADR-0045, WCAG 1.4.3, 2.4.7). */}
+      {createPortal(
+        <dialog ref={dialog} className="command" aria-labelledby={titleId} onClose={onClose}>
+          <div className="command-head">
+            <h2 id={titleId}>Command window</h2>
+            <button type="button" className="link" onClick={close}>
+              Close
             </button>
           </div>
-        </form>
-
-        <p className="visually-hidden" aria-live="polite" aria-atomic="true">
-          {announce}
-        </p>
-
-        {current ? (
-          <section className="command-result" aria-labelledby={`${titleId}-r`}>
-            <h3 id={`${titleId}-r`}>{resultHeading}</h3>
-            {current.status !== 'awaiting_confirmation' ? <p>{current.message}</p> : null}
-            {current.usage && ['clarify', 'unsupported', 'not_found'].includes(current.status) ? (
-              <p>
-                Shorthand: <code>{current.usage}</code>
-              </p>
-            ) : null}
-
-            {current.status === 'help' ? (
-              <ul className="command-help">
-                {current.commands
-                  .filter((c) => c.enabled && c.allowed)
-                  .map((c) => (
-                    <li key={c.name}>
-                      <code>{c.usage}</code> — {c.title}
-                      {c.confirmation === 'none' ? '' : ' (you confirm a plan first)'}
-                    </li>
-                  ))}
-                {current.aliases.map((a) => (
-                  <li key={`${a.scope}-${a.name}`}>
-                    <code>/{a.name}</code> — alias for <code>{a.expansion}</code>
-                    {a.scope === 'organization' ? ' (set for everyone here)' : ' (yours)'}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-
-            {current.status === 'clarify' && current.options.length > 0 ? (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const o = current.options.find((x) => x.id === choice);
-                  if (!o) return;
-                  void prepare(choiceOf(o));
-                }}
-              >
-                <fieldset>
-                  <legend>Which one?</legend>
-                  {current.options.map((o) => (
-                    <label key={o.id} className="choice">
-                      <input
-                        type="radio"
-                        name="command-choice"
-                        value={o.id}
-                        checked={choice === o.id}
-                        onChange={() => setChoice(o.id)}
-                      />{' '}
-                      {o.label}
-                    </label>
-                  ))}
-                </fieldset>
-                <div className="actions">
-                  <button type="submit" className="primary" disabled={busy || !choice}>
-                    Continue
-                  </button>
-                </div>
-              </form>
-            ) : null}
-
-            {current.status === 'awaiting_confirmation' && current.plan && current.command ? (
-              <>
-                <dl className="meta">
-                  <dt>What will happen</dt>
-                  <dd>{current.plan.description}</dd>
-                  {current.plan.interpretation ? (
-                    <>
-                      <dt>Read as</dt>
-                      <dd>
-                        <code>{current.plan.interpretation}</code>
-                      </dd>
-                    </>
-                  ) : null}
-                  <dt>Effect</dt>
-                  <dd>{current.command.sideEffects}</dd>
-                  {reversalText(current.command) ? (
-                    <>
-                      <dt>If it is wrong</dt>
-                      <dd>{reversalText(current.command)}</dd>
-                    </>
-                  ) : null}
-                </dl>
-                {needsCount ? (
-                  <Field
-                    label={`Type ${current.plan.count} to confirm all of them`}
-                    hint={`This changes ${current.plan.count} records, more than ${BATCH_ONE_CONFIRMATION} at once.`}
-                  >
-                    {({ id, describedBy }) => (
-                      <input
-                        id={id}
-                        aria-describedby={describedBy}
-                        inputMode="numeric"
-                        autoComplete="off"
-                        value={typedCount}
-                        onChange={(e) => setTypedCount(e.target.value)}
-                      />
-                    )}
-                  </Field>
-                ) : null}
-                {clash.length ? (
-                  <div className="status info" role="group" aria-label="Unsaved changes">
-                    <p>
-                      You have unsaved changes to this {target!.kind} on your screen (
-                      {clash.map((d) => d.form).join(', ')}). This command changes the same{' '}
-                      {target!.kind}; nothing runs over your changes without your say.
-                    </p>
-                    <div className="actions">
-                      <button type="button" onClick={() => void backToDrafts()} disabled={busy}>
-                        Keep my changes and go back to them
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void discardAndConfirm()}
-                        disabled={busy}
-                      >
-                        Discard my changes and confirm
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="actions">
-                    <button type="button" onClick={() => void cancelPlan()} disabled={busy}>
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      className="primary"
-                      onClick={() => void confirmPlan()}
-                      disabled={busy || (needsCount && Number(typedCount) !== current.plan.count)}
-                    >
-                      Confirm
-                    </button>
-                  </div>
-                )}
-              </>
-            ) : null}
-
-            {current.status === 'executing' && current.id ? (
-              <div className="actions">
-                {/* CMD-38: a command past the deadline is still running; ask again for its result. */}
-                <button
-                  type="button"
-                  onClick={() => void api<Execution>(`/commands/${current.id}`).then(settle, fail)}
-                  disabled={busy}
-                >
-                  Check again
-                </button>
-              </div>
-            ) : null}
-
-            {current.status === 'stale' ? (
-              <div className="actions">
-                <button type="button" className="primary" onClick={() => void prepare()}>
-                  Prepare again
-                </button>
-              </div>
-            ) : null}
-
-            {(current.status === 'succeeded' || current.status === 'partially_succeeded') &&
-            current.result?.records.length ? (
-              <ul className="command-records">
-                {current.result.records
-                  .map((r) => ({ r, href: recordHref(r) }))
-                  .filter((x) => x.href)
-                  .slice(0, 10)
-                  .map(({ r, href }) => (
-                    <li key={`${r.kind}-${r.id}`}>
-                      <a
-                        href={href!}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          close();
-                          navigate(href!);
-                        }}
-                      >
-                        Open {r.label || r.kind.replace('_', ' ')}
-                      </a>
-                    </li>
-                  ))}
-              </ul>
-            ) : null}
-
-            {current.result?.failures?.length ? (
-              <>
-                <h4>Not changed</h4>
-                <ul className="command-records">
-                  {current.result.failures.map((f) => (
-                    <li key={f.id}>
-                      {f.label}: {f.message}
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : null}
-
-            {current.status === 'succeeded' && current.undoUntil ? (
-              <div className="actions">
-                <button type="button" onClick={() => void undo()} disabled={busy}>
-                  Undo (until {until(current.undoUntil)})
-                </button>
-              </div>
-            ) : null}
-          </section>
-        ) : null}
-
-        <details
-          className="command-settings"
-          onToggle={(e) => {
-            if ((e.currentTarget as HTMLDetailsElement).open) void loadAliases();
-          }}
-        >
-          <summary>Aliases</summary>
-          <p>
-            A short name for a line you type often, such as /brief for /sitrep 6. Your own aliases
-            can only look things up or draft; the command they stand for is shown before anything
-            runs.
-          </p>
-          {aliases && aliases.length > 0 ? (
-            <ul className="command-history">
-              {aliases.map((a) => (
-                <li key={a.id}>
-                  <code>/{a.name}</code> → <code>{a.expansion}</code>
-                  {a.scope === 'organization' ? ' (everyone here)' : ''}{' '}
-                  {a.mine || a.scope === 'organization' ? (
-                    <button type="button" className="link" onClick={() => void removeAlias(a)}>
-                      Remove /{a.name}
-                    </button>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          ) : aliases ? (
-            <p>No aliases yet.</p>
-          ) : null}
-          <form onSubmit={(e) => void addAlias(e)}>
-            <Field label="Alias name" hint="Letters, digits, - or _; for example brief.">
-              {({ id, describedBy }) => (
-                <input
-                  id={id}
-                  aria-describedby={describedBy}
-                  value={aliasName}
-                  autoComplete="off"
-                  onChange={(e) => setAliasName(e.target.value)}
-                />
-              )}
-            </Field>
+          <form onSubmit={submit}>
             <Field
-              label="Stands for"
-              hint="One line of shorthand, for example /sitrep 6."
-              {...(aliasProblem ? { error: aliasProblem } : {})}
+              label="Command"
+              hint={`Shorthand starts with / (try /help), or ask in plain words.${context ? ` "This" means ${context.kind} ${context.label}.` : ''} Nothing changes until you confirm a plan.`}
+              {...(problem ? { error: problem } : {})}
             >
               {({ id, describedBy, invalid }) => (
                 <input
+                  ref={input}
                   id={id}
                   aria-describedby={describedBy}
                   aria-invalid={invalid || undefined}
-                  value={aliasLine}
+                  value={text}
                   autoComplete="off"
                   spellCheck={false}
-                  onChange={(e) => setAliasLine(e.target.value)}
+                  onChange={(e) => {
+                    setText(e.target.value);
+                    writeDraft(e.target.value);
+                  }}
                 />
               )}
             </Field>
+            {onScreen ? (
+              <label className="choice">
+                <input
+                  type="checkbox"
+                  checked={context !== null}
+                  onChange={(e) => setSetAside(e.target.checked ? null : onScreen.id)}
+                />{' '}
+                Let &ldquo;this&rdquo; mean {onScreen.kind} {onScreen.label}, open on your screen
+              </label>
+            ) : null}
+            <div className="actions">
+              <button type="submit" className="primary" disabled={busy}>
+                {busy ? 'Working…' : 'Go'}
+              </button>
+            </div>
+          </form>
+
+          <p className="visually-hidden" aria-live="polite" aria-atomic="true">
+            {announce}
+          </p>
+
+          {current ? (
+            <section className="command-result" aria-labelledby={`${titleId}-r`}>
+              <h3 id={`${titleId}-r`}>{resultHeading}</h3>
+              {current.status !== 'awaiting_confirmation' ? <p>{current.message}</p> : null}
+              {current.usage && ['clarify', 'unsupported', 'not_found'].includes(current.status) ? (
+                <p>
+                  Shorthand: <code>{current.usage}</code>
+                </p>
+              ) : null}
+
+              {current.status === 'help' ? (
+                <ul className="command-help">
+                  {current.commands
+                    .filter((c) => c.enabled && c.allowed)
+                    .map((c) => (
+                      <li key={c.name}>
+                        <code>{c.usage}</code> — {c.title}
+                        {c.confirmation === 'none' ? '' : ' (you confirm a plan first)'}
+                      </li>
+                    ))}
+                  {current.aliases.map((a) => (
+                    <li key={`${a.scope}-${a.name}`}>
+                      <code>/{a.name}</code> — alias for <code>{a.expansion}</code>
+                      {a.scope === 'organization' ? ' (set for everyone here)' : ' (yours)'}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
+              {current.status === 'clarify' && current.options.length > 0 ? (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const o = current.options.find((x) => x.id === choice);
+                    if (!o) return;
+                    void prepare(choiceOf(o));
+                  }}
+                >
+                  <fieldset>
+                    <legend>Which one?</legend>
+                    {current.options.map((o) => (
+                      <label key={o.id} className="choice">
+                        <input
+                          type="radio"
+                          name="command-choice"
+                          value={o.id}
+                          checked={choice === o.id}
+                          onChange={() => setChoice(o.id)}
+                        />{' '}
+                        {o.label}
+                      </label>
+                    ))}
+                  </fieldset>
+                  <div className="actions">
+                    <button type="submit" className="primary" disabled={busy || !choice}>
+                      Continue
+                    </button>
+                  </div>
+                </form>
+              ) : null}
+
+              {current.status === 'awaiting_confirmation' && current.plan && current.command ? (
+                <>
+                  <dl className="meta">
+                    <dt>What will happen</dt>
+                    <dd>{current.plan.description}</dd>
+                    {current.plan.interpretation ? (
+                      <>
+                        <dt>Read as</dt>
+                        <dd>
+                          <code>{current.plan.interpretation}</code>
+                        </dd>
+                      </>
+                    ) : null}
+                    <dt>Effect</dt>
+                    <dd>{current.command.sideEffects}</dd>
+                    {reversalText(current.command) ? (
+                      <>
+                        <dt>If it is wrong</dt>
+                        <dd>{reversalText(current.command)}</dd>
+                      </>
+                    ) : null}
+                  </dl>
+                  {needsCount ? (
+                    <Field
+                      label={`Type ${current.plan.count} to confirm all of them`}
+                      hint={`This changes ${current.plan.count} records, more than ${BATCH_ONE_CONFIRMATION} at once.`}
+                    >
+                      {({ id, describedBy }) => (
+                        <input
+                          id={id}
+                          aria-describedby={describedBy}
+                          inputMode="numeric"
+                          autoComplete="off"
+                          value={typedCount}
+                          onChange={(e) => setTypedCount(e.target.value)}
+                        />
+                      )}
+                    </Field>
+                  ) : null}
+                  {clash.length ? (
+                    <div className="status info" role="group" aria-label="Unsaved changes">
+                      <p>
+                        You have unsaved changes to this {target!.kind} on your screen (
+                        {clash.map((d) => d.form).join(', ')}). This command changes the same{' '}
+                        {target!.kind}; nothing runs over your changes without your say.
+                      </p>
+                      <div className="actions">
+                        <button type="button" onClick={() => void backToDrafts()} disabled={busy}>
+                          Keep my changes and go back to them
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void discardAndConfirm()}
+                          disabled={busy}
+                        >
+                          Discard my changes and confirm
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="actions">
+                      <button type="button" onClick={() => void cancelPlan()} disabled={busy}>
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="primary"
+                        onClick={() => void confirmPlan()}
+                        disabled={busy || (needsCount && Number(typedCount) !== current.plan.count)}
+                      >
+                        Confirm
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : null}
+
+              {current.status === 'executing' && current.id ? (
+                <div className="actions">
+                  {/* CMD-38: a command past the deadline is still running; ask again for its result. */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void api<Execution>(`/commands/${current.id}`).then(settle, fail)
+                    }
+                    disabled={busy}
+                  >
+                    Check again
+                  </button>
+                </div>
+              ) : null}
+
+              {current.status === 'stale' ? (
+                <div className="actions">
+                  <button type="button" className="primary" onClick={() => void prepare()}>
+                    Prepare again
+                  </button>
+                </div>
+              ) : null}
+
+              {(current.status === 'succeeded' || current.status === 'partially_succeeded') &&
+              current.result?.records.length ? (
+                <ul className="command-records">
+                  {current.result.records
+                    .map((r) => ({ r, href: recordHref(r) }))
+                    .filter((x) => x.href)
+                    .slice(0, 10)
+                    .map(({ r, href }) => (
+                      <li key={`${r.kind}-${r.id}`}>
+                        <a
+                          href={href!}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            close();
+                            navigate(href!);
+                          }}
+                        >
+                          Open {r.label || r.kind.replace('_', ' ')}
+                        </a>
+                      </li>
+                    ))}
+                </ul>
+              ) : null}
+
+              {current.result?.failures?.length ? (
+                <>
+                  <h4>Not changed</h4>
+                  <ul className="command-records">
+                    {current.result.failures.map((f) => (
+                      <li key={f.id}>
+                        {f.label}: {f.message}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+
+              {current.status === 'succeeded' && current.undoUntil ? (
+                <div className="actions">
+                  <button type="button" onClick={() => void undo()} disabled={busy}>
+                    Undo (until {until(current.undoUntil)})
+                  </button>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
+          <details
+            className="command-settings"
+            onToggle={(e) => {
+              if ((e.currentTarget as HTMLDetailsElement).open) void loadAliases();
+            }}
+          >
+            <summary>Aliases</summary>
+            <p>
+              A short name for a line you type often, such as /brief for /sitrep 6. Your own aliases
+              can only look things up or draft; the command they stand for is shown before anything
+              runs.
+            </p>
+            {aliases && aliases.length > 0 ? (
+              <ul className="command-history">
+                {aliases.map((a) => (
+                  <li key={a.id}>
+                    <code>/{a.name}</code> → <code>{a.expansion}</code>
+                    {a.scope === 'organization' ? ' (everyone here)' : ''}{' '}
+                    {a.mine || a.scope === 'organization' ? (
+                      <button type="button" className="link" onClick={() => void removeAlias(a)}>
+                        Remove /{a.name}
+                      </button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : aliases ? (
+              <p>No aliases yet.</p>
+            ) : null}
+            <form onSubmit={(e) => void addAlias(e)}>
+              <Field label="Alias name" hint="Letters, digits, - or _; for example brief.">
+                {({ id, describedBy }) => (
+                  <input
+                    id={id}
+                    aria-describedby={describedBy}
+                    value={aliasName}
+                    autoComplete="off"
+                    onChange={(e) => setAliasName(e.target.value)}
+                  />
+                )}
+              </Field>
+              <Field
+                label="Stands for"
+                hint="One line of shorthand, for example /sitrep 6."
+                {...(aliasProblem ? { error: aliasProblem } : {})}
+              >
+                {({ id, describedBy, invalid }) => (
+                  <input
+                    id={id}
+                    aria-describedby={describedBy}
+                    aria-invalid={invalid || undefined}
+                    value={aliasLine}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={(e) => setAliasLine(e.target.value)}
+                  />
+                )}
+              </Field>
+              <Field
+                label="For"
+                hint="Organization aliases are for administrators and need a reason."
+              >
+                {({ id, describedBy }) => (
+                  <select
+                    id={id}
+                    aria-describedby={describedBy}
+                    value={aliasScope}
+                    onChange={(e) => setAliasScope(e.target.value as 'personal' | 'organization')}
+                  >
+                    <option value="personal">Just me</option>
+                    <option value="organization">Everyone in the organization</option>
+                  </select>
+                )}
+              </Field>
+              <div className="actions">
+                <button type="submit" disabled={!aliasName.trim() || !aliasLine.trim()}>
+                  Save alias
+                </button>
+              </div>
+            </form>
+          </details>
+
+          <details
+            className="command-settings"
+            onToggle={(e) => {
+              if ((e.currentTarget as HTMLDetailsElement).open) void loadHistory();
+            }}
+          >
+            <summary>Your recent commands</summary>
+            {prefs.shared ? (
+              <p>History is off on this device because it is marked as shared.</p>
+            ) : history === null ? (
+              <p>Loading…</p>
+            ) : history.length === 0 ? (
+              <p>Nothing kept. Commands you give here are kept for 30 days, for you only.</p>
+            ) : (
+              <>
+                <ol className="command-history">
+                  {history.map((h, i) => (
+                    <li key={`${h.createdAt}-${i}`}>
+                      <span className="who">{h.role === 'person' ? 'You' : 'Window'}:</span>{' '}
+                      {h.text}
+                    </li>
+                  ))}
+                </ol>
+                <div className="actions">
+                  <button type="button" onClick={() => void clearHistory()} disabled={busy}>
+                    Clear my history
+                  </button>
+                </div>
+              </>
+            )}
+          </details>
+
+          <details className="command-settings">
+            <summary>Shortcut settings</summary>
             <Field
-              label="For"
-              hint="Organization aliases are for administrators and need a reason."
+              label="Letter used with Ctrl or Command"
+              hint="Changes the shortcut on this device."
             >
               {({ id, describedBy }) => (
                 <select
                   id={id}
                   aria-describedby={describedBy}
-                  value={aliasScope}
-                  onChange={(e) => setAliasScope(e.target.value as 'personal' | 'organization')}
+                  value={prefs.letter}
+                  onChange={(e) => {
+                    const p = { ...prefs, letter: e.target.value };
+                    setPrefs(p);
+                    writePrefs(p);
+                  }}
                 >
-                  <option value="personal">Just me</option>
-                  <option value="organization">Everyone in the organization</option>
+                  {'abcdefghijklmnopqrstuvwxyz'.split('').map((l) => (
+                    <option key={l} value={l}>
+                      {l.toUpperCase()}
+                    </option>
+                  ))}
                 </select>
               )}
             </Field>
-            <div className="actions">
-              <button type="submit" disabled={!aliasName.trim() || !aliasLine.trim()}>
-                Save alias
-              </button>
-            </div>
-          </form>
-        </details>
-
-        <details
-          className="command-settings"
-          onToggle={(e) => {
-            if ((e.currentTarget as HTMLDetailsElement).open) void loadHistory();
-          }}
-        >
-          <summary>Your recent commands</summary>
-          {prefs.shared ? (
-            <p>History is off on this device because it is marked as shared.</p>
-          ) : history === null ? (
-            <p>Loading…</p>
-          ) : history.length === 0 ? (
-            <p>Nothing kept. Commands you give here are kept for 30 days, for you only.</p>
-          ) : (
-            <>
-              <ol className="command-history">
-                {history.map((h, i) => (
-                  <li key={`${h.createdAt}-${i}`}>
-                    <span className="who">{h.role === 'person' ? 'You' : 'Window'}:</span> {h.text}
-                  </li>
-                ))}
-              </ol>
-              <div className="actions">
-                <button type="button" onClick={() => void clearHistory()} disabled={busy}>
-                  Clear my history
-                </button>
-              </div>
-            </>
-          )}
-        </details>
-
-        <details className="command-settings">
-          <summary>Shortcut settings</summary>
-          <Field
-            label="Letter used with Ctrl or Command"
-            hint="Changes the shortcut on this device."
-          >
-            {({ id, describedBy }) => (
-              <select
-                id={id}
-                aria-describedby={describedBy}
-                value={prefs.letter}
+            <label className="choice">
+              <input
+                type="checkbox"
+                checked={prefs.slash}
                 onChange={(e) => {
-                  const p = { ...prefs, letter: e.target.value };
+                  const p = { ...prefs, slash: e.target.checked };
                   setPrefs(p);
                   writePrefs(p);
                 }}
-              >
-                {'abcdefghijklmnopqrstuvwxyz'.split('').map((l) => (
-                  <option key={l} value={l}>
-                    {l.toUpperCase()}
-                  </option>
-                ))}
-              </select>
-            )}
-          </Field>
-          <label className="choice">
-            <input
-              type="checkbox"
-              checked={prefs.slash}
-              onChange={(e) => {
-                const p = { ...prefs, slash: e.target.checked };
-                setPrefs(p);
-                writePrefs(p);
-              }}
-            />{' '}
-            Open with / when I am not typing in a field
-          </label>
-          <label className="choice">
-            <input
-              type="checkbox"
-              checked={prefs.shared}
-              onChange={(e) => {
-                const p = { ...prefs, shared: e.target.checked };
-                setPrefs(p);
-                writePrefs(p);
-                if (p.shared) setHistory(null);
-              }}
-            />{' '}
-            This is a shared device: keep no command history
-          </label>
-        </details>
-      </dialog>
+              />{' '}
+              Open with / when I am not typing in a field
+            </label>
+            <label className="choice">
+              <input
+                type="checkbox"
+                checked={prefs.shared}
+                onChange={(e) => {
+                  const p = { ...prefs, shared: e.target.checked };
+                  setPrefs(p);
+                  writePrefs(p);
+                  if (p.shared) setHistory(null);
+                }}
+              />{' '}
+              This is a shared device: keep no command history
+            </label>
+          </details>
+        </dialog>,
+        document.body,
+      )}
     </>
   );
 }

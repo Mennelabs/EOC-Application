@@ -7,7 +7,7 @@
  * own account, so projects never race on a shared user.
  */
 import { expect, test } from '@playwright/test';
-import { appears, BASE, expectNoViolations, onboard } from './support/console.ts';
+import { appears, BASE, expectNoViolations, goTo, onboard } from './support/console.ts';
 
 test.describe('console sign-in', () => {
   test('sign-in screen is accessible and asks only for the organization', async ({ page }) => {
@@ -38,10 +38,12 @@ test.describe('console sign-in', () => {
     await expect(page.getByText('planning_gis_lead')).toBeVisible();
     await expectNoViolations(page);
 
-    await page.getByRole('link', { name: 'Events' }).click();
+    await goTo(page, 'Events');
     await expect(page.getByRole('heading', { name: 'Events' })).toBeVisible();
     await expectNoViolations(page);
-    await page.getByRole('link', { name: 'Permission changes' }).click();
+    // A workspace the person cannot use is not listed (CON-01); the address still shows the denial, never a blank page.
+    await expect(page.getByRole('link', { name: 'Permission changes' })).toHaveCount(0);
+    await page.goto('/console/approvals');
     await expect(page.getByRole('alert')).toContainText('permission');
   });
 });
@@ -110,7 +112,7 @@ test.describe('console review (CON-02, CON-05, BRD:FR-12, DCL:DEC-02/03, AIG-01,
     await onboard(page, context, 'damage_assessment_coordinator', 'E2E Reviewer', 'reviewer');
 
     // Queue: need signals first, filter by reference, every row a link (CON-05, PHO-14).
-    await page.getByRole('link', { name: 'Review queue' }).click();
+    await goTo(page, 'Review queue');
     await expect(page.getByRole('heading', { name: 'Review queue' })).toBeVisible();
     await page.getByLabel('Reference number').fill(code);
     const row = page.getByRole('link', { name: code });
@@ -149,7 +151,7 @@ test.describe('console review (CON-02, CON-05, BRD:FR-12, DCL:DEC-02/03, AIG-01,
 
     // CON-05: the second report is sent to the field with a reason; it stays in review and waits
     // under the queue by the route area of its parcel, where a route opens for it.
-    await page.getByRole('link', { name: 'Review queue' }).click();
+    await goTo(page, 'Review queue');
     await page.getByLabel('Reference number').fill(visitCode);
     const visitRow = page.getByRole('link', { name: visitCode });
     for (let i = 0; i < 30 && !(await appears(visitRow, 2_000)); i++) {
@@ -165,7 +167,7 @@ test.describe('console review (CON-02, CON-05, BRD:FR-12, DCL:DEC-02/03, AIG-01,
     await expect(
       page.getByRole('status').filter({ hasText: 'Done: sent to the field' }),
     ).toBeVisible();
-    await page.getByRole('link', { name: 'Review queue' }).click();
+    await goTo(page, 'Review queue');
     await page.getByLabel('Event').selectOption({ label: 'Exercise WESTWIND tornado' });
     const visits = page.getByRole('table', {
       name: 'Reports waiting for a field visit, by route area',
@@ -183,7 +185,9 @@ test.describe('console review (CON-02, CON-05, BRD:FR-12, DCL:DEC-02/03, AIG-01,
 
     // The other layer-2 console screens, each scanned (GATE-03).
     for (const name of ['Intake setup', 'Assisted report', 'AI use register']) {
-      await page.getByRole('link', { name }).click();
+      // The AI use register is not among the reviewer's workspaces (ai_register.read); its address still shows the screen.
+      if (name === 'AI use register') await page.goto('/console/ai-register');
+      else await goTo(page, name);
       await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
       if (name === 'Intake setup') {
         // The event's links, keywords and a code to print (CHN-08).

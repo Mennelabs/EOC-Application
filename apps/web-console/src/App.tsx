@@ -1,6 +1,25 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  EventChip,
+  PersonMenu,
+  Shell,
+  SideNav,
+  TopBar,
+  applyPreferences,
+  humanize,
+  readPreferences,
+  writePreferences,
+  type Preferences,
+} from '@cg/ui';
 import { api, describeFailure, setConfirmHandler, type Confirmation } from './api/client.ts';
-import { beginLogin, completeLogin, loadSession, rememberedRealm, signOut } from './auth/oidc.ts';
+import {
+  beginLogin,
+  completeLogin,
+  loadSession,
+  rememberedRealm,
+  sessionClaims,
+  signOut,
+} from './auth/oidc.ts';
 import type { RuntimeConfig } from './runtime-config.ts';
 import { AccountsScreen, EventsScreen, PersonnelScreen, TenantsScreen } from './screens/admin.tsx';
 import {
@@ -30,7 +49,8 @@ import {
   RosterScreen,
 } from './screens/fieldops.tsx';
 import { MissionDetailScreen, MissionsScreen } from './screens/missions.tsx';
-import { KeyCounts, NeedsBoardScreen, PartnerScreen } from './screens/needs.tsx';
+import { NeedsBoardScreen, PartnerScreen } from './screens/needs.tsx';
+import { HomeScreen, type HomeEvent } from './screens/home.tsx';
 import { PartnersScreen } from './screens/partners.tsx';
 import { OurServicesScreen } from './screens/our-services.tsx';
 import { ResourcesScreen } from './screens/resources.tsx';
@@ -58,83 +78,31 @@ import { ParcelsScreen } from './screens/parcels.tsx';
 import { ReentryScreen } from './screens/reentry.tsx';
 import { CommandWindow } from './ui/command-window.tsx';
 import { ConfirmDialog, Field, Status } from './ui/primitives.tsx';
+import { visibleGroups, type NavCount } from './ui/nav.ts';
 import { formatTime, setDisplayZone } from './ui/time.ts';
 
 /**
- * Console shell (CON-01): one console, role-based workspaces. Layer 1 ships
- * the administration workspaces; the others arrive with their layers. The
- * navigation shows every workspace the API answers for; a denied workspace
- * shows the denial, never a blank page.
+ * Console shell (CON-01): one console, role-based workspaces. The navigation
+ * lists the workspaces the person's actions answer for (`ui/nav.ts`); a direct
+ * address to any other shows the denial, never a blank page. The frame comes
+ * from @cg/ui (ADR-0045): the top bar with the event, the command bar and the
+ * person's display choices; the workspaces down the side with live counts.
  */
-const routes = [
-  { path: '/console/', label: 'Home', layer: 1 },
-  { path: '/console/reports', label: 'Review queue', layer: 2 },
-  { path: '/console/find-survivor', label: "Find a survivor's record", layer: 3 },
-  { path: '/console/assist', label: 'Assisted report', layer: 2 },
-  { path: '/console/intake', label: 'Intake setup', layer: 2 },
-  { path: '/console/needs', label: 'Needs board', layer: 3 },
-  { path: '/console/partner', label: 'Partner workspace', layer: 3 },
-  { path: '/console/our-services', label: 'Our services', layer: 3 },
-  { path: '/console/sites', label: 'Sites', layer: 3 },
-  { path: '/console/resources', label: 'Resources', layer: 3 },
-  { path: '/console/publications', label: 'Publication log', layer: 3 },
-  { path: '/console/contacts', label: 'Contacts', layer: 3 },
-  { path: '/console/partners', label: 'Partner agreements', layer: 3 },
-  { path: '/console/dispatch', label: 'Dispatch board', layer: 4 },
-  { path: '/console/missions', label: 'Missions', layer: 4 },
-  { path: '/console/replay', label: 'Board replay', layer: 4 },
-  { path: '/console/situation', label: 'Situation map', layer: 4 },
-  { path: '/console/shelters', label: 'Shelters', layer: 4 },
-  { path: '/console/reception', label: 'Volunteer reception', layer: 4 },
-  { path: '/console/roster', label: 'Roster and check-in', layer: 4 },
-  { path: '/console/net-control', label: 'Net control log', layer: 4 },
-  { path: '/console/field-messages', label: 'Messages to the field', layer: 4 },
-  { path: '/console/badges', label: 'Badges', layer: 4 },
-  { path: '/console/reminders', label: 'Reminders', layer: 4 },
-  { path: '/console/peer-support', label: 'Peer support', layer: 4 },
-  { path: '/console/health-notices', label: 'Health notices', layer: 4 },
-  { path: '/console/reentry', label: 'Re-entry passes', layer: 4 },
-  { path: '/console/devices', label: 'Field devices', layer: 4 },
-  { path: '/console/job-aids', label: 'Job aids', layer: 4 },
-  { path: '/console/declaration', label: 'Declaration data', layer: 6 },
-  { path: '/console/joint-assessment', label: 'Joint assessment', layer: 6 },
-  { path: '/console/shared-declarations', label: 'Shared declaration figures', layer: 6 },
-  { path: '/console/official-reports', label: 'Official reports', layer: 6 },
-  { path: '/console/metrics', label: 'Metrics', layer: 6 },
-  { path: '/console/equity', label: 'Equity', layer: 6 },
-  { path: '/console/reference-data', label: 'Reference data', layer: 6 },
-  { path: '/console/parcels', label: 'Parcels and routes', layer: 4 },
-  { path: '/console/fema-mappings', label: 'FEMA form mappings', layer: 6 },
-  { path: '/console/integrations', label: 'API keys and webhooks', layer: 6 },
-  { path: '/console/sso', label: 'Single sign-on', layer: 1 },
-  { path: '/console/subscription', label: 'Subscription', layer: 1 },
-  { path: '/console/facilities', label: 'Facility registry', layer: 7 },
-  { path: '/console/facility-approvals', label: 'Facility approvals', layer: 7 },
-  { path: '/console/recommendations', label: 'Recommendations', layer: 7 },
-  { path: '/console/discovery', label: 'Resource discovery', layer: 7 },
-  { path: '/console/events', label: 'Events', layer: 1 },
-  { path: '/console/event-templates', label: 'Event templates', layer: 7 },
-  { path: '/console/planning-factors', label: 'Planning factors', layer: 7 },
-  { path: '/console/branding', label: 'Branding and languages', layer: 7 },
-  { path: '/console/tenants', label: 'Organizations', layer: 1 },
-  { path: '/console/accounts', label: 'Staff accounts', layer: 1 },
-  { path: '/console/personnel', label: 'Personnel', layer: 1 },
-  { path: '/console/roles', label: 'Roles', layer: 1 },
-  { path: '/console/approvals', label: 'Permission changes', layer: 1 },
-  { path: '/console/audit', label: 'Audit log', layer: 1 },
-  { path: '/console/break-glass', label: 'Emergency access', layer: 1 },
-  { path: '/console/retention', label: 'Retention', layer: 1 },
-  { path: '/console/public-records', label: 'Records requests', layer: 7 },
-  { path: '/console/ai-register', label: 'AI use register', layer: 2 },
-] as const;
 
 interface Me {
   accountId: string;
   tenantId: string;
   tenantKind?: string;
   timeZone?: string;
-  roles: { key: string; version: number }[];
+  roles: { key: string; version: number; templateKey?: string | null }[];
   breakGlass: { id: string; expiresAt: string } | null;
+  /** Actions the account may take (ADM-04); the navigation and the home read them. */
+  actions?: string[];
+}
+
+interface DashboardCounts {
+  reports: { byState: Record<string, number> };
+  needs: { byStatus: Record<string, number> };
 }
 
 function usePath() {
@@ -147,7 +115,11 @@ function usePath() {
   const navigate = useCallback((to: string) => {
     history.pushState(null, '', to);
     setPath(to.replace(/\/$/, '') || '/console');
-    document.getElementById('main')?.focus();
+    // A move lands at the top of the new screen with focus on its main region,
+    // so a screen reader hears the heading next and a phone shows the screen
+    // from its start rather than wherever the drawer's link was (ACC-07).
+    window.scrollTo(0, 0);
+    document.getElementById('main')?.focus({ preventScroll: true });
   }, []);
   return { path, navigate };
 }
@@ -156,7 +128,7 @@ function SignIn({ config }: { config: RuntimeConfig }) {
   const [realm, setRealm] = useState(rememberedRealm() ?? '');
   const [error, setError] = useState<string | null>(null);
   return (
-    <main id="main" tabIndex={-1} className="signin">
+    <main id="main" tabIndex={-1} className="cg-signin">
       <h1>Sign in to {config.productName || 'the console'}</h1>
       <p>
         Enter your organization’s sign-in name. You will sign in with your password and your
@@ -249,15 +221,117 @@ export function App({ config }: { config: RuntimeConfig }) {
   }, [session]);
   useEffect(loadMe, [loadMe]);
 
+  // The device's theme and density (ADR-0045); briefing mode is a route (CON-11).
+  const [prefs, setPrefs] = useState<Preferences>(() => readPreferences());
+  const updatePrefs = useCallback((next: Preferences) => {
+    setPrefs(next);
+    writePreferences(next);
+    applyPreferences(next);
+  }, []);
+
+  // The open events, for the chip in the top bar and the home.
+  const [events, setEvents] = useState<HomeEvent[] | null>(null);
+  useEffect(() => {
+    if (!me) return;
+    let live = true;
+    api<HomeEvent[]>('/events?limit=50')
+      .then((rows) => live && setEvents(rows.filter((e) => e.status !== 'closed')))
+      .catch(() => live && setEvents([]));
+    return () => {
+      live = false;
+    };
+  }, [me]);
+
+  // Live counts beside the workspaces, refreshed every minute and on every move.
+  const [navCounts, setNavCounts] = useState<Record<string, NavCount>>({});
+  useEffect(() => {
+    if (!me) return;
+    let live = true;
+    const has = (a: string) => !me.actions || me.actions.includes(a);
+    const run = async () => {
+      const next: Record<string, NavCount> = {};
+      const jobs: Promise<void>[] = [];
+      if (has('dashboard.read'))
+        jobs.push(
+          api<DashboardCounts>('/dashboard/counts')
+            .then((c) => {
+              const fresh = c.reports.byState['submitted'] ?? 0;
+              if (fresh) next['/console/reports'] = { count: fresh, label: 'new reports' };
+              const open = c.needs.byStatus['open'] ?? 0;
+              if (open) next['/console/needs'] = { count: open, label: 'open needs' };
+            })
+            .catch(() => undefined),
+        );
+      if (has('facility.approve'))
+        jobs.push(
+          api<unknown[]>('/facility-changes?state=pending&limit=100')
+            .then((rows) => {
+              if (rows.length)
+                next['/console/facility-approvals'] = {
+                  count: rows.length,
+                  label: 'proposals waiting',
+                  tone: 'warn',
+                };
+            })
+            .catch(() => undefined),
+        );
+      if (has('permission_change.approve'))
+        jobs.push(
+          api<unknown[]>('/permission-changes?status=pending&limit=100')
+            .then((rows) => {
+              if (rows.length)
+                next['/console/approvals'] = {
+                  count: rows.length,
+                  label: 'changes waiting',
+                  tone: 'warn',
+                };
+            })
+            .catch(() => undefined),
+        );
+      if (has('recommendation.decide'))
+        jobs.push(
+          api<{ state: string }[]>('/recommendations?limit=50')
+            .then((rows) => {
+              const open = rows.filter((r) => r.state === 'open').length;
+              if (open)
+                next['/console/recommendations'] = { count: open, label: 'awaiting a decision' };
+            })
+            .catch(() => undefined),
+        );
+      if (has('reminder.read'))
+        jobs.push(
+          api<{ state: string }[]>('/reminders?open=true&mine=true&limit=100')
+            .then((rows) => {
+              const overdue = rows.filter((r) => r.state === 'overdue').length;
+              if (overdue)
+                next['/console/reminders'] = { count: overdue, label: 'overdue', tone: 'danger' };
+            })
+            .catch(() => undefined),
+        );
+      await Promise.all(jobs);
+      if (live) setNavCounts(next);
+    };
+    void run();
+    const timer = setInterval(() => void run(), 60_000);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [me, path]);
+
+  const groups = useMemo(() => visibleGroups(me, navCounts), [me, navCounts]);
+  const activeEvent = events?.find((e) => e.status === 'active') ?? events?.[0] ?? null;
+  const claims = useMemo(() => (session ? sessionClaims(session) : null), [session]);
+  const personName =
+    claims?.name || claims?.preferredUsername || claims?.email || (me ? 'Signed in' : '');
+  const personRole = me?.roles.map((r) => humanize(r.templateKey ?? r.key)).join(', ') ?? '';
+
+  const county = config.countyName ? `${config.countyName} Emergency Management` : undefined;
+
   if (!session) {
     return (
       <>
-        <header className="top">
-          <p className="product">{product}</p>
-          <p className="county">
-            {config.countyName ? `${config.countyName} Emergency Management` : ''}
-          </p>
-        </header>
+        <TopBar product={product} homeHref="/console/" {...(county ? { county } : {})} />
         {meError ? <Status kind="error">{meError}</Status> : null}
         <SignIn config={config} />
       </>
@@ -389,30 +463,14 @@ export function App({ config }: { config: RuntimeConfig }) {
         return <BreakGlassScreen onChanged={loadMe} />;
       case '/console/retention':
         return <RetentionScreen />;
+      case '/console/briefing':
+        return <HomeScreen me={me} events={events} navigate={navigate} briefing />;
       case '/console/public-records':
         return <PublicRecordsScreen />;
       case '/console/find-survivor':
         return <FindSurvivorScreen navigate={navigate} />;
       default:
-        return (
-          <section aria-labelledby="home-h">
-            <h1 id="home-h">Welcome</h1>
-            {me ? (
-              <dl className="meta">
-                <dt>Your roles</dt>
-                <dd>
-                  {me.roles.map((r) => `${r.key} (v${r.version})`).join(', ') ||
-                    'none assigned yet'}
-                </dd>
-                <dt>Data</dt>
-                <dd>Synthetic exercise data only</dd>
-              </dl>
-            ) : (
-              <p role="status">Loading your account…</p>
-            )}
-            {me ? <KeyCounts /> : null}
-          </section>
-        );
+        return <HomeScreen me={me} events={events} navigate={navigate} />;
     }
   })();
 
@@ -421,51 +479,75 @@ export function App({ config }: { config: RuntimeConfig }) {
       <a className="skip" href="#main">
         Skip to main content
       </a>
-      <header className="top">
-        <p className="product">{product}</p>
-        <p className="county">
-          {config.countyName ? `${config.countyName} Emergency Management` : ''}
-        </p>
-        {me ? <CommandWindow navigate={navigate} /> : null}
-        <button type="button" className="link light" onClick={signOut}>
-          Sign out
-        </button>
-      </header>
-      {me?.breakGlass ? (
-        <p className="banner" role="status">
-          Emergency access is active until {formatTime(new Date(me.breakGlass.expiresAt))}. Every
-          record you open is audited as restricted.
-        </p>
-      ) : null}
-      {meError ? <Status kind="error">{meError}</Status> : null}
-      <div className="layout">
-        <nav aria-label="Workspaces">
-          <ul>
-            {routes.map((r) => (
-              <li key={r.path}>
-                <a
-                  href={r.path}
-                  aria-current={
-                    path === r.path.replace(/\/$/, '') ||
-                    (r.path === '/console/' && path === '/console')
-                      ? 'page'
-                      : undefined
-                  }
-                  onClick={(e) => {
-                    e.preventDefault();
-                    navigate(r.path);
-                  }}
-                >
-                  {r.label}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
-        <main id="main" tabIndex={-1}>
-          {screen}
-        </main>
-      </div>
+      <Shell
+        topBar={
+          <TopBar
+            product={product}
+            {...(county ? { county } : {})}
+            homeHref="/console/"
+            onNavigate={navigate}
+            end={
+              me ? (
+                <PersonMenu
+                  name={personName}
+                  role={personRole}
+                  theme={prefs.theme}
+                  density={prefs.density}
+                  briefing={path === '/console/briefing'}
+                  onTheme={(theme) => updatePrefs({ ...prefs, theme })}
+                  onDensity={(density) => updatePrefs({ ...prefs, density })}
+                  {...(!me.actions || me.actions.includes('dashboard.read')
+                    ? {
+                        onBriefing: (on: boolean) =>
+                          navigate(on ? '/console/briefing' : '/console/'),
+                      }
+                    : {})}
+                  onSignOut={signOut}
+                />
+              ) : (
+                <button type="button" className="link" onClick={signOut}>
+                  Sign out
+                </button>
+              )
+            }
+          >
+            {activeEvent ? (
+              <EventChip
+                name={activeEvent.name}
+                hazard={activeEvent.hazardType ?? null}
+                status={activeEvent.status}
+                openedAt={activeEvent.openedAt ?? null}
+              />
+            ) : null}
+            {me ? <CommandWindow navigate={navigate} /> : null}
+          </TopBar>
+        }
+        banner={
+          <>
+            {me?.breakGlass ? (
+              <p className="banner" role="status">
+                Emergency access is active until {formatTime(new Date(me.breakGlass.expiresAt))}.
+                Every record you open is audited as restricted.
+              </p>
+            ) : null}
+            {meError ? <Status kind="error">{meError}</Status> : null}
+          </>
+        }
+        nav={({ id, open, close }) => (
+          <SideNav
+            groups={groups}
+            currentPath={path}
+            id={id}
+            open={open}
+            onNavigate={(to) => {
+              navigate(to);
+              close();
+            }}
+          />
+        )}
+      >
+        {screen}
+      </Shell>
       <ConfirmDialog
         request={
           confirm

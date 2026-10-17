@@ -14,6 +14,11 @@ export const PASSWORD = 'Westwind-Exercise-2026!';
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 
 export async function expectNoViolations(page: Page, opts: { mapMarkers?: boolean } = {}) {
+  // The staff top bar is pinned (ADR-0045): content a step scrolled under it is not a
+  // target the person has to press there, so the scan reads the page from its top.
+  await page.evaluate(() => {
+    if (document.querySelector('.cg-topbar')) window.scrollTo(0, 0);
+  });
   const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
   // WCAG 2.5.8 "Equivalent" exception: map markers can sit close together at
   // a zoom, and every marker's item is in the table beside the map (ACC-07).
@@ -22,10 +27,16 @@ export async function expectNoViolations(page: Page, opts: { mapMarkers?: boolea
     opts.mapMarkers === true &&
     v.id === 'target-size' &&
     v.nodes.every((n) => /^<button[^>]*class="marker[ "]/.test(n.html));
+  // Each failing node with its reason, so a failure in CI names the element.
   expect(
     results.violations
       .filter((v) => !exempt(v))
-      .map((v) => `${v.id}: ${v.help} (${v.nodes.length})`),
+      .flatMap((v) =>
+        v.nodes.map(
+          (n) =>
+            `${v.id}: ${n.target.join(' ')} ${n.html.slice(0, 160)} :: ${n.failureSummary?.replace(/\s+/g, ' ')}`,
+        ),
+      ),
   ).toEqual([]);
 }
 
@@ -40,6 +51,22 @@ export async function expectReflow(page: Page) {
     client: document.documentElement.clientWidth,
   }));
   expect(scroll, 'page wider than the screen').toBeLessThanOrEqual(client + 1);
+}
+
+/**
+ * Opens a workspace from the side navigation (CON-01). On a phone the navigation
+ * is a drawer behind the "Workspaces" button (ACC-07), so it is opened first;
+ * the link is found inside the navigation by its exact name, never on the page.
+ */
+export async function goTo(page: Page, label: string): Promise<void> {
+  const toggle = page.getByRole('button', { name: 'Workspaces' });
+  if ((await toggle.isVisible()) && (await toggle.getAttribute('aria-expanded')) !== 'true') {
+    await toggle.click();
+  }
+  await page
+    .getByRole('navigation', { name: 'Workspaces' })
+    .getByRole('link', { name: label, exact: true })
+    .click();
 }
 
 /** True once the element is visible, false after `ms`. `isVisible()` alone never waits. */
@@ -261,7 +288,8 @@ export async function onboard(
   // then the passkey) unless the SSO session from the invitation carries over.
   // The runner's pace decides which of these pages appear and in what order,
   // so the loop acts on whatever is on screen until the console shows home.
-  const welcome = page.getByRole('heading', { name: 'Welcome' });
+  // The home heading (its id is stable; it reads "Situation" or "Your work" by role).
+  const welcome = page.locator('main h1#home-h');
   const org = page.getByLabel('Organization');
   const username = page.getByRole('textbox', { name: /username or email/i });
   const useKey = page.getByRole('button', {

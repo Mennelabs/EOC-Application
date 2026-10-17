@@ -1,0 +1,271 @@
+/*
+ * Design tokens (ADR-0045). One vocabulary for every web app; the field app
+ * mirrors the same names in packages/ui/src/tokens.ts.
+ *
+ * Grounded in docs/design/users-and-needs.md:
+ *  - text contrast ≥ 7:1 for body ink and ≥ 4.5:1 for every other text (older
+ *    eyes, glare, cheap screens; WCAG 1.4.3/1.4.6, ACC-08);
+ *  - non-text contrast ≥ 3:1 for lines, icons and focus (WCAG 1.4.11);
+ *  - a light and a dark theme that follow the device and can be fixed by the
+ *    person (night shifts, wall displays, power-outage phones);
+ *  - 44 px targets for staff, 48 px for residents and the field (WCAG 2.5.8
+ *    says 24; gloves, tremor and a moving vehicle say more);
+ *  - the product accent is a tenant setting (SCL-08): --cg-accent may be
+ *    overridden per county, and every accent use keeps its contrast because
+ *    text on the accent is always --cg-accent-ink.
+ */
+:root {
+  color-scheme: light;
+
+  /* Fonts (self-hosted, OFL): IBM Plex Sans for staff, Atkinson Hyperlegible
+     Next for residents and the public (letterforms that stay distinct for low
+     vision and dyslexia), IBM Plex Mono for codes and references. */
+  --cg-font-sans:
+    'IBM Plex Sans Variable', 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto,
+    sans-serif;
+  --cg-font-public:
+    'Atkinson Hyperlegible Next Variable', 'Atkinson Hyperlegible Next', 'Atkinson Hyperlegible',
+    system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --cg-font-mono:
+    'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* Type scale (rem; 1rem = 16 px unless the person's browser says otherwise). */
+  --cg-text-xs: 0.75rem;
+  --cg-text-sm: 0.8125rem;
+  --cg-text-md: 0.9375rem;
+  --cg-text-base: 1rem;
+  --cg-text-lg: 1.125rem;
+  --cg-text-xl: 1.25rem;
+  --cg-text-2xl: 1.5rem;
+  --cg-text-3xl: 1.875rem;
+  --cg-text-4xl: 2.25rem;
+  --cg-text-5xl: 3rem;
+  --cg-leading: 1.5;
+  --cg-leading-tight: 1.25;
+  --cg-weight-regular: 400;
+  --cg-weight-medium: 500;
+  --cg-weight-semibold: 600;
+  --cg-weight-bold: 700;
+
+  /* Space, radius, elevation, motion, targets. */
+  --cg-space-1: 0.25rem;
+  --cg-space-2: 0.5rem;
+  --cg-space-3: 0.75rem;
+  --cg-space-4: 1rem;
+  --cg-space-5: 1.25rem;
+  --cg-space-6: 1.5rem;
+  --cg-space-8: 2rem;
+  --cg-space-10: 2.5rem;
+  --cg-space-12: 3rem;
+  --cg-radius-sm: 4px;
+  --cg-radius-md: 6px;
+  --cg-radius-lg: 8px;
+  --cg-radius-xl: 12px;
+  --cg-radius-pill: 999px;
+  --cg-shadow-1: 0 1px 2px rgb(16 24 40 / 0.06), 0 1px 3px rgb(16 24 40 / 0.1);
+  --cg-shadow-2: 0 4px 8px -2px rgb(16 24 40 / 0.1), 0 2px 4px -2px rgb(16 24 40 / 0.06);
+  --cg-shadow-3: 0 20px 24px -4px rgb(16 24 40 / 0.16), 0 8px 8px -4px rgb(16 24 40 / 0.06);
+  --cg-motion-fast: 120ms;
+  --cg-motion-base: 180ms;
+  --cg-ease: cubic-bezier(0.2, 0, 0, 1);
+  --cg-target: 44px;
+  --cg-target-public: 48px;
+  --cg-z-header: 20;
+  --cg-z-nav: 10;
+  --cg-z-popover: 50;
+  --cg-z-dialog: 100;
+  --cg-z-takeover: 120;
+
+  /* Light theme. Text inks on --cg-surface: ink 15.8:1, ink-2 7.7:1, ink-3 6:1. */
+  --cg-bg: #f4f6f8;
+  --cg-surface: #ffffff;
+  --cg-surface-2: #eef1f4;
+  --cg-surface-3: #e3e8ed;
+  --cg-line: #d5dadf;
+  --cg-line-strong: #727d88;
+  --cg-ink: #1b1f23;
+  --cg-ink-2: #4a5560;
+  --cg-ink-3: #5b6670;
+  --cg-ink-disabled: #6f7a85;
+  --cg-accent: #1d4f91;
+  --cg-accent-hover: #123665;
+  --cg-accent-soft: #e3eaf3;
+  --cg-accent-ink: #ffffff;
+  --cg-focus: #b34700;
+  --cg-selection: #cfe0f7;
+
+  --cg-ok-ink: #0b6e4f;
+  --cg-ok-bg: #e3f3ec;
+  --cg-ok-line: #3a9a73;
+  --cg-warn-ink: #7a4a00;
+  --cg-warn-bg: #fcebc7;
+  --cg-warn-line: #b8780f;
+  --cg-danger-ink: #8c1d18;
+  --cg-danger-bg: #fbe9e7;
+  --cg-danger-line: #d4574e;
+  --cg-info-ink: #1d4f91;
+  --cg-info-bg: #e3eaf3;
+  --cg-info-line: #5b86c4;
+  --cg-ai-ink: #5b3a8e;
+  --cg-ai-bg: #efe9f6;
+  --cg-ai-line: #8f6fc0;
+  --cg-neutral-ink: #4a5560;
+  --cg-neutral-bg: #eef1f4;
+  --cg-neutral-line: #727d88;
+
+  /* Strong fills (white text on them): ok 5.4:1, warn 5.5:1, danger 7.5:1, info 7.6:1. */
+  --cg-ok-fill: #0f7a57;
+  --cg-warn-fill: #8a5300;
+  --cg-danger-fill: #b3261e;
+  --cg-info-fill: #1d4f91;
+  --cg-fill-ink: #ffffff;
+
+  /* The top bar is dark in both themes: it anchors the screen and the event. */
+  --cg-header-bg: #16202b;
+  --cg-header-ink: #ffffff;
+  --cg-header-ink-2: #c9d4df;
+  --cg-header-line: #3a4a5c;
+  --cg-header-chip: #1f2b38;
+  --cg-header-focus: #f2a23a;
+  --cg-header-live: #f2a23a;
+
+  /* Maps and charts: sequential shading in five steps, always with a legend in words. */
+  --cg-shade-1: #e3eaf3;
+  --cg-shade-2: #b5c8e4;
+  --cg-shade-3: #7fa3d6;
+  --cg-shade-4: #3f72b3;
+  --cg-shade-5: #123665;
+  --cg-shade-unknown: #eef1f4;
+}
+
+/* Dark theme: the device preference, unless the person chose a theme. Inks on
+   --cg-surface: ink 14.2:1, ink-2 8.9:1, ink-3 6.2:1; accent 8.6:1. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --cg-bg: #0f1620;
+    --cg-surface: #17202b;
+    --cg-surface-2: #1f2a36;
+    --cg-surface-3: #27333f;
+    --cg-line: #2f3b48;
+    --cg-line-strong: #6b7a8b;
+    --cg-ink: #e8edf2;
+    --cg-ink-2: #b4c0cc;
+    --cg-ink-3: #99a7b5;
+    --cg-ink-disabled: #8593a2;
+    --cg-accent: #8fbbf5;
+    --cg-accent-hover: #b2d0fa;
+    --cg-accent-soft: #1e3250;
+    --cg-accent-ink: #0b1626;
+    --cg-focus: #f2a23a;
+    --cg-selection: #2b4a76;
+    --cg-ok-ink: #7fd3ae;
+    --cg-ok-bg: #0f2e24;
+    --cg-ok-line: #2f8f68;
+    --cg-warn-ink: #f2c46b;
+    --cg-warn-bg: #3a2a06;
+    --cg-warn-line: #a86a0a;
+    --cg-danger-ink: #f4a59f;
+    --cg-danger-bg: #3b1512;
+    --cg-danger-line: #bf4e45;
+    --cg-info-ink: #9cc3f2;
+    --cg-info-bg: #162a45;
+    --cg-info-line: #3f72b3;
+    --cg-ai-ink: #c9b8e3;
+    --cg-ai-bg: #2a1f3e;
+    --cg-ai-line: #7b5bb0;
+    --cg-neutral-ink: #b4c0cc;
+    --cg-neutral-bg: #1f2a36;
+    --cg-neutral-line: #6b7a8b;
+    --cg-ok-fill: #118761;
+    --cg-warn-fill: #aa6600;
+    --cg-danger-fill: #e03026;
+    --cg-info-fill: #2b75d7;
+    --cg-shadow-1: 0 1px 2px rgb(0 0 0 / 0.4), 0 1px 3px rgb(0 0 0 / 0.5);
+    --cg-shadow-2: 0 4px 8px -2px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+    --cg-shadow-3: 0 20px 24px -4px rgb(0 0 0 / 0.6), 0 8px 8px -4px rgb(0 0 0 / 0.4);
+    --cg-shade-1: #1e3250;
+    --cg-shade-2: #2b4a76;
+    --cg-shade-3: #3f72b3;
+    --cg-shade-4: #7fa3d6;
+    --cg-shade-5: #b5c8e4;
+    --cg-shade-unknown: #1f2a36;
+  }
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --cg-bg: #0f1620;
+  --cg-surface: #17202b;
+  --cg-surface-2: #1f2a36;
+  --cg-surface-3: #27333f;
+  --cg-line: #2f3b48;
+  --cg-line-strong: #6b7a8b;
+  --cg-ink: #e8edf2;
+  --cg-ink-2: #b4c0cc;
+  --cg-ink-3: #99a7b5;
+  --cg-ink-disabled: #8593a2;
+  --cg-accent: #8fbbf5;
+  --cg-accent-hover: #b2d0fa;
+  --cg-accent-soft: #1e3250;
+  --cg-accent-ink: #0b1626;
+  --cg-focus: #f2a23a;
+  --cg-selection: #2b4a76;
+  --cg-ok-ink: #7fd3ae;
+  --cg-ok-bg: #0f2e24;
+  --cg-ok-line: #2f8f68;
+  --cg-warn-ink: #f2c46b;
+  --cg-warn-bg: #3a2a06;
+  --cg-warn-line: #a86a0a;
+  --cg-danger-ink: #f4a59f;
+  --cg-danger-bg: #3b1512;
+  --cg-danger-line: #bf4e45;
+  --cg-info-ink: #9cc3f2;
+  --cg-info-bg: #162a45;
+  --cg-info-line: #3f72b3;
+  --cg-ai-ink: #c9b8e3;
+  --cg-ai-bg: #2a1f3e;
+  --cg-ai-line: #7b5bb0;
+  --cg-neutral-ink: #b4c0cc;
+  --cg-neutral-bg: #1f2a36;
+  --cg-neutral-line: #6b7a8b;
+  --cg-ok-fill: #118761;
+  --cg-warn-fill: #aa6600;
+  --cg-danger-fill: #e03026;
+  --cg-info-fill: #2b75d7;
+  --cg-shadow-1: 0 1px 2px rgb(0 0 0 / 0.4), 0 1px 3px rgb(0 0 0 / 0.5);
+  --cg-shadow-2: 0 4px 8px -2px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+  --cg-shadow-3: 0 20px 24px -4px rgb(0 0 0 / 0.6), 0 8px 8px -4px rgb(0 0 0 / 0.4);
+  --cg-shade-1: #1e3250;
+  --cg-shade-2: #2b4a76;
+  --cg-shade-3: #3f72b3;
+  --cg-shade-4: #7fa3d6;
+  --cg-shade-5: #b5c8e4;
+  --cg-shade-unknown: #1f2a36;
+}
+
+/* Reduced motion: nothing moves on its own (ACC-16). */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --cg-motion-fast: 0ms;
+    --cg-motion-base: 0ms;
+  }
+}
+
+/* Print: paper is light; a badge or a report never prints dark. */
+@media print {
+  :root,
+  :root[data-theme='dark'] {
+    color-scheme: light;
+    --cg-bg: #ffffff;
+    --cg-surface: #ffffff;
+    --cg-surface-2: #f4f6f8;
+    --cg-ink: #000000;
+    --cg-ink-2: #333333;
+    --cg-ink-3: #444444;
+    --cg-line: #999999;
+    --cg-accent: #1d4f91;
+    --cg-shadow-1: none;
+    --cg-shadow-2: none;
+    --cg-shadow-3: none;
+  }
+}

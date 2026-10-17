@@ -246,7 +246,8 @@ test.describe('single sign-on through the county identity provider (SEC-07)', ()
           .first()
           .click();
       }
-      await expect(samPage.getByRole('heading', { name: 'Welcome' })).toBeVisible({
+      // The console home: its heading reads "Situation" or "Your work" by role (ADR-0045).
+      await expect(samPage.locator('main h1#home-h')).toBeVisible({
         timeout: 60_000,
       });
       await sam.close();

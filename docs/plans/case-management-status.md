@@ -29,7 +29,7 @@ Resume record for the case-management work after layer 8 (plan: [`case-managemen
 
 ## Open items
 
-- PR #60 (A–E) waits on CI and merge; the report's §6 questions wait on Adam.
+- PR #60 (A–E) merged as fcd488c (2026-10-18); the report's §6 questions wait on Adam.
 - Follow-ups: the field app's read-only case view (plan §3.9); a text when an appointment is cancelled; the cancellation reason through the shared dialog.
 
 - CM-B: cancelling an appointment records the reason but sends the survivor no text; a cancellation notice is a follow-up.

@@ -93,6 +93,48 @@ describe('sectionsFor (NED-04 table)', () => {
     expect(sectionsFor('coordination', ['contact', 'household'], { needs: [] })).toEqual([]);
   });
 
+  it('FL-13, FL:FR-27: case management carries the case sections; the dollars only with the financial category', () => {
+    expect(
+      sectionsFor('case_management', ['contact', 'household', 'financial'], { needs: [] }),
+    ).toEqual([
+      'name',
+      'contact',
+      'contact_preference',
+      'household_band',
+      'need',
+      'recovery_plan',
+      'help_received',
+      'appointments',
+    ]);
+    // The SBA table's agreement: contact and the dollars, nothing about the home or household.
+    expect(sectionsFor('case_management', ['contact', 'financial'], { needs: [] })).toEqual([
+      'name',
+      'contact',
+      'contact_preference',
+      'need',
+      'recovery_plan',
+      'help_received',
+      'appointments',
+    ]);
+    // Without the financial category the partner sees that help was given, never how much.
+    expect(sectionsFor('case_management', [], { needs: [] })).toEqual([
+      'name',
+      'need',
+      'recovery_plan',
+    ]);
+    // The live sections never enter the projection: nothing is copied out of the case.
+    const p = project(['recovery_plan', 'help_received', 'appointments', 'need'], {
+      name: 'Exercise Person',
+      contact: { phone: '+15555550100' },
+      address: null,
+      householdSize: 3,
+      needs: [{ id: 'n1', category: 'cleanup_tarp', status: 'open' }],
+      accessNeeds: null,
+    });
+    expect(Object.keys(p.clear)).toEqual(['needs']);
+    expect(p.restricted).toEqual({});
+  });
+
   it('shelter gets access needs only when the resident asked for shelter', () => {
     expect(sectionsFor('shelter', ['contact', 'access_needs'], { needs: ['food_water'] })).toEqual([
       'contact',

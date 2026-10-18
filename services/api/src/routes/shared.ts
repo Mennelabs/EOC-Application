@@ -12,7 +12,7 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import type { Selectable } from 'kysely';
 import { z } from 'zod';
-import type { FieldDescriptor } from '@cg/authz';
+import { CASE_SECTION, type FieldDescriptor } from '@cg/authz';
 import type { Database } from '@cg/db';
 import { errors } from '../errors.ts';
 import { iso, listQuery, uuidParam } from './helpers.ts';
@@ -60,6 +60,8 @@ const sharedOut = z.object({
   householdBand: z.string().nullable(),
   needs: z.array(needOut).nullable(),
   accessNeeds: z.array(z.string()).nullable(),
+  /** FL:FR-18: the case on this record when the grant carries the case sections, else null. */
+  caseId: z.uuid().nullable(),
 });
 type SharedOut = z.infer<typeof sharedOut>;
 
@@ -131,6 +133,17 @@ export const sharedRoutes: FastifyPluginAsync = async (instance) => {
       decision.fields.includes(field) && !(unreadable && restrictedFields.has(field));
     const pick = <T>(field: keyof SharedOut, from: Record<string, unknown>): T | null =>
       can(field) && from[field] !== undefined ? (from[field] as T) : null;
+    const caseId = grants.some((g) => g.sections.includes(CASE_SECTION))
+      ? ((
+          await request.txAs(grants[0]!.tenant_id, (trx) =>
+            trx
+              .selectFrom('cg.case')
+              .select('id')
+              .where('report_id', '=', grants[0]!.report_id!)
+              .executeTakeFirst(),
+          )
+        )?.id ?? null)
+      : null;
     const out: SharedOut = {
       grantIds: grants.map((g) => g.id),
       reportId: grants[0]!.report_id!,
@@ -148,6 +161,7 @@ export const sharedRoutes: FastifyPluginAsync = async (instance) => {
       householdBand: pick<string>('householdBand', clear),
       needs: pick<SharedOut['needs']>('needs', clear),
       accessNeeds: pick<string[]>('accessNeeds', restricted),
+      caseId,
     };
     return { out, restrictedRead: unreadable ? [] : decision.restrictedRead };
   }

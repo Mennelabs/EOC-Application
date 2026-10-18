@@ -89,7 +89,7 @@ Reply with the numbers (`2`, `1`, …), `BACK`, `SKIP`, `HELP`, `STOP`, or `DAÑ
 
 ## Sign in to the console
 
-The sign-in screen asks for the **organization** first: that is the tenant key, which is also the Keycloak realm. The synthetic WESTWIND county is `county`; the other organizations are `state`, `region`, `city`, `coad`, `canteen`, `shelter-ngo`, `cleanup` and `legal`. Every seeded account uses the synthetic password `Westwind-Exercise-2026!`.
+The sign-in screen asks for the **organization** first: that is the tenant key, which is also the Keycloak realm. The synthetic WESTWIND county is `county`; the other organizations are `state`, `region`, `city`, `coad`, `canteen`, `shelter-ngo`, `cleanup`, `legal`, `sba` and `ltrg`. Every seeded account uses the synthetic password `Westwind-Exercise-2026!`.
 
 | Organization  | Account                      | Role                          |
 | ------------- | ---------------------------- | ----------------------------- |
@@ -105,6 +105,10 @@ The sign-in screen asks for the **organization** first: that is the tenant key, 
 | `canteen`     | ruth.canteen@example.org     | NGO incident commander        |
 | `shelter-ngo` | nurse@example.org            | shelter nurse                 |
 | `state`       | state.liaison@example.org    | state liaison                 |
+| `county`      | noor.cases@example.org       | county caseworker             |
+| `coad`        | eli.casework@example.org     | case manager                  |
+| `sba`         | sba.rep@example.org          | SBA representative            |
+| `ltrg`        | rosa.ltrg@example.org        | long-term recovery manager    |
 
 Interactive sign-in is password **and** passkey (SEC-07). The first sign-in of each account asks to register a passkey: Windows Hello, Touch ID, a security key or a phone all work; later sign-ins ask for it after the password. Permission changes need a second administrator, so use `admin@example.org` to request and `security.admin@example.org` to approve.
 
@@ -194,6 +198,15 @@ The console replaces the EOC functions a county would otherwise run in WebEOC (C
 - **Wall display** (`/console/wall`): counts, shelters, objectives, the last six hours and live conditions in large type, refreshed on the county's `briefing.refresh_seconds`; a display account (`briefing_display` role) holds only the briefing.
 - **Live conditions:** road closures and work zones, hazards, traffic and outages from a state DOT's WZDx feed, the Waze for Cities partner feed and a utility's outage feed, each with its source and age, plus staff entries that override them; the seeded exercise feeds are recorded synthetic responses the worker replays. Routing and travel times come from the self-hosted router when the `routing` profile runs (ADR-0046).
 - **For a state system:** an API key with scope `eoc.read` reads resource requests, significant events, issued reports and ICS forms at `/api/eoc/<county>/...`; one with `resource_request.update` posts the state's tracking number and status; webhooks announce submitted and updated requests, logged events and issued forms.
+
+### Case management on the shared record (after layer 8)
+
+Decided 2026-10-15 and built after layer 8 (`docs/plans/case-management.md`, FL-13, FL-03, FL:FR-07, FL:FR-12, FL:FR-18, FL:FR-27):
+
+- **Case work** (`noor.cases@example.org`, county caseworker; `eli.casework@example.org` in realm `coad` as a partner case manager): one case per household, opened on the report by its reference code. Help received is logged with its source, type and dollar value and totalled so duplication of benefits is seen before FEMA, the SBA or a grant decides; an entry is voided with a reason, never changed; dollars show only to roles with the financial category. The recovery plan lists what is still unmet, who owns it and by when. An appointment texts the survivor the time, place and who it is with, in their language (with opt-in; email otherwise), never the purpose, and the worker sends one reminder the day before outside quiet hours. A case is closed with a reason.
+- **Recovery centre** (`luis.masscare@example.org` at the door; `sba.rep@example.org` in realm `sba` at the SBA table): the seeded Westwind MARC's floor. The door checks a survivor in by a first name or the reference code with the tables to see; each table's queue shows who is waiting and how long; handing a survivor to the next table carries one line on why. A partner's table sees only its own visits and notes; nothing on the floor names a home or a dollar.
+- **Sharing and consent:** the `case_management` service in a partner agreement; survivors are asked about case managers, the long-term recovery group and the SBA on the shared record (proposed wording, in force until Adam replaces it). A partner reaches a case only through a grant that carries the case sections.
+- **The day-30 hand-off** (`rosa.ltrg@example.org` in realm `ltrg`): a case open for `case.handoff_days` (default 30) goes to the long-term recovery group when the survivor consented, with every dollar of help already given, a referral and the group leading the case; without consent it stays with the county and the caseworker is reminded why. Set `SEED_DAMAGE_REPORTS` to load an exercise case with help received and a plan.
 
 ### Windows (Docker Desktop)
 

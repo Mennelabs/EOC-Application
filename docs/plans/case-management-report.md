@@ -1,0 +1,47 @@
+# Case management report: the shared record after layer 8
+
+Date: 2026-10-18. Branch `claude/case-management-zd5i8m`, pull request #60. The work Adam decided on 2026-10-15 for after layer 8 (`docs/plans/case-management.md`); its defaults run behind configuration until Adam answers §6 (`docs/decisions.md`, 2026-10-17). Everything in the stack is synthetic or the WESTWIND exercise (SCL-12).
+
+**The rule under every feature:** the survivor's consent decides who reads the case; every dollar is a record that is voided, never erased; a text to a survivor says when and where, never why.
+
+## What was built
+
+| Area                                                                                                                                                                                                                                                                                                                                                                                                                                               | Where                                                                                                                                                               |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **The case (FL-13, FL:FR-07, FL:FR-18):** one per report, led by the county or a partner; help received with source, type and dollar value, append-only and voided with a reason; the duplication-of-benefits totals by source and type, for the financial category only; the recovery plan of unmet needs with owner, due date and status; closing with a reason; every read audited with the categories read and whether it came through a grant | migration 0111, `routes/cases.ts`, `routes/case-access.ts`, `screens/cases.tsx`                                                                                     |
+| **Appointments (FL:FR-18):** scheduled from the case; the survivor is texted the time, place and who it is with, in their language, through the message pipeline (opt-in, else email, else nothing and the appointment says so); one reminder the day before, held in quiet hours, none when made the same day; kept, missed or cancelled with a reason                                                                                            | migration 0112, `routes/appointments.ts`, worker `jobs/appointments.ts`, templates `appointment` and `appointment_reminder`, `@cg/adapters` `formatAppointmentWhen` |
+| **The recovery centre (FL:FR-12):** check-in by a first name or the reference code with the tables to see; each table's queue with waits; the warm hand-off with a one-line why; a partner's table sees its own visits and notes only; the SBA as a partner organization with its own role                                                                                                                                                         | migration 0112, `routes/marc.ts`, `screens/recovery-centre.tsx`, seed tenant `sba` and the Westwind MARC                                                            |
+| **Sharing and consent (FL-03, NED-04, NED-05):** the `case_management` service with sections `recovery_plan`, `help_received` (financial) and `appointments` (contact), read live from the case and never projected; a partner reaches a case only through a grant carrying those sections; consent types `case_management`, `long_term_recovery` and `sba` with proposed EN/ES wording at reading grade 8 or below                                | `packages/authz/src/sharing.ts`, `packages/intake/src/graphs/westwind.ts`, `routes/shared.ts`                                                                       |
+| **The day-30 hand-off (FL:FR-27):** hourly; a case open for `case.handoff_days` (default 30) goes to the partner whose signed agreement names `long_term_recovery` and `case_management`, only with the survivor's consent: grant refreshed with every dollar, a referral, the partner leads; without consent the caseworker is reminded once why                                                                                                  | worker `jobs/handoff.ts`, seed tenant `ltrg` and its agreement                                                                                                      |
+| **Roles:** `county_caseworker`, `sba_representative`, `long_term_recovery_manager`; `case_manager` gains the case grants; coordinators see cases without dollars; mass care and partner coordination run the recovery centre's door                                                                                                                                                                                                                | `packages/authz/src/templates.ts`                                                                                                                                   |
+| **Records:** accessibility records for both screens, the checklist row, traceability, known limitations, README                                                                                                                                                                                                                                                                                                                                    | `docs/a11y/screens/case-work.md`, `recovery-centre.md`, `tools/reqindex/trace-case.json`, `docs/operations/known-limitations.md`                                    |
+
+## What passed
+
+- **Traceability:** FL-13, FL-03, FL:FR-07, FL:FR-12 and FL:FR-27 pass; FL:FR-18 is partial (the field app's read-only view of the case and a text on cancellation are not built); NED-04 and NED-05 are extended. Totals across every layer: 520 of 666 IDs pass, 132 partial, 12 deferred, 1 designed, 1 not started (`docs/traceability.md`).
+- **Checks:** typecheck, lint, the unit suites (770), the product-name, traceability and AC-18C help-claims checks pass locally on every task commit; the database suites (`cases`, `appointments-marc`, worker `handoff`) and the browser scan run in CI.
+- **Accessibility:** axe (WCAG 2.2 AA) clean on both screens in both themes on desktop and phone; keyboard and 320 px reflow automated; the screen-reader pass waits on a person (check 2 in each record).
+
+## What did not pass, or is not yet proven
+
+- **FL:FR-18 is partial:** the field app's shared-record screens do not show help received or appointments (plan §3.9, a later task); cancelling an appointment records the reason but sends no text; the console asks the cancellation reason in a browser prompt rather than the shared dialog.
+- **Consent wording** for the three new organization types is proposed and in force until Adam replaces it (plan §6 question 1); the Spanish is a reviewed draft (EQ-07).
+- **Named external case-management systems** (NED-07, Section 21) stay deferred to the pilot; the case's API and the shared record's CSV are what they would read.
+- **CI on the final head** of PR #60 is running at the time of writing; the branch was rebased onto main after layer 8 merged (602cd7c).
+
+## Readings taken in favour of privacy and safety (flagged for you)
+
+1. **Dollar values are financial data:** read only by roles whose template holds the category and through grants whose agreement names it, audited on every read; everyone else sees that help was given and never how much.
+2. **No hand-off without consent:** the day-30 job never moves a case the survivor did not consent to share with the long-term recovery group; the caseworker is told, once.
+3. **A recovery-centre table sees the consented sections only;** the queue carries a first name or the reference code and the tables, never an address or a dollar; a partner's table sees only its own visits and notes.
+4. **Help received is append-only;** a wrong entry is voided with a reason and stays visible as voided.
+5. **Appointment texts carry the time and place, never the purpose;** the purpose stays on the case and is marked so on the screen.
+6. **A partner reaches a case only through a case-management grant;** a cleanup or feeding grant reaches no case, and a revoked grant takes the case out of reach in the same read.
+
+## Questions for you (defaults in force)
+
+1. **Consent wording** (plan §6 question 1): keep or replace the proposed English and Spanish texts for case managers, the long-term recovery group and the SBA.
+2. **Is the SBA a partner tenant** with the `sba_representative` role (default, seeded as `sba`), or a table the county staffs?
+3. **Day 30:** from the case opening (default, `case.handoff_days`) or from the event's start?
+4. **Which NGO case-management systems** should read the case API first (Section 21)?
+5. **Order of what comes next:** Brother badge printing, CJIS mutual-aid grants, iOS readiness, and the field app's read-only case view, unless you reorder.

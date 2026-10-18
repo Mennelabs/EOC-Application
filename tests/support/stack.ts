@@ -28,7 +28,9 @@ export const CAST_ACCOUNTS: ReadonlyArray<readonly [realm: string, user: string]
   ['coad', 'jen.coad@example.org'],
   // Their administrators (ADM-02, decision 2026-10-13), who onboard their own staff; the
   // state's onboard its liaisons (layer 6).
-  ...(['coad', 'canteen', 'shelter-ngo', 'cleanup', 'legal', 'state'] as const).flatMap(
+  ...(
+    ['coad', 'canteen', 'shelter-ngo', 'cleanup', 'legal', 'state', 'sba', 'ltrg'] as const
+  ).flatMap(
     (realm) =>
       [
         [realm, `admin.${realm}@example.org`],

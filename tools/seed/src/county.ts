@@ -124,6 +124,24 @@ export const tenants: Tenant[] = [
     timezone: 'America/Chicago',
     locales: ['en', 'es'],
   },
+  // FL:FR-27: the long-term recovery group that takes cases at day 30.
+  {
+    key: 'ltrg',
+    kind: 'partner_org',
+    name: 'Westwind Long-Term Recovery Group',
+    parent: 'county',
+    timezone: 'America/Chicago',
+    locales: ['en', 'es'],
+  },
+  // FL:FR-12: the SBA's disaster field office as a partner organization (plan §6 question 2).
+  {
+    key: 'sba',
+    kind: 'partner_org',
+    name: 'SBA Disaster Field Office (exercise)',
+    parent: 'county',
+    timezone: 'America/Chicago',
+    locales: ['en', 'es'],
+  },
 ];
 
 /** Areas from the WESTWIND narrative (docs/02, "touchdown" and "equity alert"). */
@@ -564,6 +582,23 @@ const siteList: SiteSpec[] = [
     languages: ['en', 'es'],
     publish: false,
   },
+  // FL:FR-12: the recovery centre where survivors meet FEMA, SBA, insurers and partners at tables.
+  {
+    slug: 'westwind-marc',
+    kind: 'marc',
+    name: 'Westwind Multi-Agency Resource Center (Harmon Community College)',
+    status: 'open',
+    address: { line1: '400 College Dr', city: 'Harmon City', postal: '63005' },
+    location: [-90.788, 38.808],
+    hours: { daily: '09:00–19:00' },
+    services: ['fema', 'sba', 'insurance', 'case_management', 'legal_aid', 'childcare'],
+    pets: 'no',
+    accessibility: { ada: true, wheelchair: true, asl: true },
+    medicalPower: false,
+    languages: ['en', 'es'],
+    transit: 'Route 7 bus, College Dr stop',
+    publish: true,
+  },
   {
     slug: 'safe-harbor',
     kind: 'shelter',
@@ -748,6 +783,20 @@ export const agreements = [
   },
   { partner: 'legal', orgType: 'relief_agencies', service: 'legal', categories: ['contact'] },
   { partner: 'coad', orgType: 'community_groups', service: 'coordination', categories: [] },
+  // Case management (plan §3.7): the long-term recovery group reads every dollar; the SBA table
+  // reads contact and the dollars it needs for the loan (FL-13, FL:FR-12, FL:FR-27).
+  {
+    partner: 'ltrg',
+    orgType: 'long_term_recovery',
+    service: 'case_management',
+    categories: ['contact', 'location_exact', 'household', 'financial', 'free_text'],
+  },
+  {
+    partner: 'sba',
+    orgType: 'sba',
+    service: 'case_management',
+    categories: ['contact', 'financial'],
+  },
 ];
 
 /**

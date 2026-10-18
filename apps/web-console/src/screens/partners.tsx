@@ -29,7 +29,15 @@ interface Tenant {
 }
 
 const ORG_TYPES = ['volunteer_cleanup', 'relief_agencies', 'community_groups', 'faith_based'];
-const SERVICES = ['cleanup', 'feeding', 'shelter', 'counseling', 'legal', 'coordination'];
+const SERVICES = [
+  'cleanup',
+  'feeding',
+  'shelter',
+  'counseling',
+  'legal',
+  'coordination',
+  'case_management',
+];
 const CATEGORIES = ['contact', 'location_exact', 'household', 'access_needs'];
 const label = (s: string) => s.replace(/_/g, ' ');
 

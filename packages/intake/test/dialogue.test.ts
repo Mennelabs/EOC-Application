@@ -160,7 +160,14 @@ describe('parsing replies', () => {
     });
     expect(parseReply(westwindGraph, node('consent'), '1', 'en', sms)).toEqual({
       kind: 'consent',
-      values: { volunteer_cleanup: true, relief_agencies: false, community_groups: false },
+      values: {
+        volunteer_cleanup: true,
+        relief_agencies: false,
+        community_groups: false,
+        case_management: false,
+        long_term_recovery: false,
+        sba: false,
+      },
     });
     expect(parseReply(westwindGraph, node('consent'), 'none', 'en', sms)).toMatchObject({
       kind: 'consent',

@@ -27,6 +27,9 @@ export const messagePayloadSchema = z.object({
   referralId: z.uuid().optional(),
   /** A field message's text fallback names its receipt, which records the message row (DSP-06). */
   fieldReceiptId: z.uuid().optional(),
+  /** An appointment's notice or reminder names the appointment, which records the message (FL:FR-18). */
+  appointmentId: z.uuid().optional(),
+  appointmentNotice: z.enum(['notice', 'reminder']).optional(),
   variables: z.record(z.string(), z.string()).default({}),
   /**
    * Variables that must not sit in the outbox in clear, such as a single-use link (REC-01):
@@ -125,6 +128,16 @@ export const messageSend: TopicHandler = async (ctx, msg) => {
         .updateTable('cg.field_message_receipt')
         .set({ sms_message_id: id, channel: 'sms' })
         .where('id', '=', p.fieldReceiptId)
+        .execute();
+    if (p.appointmentId && p.appointmentNotice)
+      await trx
+        .updateTable('cg.appointment')
+        .set(
+          p.appointmentNotice === 'notice'
+            ? { notice_message_id: id }
+            : { reminder_message_id: id },
+        )
+        .where('id', '=', p.appointmentId)
         .execute();
     if (p.shareGrantId)
       await trx

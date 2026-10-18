@@ -9,3 +9,4 @@ export * from './webhooks.ts';
 export * from './link-check.ts';
 export * from './public-get.ts';
 export * from './metrics.ts';
+export * from './appointment-time.ts';

@@ -54,6 +54,8 @@ const SCREENS: [path: string, heading: string][] = [
   ['ics-forms', 'ICS forms'],
   ['live-conditions', 'Live conditions'],
   ['wall', 'Wall display'],
+  ['cases', 'Case work'],
+  ['recovery-centre', 'Recovery centre'],
 ];
 
 /** Opens a screen and waits until it has loaded: heading shown, nothing still loading. */
@@ -145,6 +147,25 @@ test.describe('every console screen, one by one', () => {
             page.getByRole('table', { name: '7. Current and planned objectives' }).getByRole('row'),
           ).toHaveCount(5);
           await expectNoViolations(page);
+        }
+
+        if (path === 'cases') {
+          // FL-13: the administrator opens a case by a reference code; the seed loads no case
+          // without SEED_DAMAGE_REPORTS, so the list says so; dollars are only for the financial
+          // category, and nothing names a home.
+          await expect(page.getByRole('heading', { name: 'Open a case' })).toBeVisible();
+          await expect(page.getByText(/No cases yet|Open .* case/).first()).toBeVisible();
+        }
+
+        if (path === 'recovery-centre') {
+          // FL:FR-12: the seeded Westwind MARC is the floor; the door's check-in form is there.
+          await expect(page.getByRole('combobox', { name: 'Recovery centre' })).toContainText(
+            'Westwind Multi-Agency Resource Center',
+          );
+          await expect(
+            page.getByRole('heading', { name: /^Check a survivor in at/ }),
+          ).toBeVisible();
+          await expect(page.getByText(/line1|postal|\$\d/)).toHaveCount(0);
         }
 
         if (path === 'live-conditions') {

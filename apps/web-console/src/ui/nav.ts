@@ -121,6 +121,19 @@ export const GROUPS: readonly WorkspaceGroup[] = [
         icon: icons.ScrollText,
         needs: ['dsa.read'],
       },
+      // Case management on the shared record (FL-13, FL:FR-18, FL:FR-12).
+      {
+        path: '/console/cases',
+        label: 'Case work',
+        icon: icons.HeartHandshake,
+        needs: ['case.read'],
+      },
+      {
+        path: '/console/recovery-centre',
+        label: 'Recovery centre',
+        icon: icons.Landmark,
+        needs: ['marc.queue'],
+      },
       {
         path: '/console/contacts',
         label: 'Contacts',

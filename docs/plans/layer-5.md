@@ -176,5 +176,5 @@ GATE-01 (scope and roles here), GATE-02 (the cases in §9), GATE-03 for the encl
 1. **Enclave screens on their own address** instead of inside the console (§2.2). Default: own address.
 2. **CJIS records retention**: default 7 years after closure until the agency's state records schedule is entered.
 3. **Who holds the liaison role in a county**: default nobody but the exercise liaison; the county administrator grants it like any role.
-4. **Cross-agency sharing inside the enclave** (a sheriff's office and a city police department on one mission): default one owning agency, no sharing.
+4. **Cross-agency sharing inside the enclave** (a sheriff's office and a city police department on one mission): default one owning agency, no sharing. _Answered 2026-10-15 (`docs/decisions.md`): mutual aid — the owner grants a helping agency read access per mission for a set period, CJIS-qualified users only, every read audited, ending automatically. Built after layer 8 (`docs/plans/queued-status.md` MA)._
 5. **The CJIS values in §4** are to be confirmed by the agency's CJIS Systems Officer against the policy text.

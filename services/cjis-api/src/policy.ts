@@ -4,7 +4,8 @@
  * asks `decide`. Order of evaluation:
  *   E1 unknown action                               → deny (default deny)
  *   E2 not CJIS-qualified (every action but me.read) → deny
- *   E3 another agency's record                      → deny
+ *   E3 another agency's record                      → deny, unless the owner
+ *      shares it with the subject's agency now and the action only reads
  *   E4 audit records are never changed              → deny
  *   E5 a second administrator decides; nobody decides
  *      a request they made or one about themselves,
@@ -60,6 +61,29 @@ export const ENCLAVE_ACTIONS = {
   ),
   'record.review': act('write', ['supervisor'], 'Review a disposition', { consequential: true }),
   'record.reopen': act('write', ['supervisor'], 'Reopen a closed record', { consequential: true }),
+  // Mutual aid (decision 2026-10-15): the owner's supervisor or administrator grants a helping
+  // agency a read of one record for a set period; the grant and its end are consequential.
+  'record.share': act(
+    'write',
+    ['supervisor', 'agency_admin'],
+    'Share a record with another agency for a set period',
+    {
+      consequential: true,
+    },
+  ),
+  'record.share.revoke': act(
+    'write',
+    ['supervisor', 'agency_admin'],
+    'End a share before its time',
+    {
+      consequential: true,
+    },
+  ),
+  'record.share.read': act(
+    'read',
+    [...RECORD_WORKERS, ...ADMINS],
+    'See which agencies a record is shared with, and the agencies to share with',
+  ),
   'account.read': act('read', ADMINS, 'List and read enclave accounts'),
   'account.create': act('admin', ['agency_admin'], 'Create an enclave account'),
   'account.screening': act(
@@ -165,6 +189,8 @@ export interface EnclaveResource {
   aboutPersonId?: string;
   /** For a disposition review: who recorded it (E6). */
   recordedBy?: string | null;
+  /** Mutual aid: the owner shares this record with the subject's agency now (E3 reads only). */
+  sharedWithSubject?: boolean;
 }
 
 export interface EnclaveDecision {
@@ -192,8 +218,10 @@ export function decide(
   const consequential = action.consequential === true;
   if (!action.unqualified && !subject.qualified)
     return deny(`E2:not_qualified:${subject.missing.join(',')}`, consequential, true);
-  if (resource.agencyId && resource.agencyId !== subject.agencyId)
-    return deny('E3:other_agency', consequential);
+  if (resource.agencyId && resource.agencyId !== subject.agencyId) {
+    if (!(resource.sharedWithSubject && action.kind === 'read'))
+      return deny('E3:other_agency', consequential);
+  }
   if (resource.type === 'audit_event' && action.kind !== 'read' && action.kind !== 'export')
     return deny('E4:audit_immutable', consequential, true);
   if (actionKey === 'permission.decide' && resource.requestedBy === subject.personId)

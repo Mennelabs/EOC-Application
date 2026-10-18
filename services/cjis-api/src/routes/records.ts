@@ -173,13 +173,18 @@ const recordedEntryFields = {
   bodycam: ['cameraLabel', 'recordedFrom', 'recordedTo', 'evidenceReference', 'notes'],
 };
 
-async function loadRecord(trx: Trx, cjiRef: string): Promise<RecordRow> {
+/**
+ * The record by its reference as row security shows it: the agency's own, or one another
+ * agency shares with it now (0006). A write names the agency that must own it; a shared record
+ * is then "not found", so a helping agency never learns more than its read allows.
+ */
+async function loadRecord(trx: Trx, cjiRef: string, ownedBy?: string): Promise<RecordRow> {
   const row = await trx
     .selectFrom('cjis.record')
     .select(['id', 'agency_id', 'cji_ref', 'state', 'version', 'disposition_by'])
     .where('cji_ref', '=', cjiRef)
     .executeTakeFirst();
-  if (!row) throw errors.notFound();
+  if (!row || (ownedBy && row.agency_id !== ownedBy)) throw errors.notFound();
   return row;
 }
 
@@ -399,6 +404,22 @@ export const recordRoutes: FastifyPluginAsync = async (appBase) => {
               .whereRef('p.record_id', '=', 'r.id')
               .where('p.status', '=', 'active')
               .as('people'),
+            // Mutual aid: a record another agency shares with this one names the owner and the end.
+            eb
+              .selectFrom('cjis.agency as o')
+              .select('o.name')
+              .whereRef('o.id', '=', 'r.agency_id')
+              .where('r.agency_id', '<>', s.agencyId)
+              .as('shared_by'),
+            eb
+              .selectFrom('cjis.record_share as sh')
+              .select('sh.ends_at')
+              .whereRef('sh.record_id', '=', 'r.id')
+              .where('sh.to_agency_id', '=', s.agencyId)
+              .where('sh.status', '=', 'active')
+              .orderBy('sh.ends_at', 'desc')
+              .limit(1)
+              .as('shared_until'),
           ])
           .orderBy('r.updated_at', 'desc')
           .limit(200);
@@ -422,6 +443,8 @@ export const recordRoutes: FastifyPluginAsync = async (appBase) => {
           people: Number(r.people ?? 0),
           updatedAt: r.updated_at.toISOString(),
           version: r.version,
+          sharedBy: r.shared_by ?? null,
+          sharedUntil: r.shared_until ? new Date(r.shared_until).toISOString() : null,
         }));
       });
     },
@@ -429,25 +452,252 @@ export const recordRoutes: FastifyPluginAsync = async (appBase) => {
 
   app.get('/records/:ref', { schema: { params: z.object({ ref }) } }, async (request) => {
     const s = request.person();
+    // The role must read records at all before the reference is looked up.
     await request.authorize(
       'record.read',
       { type: 'record', id: request.params.ref, agencyId: s.agencyId },
       { asNotFound: true },
     );
     return request.tx(async (trx) => {
+      // Row security shows the agency's own record, or one shared with it now (mutual aid).
       const r = await loadRecord(trx, request.params.ref);
+      const shared = r.agency_id !== s.agencyId;
+      if (shared)
+        await request.authorize(
+          'record.read',
+          { type: 'record', id: r.cji_ref, agencyId: r.agency_id, sharedWithSubject: true },
+          { asNotFound: true },
+        );
       const out = await present(trx, r);
-      // SEC-18: every read of CJI is recorded with what was shown.
+      const shares = await presentShares(trx, r, s.agencyId);
+      // SEC-18: every read of CJI is recorded with what was shown; a read through a share says so.
       await request.audit(trx, {
         action: 'record.read',
         targetType: 'record',
         targetId: r.cji_ref,
         targetVersion: r.version,
         fields: RECORD_READ_FIELDS,
+        ...(shared ? { reason: `read under a mutual-aid share from ${shares.ownerName}` } : {}),
       });
-      return out;
+      return { ...out, ...shares };
     });
   });
+
+  // ---- mutual aid (decision 2026-10-15; 0006) ------------------------------------------------
+
+  /** The shares on a record as this agency may see them, and who owns the record. */
+  async function presentShares(trx: Trx, r: RecordRow, viewerAgency: string) {
+    const [owner, rows] = await Promise.all([
+      trx.selectFrom('cjis.agency').select('name').where('id', '=', r.agency_id).executeTakeFirst(),
+      trx
+        .selectFrom('cjis.record_share as s')
+        .innerJoin('cjis.agency as a', 'a.id', 's.to_agency_id')
+        .leftJoin('cjis.person as g', 'g.id', 's.granted_by')
+        .select([
+          's.id',
+          's.to_agency_id',
+          'a.name as to_agency_name',
+          's.platform_mission_reference',
+          's.purpose',
+          's.starts_at',
+          's.ends_at',
+          's.status',
+          'g.display_name as granted_by',
+          's.revoked_at',
+          's.revoke_reason',
+          's.ended_at',
+          's.version',
+        ])
+        .where('s.record_id', '=', r.id)
+        .orderBy('s.created_at', 'desc')
+        .execute(),
+    ]);
+    const now = Date.now();
+    const toDate = (v: Date | string) => (v instanceof Date ? v : new Date(v));
+    return {
+      ownAgency: r.agency_id === viewerAgency,
+      ownerName: owner?.name ?? null,
+      shares: rows
+        // A helping agency sees its own share only (the policy shows it nothing else anyway).
+        .filter((x) => r.agency_id === viewerAgency || x.to_agency_id === viewerAgency)
+        .map((x) => ({
+          id: x.id,
+          toAgencyId: x.to_agency_id,
+          toAgencyName: x.to_agency_name,
+          platformMissionReference: x.platform_mission_reference,
+          purpose: x.purpose,
+          startsAt: toDate(x.starts_at).toISOString(),
+          endsAt: toDate(x.ends_at).toISOString(),
+          status: x.status === 'active' && toDate(x.ends_at).getTime() <= now ? 'ended' : x.status,
+          grantedBy: x.granted_by,
+          revokedAt: x.revoked_at ? toDate(x.revoked_at).toISOString() : null,
+          revokeReason: x.revoke_reason,
+          endedAt: x.ended_at ? toDate(x.ended_at).toISOString() : null,
+          version: x.version,
+        })),
+    };
+  }
+
+  /** The agencies a record can be shared with: every active agency but one's own. */
+  app.get('/agencies', async (request) => {
+    const s = request.person();
+    await request.authorize('record.share.read', { type: 'record_share', agencyId: s.agencyId });
+    const rows = await request.tx((trx) =>
+      trx
+        .selectFrom('cjis.agency')
+        .select(['id', 'name', 'agency_identifier'])
+        .where('status', '=', 'active')
+        .where('id', '<>', s.agencyId)
+        .orderBy('name')
+        .execute(),
+    );
+    return rows.map((a) => ({ id: a.id, name: a.name, identifier: a.agency_identifier }));
+  });
+
+  const MAX_SHARE_DAYS = 90;
+  app.post(
+    '/records/:ref/shares',
+    {
+      schema: {
+        params: z.object({ ref }),
+        body: z.object({
+          toAgencyId: z.uuid(),
+          endsAt: z.iso.datetime(),
+          purpose: text(300),
+          platformMissionReference: z.string().trim().min(1).max(40).optional(),
+        }),
+      },
+      config: { requiresVersion: true },
+    },
+    async (request, reply) => {
+      const s = request.person();
+      await request.authorize(
+        'record.share',
+        { type: 'record', id: request.params.ref, agencyId: s.agencyId },
+        { asNotFound: true },
+      );
+      const expected = request.expectedVersion();
+      const b = request.body;
+      const endsAt = new Date(b.endsAt);
+      const now = new Date();
+      if (endsAt.getTime() <= now.getTime())
+        throw new ApiError(400, 'validation_failed', 'The share must end in the future.');
+      if (endsAt.getTime() > now.getTime() + MAX_SHARE_DAYS * 86_400_000)
+        throw new ApiError(
+          400,
+          'validation_failed',
+          `A share lasts at most ${MAX_SHARE_DAYS} days; grant it again when the mission goes on.`,
+        );
+      if (b.toAgencyId === s.agencyId)
+        throw new ApiError(400, 'validation_failed', 'A record is not shared with its own agency.');
+      const out = await request.tx(async (trx) => {
+        const r = await loadRecord(trx, request.params.ref, s.agencyId);
+        if (r.version !== expected) throw new ApiError(409, 'conflict', 'The record changed.');
+        const to = await trx
+          .selectFrom('cjis.agency')
+          .select(['id', 'name'])
+          .where('id', '=', b.toAgencyId)
+          .where('status', '=', 'active')
+          .executeTakeFirst();
+        if (!to) throw new ApiError(400, 'validation_failed', 'Unknown or suspended agency.');
+        const standing = await trx
+          .selectFrom('cjis.record_share')
+          .select('id')
+          .where('record_id', '=', r.id)
+          .where('to_agency_id', '=', to.id)
+          .where('status', '=', 'active')
+          .where('ends_at', '>', now)
+          .executeTakeFirst();
+        if (standing)
+          throw new ApiError(409, 'already_shared', `${to.name} already has a standing share.`);
+        const share = await trx
+          .insertInto('cjis.record_share')
+          .values({
+            agency_id: r.agency_id,
+            record_id: r.id,
+            to_agency_id: to.id,
+            platform_mission_reference: b.platformMissionReference ?? null,
+            purpose: b.purpose,
+            ends_at: endsAt,
+            granted_by: s.personId,
+          })
+          .returning(['id', 'version'])
+          .executeTakeFirstOrThrow();
+        await touchRecord(trx, r, s.personId);
+        await event(trx, request, r, 'shared', {
+          shareId: share.id,
+          toAgencyId: to.id,
+          endsAt: endsAt.toISOString(),
+        });
+        await request.audit(trx, {
+          action: 'record.share',
+          targetType: 'record_share',
+          targetId: share.id,
+          targetVersion: share.version,
+          fields: ['to_agency_id', 'ends_at', 'purpose'],
+          reason: `shared with ${to.name} until ${endsAt.toISOString()}`,
+        });
+        const fresh = await loadRecord(trx, r.cji_ref, s.agencyId);
+        return { ...(await present(trx, fresh)), ...(await presentShares(trx, fresh, s.agencyId)) };
+      });
+      return reply.code(201).send(out);
+    },
+  );
+
+  app.post(
+    '/records/:ref/shares/:id/revoke',
+    { schema: { params: z.object({ ref, id: z.uuid() }) }, config: { requiresVersion: true } },
+    async (request) => {
+      const s = request.person();
+      const decision = await request.authorize(
+        'record.share.revoke',
+        { type: 'record_share', id: request.params.id, agencyId: s.agencyId },
+        { asNotFound: true },
+      );
+      const expected = request.expectedVersion();
+      const reason = decision.confirmedReason;
+      return request.tx(async (trx) => {
+        const r = await loadRecord(trx, request.params.ref, s.agencyId);
+        const share = await trx
+          .selectFrom('cjis.record_share')
+          .select(['id', 'status', 'version', 'to_agency_id'])
+          .where('id', '=', request.params.id)
+          .where('record_id', '=', r.id)
+          .executeTakeFirst();
+        if (!share) throw errors.notFound();
+        if (share.status !== 'active')
+          throw new ApiError(409, 'share_not_active', `The share is already ${share.status}.`);
+        const updated = await trx
+          .updateTable('cjis.record_share')
+          .set({
+            status: 'revoked',
+            revoked_at: new Date(),
+            revoked_by: s.personId,
+            revoke_reason: reason,
+          })
+          .where('id', '=', share.id)
+          .where('version', '=', expected)
+          .returning(['id', 'version'])
+          .executeTakeFirst();
+        if (!updated) throw new ApiError(409, 'conflict', 'The share changed.');
+        await touchRecord(trx, r, s.personId);
+        await event(trx, request, r, 'share_revoked', {
+          shareId: share.id,
+          toAgencyId: share.to_agency_id,
+        });
+        await request.audit(trx, {
+          action: 'record.share.revoke',
+          targetType: 'record_share',
+          targetId: share.id,
+          targetVersion: updated.version,
+          fields: ['status'],
+          reason,
+        });
+        const fresh = await loadRecord(trx, r.cji_ref, s.agencyId);
+        return { ...(await present(trx, fresh)), ...(await presentShares(trx, fresh, s.agencyId)) };
+      });
+    },
+  );
 
   app.post(
     '/records',
@@ -524,7 +774,7 @@ export const recordRoutes: FastifyPluginAsync = async (appBase) => {
       const b = request.body;
       const expected = request.expectedVersion();
       return request.tx(async (trx) => {
-        const r = await loadRecord(trx, request.params.ref);
+        const r = await loadRecord(trx, request.params.ref, s.agencyId);
         assertOpen(r);
         const set: Record<string, unknown> = { updated_by: s.personId };
         if (b.origin !== undefined) set['origin'] = b.origin;
@@ -655,7 +905,7 @@ export const recordRoutes: FastifyPluginAsync = async (appBase) => {
         const b = request.body;
         const expected = request.expectedVersion();
         const added = await request.tx(async (trx) => {
-          const r = await loadRecord(trx, request.params.ref);
+          const r = await loadRecord(trx, request.params.ref, s.agencyId);
           assertOpen(r);
           if (r.version !== expected) throw errors.conflict(await present(trx, r));
           await checkLinks(trx, r, b);
@@ -711,7 +961,7 @@ export const recordRoutes: FastifyPluginAsync = async (appBase) => {
         const b = request.body;
         const expected = request.expectedVersion();
         return request.tx(async (trx) => {
-          const r = await loadRecord(trx, request.params.ref);
+          const r = await loadRecord(trx, request.params.ref, s.agencyId);
           assertOpen(r);
           await checkLinks(trx, r, b);
           const values = await entryValues(kind, s.agencyId, b);
@@ -766,7 +1016,7 @@ export const recordRoutes: FastifyPluginAsync = async (appBase) => {
         );
         const expected = request.expectedVersion();
         return request.tx(async (trx) => {
-          const r = await loadRecord(trx, request.params.ref);
+          const r = await loadRecord(trx, request.params.ref, s.agencyId);
           assertOpen(r);
           // BRD:FR-07.06: a removal keeps the row and its reason.
           const updated = await trx
@@ -823,7 +1073,7 @@ export const recordRoutes: FastifyPluginAsync = async (appBase) => {
           : 'records';
       // Answered after the commit, so the version the client gets is the one it will find.
       const out = await request.tx(async (trx) => {
-        const r = await loadRecord(trx, request.params.ref);
+        const r = await loadRecord(trx, request.params.ref, s.agencyId);
         const amends = request.body.amendsEventId;
         if (amends) {
           const target = await trx
@@ -886,7 +1136,7 @@ export const recordRoutes: FastifyPluginAsync = async (appBase) => {
       );
       const expected = request.expectedVersion();
       return request.tx(async (trx) => {
-        const r = await loadRecord(trx, request.params.ref);
+        const r = await loadRecord(trx, request.params.ref, s.agencyId);
         assertOpen(r);
         const now = new Date();
         const updated = await trx
@@ -941,7 +1191,7 @@ export const recordRoutes: FastifyPluginAsync = async (appBase) => {
       );
       const expected = request.expectedVersion();
       return request.tx(async (trx) => {
-        const r = await loadRecord(trx, request.params.ref);
+        const r = await loadRecord(trx, request.params.ref, s.agencyId);
         if (r.state !== 'closed')
           throw new ApiError(409, 'not_disposed', 'Record a disposition before the review.');
         const updated = await trx
@@ -977,7 +1227,7 @@ export const recordRoutes: FastifyPluginAsync = async (appBase) => {
       );
       const expected = request.expectedVersion();
       return request.tx(async (trx) => {
-        const r = await loadRecord(trx, request.params.ref);
+        const r = await loadRecord(trx, request.params.ref, s.agencyId);
         if (r.state !== 'closed') throw new ApiError(409, 'not_closed', 'This record is open.');
         const updated = await trx
           .updateTable('cjis.record')

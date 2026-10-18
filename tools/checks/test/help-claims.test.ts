@@ -148,18 +148,6 @@ const RULES: Rule[] = [
     honest: ['An interpreter joins by phone or video, or comes in person.'],
   },
   {
-    name: 'case management',
-    about:
-      'No appointments or SBA queue on the shared record; case management comes after layer 8 (FL-13, FL:FR-07, 12, 18, 27)',
-    patterns: [
-      /\b(?:book|schedule)\s+(?:an?\s+|your\s+)?appointments?\s+(?:here|in\s+the\s+app|through\s+(?:this|the)\s+(?:app|site|page))\b/i,
-      /\bSBA\s+queue\b/i,
-    ],
-    limitation: 'Case management on the shared record',
-    claim: 'Book an appointment here with the SBA queue.',
-    honest: ['Walk-in or by appointment.'],
-  },
-  {
     name: 'sending closures to Waze',
     about: 'Waze reads the county feed once the county enrols; nothing is sent to Waze (FL:FR-05)',
     patterns: [

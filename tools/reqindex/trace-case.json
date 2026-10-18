@@ -1,3 +1,51 @@
 {
-  "_about": "Evidence per requirement ID for case management on the shared record (after layer 8; docs/plans/case-management.md): FL-13, FL-03, FL:FR-07, FL:FR-12, FL:FR-18, FL:FR-27 and the sharing rows it extends. Earlier evidence is kept and this work's appended after 'case management:'. status: pass | partial | deferred | designed. tools/reqindex/traceability.py merges it after trace-layer8.json."
+  "_about": "Evidence per requirement ID for case management on the shared record (after layer 8; docs/plans/case-management.md): FL-13, FL-03, FL:FR-07, FL:FR-12, FL:FR-18, FL:FR-27 and the sharing rows it extends. Earlier evidence is kept and this work's appended after 'case management:'. status: pass | partial | deferred | designed. tools/reqindex/traceability.py merges it after trace-layer8.json.",
+  "FL-13": [
+    "pass",
+    "case management: cg.help_received (0111) append-only with source kind, the giving organization, type, description, dollar value, given on, recorded by whom and for which organization; voided with a reason, never edited or deleted (RULE-10, no delete policy); GET /cases/:id/duplication totals the standing entries by source and type, refused without the financial category on the role (SEC-11) or the help_received section on a partner's grant (services/api/src/routes/cases.ts); dollar values masked to roles without the category; the Case work screen's duplication tiles and the help table with standing or voided (apps/web-console/src/screens/cases.tsx); the long-term recovery group reads every dollar at hand-off (services/worker/src/jobs/handoff.ts); seeded exercise case with four entries (tools/seed/src/load.ts)",
+    "services/api/test/cases.db.test.ts, services/api/test/appointments-marc.db.test.ts, services/worker/test/handoff.db.test.ts, packages/authz/test/sharing.test.ts, tests/e2e/console-screens.spec.ts (Case work, Recovery centre)",
+    "Entries are typed by hand or by the partner that gave the help; no feed from FEMA, the SBA or insurers reads awards in (none is public)."
+  ],
+  "FL-03": [
+    "pass",
+    "the sections a partner may see (grants, ADR-0030); needs, consent and referrals on one record; case management: one cg.case per report with help received, the recovery plan (cg.recovery_plan_item) and appointments (cg.appointment) on it (0111, 0112); the case_management sharing service with sections recovery_plan, help_received (financial) and appointments (contact) read live from the case and never projected (packages/authz/src/sharing.ts); a partner reaches a case only through an active grant carrying the case sections, the dollars only with help_received, appointments only with that section (services/api/src/routes/case-access.ts, cases.ts, appointments.ts); the shared record names its case (routes/shared.ts); consent organization types case_management, long_term_recovery and sba (packages/intake/src/graphs/westwind.ts)",
+    "services/api/test/sharing.db.test.ts, services/api/test/cases.db.test.ts, services/api/test/appointments-marc.db.test.ts, services/worker/test/handoff.db.test.ts, packages/authz/test/sharing.test.ts, tests/e2e/console-screens.spec.ts (Case work, Recovery centre)",
+    "Consent wording for the three new organization types is proposed (plan §6 question 1) until Adam replaces it."
+  ],
+  "FL:FR-07": [
+    "pass",
+    "case management: the county_caseworker template (open and close cases, help received with the duplication check, the recovery plan, appointments, the recovery centre) shares case management with partner case managers (case_manager gains the case grants), the SBA (sba_representative) and the long-term recovery group (long_term_recovery_manager) (packages/authz/src/templates.ts); the Case work screen (apps/web-console/src/screens/cases.tsx); seeded Noor Haddad, Eli Brandt (COAD), Grace Okonkwo (SBA), Rosa Kim (long-term recovery group)",
+    "services/api/test/cases.db.test.ts, services/api/test/appointments-marc.db.test.ts, services/worker/test/handoff.db.test.ts, packages/authz/test/sharing.test.ts, tests/e2e/console-screens.spec.ts (Case work, Recovery centre)",
+    ""
+  ],
+  "FL:FR-12": [
+    "pass",
+    "the MARC is planned by the recommendations (REC-09); case management: cg.marc_visit and cg.marc_stop (0112): the door checks a survivor in by a first name or the reference code with the tables to see in order; each table's queue with waits; a warm hand-off marks the table done and tells the next why in one line; a partner's table (the SBA representative) sees only the visits with a stop at its table and its own notes; the queue carries no address or dollar; every queue read audited (services/api/src/routes/marc.ts); the Recovery centre screen (apps/web-console/src/screens/recovery-centre.tsx); the SBA field office as a partner tenant with an agreement for contact and the dollars, its representative logging SBA loans as help received; the seeded Westwind MARC site",
+    "services/api/test/appointments-marc.db.test.ts, tests/e2e/console-screens.spec.ts (Recovery centre)",
+    "The SBA is a partner tenant with its own role (plan §6 question 2, default in force)."
+  ],
+  "FL:FR-18": [
+    "partial",
+    "document capture with consent (FL-09); case management: the shared record with help received and dollar values, the recovery plan of unmet needs with owner, due date and status, appointments scheduled from the case and texted to the survivor through the message pipeline in their language (template appointment; texts only with opt-in, else email, else nothing and the appointment says so) with the time and place and never the purpose, one reminder the day before outside quiet hours (services/worker/src/jobs/appointments.ts), kept, missed or cancelled with a reason; referrals and the day-30 hand-off ride on the case; the Case work screen (apps/web-console/src/screens/cases.tsx)",
+    "services/api/test/cases.db.test.ts, services/api/test/appointments-marc.db.test.ts, services/worker/test/handoff.db.test.ts, packages/authz/test/sharing.test.ts, tests/e2e/console-screens.spec.ts (Case work, Recovery centre), services/worker/test/templates.test.ts",
+    "The field app's shared-record screens do not yet show help received or appointments read-only (plan §3.9, a later task); cancelling an appointment sends the survivor no text."
+  ],
+  "FL:FR-27": [
+    "pass",
+    "case management: the worker's hourly hand-off (services/worker/src/jobs/handoff.ts): a case open for case.handoff_days (default 30, from the opening) goes to the partner whose signed agreement names long_term_recovery and case_management, only with the survivor's consent for that type: the grant is refreshed with every dollar of help received, a referral carries the case, the case is marked handed off and the partner leads it; without consent the case stays with the county and the caseworker who opened it gets one reminder saying why; funds committed per household are help_received entries of source ltrg_commitment; the seeded Westwind Long-Term Recovery Group and its agreement",
+    "services/worker/test/handoff.db.test.ts",
+    "Day 30 counts from the case opening (plan §6 question 3, default in force)."
+  ],
+  "NED-04": [
+    "pass",
+    "packages/authz/src/sharing.ts (the table per service), services/worker/src/jobs/sharing.ts, routes/shared.ts; case management: the case_management service row with the three case sections, help_received only with the financial category on the agreement",
+    "packages/authz/test/sharing.test.ts, services/api/test/sharing.db.test.ts, tests/integration/layer3.int.test.ts, services/worker/test/handoff.db.test.ts",
+    ""
+  ],
+  "NED-05": [
+    "pass",
+    "PATCH /intake/:tenant/me/consent, NOSHARE/NOCOMPARTIR keyword (channels/session.ts), worker consentChanged → revoke + recall notice; case management: a revoked grant takes the case, its dollars and its appointments out of the partner's reach in the same read (services/api/src/routes/case-access.ts)",
+    "services/api/test/sharing.db.test.ts, tests/integration/layer3.int.test.ts (web and text withdrawal, notices), services/api/test/cases.db.test.ts (the partner finds nothing once the grant is revoked)",
+    "Access is gone in the same worker transaction, not within the hour."
+  ]
 }

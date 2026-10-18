@@ -327,7 +327,7 @@ pnpm --filter @cg/api dev
 pnpm --filter @cg/web-resident dev
 ```
 
-The field app (`apps/field`, Expo SDK 57, React Native) runs in a browser with `pnpm --filter @cg/field web` and on a device or emulator through a local build: `pnpm --filter @cg/field prebuild:android`, then Gradle or Android Studio (EAS cloud builds are not used, ADR-0014). Its platform-free core (outbox, sync, conflicts, purge, parcel snapping, USNG, sweep order, timers, location policy) is `packages/field-core`.
+The field app (`apps/field`, Expo SDK 57, React Native) runs in a browser with `pnpm --filter @cg/field web` and on a device or emulator through a local build: `pnpm --filter @cg/field prebuild:android`, then Gradle or Android Studio (EAS cloud builds are not used, ADR-0014). The iPhone build is made on a Mac: `FIELD_API_BASE=… FIELD_TENANT=… pnpm --filter @cg/field prebuild:ios`, then Xcode; `docs/operations/field-app-ios.md` has the steps, the device checks and the distribution choices (decision 2026-10-15). Its platform-free core (outbox, sync, conflicts, purge, parcel snapping, USNG, sweep order, timers, location policy) is `packages/field-core`.
 
 ## Rules in brief
 

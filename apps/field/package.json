@@ -8,6 +8,7 @@
     "web": "node scripts/maplibre-worker.mjs && expo start --web",
     "build:web": "node scripts/maplibre-worker.mjs && expo export --platform web --output-dir dist",
     "prebuild:android": "expo prebuild --platform android --no-install",
+    "prebuild:ios": "expo prebuild --platform ios",
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {

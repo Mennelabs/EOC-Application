@@ -2100,6 +2100,8 @@ export interface ReminderEventTable {
   created_at: TsGen;
 }
 
+export type BadgePrintLayout = 'letter' | 'ql820_62x100' | 'ql1110_4x6';
+
 export interface BadgeTable {
   id: Generated<Uuid>;
   tenant_id: Uuid;
@@ -2130,6 +2132,8 @@ export interface BadgeTable {
   print_confirmed_at: TsNullable;
   print_confirmed_by: Uuid | null;
   print_failed_reason: string | null;
+  /** BRD:FR-13.05: the label the badge was last printed on (ADR-0047). */
+  print_layout: BadgePrintLayout | null;
   handed_out_at: TsNullable;
   revoked_at: TsNullable;
   revoked_by: Uuid | null;

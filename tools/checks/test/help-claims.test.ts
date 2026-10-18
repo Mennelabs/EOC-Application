@@ -45,11 +45,14 @@ const RULES: Rule[] = [
   {
     name: 'printing straight to a printer',
     about:
-      'Badges, passes and codes print from the browser; printer integration is later work (AC-18C, BRD:FR-13.05, FL-01, FL:FR-14)',
+      "Badges, passes and codes print from the browser through the desk's print dialog and driver, sized to the Brother labels (ADR-0047); nothing is sent to a printer by itself and the field app has no printer (AC-18C, BRD:FR-13.05, FL-01, FL:FR-14)",
     patterns: [
       /\bprint(?:s|ed)?\s+automatically\b/i,
       /\bautomatic(?:ally)?\s+print/i,
-      /\bBrother\s+(?:printer|label|QL|PT|TD)/,
+      // A Brother printer may be named as the label the page is sized for, never as a device
+      // the platform drives on its own or from the field app.
+      /\bBrother\s+(?:printer|QL|PT|TD)[^.\n]*\b(?:automatically|directly|straight|from\s+the\s+(?:field\s+)?app|from\s+your\s+phone)\b/i,
+      /\b(?:field\s+app|phone)\b[^.\n]*\bBrother\b/i,
       /\bsent\s+(?:straight\s+)?to\s+the\s+(?:badge\s+|label\s+|wristband\s+)?printer\b/i,
       /\bprinted\s+wristbands?\b/i,
       /\bwristbands?\s+(?:is|are|will\s+be|gets?)\s+printed\b/i,
@@ -60,6 +63,7 @@ const RULES: Rule[] = [
     claim: 'The badge is sent to the printer and prints automatically.',
     honest: [
       'Badge generated. Print it now: the code is shown only this once.',
+      'Brother QL-820NWB: 62 mm × 100 mm label',
       "Record that you saw Ana's badge come out of the printer.",
       'Write it on the wristband. It is shown only once.',
     ],

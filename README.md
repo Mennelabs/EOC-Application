@@ -208,6 +208,10 @@ Decided 2026-10-15 and built after layer 8 (`docs/plans/case-management.md`, FL-
 - **Sharing and consent:** the `case_management` service in a partner agreement; survivors are asked about case managers, the long-term recovery group and the SBA on the shared record (proposed wording, in force until Adam replaces it). A partner reaches a case only through a grant that carries the case sections.
 - **The day-30 hand-off** (`rosa.ltrg@example.org` in realm `ltrg`): a case open for `case.handoff_days` (default 30) goes to the long-term recovery group when the survivor consented, with every dollar of help already given, a referral and the group leading the case; without consent it stays with the county and the caseworker is reminded why. Set `SEED_DAMAGE_REPORTS` to load an exercise case with help received and a plan.
 
+### Badge printing on the county's label printers (after layer 8)
+
+The console's badge print view (BRD:FR-13.04/13.05, ADR-0047) is sized to the Brother QL-820NWB (62 mm × 100 mm) and QL-1110NWB (4 in × 6 in) labels the county chose, or to a letter page; it prints through the Brother driver installed on the check-in desk, and the label chosen is recorded with each print outcome. Printing from the field app through Brother's mobile SDK waits on Adam (a licensed binary; `docs/operations/known-limitations.md`).
+
 ### Windows (Docker Desktop)
 
 Docker Desktop runs the stack in WSL 2 (Settings → General → _Use the WSL 2 based engine_, on by default). Pick one of two ways to work.

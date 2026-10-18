@@ -231,6 +231,8 @@ const badgeOut = z.object({
   printRequestedAt: z.iso.datetime().nullable(),
   printConfirmedAt: z.iso.datetime().nullable(),
   printFailedReason: z.string().nullable(),
+  /** BRD:FR-13.05: the label the badge was last printed on, or null before any print. */
+  printLayout: z.enum(['letter', 'ql820_62x100', 'ql1110_4x6']).nullable(),
   handedOutAt: z.iso.datetime().nullable(),
   revokedAt: z.iso.datetime().nullable(),
   revokeReason: z.string().nullable(),
@@ -1775,6 +1777,7 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
       printRequestedAt: iso(b.print_requested_at),
       printConfirmedAt: iso(b.print_confirmed_at),
       printFailedReason: b.print_failed_reason,
+      printLayout: b.print_layout,
       handedOutAt: iso(b.handed_out_at),
       revokedAt: iso(b.revoked_at),
       revokeReason: b.revoke_reason,
@@ -1970,6 +1973,8 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
         body: z.object({
           outcome: z.enum(['requested', 'confirmed', 'failed', 'handed_out']),
           reason: z.string().max(300).optional(),
+          /** BRD:FR-13.05, ADR-0047: the label the badge is printed on. */
+          layout: z.enum(['letter', 'ql820_62x100', 'ql1110_4x6']).optional(),
         }),
         response: { 200: badgeOut },
       },
@@ -2005,18 +2010,21 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
         ]);
       if (b.outcome === 'failed' && !b.reason)
         throw errors.validation([{ name: 'reason', message: 'say what failed' }]);
+      // The layout rides with the print steps; a hand-out keeps the one the badge was printed on.
+      const layout = b.outcome === 'handed_out' ? {} : b.layout ? { print_layout: b.layout } : {};
       const set =
         b.outcome === 'requested'
-          ? { state: 'print_requested' as const, print_requested_at: new Date() }
+          ? { state: 'print_requested' as const, print_requested_at: new Date(), ...layout }
           : b.outcome === 'confirmed'
             ? {
                 state: 'print_confirmed' as const,
                 print_confirmed_at: new Date(),
                 print_confirmed_by: s.accountId,
                 print_failed_reason: null,
+                ...layout,
               }
             : b.outcome === 'failed'
-              ? { state: 'print_failed' as const, print_failed_reason: b.reason ?? null }
+              ? { state: 'print_failed' as const, print_failed_reason: b.reason ?? null, ...layout }
               : { state: 'handed_out' as const, handed_out_at: new Date() };
       return request.tx(async (trx) => {
         const updated = assertUpdated(
@@ -2036,7 +2044,10 @@ export const fieldOpsRoutes: FastifyPluginAsync = async (instance) => {
             badge_id: current.id,
             kind: set.state,
             actor_account_id: s.accountId,
-            detail: JSON.stringify({ reason: b.reason ?? null }),
+            detail: JSON.stringify({
+              reason: b.reason ?? null,
+              layout: updated.print_layout ?? null,
+            }),
           })
           .execute();
         await request.audit(trx, {

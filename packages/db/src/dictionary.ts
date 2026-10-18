@@ -1410,6 +1410,11 @@ export const dictionary: Record<string, Record<string, ColumnEntry>> = {
         d: 'FR-13.03: printed label, never a permission',
       },
       photo_key: { c: 'sensitive', r: 'badges', d: 'Approved badge photo (FR-13.01)' },
+      print_layout: {
+        c: 'internal',
+        r: 'badges',
+        d: 'The label the badge was printed on: letter, ql820_62x100 or ql1110_4x6 (FR-13.05)',
+      },
       credentials_snapshot: { c: 'internal', r: 'badges' },
       valid_from: { c: 'internal', r: 'badges' },
       valid_to: { c: 'internal', r: 'badges' },

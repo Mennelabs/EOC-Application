@@ -1,0 +1,9 @@
+{
+  "_about": "Evidence per requirement ID for the items queued after layer 8 besides case management (docs/plans/queued-status.md): Brother badge printing (ADR-0047), CJIS mutual-aid grants, iOS readiness. Earlier evidence is kept and this work's appended after 'queued:'. tools/reqindex/traceability.py merges it last.",
+  "BRD:FR-13.05": [
+    "partial",
+    "scan verification POST /badges/verify (routes/field-ops.ts); checkpoint screen with camera scan or typed code (apps/field/app/checkpoint.tsx); queued: the console's badge print view sized to the county's Brother QL-820NWB (62 mm x 100 mm) and QL-1110NWB (4 in x 6 in) labels or a letter page, printed through the operating system's Brother driver (@page and label-sized styles, apps/web-console/src/screens/fieldops.tsx, styles.css); the label chosen recorded with each print outcome (cg.badge.print_layout, 0113; the badge event's detail) (ADR-0047)",
+    "services/api/test/fieldops.db.test.ts (the layout rides with the print steps; an unknown label is refused)",
+    "Printing from the field app through Brother's mobile SDK waits on Adam: the SDK is a licensed binary, not a package, and would add a native module to the Android CI build (ADR-0047). Camera scanning and a physical print on the real printers are checked on a device by a person."
+  ]
+}

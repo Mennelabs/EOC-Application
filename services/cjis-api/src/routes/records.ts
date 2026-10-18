@@ -571,11 +571,13 @@ export const recordRoutes: FastifyPluginAsync = async (appBase) => {
     },
     async (request, reply) => {
       const s = request.person();
-      await request.authorize(
-        'record.share',
-        { type: 'record', id: request.params.ref, agencyId: s.agencyId },
-        { asNotFound: true },
-      );
+      // A role denial answers 403: the record is one the person can read. Another agency's
+      // record is unknown to this agency's query (loadRecord below), so it answers 404.
+      await request.authorize('record.share', {
+        type: 'record',
+        id: request.params.ref,
+        agencyId: s.agencyId,
+      });
       const expected = request.expectedVersion();
       const b = request.body;
       const endsAt = new Date(b.endsAt);
@@ -649,11 +651,11 @@ export const recordRoutes: FastifyPluginAsync = async (appBase) => {
     { schema: { params: z.object({ ref, id: z.uuid() }) }, config: { requiresVersion: true } },
     async (request) => {
       const s = request.person();
-      const decision = await request.authorize(
-        'record.share.revoke',
-        { type: 'record_share', id: request.params.id, agencyId: s.agencyId },
-        { asNotFound: true },
-      );
+      const decision = await request.authorize('record.share.revoke', {
+        type: 'record_share',
+        id: request.params.id,
+        agencyId: s.agencyId,
+      });
       const expected = request.expectedVersion();
       const reason = decision.confirmedReason;
       return request.tx(async (trx) => {

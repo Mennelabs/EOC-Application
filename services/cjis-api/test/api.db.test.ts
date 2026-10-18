@@ -189,6 +189,7 @@ describe.skipIf(!appUrl || !jobUrl)('enclave API (database-backed)', () => {
     await addPerson('lapsed', 'sheriff', ['officer'], { trainingExpires: '2026-01-01' });
     await addPerson('pending', 'sheriff', ['officer'], { fingerprint: 'pending' });
     await addPerson('cityOfficer', 'police', ['officer']);
+    await addPerson('citySgt', 'police', ['supervisor']);
   });
 
   afterAll(async () => {
@@ -639,17 +640,19 @@ describe.skipIf(!appUrl || !jobUrl)('enclave API (database-backed)', () => {
       expect(again.status).toBe(201);
       const share = again.body.shares.find((x: { status: string }) => x.status === 'active');
       expect((await call('cityOfficer', 'GET', `/records/${r2}`)).status).toBe(200);
-      // The helping agency cannot revoke (not the owner), nor can an officer.
-      const byHelper = await call(
-        'cityOfficer',
-        'POST',
-        `/records/${r2}/shares/${share.id}/revoke`,
-        {
-          version: share.version,
-          confirm: 'Helper revokes',
-        },
-      );
+      // The helping agency cannot revoke (not the owner): its supervisor finds no such record
+      // to act on, and it cannot share the record onward either; an officer lacks the role.
+      const byHelper = await call('citySgt', 'POST', `/records/${r2}/shares/${share.id}/revoke`, {
+        version: share.version,
+        confirm: 'Helper revokes',
+      });
       expect(byHelper.status).toBe(404);
+      const onward = await call('citySgt', 'POST', `/records/${r2}/shares`, {
+        version,
+        confirm: 'Helper shares onward',
+        body: { toAgencyId: agencies.sheriff, endsAt: inOneDay(), purpose: 'Onward' },
+      });
+      expect(onward.status).toBe(404);
       const byOfficer = await call('officer', 'POST', `/records/${r2}/shares/${share.id}/revoke`, {
         version: share.version,
         confirm: 'Officer revokes',

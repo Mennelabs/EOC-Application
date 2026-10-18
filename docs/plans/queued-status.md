@@ -18,7 +18,7 @@ Resume record for the items Adam queued on 2026-10-15 for after layer 8 (`docs/p
 
 ## Open items
 
-- PR #61 (BP, MA, IOS) waits on CI and merge; case management's PR #60 merged as fcd488c (2026-10-18) and this branch was rebased onto it (task SHAs above are post-rebase).
+- PR #61 (BP, MA, IOS) squash-merged as 4743670 (2026-10-18) after four CI fixes on the branch: the enclave's agency directory policy, share-route status codes, the axe scan waiting for transitions, and the canteen stop name surviving the route load. Case management's PR #60 merged as fcd488c the same day. Task SHAs above are the branch commits before the squash.
 
 - IOS: the first device build and its checks (`docs/operations/field-app-ios.md` §3) are Adam's; export compliance and the App Privacy labels are answered in App Store Connect; managed app configuration (MDM) is still not read on either platform (FLD-02).
 

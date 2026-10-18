@@ -54,8 +54,10 @@ export default function Canteen() {
       const r = routeOf(await f.list<Mission & { route?: { stops?: unknown } | null }>('missions'));
       setCurrent(now);
       setRoute(r);
-      // The stop name starts as the route's next stop; the crew can change it.
-      if (!now.stopId) setStopName(nextStop(r.stops, now.visited)?.name ?? '');
+      // The stop name starts as the route's next stop; the crew can change it. A name the
+      // crew already typed while the route was loading is kept (functional update).
+      if (!now.stopId)
+        setStopName((typed) => typed || (nextStop(r.stops, now.visited)?.name ?? ''));
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once
   }, []);

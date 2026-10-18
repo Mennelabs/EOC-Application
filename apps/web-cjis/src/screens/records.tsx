@@ -9,7 +9,23 @@
  */
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, ApiFailure, describeFailure } from '../api/client.ts';
-import { DataTable, fmt, Input, label, Status } from '../ui/primitives.tsx';
+import { DataTable, Field, fmt, Input, label, Status } from '../ui/primitives.tsx';
+
+export interface Share {
+  id: string;
+  toAgencyId: string;
+  toAgencyName: string;
+  platformMissionReference: string | null;
+  purpose: string;
+  startsAt: string;
+  endsAt: string;
+  status: 'active' | 'revoked' | 'ended';
+  grantedBy: string | null;
+  revokedAt: string | null;
+  revokeReason: string | null;
+  endedAt: string | null;
+  version: number;
+}
 
 export interface RecordView {
   ref: string;
@@ -29,6 +45,10 @@ export interface RecordView {
   reviewedBy: string | null;
   reviewedAt: string | null;
   version: number;
+  /** Mutual aid (decision 2026-10-15): whether this agency owns the record, who does, and the shares. */
+  ownAgency?: boolean;
+  ownerName?: string | null;
+  shares?: Share[];
   people: {
     id: string;
     role: string;
@@ -141,6 +161,8 @@ export function RecordsScreen({ navigate }: { navigate: (to: string) => void }) 
       disposition: string | null;
       people: number;
       updatedAt: string;
+      sharedBy: string | null;
+      sharedUntil: string | null;
     }[]
   >([]);
   const [error, setError] = useState<string | null>(null);
@@ -157,7 +179,7 @@ export function RecordsScreen({ navigate }: { navigate: (to: string) => void }) 
       </p>
       {error ? <Status kind="error">{error}</Status> : null}
       <DataTable
-        caption="Your agency's records"
+        caption="Your agency's records and the records other agencies share with it"
         rows={rows}
         rowKey={(r) => r.ref}
         empty="No records yet."
@@ -181,6 +203,14 @@ export function RecordsScreen({ navigate }: { navigate: (to: string) => void }) 
           { key: 'state', header: 'State', render: (r) => label(r.state) },
           { key: 'disp', header: 'Disposition', render: (r) => label(r.disposition) },
           { key: 'people', header: 'People', render: (r) => r.people },
+          {
+            key: 'shared',
+            header: 'Shared by',
+            render: (r) =>
+              r.sharedBy
+                ? `${r.sharedBy}${r.sharedUntil ? ` until ${fmt(r.sharedUntil)}` : ''}`
+                : '—',
+          },
           { key: 'updated', header: 'Last change', render: (r) => fmt(r.updatedAt) },
         ]}
       />
@@ -296,8 +326,9 @@ export function RecordScreen({ cjiRef, roles }: { cjiRef: string; roles: readonl
   if (!record)
     return error ? <Status kind="error">{error}</Status> : <p role="status">Loading the record…</p>;
 
-  const open = record.state === 'open';
-  const supervisor = roles.includes('supervisor');
+  // A record another agency shares with this one is read-only here (mutual aid).
+  const open = record.state === 'open' && record.ownAgency !== false;
+  const supervisor = roles.includes('supervisor') && record.ownAgency !== false;
   const mayDispose = roles.includes('officer') || supervisor;
   return (
     <>
@@ -309,6 +340,13 @@ export function RecordScreen({ cjiRef, roles }: { cjiRef: string; roles: readonl
       </p>
       {notice ? <Status kind="success">{notice}</Status> : null}
       {error ? <Status kind="error">{error}</Status> : null}
+      {record.ownAgency === false ? (
+        <Status kind="info">
+          Shared with your agency by {record.ownerName ?? 'another agency'} under mutual aid
+          {record.shares?.[0] ? ` until ${fmt(record.shares[0].endsAt)}` : ''}. You can read it;
+          only the owning agency changes it. Every read is in your agency&rsquo;s audit.
+        </Status>
+      ) : null}
       <Summary
         key={record.version}
         record={record}
@@ -322,6 +360,27 @@ export function RecordScreen({ cjiRef, roles }: { cjiRef: string; roles: readonl
                 version: record.version,
               }),
             'Saved.',
+          )
+        }
+      />
+      <Shares
+        record={record}
+        maySharing={record.ownAgency !== false && (supervisor || roles.includes('agency_admin'))}
+        onShare={(body) =>
+          change(
+            () =>
+              api<RecordView>(`/records/${record.ref}/shares`, { body, version: record.version }),
+            'Shared. The other agency reads this record until the end time; every read is in its audit.',
+          )
+        }
+        onRevoke={(share) =>
+          change(
+            () =>
+              api<RecordView>(`/records/${record.ref}/shares/${share.id}/revoke`, {
+                method: 'POST',
+                version: share.version,
+              }),
+            'The share is ended; the other agency can no longer open this record.',
           )
         }
       />
@@ -816,5 +875,129 @@ function Disposition({ onSubmit }: { onSubmit: (disposition: string, note: strin
         Record the disposition
       </button>
     </form>
+  );
+}
+
+/**
+ * Mutual aid (decision 2026-10-15): the owning agency's supervisor or administrator shares the
+ * record with another agency for a set period, with one line on why; the shares and their state
+ * are listed; a share is ended early with a reason. A helping agency sees its own share only.
+ */
+function Shares({
+  record,
+  maySharing,
+  onShare,
+  onRevoke,
+}: {
+  record: RecordView;
+  maySharing: boolean;
+  onShare: (body: { toAgencyId: string; endsAt: string; purpose: string }) => void;
+  onRevoke: (share: Share) => void;
+}) {
+  const [agencies, setAgencies] = useState<{ id: string; name: string; identifier: string }[]>([]);
+  const [toAgencyId, setToAgencyId] = useState('');
+  const [endsAt, setEndsAt] = useState('');
+  const [purpose, setPurpose] = useState('');
+  useEffect(() => {
+    if (!maySharing) return;
+    api<typeof agencies>('/agencies')
+      .then(setAgencies)
+      .catch(() => undefined);
+  }, [maySharing]);
+  const shares = record.shares ?? [];
+  const STATE: Record<Share['status'], string> = {
+    active: 'Standing',
+    revoked: 'Ended early',
+    ended: 'Ended at its time',
+  };
+  return (
+    <section aria-labelledby="shares-h">
+      <h2 id="shares-h">Shared with other agencies</h2>
+      <DataTable
+        caption="Mutual-aid shares of this record"
+        empty={
+          record.ownAgency === false
+            ? 'Your agency’s share is listed by the owner.'
+            : 'Not shared with any agency.'
+        }
+        rows={shares}
+        rowKey={(x) => x.id}
+        columns={[
+          { key: 'to', header: 'Agency', render: (x) => x.toAgencyName },
+          { key: 'purpose', header: 'Why', render: (x) => x.purpose },
+          { key: 'until', header: 'Until', render: (x) => fmt(x.endsAt) },
+          {
+            key: 'state',
+            header: 'State',
+            render: (x) =>
+              `${STATE[x.status]}${x.revokeReason ? `: ${x.revokeReason}` : ''}${x.grantedBy ? ` (by ${x.grantedBy})` : ''}`,
+          },
+          {
+            key: 'act',
+            header: 'Actions',
+            render: (x) =>
+              maySharing && x.status === 'active' ? (
+                <button type="button" onClick={() => onRevoke(x)}>
+                  End the share with {x.toAgencyName}
+                </button>
+              ) : (
+                '—'
+              ),
+          },
+        ]}
+      />
+      {maySharing ? (
+        <form
+          className="stack"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!toAgencyId || !endsAt) return;
+            onShare({
+              toAgencyId,
+              endsAt: new Date(endsAt).toISOString(),
+              purpose: purpose.trim(),
+            });
+            setPurpose('');
+          }}
+        >
+          <h3>Share with an agency</h3>
+          <p className="hint">
+            Only that agency&rsquo;s CJIS-qualified people read it, until the end time or until you
+            end it; nobody there changes it. At most 90 days at a time.
+          </p>
+          <Field label="Agency">
+            {({ id }) => (
+              <select
+                id={id}
+                value={toAgencyId}
+                onChange={(e) => setToAgencyId(e.target.value)}
+                required
+              >
+                <option value="">Choose an agency</option>
+                {agencies.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({a.identifier})
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
+          <Input label="Until" type="datetime-local" value={endsAt} onChange={setEndsAt} />
+          <Input
+            label="Why (one line)"
+            value={purpose}
+            onChange={setPurpose}
+            hint="The mission and the help, in words the audit can carry."
+          />
+          <button
+            type="submit"
+            className="primary"
+            disabled={!toAgencyId || !endsAt || purpose.trim().length < 3}
+          >
+            Share (with confirmation)
+          </button>
+        </form>
+      ) : null}
+    </section>
   );
 }

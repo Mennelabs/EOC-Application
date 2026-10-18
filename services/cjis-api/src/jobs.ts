@@ -10,7 +10,9 @@
  *   person's agency;
  * - retention: deletes closed records older than the agency's period unless
  *   a legal hold covers them, and logs each batch (SEC-13);
- * - inactivity: suspends accounts unused for 90 days (AC-2).
+ * - inactivity: suspends accounts unused for 90 days (AC-2);
+ * - mutual aid: ends shares past their end time, on the record's timeline and
+ *   in the owner's audit (decision 2026-10-15).
  */
 import { sql, type Kysely, type Transaction } from 'kysely';
 import type { CjisDatabase } from '@cg/cjis-db';
@@ -329,4 +331,56 @@ export async function suspendInactive(deps: Pick<JobDeps, 'db' | 'now'>): Promis
     return stale.length;
   });
   return result ?? 0;
+}
+
+/**
+ * Mutual aid: a share past its end time is ended, on the record's timeline and in the owning
+ * agency's audit. Row security already refuses the helping agency once the time has passed;
+ * this makes the end a fact in the record. Each run is safe to repeat.
+ */
+export async function endExpiredShares(
+  deps: Pick<JobDeps, 'db' | 'now'>,
+): Promise<{ ended: number }> {
+  const now = deps.now?.() ?? new Date();
+  const result = await locked(deps.db, 'mutual-aid', async (trx) => {
+    const due = await trx
+      .selectFrom('cjis.record_share')
+      .select(['id', 'agency_id', 'record_id', 'to_agency_id', 'version'])
+      .where('status', '=', 'active')
+      .where('ends_at', '<=', now)
+      .limit(500)
+      .execute();
+    for (const s of due) {
+      await trx
+        .updateTable('cjis.record_share')
+        .set({ status: 'ended', ended_at: now })
+        .where('id', '=', s.id)
+        .where('status', '=', 'active')
+        .execute();
+      await trx
+        .insertInto('cjis.record_event')
+        .values({
+          agency_id: s.agency_id,
+          record_id: s.record_id,
+          kind: 'share_ended',
+          detail: JSON.stringify({ shareId: s.id, toAgencyId: s.to_agency_id }),
+          occurred_at: now,
+        })
+        .execute();
+      await recordEnclaveAudit(trx, {
+        agencyId: s.agency_id,
+        actorKind: 'system',
+        action: 'record.share.ended',
+        targetType: 'record_share',
+        targetId: s.id,
+        targetVersion: s.version + 1,
+        outcome: 'success',
+        fields: ['status'],
+        reason: 'the share reached its end time',
+        occurredAt: now,
+      });
+    }
+    return { ended: due.length };
+  });
+  return result ?? { ended: 0 };
 }

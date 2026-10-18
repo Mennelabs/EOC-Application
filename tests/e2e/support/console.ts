@@ -19,6 +19,20 @@ export async function expectNoViolations(page: Page, opts: { mapMarkers?: boolea
   await page.evaluate(() => {
     if (document.querySelector('.cg-topbar')) window.scrollTo(0, 0);
   });
+  // A colour mid-transition is what a person sees for a frame, not a state: running
+  // transitions and animations finish before the scan (motion is 120 ms, ADR-0045;
+  // looping ones are skipped, and nothing waits more than a second).
+  await page.evaluate(() =>
+    Promise.race([
+      Promise.all(
+        document
+          .getAnimations()
+          .filter((a) => a.effect?.getTiming().iterations !== Infinity)
+          .map((a) => a.finished.catch(() => undefined)),
+      ),
+      new Promise((r) => setTimeout(r, 1000)),
+    ]),
+  );
   const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
   // WCAG 2.5.8 "Equivalent" exception: map markers can sit close together at
   // a zoom, and every marker's item is in the table beside the map (ACC-07).

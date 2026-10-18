@@ -14,6 +14,7 @@ import { agencyKeyStore } from './crypto.ts';
 import { ADMIN_CLIENT_ID, EnclaveKeycloak } from './idp/keycloak.ts';
 import {
   copySignInEvents,
+  endExpiredShares,
   runIdentityOutbox,
   suspendInactive,
   sweepRetention,
@@ -76,6 +77,7 @@ const timers = [
   every('sign-in-events', 15_000, () => copySignInEvents(deps)),
   every('retention', 60 * 60_000, () => sweepRetention(deps)),
   every('inactivity', 60 * 60_000, () => suspendInactive(deps)),
+  every('mutual-aid', 60_000, () => endExpiredShares(deps)),
 ];
 
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {

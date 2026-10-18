@@ -100,6 +100,33 @@ describe('decide (ADM-05 in the enclave)', () => {
     });
   });
 
+  it('E3, mutual aid: a record shared with the subject’s agency may be read, never written', () => {
+    const shared = { type: 'record', agencyId: 'a2', sharedWithSubject: true };
+    expect(decide(subject(), 'record.read', shared).effect).toBe('allow');
+    expect(decide(subject(), 'record.update', shared)).toMatchObject({ reason: 'E3:other_agency' });
+    expect(decide(subject(), 'record.narrative', shared)).toMatchObject({
+      reason: 'E3:other_agency',
+    });
+    expect(decide(subject({ roles: ['supervisor'] }), 'record.share', shared)).toMatchObject({
+      reason: 'E3:other_agency',
+    });
+    // Only a supervisor or an administrator of the owning agency shares; it is consequential.
+    expect(decide(subject(), 'record.share', { type: 'record', agencyId: 'a1' }).effect).toBe(
+      'deny',
+    );
+    expect(
+      decide(subject({ roles: ['supervisor'] }), 'record.share', {
+        type: 'record',
+        agencyId: 'a1',
+      }),
+    ).toMatchObject({ effect: 'allow', consequential: true });
+    // An unqualified officer reads nothing through a share either (E2 first).
+    expect(
+      decide(subject({ qualified: false, missing: ['security_training'] }), 'record.read', shared)
+        .effect,
+    ).toBe('deny');
+  });
+
   it('E4: nobody writes the audit, not even a security officer', () => {
     const s = subject({ roles: ['security_officer'] });
     expect(decide(s, 'audit.review', { type: 'audit_event' }).reason).toBe('E4:audit_immutable');

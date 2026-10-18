@@ -4,6 +4,7 @@ import * as m0002 from './0002_people_roles.ts';
 import * as m0003 from './0003_records.ts';
 import * as m0004 from './0004_audit_retention.ts';
 import * as m0005 from './0005_subject_lookup.ts';
+import * as m0006 from './0006_mutual_aid.ts';
 
 /** Ordered enclave migrations (packages/cjis-db). The platform's live in packages/db. */
 export const migrations: Record<string, Migration> = {
@@ -12,4 +13,5 @@ export const migrations: Record<string, Migration> = {
   '0003_records': m0003,
   '0004_audit_retention': m0004,
   '0005_subject_lookup': m0005,
+  '0006_mutual_aid': m0006,
 };

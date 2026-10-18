@@ -111,6 +111,7 @@ import * as m0109 from './0109_live_conditions.ts';
 import * as m0110 from './0110_eoc_api.ts';
 import * as m0111 from './0111_case_management.ts';
 import * as m0112 from './0112_appointments_marc.ts';
+import * as m0113 from './0113_badge_print_layout.ts';
 
 /** Ordered, explicit list: no filesystem scanning inside containers. */
 export const migrations: Record<string, Migration> = {
@@ -226,4 +227,5 @@ export const migrations: Record<string, Migration> = {
   '0110_eoc_api': m0110,
   '0111_case_management': m0111,
   '0112_appointments_marc': m0112,
+  '0113_badge_print_layout': m0113,
 };

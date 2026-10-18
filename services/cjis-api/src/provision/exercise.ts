@@ -185,6 +185,65 @@ export const DEFAULT_RETENTION = [
  * The sheriff's office's record for the linked exercise mission: invented law-enforcement
  * details (SCL-12), encrypted under the agency key like any record. Loaded once.
  */
+/**
+ * Mutual aid (decision 2026-10-15): the sheriff's exercise record is shared with the city police
+ * for the joint looting patrol, 30 days from provisioning, granted by the exercise sergeant. The
+ * worker's `mutual-aid` job ends it when the time passes; a re-run after that grants it again, so
+ * the exercise stays demonstrable.
+ */
+async function ensureExerciseShare(
+  db: Kysely<CjisDatabase>,
+  sheriffId: string,
+  policeId: string,
+): Promise<void> {
+  const record = await db
+    .selectFrom('cjis.record')
+    .select('id')
+    .where('agency_id', '=', sheriffId)
+    .where('cji_ref', '=', EXERCISE_CJI_REF)
+    .executeTakeFirst();
+  if (!record) return;
+  const standing = await db
+    .selectFrom('cjis.record_share')
+    .select('id')
+    .where('record_id', '=', record.id)
+    .where('to_agency_id', '=', policeId)
+    .where('status', '=', 'active')
+    .where('ends_at', '>', new Date())
+    .executeTakeFirst();
+  if (standing) return;
+  const sergeant = await db
+    .selectFrom('cjis.person')
+    .select('id')
+    .where(sql`lower(email)`, '=', 'sgt.hollis@sheriff.example.org')
+    .executeTakeFirst();
+  await db.transaction().execute(async (trx) => {
+    const share = await trx
+      .insertInto('cjis.record_share')
+      .values({
+        agency_id: sheriffId,
+        record_id: record.id,
+        to_agency_id: policeId,
+        platform_mission_reference: 'M-00012',
+        purpose: 'Joint looting patrol on Commercial Row (WESTWIND exercise)',
+        ends_at: new Date(Date.now() + 30 * day),
+        granted_by: sergeant?.id ?? null,
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    await trx
+      .insertInto('cjis.record_event')
+      .values({
+        agency_id: sheriffId,
+        record_id: record.id,
+        kind: 'shared',
+        actor_person_id: sergeant?.id ?? null,
+        detail: JSON.stringify({ shareId: share.id, toAgencyId: policeId, exercise: true }),
+      })
+      .execute();
+  });
+}
+
 async function ensureExerciseRecord(
   db: Kysely<CjisDatabase>,
   crypto: FieldCrypto,
@@ -365,6 +424,8 @@ export async function provisionExercise(
       .where(sql`lower(email)`, '=', 'deputy.reyes@sheriff.example.org')
       .executeTakeFirst();
     if (sheriff && deputy) await ensureExerciseRecord(db, crypto, sheriff, deputy.id);
+    const police = agencyIds.get('police');
+    if (sheriff && police) await ensureExerciseShare(db, sheriff, police);
 
     for (const [, agencyId] of agencyIds) {
       await db

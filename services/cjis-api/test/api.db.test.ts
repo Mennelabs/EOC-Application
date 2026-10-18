@@ -16,6 +16,7 @@ import { createTokenVerifier } from '../src/auth/token.ts';
 import { agencyKeyStore } from '../src/crypto.ts';
 import {
   copySignInEvents,
+  endExpiredShares,
   runIdentityOutbox,
   suspendInactive,
   sweepRetention,
@@ -188,6 +189,7 @@ describe.skipIf(!appUrl || !jobUrl)('enclave API (database-backed)', () => {
     await addPerson('lapsed', 'sheriff', ['officer'], { trainingExpires: '2026-01-01' });
     await addPerson('pending', 'sheriff', ['officer'], { fingerprint: 'pending' });
     await addPerson('cityOfficer', 'police', ['officer']);
+    await addPerson('citySgt', 'police', ['supervisor']);
   });
 
   afterAll(async () => {
@@ -492,6 +494,193 @@ describe.skipIf(!appUrl || !jobUrl)('enclave API (database-backed)', () => {
         ]),
       );
       expect(rows.find((r) => r.action === 'record.read')?.fields).toContain('people');
+    });
+  });
+
+  describe('mutual aid (SEC-12, decision 2026-10-15; plan §14 q4)', () => {
+    const r2 = ref();
+    let version = 0;
+    let shareId = '';
+    const inOneDay = () => new Date(Date.now() + 86_400_000).toISOString();
+
+    it('a supervisor of the owning agency shares a record with another agency for a set period', async () => {
+      const made = await call('officer', 'POST', '/records', {
+        body: {
+          ref: r2,
+          platformMissionReference: 'M-00031',
+          platformCounty: 'county',
+          origin: 'officer_initiated',
+          classification: 'looting',
+          offenseCodes: ['EX-2401'],
+          caseNumber: `WCSO-${MARKER}-MA`,
+          summary: `Synthetic mutual-aid exercise ${MARKER}`,
+        },
+      });
+      expect(made.status).toBe(201);
+      version = made.body.version;
+      // An officer cannot share; only a supervisor or administrator of the owner (policy).
+      const byOfficer = await call('officer', 'POST', `/records/${r2}/shares`, {
+        version,
+        confirm: 'Officer tries',
+        body: { toAgencyId: agencies.police, endsAt: inOneDay(), purpose: 'Joint patrol' },
+      });
+      expect(byOfficer.status).toBe(403);
+      // Not with one's own agency, not in the past, not beyond 90 days.
+      for (const body of [
+        { toAgencyId: agencies.sheriff, endsAt: inOneDay(), purpose: 'Own agency' },
+        { toAgencyId: agencies.police, endsAt: '2020-01-01T00:00:00.000Z', purpose: 'Past' },
+        {
+          toAgencyId: agencies.police,
+          endsAt: new Date(Date.now() + 120 * 86_400_000).toISOString(),
+          purpose: 'Too long',
+        },
+      ]) {
+        const bad = await call('supervisor', 'POST', `/records/${r2}/shares`, {
+          version,
+          confirm: 'Supervisor shares',
+          body,
+        });
+        expect(bad.status).toBe(400);
+      }
+      const shared = await call('supervisor', 'POST', `/records/${r2}/shares`, {
+        version,
+        confirm: 'Supervisor shares for the joint looting patrol',
+        body: {
+          toAgencyId: agencies.police,
+          endsAt: inOneDay(),
+          purpose: 'Joint looting patrol, mission M-00031',
+          platformMissionReference: 'M-00031',
+        },
+      });
+      expect(shared.status).toBe(201);
+      expect(shared.body.ownAgency).toBe(true);
+      expect(shared.body.shares).toHaveLength(1);
+      expect(shared.body.shares[0]).toMatchObject({
+        toAgencyId: agencies.police,
+        toAgencyName: expect.stringContaining('Police') as string,
+        status: 'active',
+        purpose: 'Joint looting patrol, mission M-00031',
+      });
+      shareId = shared.body.shares[0].id;
+      version = shared.body.version;
+      // The same agency cannot hold two standing shares.
+      const twice = await call('supervisor', 'POST', `/records/${r2}/shares`, {
+        version,
+        confirm: 'Again',
+        body: { toAgencyId: agencies.police, endsAt: inOneDay(), purpose: 'Again' },
+      });
+      expect(twice.status).toBe(409);
+      expect(twice.body.code).toBe('already_shared');
+    });
+
+    it('the helping agency reads and lists the record, read-only, and every read is audited against it', async () => {
+      const read = await call('cityOfficer', 'GET', `/records/${r2}`);
+      expect(read.status).toBe(200);
+      expect(read.body).toMatchObject({
+        ref: r2,
+        ownAgency: false,
+        ownerName: expect.stringContaining('Sheriff') as string,
+      });
+      expect(read.body.shares).toHaveLength(1);
+      const list = await call('cityOfficer', 'GET', '/records');
+      expect(list.status).toBe(200);
+      const row = list.body.find((x: { ref: string }) => x.ref === r2);
+      expect(row).toMatchObject({ sharedBy: expect.stringContaining('Sheriff') as string });
+      expect(typeof row.sharedUntil).toBe('string');
+      // No writes through a share: it reads as not found to the writer.
+      const patch = await call('cityOfficer', 'PATCH', `/records/${r2}`, {
+        version,
+        body: { summary: 'changed by the helper' },
+      });
+      expect(patch.status).toBe(404);
+      const person = await call('cityOfficer', 'POST', `/records/${r2}/people`, {
+        version,
+        body: { role: 'witness', name: 'Helper Adds' },
+      });
+      expect(person.status).toBe(404);
+      // The helping agency's own share is in its audit, with the owner named.
+      const audit = await job
+        .selectFrom('cjis.audit_event')
+        .select(['agency_id', 'action', 'reason'])
+        .where('actor_person_id', '=', people['cityOfficer']!.id)
+        .where('action', '=', 'record.read')
+        .orderBy('occurred_at', 'desc')
+        .limit(1)
+        .executeTakeFirst();
+      expect(audit).toMatchObject({ agency_id: agencies.police, action: 'record.read' });
+      expect(audit!.reason).toContain('mutual-aid share from Sheriff');
+      // An officer whose training lapsed reads nothing, shared or not (E2 comes first).
+      expect((await call('lapsed', 'GET', `/records/${r2}`)).status).toBe(403);
+    });
+
+    it('an expired share ends on its own and the record disappears from the helper', async () => {
+      const far = new Date(Date.now() + 2 * 86_400_000);
+      const ended = await endExpiredShares({ db: job, now: () => far });
+      expect(ended.ended).toBeGreaterThanOrEqual(1);
+      expect((await call('cityOfficer', 'GET', `/records/${r2}`)).status).toBe(404);
+      const own = await call('supervisor', 'GET', `/records/${r2}`);
+      expect(own.body.shares[0]).toMatchObject({ id: shareId, status: 'ended' });
+      expect(typeof own.body.shares[0].endedAt).toBe('string');
+      const events = await job
+        .selectFrom('cjis.record_event as e')
+        .innerJoin('cjis.record as r', 'r.id', 'e.record_id')
+        .select('e.kind')
+        .where('r.cji_ref', '=', r2)
+        .execute();
+      expect(events.map((e) => e.kind)).toEqual(expect.arrayContaining(['shared', 'share_ended']));
+      version = own.body.version;
+    });
+
+    it('a share is ended early with a reason, and a revoked share cannot be revoked twice', async () => {
+      const again = await call('supervisor', 'POST', `/records/${r2}/shares`, {
+        version,
+        confirm: 'Second grant',
+        body: { toAgencyId: agencies.police, endsAt: inOneDay(), purpose: 'Second grant' },
+      });
+      expect(again.status).toBe(201);
+      const share = again.body.shares.find((x: { status: string }) => x.status === 'active');
+      expect((await call('cityOfficer', 'GET', `/records/${r2}`)).status).toBe(200);
+      // The helping agency cannot revoke (not the owner): its supervisor finds no such record
+      // to act on, and it cannot share the record onward either; an officer lacks the role.
+      const byHelper = await call('citySgt', 'POST', `/records/${r2}/shares/${share.id}/revoke`, {
+        version: share.version,
+        confirm: 'Helper revokes',
+      });
+      expect(byHelper.status).toBe(404);
+      const onward = await call('citySgt', 'POST', `/records/${r2}/shares`, {
+        version,
+        confirm: 'Helper shares onward',
+        body: { toAgencyId: agencies.sheriff, endsAt: inOneDay(), purpose: 'Onward' },
+      });
+      expect(onward.status).toBe(404);
+      const byOfficer = await call('officer', 'POST', `/records/${r2}/shares/${share.id}/revoke`, {
+        version: share.version,
+        confirm: 'Officer revokes',
+      });
+      expect(byOfficer.status).toBe(403);
+      const revoked = await call('supervisor', 'POST', `/records/${r2}/shares/${share.id}/revoke`, {
+        version: share.version,
+        confirm: 'Mission M-00031 stood down',
+      });
+      expect(revoked.status).toBe(200);
+      expect(revoked.body.shares.find((x: { id: string }) => x.id === share.id)).toMatchObject({
+        status: 'revoked',
+        revokeReason: 'Mission M-00031 stood down',
+      });
+      expect((await call('cityOfficer', 'GET', `/records/${r2}`)).status).toBe(404);
+      expect((await call('cityOfficer', 'GET', '/records')).body).toEqual([]);
+      const twice = await call('supervisor', 'POST', `/records/${r2}/shares/${share.id}/revoke`, {
+        version: share.version + 1,
+        confirm: 'Again',
+      });
+      expect(twice.status).toBe(409);
+    });
+
+    it('GET /agencies lists the other active agencies a record can be shared with', async () => {
+      const res = await call('supervisor', 'GET', '/agencies');
+      expect(res.status).toBe(200);
+      expect(res.body.map((a: { id: string }) => a.id)).toContain(agencies.police);
+      expect(res.body.map((a: { id: string }) => a.id)).not.toContain(agencies.sheriff);
     });
   });
 

@@ -136,6 +136,7 @@ The `cjis-*` services run on their own internal network `cg_cjis` with their own
 
 - In the console, `liaison@example.org` (`county`, law-enforcement liaison) sees the "Law enforcement (CJIS)" panel on a mission: the exercise mission "Law-enforcement support at the Commercial Row distribution point" is already linked; **Link to the CJIS enclave** links another one with a reason; **Open in the CJIS enclave** opens the enclave's own address in a new tab. Everyone else who can read the mission sees "Restricted: CJIS".
 - The enclave asks for its own sign-in: password, then a passkey (ADR-0036). The exercise accounts (synthetic stacks only) are in `services/cjis-api/src/provision/exercise.ts`, all with the password `Westwind-Exercise-2026!`: at the Westwind County Sheriff's Office (exercise) `deputy.reyes`, `sgt.hollis`, `records.lane`, `tac.admin`, `laso` and `auditor` `@sheriff.example.org` (plus `deputy.lapsed` and `deputy.pending`, deliberately not qualified, and `lockout.drill`); at the city police department `officer.vance`, `admin` and `laso` `@police.example.org`. They have no passkey yet: the first browser sign-in registers one (Chrome's or the operating system's passkey manager, or a security key), and the enclave then asks for one more sign-in with it. The test client `cjis-tests` signs in with password and a time-based code instead; `tests/support/cjis.ts` shows how.
+- **Mutual aid** (decided 2026-10-15): the owning agency's supervisor or administrator shares a record with another agency for a set period (at most 90 days) with one line on why, under **Shared with other agencies** on the record; that agency's CJIS-qualified people read it and nothing more, every read lands in their agency's audit naming the owner, and the share ends on its own at its time or earlier with a reason. The exercise shares the sheriff's record with the city police (`officer.vance@police.example.org` sees it under "Shared by").
 - A new enclave account is created by an agency administrator (**Accounts**: screening dates, then a role request), approved by a second administrator (**Approvals**), and activated with a one-time password shown once to hand over in person.
 - `docker compose down -v` resets the enclave with everything else; the exercise agencies, accounts and record come back on the next `up`.
 
@@ -207,6 +208,10 @@ Decided 2026-10-15 and built after layer 8 (`docs/plans/case-management.md`, FL-
 - **Recovery centre** (`luis.masscare@example.org` at the door; `sba.rep@example.org` in realm `sba` at the SBA table): the seeded Westwind MARC's floor. The door checks a survivor in by a first name or the reference code with the tables to see; each table's queue shows who is waiting and how long; handing a survivor to the next table carries one line on why. A partner's table sees only its own visits and notes; nothing on the floor names a home or a dollar.
 - **Sharing and consent:** the `case_management` service in a partner agreement; survivors are asked about case managers, the long-term recovery group and the SBA on the shared record (proposed wording, in force until Adam replaces it). A partner reaches a case only through a grant that carries the case sections.
 - **The day-30 hand-off** (`rosa.ltrg@example.org` in realm `ltrg`): a case open for `case.handoff_days` (default 30) goes to the long-term recovery group when the survivor consented, with every dollar of help already given, a referral and the group leading the case; without consent it stays with the county and the caseworker is reminded why. Set `SEED_DAMAGE_REPORTS` to load an exercise case with help received and a plan.
+
+### Badge printing on the county's label printers (after layer 8)
+
+The console's badge print view (BRD:FR-13.04/13.05, ADR-0047) is sized to the Brother QL-820NWB (62 mm × 100 mm) and QL-1110NWB (4 in × 6 in) labels the county chose, or to a letter page; it prints through the Brother driver installed on the check-in desk, and the label chosen is recorded with each print outcome. Printing from the field app through Brother's mobile SDK waits on Adam (a licensed binary; `docs/operations/known-limitations.md`).
 
 ### Windows (Docker Desktop)
 
@@ -322,7 +327,7 @@ pnpm --filter @cg/api dev
 pnpm --filter @cg/web-resident dev
 ```
 
-The field app (`apps/field`, Expo SDK 57, React Native) runs in a browser with `pnpm --filter @cg/field web` and on a device or emulator through a local build: `pnpm --filter @cg/field prebuild:android`, then Gradle or Android Studio (EAS cloud builds are not used, ADR-0014). Its platform-free core (outbox, sync, conflicts, purge, parcel snapping, USNG, sweep order, timers, location policy) is `packages/field-core`.
+The field app (`apps/field`, Expo SDK 57, React Native) runs in a browser with `pnpm --filter @cg/field web` and on a device or emulator through a local build: `pnpm --filter @cg/field prebuild:android`, then Gradle or Android Studio (EAS cloud builds are not used, ADR-0014). The iPhone build is made on a Mac: `FIELD_API_BASE=… FIELD_TENANT=… pnpm --filter @cg/field prebuild:ios`, then Xcode; `docs/operations/field-app-ios.md` has the steps, the device checks and the distribution choices (decision 2026-10-15). Its platform-free core (outbox, sync, conflicts, purge, parcel snapping, USNG, sweep order, timers, location policy) is `packages/field-core`.
 
 ## Rules in brief
 

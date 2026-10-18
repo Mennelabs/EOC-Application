@@ -83,6 +83,7 @@ interface Badge {
   state: string;
   code?: string;
   printConfirmedAt: string | null;
+  printLayout?: string | null;
   history?: { kind: string }[];
 }
 
@@ -774,16 +775,26 @@ describe.skipIf(!appUrl || !workerUrl)(
         checkpoint: 'Route 94 perimeter',
       });
       expect(early.json<{ result: string }>().result).toBe('not_yet_printed');
+      // BRD:FR-13.05, ADR-0047: the label the badge is printed on rides with the print steps.
+      const badLayout = await call(
+        'reception',
+        'POST',
+        `/api/v1/badges/${b.id}/print`,
+        { outcome: 'requested', layout: 'ql700' },
+        { 'if-match': String(b.version) },
+      );
+      expect(badLayout.status).toBe(400);
       const requested = await call(
         'reception',
         'POST',
         `/api/v1/badges/${b.id}/print`,
-        { outcome: 'requested' },
+        { outcome: 'requested', layout: 'ql820_62x100' },
         { 'if-match': String(b.version) },
       );
       expect(requested.status, requested.body).toBe(200);
       b = requested.json<Badge>();
       expect(b.state).toBe('print_requested');
+      expect(b.printLayout).toBe('ql820_62x100');
       const failed = await call(
         'reception',
         'POST',
@@ -805,12 +816,14 @@ describe.skipIf(!appUrl || !workerUrl)(
         'reception',
         'POST',
         `/api/v1/badges/${b.id}/print`,
-        { outcome: 'confirmed' },
+        { outcome: 'confirmed', layout: 'ql1110_4x6' },
         { 'if-match': String(b.version) },
       );
       b = confirmedPrint.json<Badge>();
       expect(b.state).toBe('print_confirmed');
       expect(b.printConfirmedAt).not.toBeNull();
+      // The reprint on the other printer is recorded as a fact (BRD:FR-13.02, 13.06).
+      expect(b.printLayout).toBe('ql1110_4x6');
       const handed = await call(
         'reception',
         'POST',

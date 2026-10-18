@@ -983,8 +983,27 @@ interface Badge {
   state: string;
   code?: string;
   printFailedReason: string | null;
+  /** BRD:FR-13.05: the label the badge was last printed on (ADR-0047). */
+  printLayout: BadgeLayout | null;
   /** BRD:FR-13.01: the approved photo the badge was generated with, if any. */
   photoKey: string | null;
+}
+/**
+ * ADR-0047: the labels the county's Brother printers take, printed through the operating
+ * system's Brother driver from the browser's print dialog; the letter page for any printer.
+ */
+type BadgeLayout = 'letter' | 'ql820_62x100' | 'ql1110_4x6';
+const LAYOUTS: { value: BadgeLayout; label: string; page: string }[] = [
+  { value: 'ql820_62x100', label: 'Brother QL-820NWB: 62 mm × 100 mm label', page: '62mm 100mm' },
+  { value: 'ql1110_4x6', label: 'Brother QL-1110NWB: 4 in × 6 in label', page: '4in 6in' },
+  { value: 'letter', label: 'Letter page (any printer)', page: 'letter' },
+];
+/** The page size for the print dialog follows the chosen label; the badge card is sized to it. */
+function PageSize({ layout }: { layout: BadgeLayout }) {
+  const page = LAYOUTS.find((l) => l.value === layout)?.page ?? 'letter';
+  return (
+    <style>{`@media print { @page { size: ${page}; margin: ${layout === 'letter' ? '12mm' : '2mm'}; } }`}</style>
+  );
 }
 /** FR-13.04: the photo printed on the badge, through the API. */
 function BadgeImage({ badge }: { badge: Badge }) {
@@ -997,6 +1016,7 @@ export function BadgesScreen() {
   const people = useApi<Person[]>('/personnel?limit=200');
   const [f, setF] = useState({ person: '', role: '', access: '', days: 14 });
   const [printing, setPrinting] = useState<Badge | null>(null);
+  const [layout, setLayout] = useState<BadgeLayout>('ql820_62x100');
   const [msg, setMsg] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const run = async (fn: () => Promise<unknown>, ok: string) => {
     try {
@@ -1033,7 +1053,11 @@ export function BadgesScreen() {
     run(
       () =>
         api(`/badges/${b.id}/print`, {
-          body: { outcome: o, ...(reason ? { reason } : {}) },
+          body: {
+            outcome: o,
+            ...(reason ? { reason } : {}),
+            ...(o === 'handed_out' ? {} : { layout }),
+          },
           version: b.version,
         }),
       `Recorded: ${label(o)}.`,
@@ -1105,7 +1129,27 @@ export function BadgesScreen() {
       {printing ? (
         <section className="panel badge-print" aria-labelledby="print-h">
           <h2 id="print-h">Print view</h2>
-          <div className="badge-card">
+          <PageSize layout={layout} />
+          <Field
+            label="Print on"
+            hint="The county's Brother label printers through their driver, or a letter page. The label chosen is recorded with the print outcome."
+          >
+            {({ id, describedBy }) => (
+              <select
+                id={id}
+                aria-describedby={describedBy}
+                value={layout}
+                onChange={(e) => setLayout(e.target.value as BadgeLayout)}
+              >
+                {LAYOUTS.map((l) => (
+                  <option key={l.value} value={l.value}>
+                    {l.label}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
+          <div className={`badge-card badge-card-${layout}`}>
             <BadgeImage badge={printing} />
             <p className="badge-name">{printing.displayName}</p>
             <p>{printing.agency ?? ''}</p>

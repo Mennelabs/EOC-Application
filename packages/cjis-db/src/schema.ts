@@ -252,7 +252,31 @@ export type RecordEventKind =
   | 'bodycam_removed'
   | 'disposition'
   | 'reviewed'
-  | 'reopened';
+  | 'reopened'
+  | 'shared'
+  | 'share_revoked'
+  | 'share_ended';
+
+/** Mutual aid (0006): the owning agency's grant of a read to a helping agency for a set period. */
+export interface RecordShareTable {
+  id: Generated<string>;
+  agency_id: string;
+  record_id: string;
+  to_agency_id: string;
+  platform_mission_reference: string | null;
+  purpose: string;
+  starts_at: CreatedAt;
+  ends_at: Timestamp;
+  status: Generated<'active' | 'revoked' | 'ended'>;
+  granted_by: string | null;
+  revoked_by: string | null;
+  revoked_at: Date | null;
+  revoke_reason: string | null;
+  ended_at: Date | null;
+  version: Generated<number>;
+  created_at: CreatedAt;
+  updated_at: Timestamp;
+}
 
 export interface RecordEventTable {
   id: Generated<string>;
@@ -363,6 +387,7 @@ export interface CjisDatabase {
   'cjis.record_weapon': RecordWeaponTable;
   'cjis.record_bodycam': RecordBodycamTable;
   'cjis.record_event': RecordEventTable;
+  'cjis.record_share': RecordShareTable;
   'cjis.idempotency_key': IdempotencyKeyTable;
   'cjis.audit_event': AuditEventTable;
   'cjis.audit_review': AuditReviewTable;

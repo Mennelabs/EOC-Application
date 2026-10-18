@@ -102,8 +102,33 @@
     visibility: visible;
   }
   .badge-print .actions,
-  .badge-print .hint {
+  .badge-print .hint,
+  .badge-print .field {
     display: none;
+  }
+  /* ADR-0047: the card fills the label the print dialog was given; nothing else prints. */
+  .badge-print .badge-card-ql820_62x100 {
+    width: 58mm;
+    height: 96mm;
+    padding: 2mm;
+    font-size: 9pt;
+  }
+  .badge-print .badge-card-ql820_62x100 .badge-name {
+    font-size: 13pt;
+  }
+  .badge-print .badge-card-ql820_62x100 img,
+  .badge-print .badge-card-ql820_62x100 svg {
+    max-width: 28mm;
+    max-height: 28mm;
+  }
+  .badge-print .badge-card-ql1110_4x6 {
+    width: 3.8in;
+    height: 5.8in;
+    padding: 0.1in;
+    font-size: 12pt;
+  }
+  .badge-print .badge-card-ql1110_4x6 .badge-name {
+    font-size: 20pt;
   }
   .staging-code,
   .staging-code * {

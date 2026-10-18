@@ -76,6 +76,12 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     create policy share_select_helper on cjis.record_share for select using (
       to_agency_id = cjis.current_agency_id())`.execute(db);
 
+  // The directory: every enclave user sees the name and identifier of the enclave's active
+  // agencies, so an owner can choose whom to share with and a helper can name the owner.
+  // Agencies are organizations, not people; their people and records stay hidden (0001).
+  await sql`
+    create policy agency_directory on cjis.agency for select using (status = 'active')`.execute(db);
+
   // A standing grant to the current agency for this record, now.
   await sql`
     create or replace function cjis.record_shared_with_me(rid uuid) returns boolean
@@ -107,5 +113,6 @@ export async function down(db: Kysely<unknown>): Promise<void> {
   for (const tbl of ['record', 'record_person', 'record_weapon', 'record_bodycam', 'record_event'])
     await sql`drop policy if exists shared_select on ${sql.table(`cjis.${tbl}`)}`.execute(db);
   await sql`drop function if exists cjis.record_shared_with_me(uuid)`.execute(db);
+  await sql`drop policy if exists agency_directory on cjis.agency`.execute(db);
   await sql`drop table if exists cjis.record_share`.execute(db);
 }

@@ -75,15 +75,17 @@ describe.skipIf(!appUrl || !jobUrl || !migratorUrl)('enclave database (database-
     expect(rows).toEqual([]);
   });
 
-  it('SEC-12: an agency sees only its own people and records', async () => {
+  it('SEC-12: an agency sees only its own people and records; the agency directory is shared', async () => {
     const seen = await withAgency(app, { agencyId: agencyB }, async (trx) => ({
       people: await trx.selectFrom('cjis.person').select('id').execute(),
       records: await trx.selectFrom('cjis.record').select('id').execute(),
-      agencies: await trx.selectFrom('cjis.agency').select('id').execute(),
+      agencies: await trx.selectFrom('cjis.agency').select(['id', 'status']).execute(),
     }));
     expect(seen.people.map((p) => p.id)).toEqual([personB]);
     expect(seen.records).toEqual([]);
-    expect(seen.agencies.map((a) => a.id)).toEqual([agencyB]);
+    // Mutual aid (0006): active agencies are a directory every enclave user may read.
+    expect(seen.agencies.map((a) => a.id)).toContain(agencyB);
+    expect(seen.agencies.every((a) => a.status === 'active')).toBe(true);
   });
 
   it('SEC-12: without an agency context the request role sees nothing', async () => {

@@ -22,6 +22,6 @@ Resume record for the items Adam queued on 2026-10-15 for after layer 8 (`docs/p
 
 - IOS: the first device build and its checks (`docs/operations/field-app-ios.md` §3) are Adam's; export compliance and the App Privacy labels are answered in App Store Connect; managed app configuration (MDM) is still not read on either platform (FLD-02).
 
-- MA: sharing stays inside one enclave (both agencies tenants of the same enclave set). Sharing across enclaves, or with the platform, is not built and would need its own decision.
+- MA: the enclave's active agencies are a directory (name and identifier) every enclave user may read, so an owner can choose whom to share with and a helper can name the owner (migration 0006 `agency_directory`); people and records stay hidden. Sharing stays inside one enclave (both agencies tenants of the same enclave set). Sharing across enclaves, or with the platform, is not built and would need its own decision.
 
 - BP: Brother's mobile SDK in the field app needs Adam's go (ADR-0047 §3): a licensed binary pinned in the repository or a private registry, and a native module the Android CI build compiles.

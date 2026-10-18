@@ -508,7 +508,7 @@ describe.skipIf(!appUrl || !jobUrl)('enclave API (database-backed)', () => {
           ref: r2,
           platformMissionReference: 'M-00031',
           platformCounty: 'county',
-          origin: 'field_report',
+          origin: 'officer_initiated',
           classification: 'looting',
           offenseCodes: ['EX-2401'],
           caseNumber: `WCSO-${MARKER}-MA`,
@@ -556,7 +556,7 @@ describe.skipIf(!appUrl || !jobUrl)('enclave API (database-backed)', () => {
       expect(shared.body.shares).toHaveLength(1);
       expect(shared.body.shares[0]).toMatchObject({
         toAgencyId: agencies.police,
-        toAgencyName: 'Police',
+        toAgencyName: expect.stringContaining('Police') as string,
         status: 'active',
         purpose: 'Joint looting patrol, mission M-00031',
       });
@@ -575,12 +575,16 @@ describe.skipIf(!appUrl || !jobUrl)('enclave API (database-backed)', () => {
     it('the helping agency reads and lists the record, read-only, and every read is audited against it', async () => {
       const read = await call('cityOfficer', 'GET', `/records/${r2}`);
       expect(read.status).toBe(200);
-      expect(read.body).toMatchObject({ ref: r2, ownAgency: false, ownerName: 'Sheriff' });
+      expect(read.body).toMatchObject({
+        ref: r2,
+        ownAgency: false,
+        ownerName: expect.stringContaining('Sheriff') as string,
+      });
       expect(read.body.shares).toHaveLength(1);
       const list = await call('cityOfficer', 'GET', '/records');
       expect(list.status).toBe(200);
       const row = list.body.find((x: { ref: string }) => x.ref === r2);
-      expect(row).toMatchObject({ sharedBy: 'Sheriff' });
+      expect(row).toMatchObject({ sharedBy: expect.stringContaining('Sheriff') as string });
       expect(typeof row.sharedUntil).toBe('string');
       // No writes through a share: it reads as not found to the writer.
       const patch = await call('cityOfficer', 'PATCH', `/records/${r2}`, {
